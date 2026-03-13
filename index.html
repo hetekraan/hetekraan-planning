@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -749,13 +749,50 @@ const MONTHS = ['JAN','FEB','MRT','APR','MEI','JUN','JUL','AUG','SEP','OKT','NOV
 let currentDate = new Date(2026, 2, 11);
 let nextId = 6;
 
-let appointments = [
-  { id:1, time:'09:00', name:'De Vries', address:'Hoofdstraat 14, Amsterdam', desc:'Quooker lekt bij aansluiting', type:'reparatie', phone:'06-12345678', price:85, status:'klaar', review:true, contactId:'' },
-  { id:2, time:'10:30', name:'Bakker', address:'Prinsengracht 88, Amsterdam', desc:'Jaarlijks onderhoud', type:'onderhoud', phone:'06-87654321', price:65, status:'klaar', review:true, contactId:'' },
-  { id:3, time:'12:00', name:'Smit', address:'Keizersgracht 203, Amsterdam', desc:'Nieuwe Quooker PRO3 plaatsen', type:'installatie', phone:'06-11223344', price:450, status:'onderweg', review:false, contactId:'' },
-  { id:4, time:'14:00', name:'Van den Berg', address:'Vondelstraat 55, Amsterdam', desc:'Quooker geeft geen warm water', type:'reparatie', phone:'06-55443322', price:95, status:'ingepland', review:false, contactId:'' },
-  { id:5, time:'15:30', name:'Janssen', address:'Overtoom 12, Amsterdam', desc:'Filter vervangen', type:'onderhoud', phone:'06-99887766', price:65, status:'ingepland', review:false, contactId:'' },
-];
+let appointments = [];
+
+// Laad afspraken uit GHL voor de geselecteerde datum
+async function loadAppointments(date) {
+  const dateStr = date.toISOString().split('T')[0];
+  try {
+    const res = await fetch(`/api/ghl?action=getAppointments&date=${dateStr}`);
+    const data = await res.json();
+    const events = data?.events || data?.appointments || [];
+
+    appointments = events.map((e, i) => {
+      const start = new Date(e.startTime);
+      const time = start.toTimeString().slice(0,5);
+      const work = e.title || e.notes || 'Werkzaamheden';
+      let type = 'onderhoud';
+      if (/instal|plaatsen|nieuw|monter/i.test(work)) type = 'installatie';
+      if (/repar|lek|storing|kijken|nazorg|vervang/i.test(work)) type = 'reparatie';
+      return {
+        id: i + 1,
+        ghlId: e.id,
+        contactId: e.contactId || '',
+        time,
+        name: e.contact?.name || 'Klant',
+        address: e.location || '',
+        phone: e.contact?.phone || '',
+        desc: work,
+        type,
+        price: 0,
+        status: 'ingepland',
+        review: false,
+      };
+    });
+
+    if (appointments.length === 0) {
+      showToast('Geen afspraken gevonden voor deze dag', 'info');
+    } else {
+      showToast('✓ ' + appointments.length + ' afspraken geladen uit GHL', 'success');
+    }
+  } catch(e) {
+    console.warn('GHL niet bereikbaar', e);
+    appointments = [];
+  }
+  render();
+}
 
 function formatDate(d) {
   return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
@@ -764,6 +801,7 @@ function formatDate(d) {
 function changeDay(dir) {
   currentDate = new Date(currentDate.getTime() + dir * 86400000);
   document.getElementById('dateLabel').textContent = formatDate(currentDate);
+  loadAppointments(currentDate);
 }
 
 function calcStats() {
@@ -1035,12 +1073,13 @@ function showToast(msg, type='info') {
 }
 
 document.getElementById('dateLabel').textContent = formatDate(currentDate);
+loadAppointments(currentDate);
 
 // ─── LOGIN ───────────────────────────────────────────────
 // Wachtwoorden aanpassen: verander de waarden hieronder
 const USERS = {
-  'daan':  'sobmU2-pygvah-juhhyp',
-  'jerry': '123Rodebessen!'
+  'daan':  'wachtwoord1',
+  'jerry': 'wachtwoord2'
 };
 
 function checkLogin() {
