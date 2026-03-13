@@ -2,6 +2,7 @@
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_CALENDAR_ID = process.env.GHL_CALENDAR_ID;
+const GHL_USER_ID     = 'VHbv9VzNnzAXgudbG318'; // Jerry Groenewegen
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 
 export default async function handler(req, res) {
@@ -17,29 +18,81 @@ export default async function handler(req, res) {
 
       case 'getAppointments': {
         const { date } = req.query;
-        
-        // Probeer meerdere varianten en geef alle debug info terug
-        const url1 = `${GHL_BASE}/calendars/events?locationId=${GHL_LOCATION_ID}&calendarId=${GHL_CALENDAR_ID}&startTime=${date}T00:00:00Z&endTime=${date}T23:59:59Z`;
-        const url2 = `${GHL_BASE}/calendars/events?locationId=${GHL_LOCATION_ID}&startTime=${date}T00:00:00Z&endTime=${date}T23:59:59Z`;
-        
-        const r1 = await fetch(url1, {
-          headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
+        const url = `${GHL_BASE}/calendars/events?locationId=${GHL_LOCATION_ID}&calendarId=${GHL_CALENDAR_ID}&userId=${GHL_USER_ID}&startTime=${date}T00:00:00Z&endTime=${date}T23:59:59Z`;
+        const response = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${GHL_API_KEY}`,
+            'Version': '2021-04-15'
+          }
         });
-        const d1 = await r1.json();
+        const data = await response.json();
+        const events = data?.events || [];
 
-        const r2 = await fetch(url2, {
-          headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
-        });
-        const d2 = await r2.json();
+        const enriched = await Promise.all(events.map(async (e) => {
+          if (!e.contactId) return e;
+          try {
+            const cr = await fetch(`${GHL_BASE}/contacts/${e.contactId}`, {
+              headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
+            });
+            const cd = await cr.json();
+            e.contact = cd?.contact || cd;
+          } catch(_) {}
+          return e;
+        }));
 
-        return res.status(200).json({ 
-          debug: true,
-          date,
-          locationId: GHL_LOCATION_ID,
-          calendarId: GHL_CALENDAR_ID,
-          metCalendarId: d1,
-          zonderCalendarId: d2,
+        return res.status(200).json({ events: enriched });
+      }
+
+      case 'completeAppointment': {
+        const { contactId, appointmentId, type, sendReview, lastService } = req.body;
+        const today = new Date().toISOString().split('T')[0];
+        const fields = { customFields: [] };
+        fields.customFields.push({ key: 'laatste_onderhoudsbeurt', field_value: today });
+        if (type === 'reparatie' && lastService) {
+          fields.customFields.push({ key: 'laatste_onderhoudsbeurt', field_value: lastService });
+        }
+        if (type === 'installatie') {
+          fields.customFields.push({ key: 'datum_installatie', field_value: today });
+        }
+        await fetch(`${GHL_BASE}/contacts/${contactId}`, {
+          method: 'PUT',
+          headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-04-15' },
+          body: JSON.stringify(fields)
         });
+        await addTag(contactId, 'factuur-versturen');
+        if (sendReview) await addTag(contactId, 'review-mail-versturen');
+        if (appointmentId) await updateOpportunityStage(contactId, 'Uitgevoerd');
+        return res.status(200).json({ success: true });
+      }
+
+      case 'sendETA': {
+        const { contactId, eta } = req.body;
+        await fetch(`${GHL_BASE}/conversations/messages`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-04-15' },
+          body: JSON.stringify({
+            type: 'WhatsApp',
+            contactId,
+            message: `Goedemiddag! Onze monteur is onderweg naar u. Verwachte aankomsttijd: ${eta}. Tot zo!`
+          })
+        });
+        return res.status(200).json({ success: true });
+      }
+
+      case 'sendMorningMessages': {
+        const { appointments } = req.body;
+        for (const appt of appointments) {
+          await fetch(`${GHL_BASE}/conversations/messages`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-04-15' },
+            body: JSON.stringify({
+              type: 'WhatsApp',
+              contactId: appt.contactId,
+              message: `Goedemorgen! U staat vandaag in onze planning. Onze monteur verwacht er tussen ${appt.timeFrom} en ${appt.timeTo} te zijn.`
+            })
+          });
+        }
+        return res.status(200).json({ success: true });
       }
 
       default:
@@ -48,4 +101,26 @@ export default async function handler(req, res) {
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
+}
+
+async function addTag(contactId, tag) {
+  await fetch(`${GHL_BASE}/contacts/${contactId}/tags`, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-04-15' },
+    body: JSON.stringify({ tags: [tag] })
+  });
+}
+
+async function updateOpportunityStage(contactId, stage) {
+  const res = await fetch(`${GHL_BASE}/opportunities/search?contact_id=${contactId}`, {
+    headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
+  });
+  const data = await res.json();
+  const opp = data?.opportunities?.[0];
+  if (!opp) return;
+  await fetch(`${GHL_BASE}/opportunities/${opp.id}`, {
+    method: 'PUT',
+    headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-04-15' },
+    body: JSON.stringify({ status: stage })
+  });
 }
