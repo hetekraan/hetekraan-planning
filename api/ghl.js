@@ -1,13 +1,25 @@
-// api/ghl.js — definitief met custom fields
+// api/ghl.js — met custom field IDs
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_CALENDAR_ID = process.env.GHL_CALENDAR_ID;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 
-function getCustomField(contact, key) {
+// Custom field ID mapping
+const FIELD_IDS = {
+  straatnaam:          'ZwIMY4VPelG5rKROb5NR',
+  huisnummer:          'co5Mr16rF6S6ay5hJOSJ',
+  postcode:            '3bCi5hL0rR9XGG33x2Gv',
+  woonplaats:          'mFRQjlUppycMfyjENKF9',
+  type_onderhoud:      'EXSQmlt7BqkXJMs8F3Qk',
+  probleemomschrijving:'BBcbPCNA9Eu0Kyi4U1LN',
+  prijs:               'YOUR_PRIJS_ID', // vul in als bekend
+  opmerkingen:         'YOUR_OPMERKINGEN_ID',
+};
+
+function getField(contact, fieldId) {
   if (!contact?.customFields) return '';
-  const field = contact.customFields.find(f => f.key === key || f.fieldKey === key);
-  return field?.value || field?.fieldValue || '';
+  const field = contact.customFields.find(f => f.id === fieldId);
+  return field?.value || '';
 }
 
 export default async function handler(req, res) {
@@ -42,23 +54,21 @@ export default async function handler(req, res) {
             const contact = cd?.contact || cd;
             e.contact = contact;
 
-            // Adres opbouwen uit losse velden
-            const straat    = getCustomField(contact, 'straatnaam');
-            const huisnr    = getCustomField(contact, 'huisnummer');
-            const postcode  = getCustomField(contact, 'postcode');
-            const woonplaats = getCustomField(contact, 'woonplaats');
-            e.parsedAddress = [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ');
+            // Adres opbouwen uit custom fields
+            const straat     = getField(contact, FIELD_IDS.straatnaam);
+            const huisnr     = getField(contact, FIELD_IDS.huisnummer);
+            const postcode   = getField(contact, FIELD_IDS.postcode);
+            const woonplaats = getField(contact, FIELD_IDS.woonplaats) || contact.city || '';
+            e.parsedAddress  = [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ');
 
             // Werkzaamheden
-            const typeOnderhoud = getCustomField(contact, 'type_onderhoud');
-            const probleemomschrijving = getCustomField(contact, 'probleemomschrijving');
-            e.parsedWork = [typeOnderhoud, probleemomschrijving].filter(Boolean).join(' — ') || e.title;
+            const type    = getField(contact, FIELD_IDS.type_onderhoud);
+            const probleem = getField(contact, FIELD_IDS.probleemomschrijving);
+            e.parsedWork  = [type, probleem].filter(Boolean).join(' — ') || e.title;
 
-            // Prijs
-            e.parsedPrice = getCustomField(contact, 'prijs');
-
-            // Opmerkingen
-            e.parsedNotes = getCustomField(contact, 'opmerkingen');
+            // Prijs en opmerkingen
+            e.parsedPrice = getField(contact, FIELD_IDS.prijs);
+            e.parsedNotes = getField(contact, FIELD_IDS.opmerkingen);
 
           } catch(_) {}
           return e;
@@ -71,13 +81,10 @@ export default async function handler(req, res) {
         const { contactId, appointmentId, type, sendReview, lastService } = req.body;
         const today = new Date().toISOString().split('T')[0];
         const customFields = [
-          { key: 'datum_laatste_onderhoud', field_value: today }
+          { id: 'hiTe3Yi5TlxheJq4bLzy', field_value: today } // datum_laatste_onderhoud
         ];
-        if (type === 'reparatie' && lastService) {
-          customFields.push({ key: 'datum_laatste_onderhoud', field_value: lastService });
-        }
         if (type === 'installatie') {
-          customFields.push({ key: 'datum_installatie', field_value: today });
+          customFields.push({ id: 'kYP2SCmhZ21Ig0aaLl5l', field_value: today }); // datum_installatie
         }
         await fetch(`${GHL_BASE}/contacts/${contactId}`, {
           method: 'PUT',
