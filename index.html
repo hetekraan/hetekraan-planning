@@ -768,8 +768,10 @@ async function loadAppointments(date) {
       if (/repar|lek|storing|kijken|nazorg|vervang/i.test(work)) type = 'reparatie';
       const address = e.parsedAddress || e.location || '';
       const price = e.parsedPrice || '0';
-      const name = e.contact?.name || address.split(',')[0] || 'Klant';
+      const name = e.contact?.name || e.contact?.firstName && (e.contact.firstName + ' ' + (e.contact.lastName||'')).trim() || address.split(' ')[0] || 'Klant';
       const mapsUrl = address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : '';
+      const desc = e.parsedWork || work;
+      const notes = e.parsedNotes || '';
       return {
         id: i + 1,
         ghlId: e.id,
@@ -779,10 +781,11 @@ async function loadAppointments(date) {
         address,
         mapsUrl,
         phone: e.contact?.phone || '',
-        desc: work,
+        desc,
+        notes,
         type,
-        price: parseFloat(price.replace(/[^0-9.]/g, '')) || 0,
-        priceLabel: price,
+        price: parseFloat(String(price).replace(/[^0-9.]/g, '')) || 0,
+        priceLabel: price !== '0' ? `€${price}` : '€0',
         status: 'ingepland',
         review: false,
       };
