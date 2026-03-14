@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
@@ -766,17 +766,23 @@ async function loadAppointments(date) {
       let type = 'onderhoud';
       if (/instal|plaatsen|nieuw|monter/i.test(work)) type = 'installatie';
       if (/repar|lek|storing|kijken|nazorg|vervang/i.test(work)) type = 'reparatie';
+      const address = e.parsedAddress || e.location || '';
+      const price = e.parsedPrice || '0';
+      const name = e.contact?.name || address.split(',')[0] || 'Klant';
+      const mapsUrl = address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : '';
       return {
         id: i + 1,
         ghlId: e.id,
         contactId: e.contactId || '',
         time,
-        name: e.contact?.name || 'Klant',
-        address: e.location || '',
+        name,
+        address,
+        mapsUrl,
         phone: e.contact?.phone || '',
         desc: work,
         type,
-        price: 0,
+        price: parseFloat(price.replace(/[^0-9.]/g, '')) || 0,
+        priceLabel: price,
         status: 'ingepland',
         review: false,
       };
@@ -829,7 +835,7 @@ function render() {
           <div class="appt-time">${a.time}</div>
           <div class="appt-actions">
             <a class="icon-btn" href="tel:${a.phone}" title="Bellen">📞</a>
-            <a class="icon-btn" href="https://maps.google.com?q=${encodeURIComponent(a.address)}" target="_blank" title="Maps">📍</a>
+            <a class="icon-btn" href="${a.mapsUrl || 'https://maps.google.com?q='+encodeURIComponent(a.address)}" target="_blank" title="Maps">📍</a>
             <button class="icon-btn danger" onclick="deleteAppt(${a.id})" title="Verwijderen">✕</button>
           </div>
         </div>
