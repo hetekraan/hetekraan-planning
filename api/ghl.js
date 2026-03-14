@@ -1,8 +1,14 @@
-// api/ghl.js — definitief
+// api/ghl.js — definitief met custom fields
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_CALENDAR_ID = process.env.GHL_CALENDAR_ID;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
+
+function getCustomField(contact, key) {
+  if (!contact?.customFields) return '';
+  const field = contact.customFields.find(f => f.key === key || f.fieldKey === key);
+  return field?.value || field?.fieldValue || '';
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -26,7 +32,6 @@ export default async function handler(req, res) {
         const data = await response.json();
         const events = data?.events || [];
 
-        // Haal contact op per afspraak
         const enriched = await Promise.all(events.map(async (e) => {
           if (!e.contactId) return e;
           try {
@@ -34,23 +39,28 @@ export default async function handler(req, res) {
               headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
             });
             const cd = await cr.json();
-            e.contact = cd?.contact || cd;
+            const contact = cd?.contact || cd;
+            e.contact = contact;
+
+            // Adres opbouwen uit losse velden
+            const straat    = getCustomField(contact, 'straatnaam');
+            const huisnr    = getCustomField(contact, 'huisnummer');
+            const postcode  = getCustomField(contact, 'postcode');
+            const woonplaats = getCustomField(contact, 'woonplaats');
+            e.parsedAddress = [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ');
+
+            // Werkzaamheden
+            const typeOnderhoud = getCustomField(contact, 'type_onderhoud');
+            const probleemomschrijving = getCustomField(contact, 'probleemomschrijving');
+            e.parsedWork = [typeOnderhoud, probleemomschrijving].filter(Boolean).join(' — ') || e.title;
+
+            // Prijs
+            e.parsedPrice = getCustomField(contact, 'prijs');
+
+            // Opmerkingen
+            e.parsedNotes = getCustomField(contact, 'opmerkingen');
+
           } catch(_) {}
-
-          // Parse notes: "Prijs: 245 | Adres: Straatnaam 1, Stad"
-          if (e.notes) {
-            const prijsMatch = e.notes.match(/Prijs:\s*([^|]+)/);
-            const adresMatch = e.notes.match(/Adres:\s*(.+)/);
-            if (prijsMatch) e.parsedPrice = prijsMatch[1].trim();
-            if (adresMatch) e.parsedAddress = adresMatch[1].trim();
-          }
-
-          // Gebruik contactnaam of adres als naam
-          if (!e.contact?.name && e.parsedAddress) {
-            e.contact = e.contact || {};
-            e.contact.name = e.parsedAddress.split(',')[0];
-          }
-
           return e;
         }));
 
@@ -60,18 +70,19 @@ export default async function handler(req, res) {
       case 'completeAppointment': {
         const { contactId, appointmentId, type, sendReview, lastService } = req.body;
         const today = new Date().toISOString().split('T')[0];
-        const fields = { customFields: [] };
-        fields.customFields.push({ key: 'laatste_onderhoudsbeurt', field_value: today });
+        const customFields = [
+          { key: 'datum_laatste_onderhoud', field_value: today }
+        ];
         if (type === 'reparatie' && lastService) {
-          fields.customFields.push({ key: 'laatste_onderhoudsbeurt', field_value: lastService });
+          customFields.push({ key: 'datum_laatste_onderhoud', field_value: lastService });
         }
         if (type === 'installatie') {
-          fields.customFields.push({ key: 'datum_installatie', field_value: today });
+          customFields.push({ key: 'datum_installatie', field_value: today });
         }
         await fetch(`${GHL_BASE}/contacts/${contactId}`, {
           method: 'PUT',
           headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-04-15' },
-          body: JSON.stringify(fields)
+          body: JSON.stringify({ customFields })
         });
         await addTag(contactId, 'factuur-versturen');
         if (sendReview) await addTag(contactId, 'review-mail-versturen');
