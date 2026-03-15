@@ -753,15 +753,17 @@ let appointments = [];
 
 // Laad afspraken uit GHL voor de geselecteerde datum
 async function loadAppointments(date) {
-  const dateStr = date.toISOString().split('T')[0];
+  // Gebruik lokale datum (NL tijdzone) niet UTC
+  const dateStr = date.toLocaleDateString('nl-NL', {year:'numeric', month:'2-digit', day:'2-digit', timeZone:'Europe/Amsterdam'}).split('-').reverse().join('-');
   try {
     const res = await fetch(`/api/ghl?action=getAppointments&date=${dateStr}`);
     const data = await res.json();
     const events = data?.events || data?.appointments || [];
 
     appointments = events.map((e, i) => {
+      // Parse tijd correct in Nederlandse tijdzone
       const start = new Date(e.startTime);
-      const time = start.toTimeString().slice(0,5);
+      const time = start.toLocaleTimeString('nl-NL', {hour:'2-digit', minute:'2-digit', timeZone:'Europe/Amsterdam'});
       const work = e.title || e.notes || 'Werkzaamheden';
       let type = 'onderhoud';
       if (/instal|plaatsen|nieuw|monter/i.test(work)) type = 'installatie';
