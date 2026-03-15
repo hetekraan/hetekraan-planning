@@ -127,6 +127,35 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true });
       }
 
+      case 'optimizeRoute': {
+        const { addresses } = req.body;
+        const GOOGLE_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
+
+        // Bouw waypoints op
+        const origin = addresses[0].address;
+        const destination = addresses[addresses.length - 1].address;
+        const waypoints = addresses.slice(1, -1).map(a => `optimize:true|${a.address}`).join('|');
+
+        const url = `https://maps.googleapis.com/maps/api/directions/json?origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&waypoints=${encodeURIComponent(waypoints)}&key=${GOOGLE_API_KEY}`;
+
+        const r = await fetch(url);
+        const d = await r.json();
+
+        if (d.status === 'OK' && d.routes[0]?.waypoint_order) {
+          const waypointOrder = d.routes[0].waypoint_order;
+          // Bouw geoptimaliseerde volgorde op
+          const middle = addresses.slice(1, -1);
+          const optimized = [
+            addresses[0].id,
+            ...waypointOrder.map(i => middle[i].id),
+            addresses[addresses.length - 1].id
+          ];
+          return res.status(200).json({ order: optimized });
+        }
+
+        return res.status(200).json({ order: null });
+      }
+
       default:
         return res.status(400).json({ error: 'Onbekende actie' });
     }
