@@ -12,7 +12,7 @@ const FIELD_IDS = {
   woonplaats:          'mFRQjlUppycMfyjENKF9',
   type_onderhoud:      'EXSQmlt7BqkXJMs8F3Qk',
   probleemomschrijving:'BBcbPCNA9Eu0Kyi4U1LN',
-  prijs:               'YOUR_PRIJS_ID', // vul in als bekend
+  prijs:               'HGjlT6ofaBiMz3j2HsXL', // vul in als bekend
   opmerkingen:         'YOUR_OPMERKINGEN_ID',
 };
 
