@@ -797,12 +797,12 @@ async function loadAppointments(date) {
       if (/repar|lek|storing|kijken|nazorg|vervang/i.test(work)) type = 'reparatie';
 
       const address = e.parsedAddress || '';
-      const price = e.parsedPrice || '0';
+      const price = e.parsedPrice || '';
       const contact = e.contact || {};
       const firstName = contact.firstName || '';
       const lastName = contact.lastName || '';
       const name = (firstName + ' ' + lastName).trim() || address.split(' ')[0] || 'Klant';
-      const mapsUrl = address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : '';
+      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address || name)}`;
       const ghlUrl = e.contactId ? `${GHL_BASE_URL}/contacts/${e.contactId}` : '';
 
       return {
@@ -819,7 +819,7 @@ async function loadAppointments(date) {
         notes: e.parsedNotes || '',
         type,
         price: parseFloat(String(price).replace(/[^0-9.]/g, '')) || 0,
-        priceLabel: price && price !== '0' ? `€${price}` : '—',
+        priceLabel: price ? `€${price}` : '',
         datumInstallatie: contact.customFields?.find(f => f.id === 'kYP2SCmhZ21Ig0aaLl5l')?.value || '',
         datumOnderhoud: contact.customFields?.find(f => f.id === 'hiTe3Yi5TlxheJq4bLzy')?.value || '',
         status: 'ingepland',
@@ -879,7 +879,7 @@ function render() {
           <div class="appt-time">${a.time}</div>
           <div class="appt-actions">
             ${a.phone ? `<a class="icon-btn" href="tel:${a.phone}" title="Bellen">📞</a>` : ''}
-            ${a.mapsUrl ? `<a class="icon-btn" href="${a.mapsUrl}" target="_blank" title="Maps">📍</a>` : ''}
+            <a class="icon-btn" href="${a.mapsUrl || 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(a.name)}" target="_blank" title="Maps">📍</a>
             ${a.ghlUrl ? `<a class="icon-btn ghl" href="${a.ghlUrl}" target="_blank" title="Open in GHL">🔗</a>` : ''}
             <button class="icon-btn danger" onclick="deleteAppt(${a.id})" title="Verwijderen">✕</button>
           </div>
@@ -895,7 +895,7 @@ function render() {
             ${a.phone ? `<span class="appt-phone">${a.phone}</span>` : ''}
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-            <span class="appt-price">${a.priceLabel}</span>
+            ${a.priceLabel ? `<span class="appt-price">${a.priceLabel}</span>` : ''}
             <div class="status-dot">
               <div class="dot ${a.status}"></div>
               <span style="color:var(--muted);font-size:10px">${a.status}</span>
@@ -920,7 +920,10 @@ function render() {
           <input type="date" id="sdate-${a.id}" value="${a.lastService||''}" onchange="setLastService(${a.id}, this.value)">
         </div>` : ''}
         <div class="complete-row">
-          <button class="btn-confirm" onclick="confirmDone(${a.id})">✓ Bevestig klaar</button>
+          <div style="display:flex;gap:8px;margin-left:auto">
+            <button class="btn-cancel" onclick="cancelOnderweg(${a.id})">✕ Annuleer</button>
+            <button class="btn-confirm" onclick="confirmDone(${a.id})">✓ Bevestig klaar</button>
+          </div>
         </div>
       </div>
     </div>`;
@@ -949,6 +952,13 @@ function renderRoute(sorted) {
 
 function scrollToCard(id) {
   document.getElementById('card-'+id)?.scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+function cancelOnderweg(id) {
+  const a = appointments.find(x=>x.id===id);
+  if (!a) return;
+  a.status = 'ingepland';
+  render();
 }
 
 function toggleOnderweg(id) {
