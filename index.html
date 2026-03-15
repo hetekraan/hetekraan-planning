@@ -2,8 +2,8 @@
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Hetekraan — Login</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Hetekraan — Planning</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -34,24 +34,27 @@
     overflow-x: hidden;
   }
 
+  /* HEADER */
   header {
     background: var(--surface);
     border-bottom: 1px solid var(--border);
-    padding: 0 24px;
-    height: 60px;
+    padding: 0 16px;
+    height: 56px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     position: sticky;
     top: 0;
     z-index: 100;
+    gap: 8px;
   }
 
   .logo {
     font-family: 'Syne', sans-serif;
     font-weight: 800;
-    font-size: 18px;
+    font-size: 16px;
     letter-spacing: -0.5px;
+    flex-shrink: 0;
   }
   .logo span { color: var(--accent); }
 
@@ -62,42 +65,50 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     overflow: hidden;
+    flex-shrink: 0;
   }
   .date-nav button {
     background: none;
     border: none;
     color: var(--muted);
-    padding: 8px 12px;
+    padding: 8px 10px;
     cursor: pointer;
     font-size: 14px;
     transition: color 0.15s;
+    flex-shrink: 0;
   }
   .date-nav button:hover { color: var(--text); }
   .date-label {
     font-family: 'Syne', sans-serif;
     font-weight: 700;
-    font-size: 13px;
-    padding: 8px 16px;
+    font-size: 11px;
+    padding: 8px 10px;
     border-left: 1px solid var(--border);
     border-right: 1px solid var(--border);
     letter-spacing: 0.5px;
+    width: 180px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  .header-stats { display: flex; gap: 24px; align-items: center; }
+  .header-stats { display: flex; gap: 12px; align-items: center; flex-shrink: 0; }
   .stat { display: flex; flex-direction: column; align-items: center; }
-  .stat-val { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 18px; line-height: 1; }
+  .stat-val { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 16px; line-height: 1; }
   .stat-val.green { color: var(--accent2); }
   .stat-val.orange { color: var(--accent); }
-  .stat-label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
+  .stat-label { font-size: 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
 
+  /* LAYOUT */
   .layout {
     display: grid;
-    grid-template-columns: 1fr 300px;
-    height: calc(100vh - 60px);
+    grid-template-columns: 1fr 280px;
+    height: calc(100vh - 56px);
   }
 
   .appointments {
-    padding: 20px;
+    padding: 16px;
     overflow-y: auto;
     border-right: 1px solid var(--border);
   }
@@ -106,7 +117,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
   }
 
   .section-title {
@@ -121,11 +132,11 @@
     background: var(--accent);
     color: white;
     border: none;
-    padding: 8px 16px;
+    padding: 7px 14px;
     border-radius: 6px;
     font-family: 'DM Sans', sans-serif;
     font-weight: 500;
-    font-size: 13px;
+    font-size: 12px;
     cursor: pointer;
     transition: opacity 0.15s;
     display: flex;
@@ -134,11 +145,12 @@
   }
   .btn-add:hover { opacity: 0.85; }
 
+  /* KAART */
   .appt-card {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 10px;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     overflow: hidden;
     transition: border-color 0.2s, transform 0.15s;
     position: relative;
@@ -149,31 +161,31 @@
 
   .appt-number {
     position: absolute;
-    top: 12px;
-    left: 14px;
+    top: 10px;
+    left: 12px;
     font-family: 'DM Mono', monospace;
     font-size: 10px;
     color: var(--muted);
   }
 
-  .appt-inner { padding: 12px 14px 12px 40px; }
+  .appt-inner { padding: 10px 12px 10px 36px; }
 
   .appt-top {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
   }
 
   .appt-time {
     font-family: 'DM Mono', monospace;
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 500;
     color: var(--accent2);
   }
   .appt-card.done .appt-time { color: var(--muted); }
 
-  .appt-actions { display: flex; gap: 6px; align-items: center; }
+  .appt-actions { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 
   .icon-btn {
     background: var(--surface2);
@@ -186,28 +198,66 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 12px;
     transition: all 0.15s;
     text-decoration: none;
+    flex-shrink: 0;
   }
   .icon-btn:hover { color: var(--text); border-color: var(--muted); }
   .icon-btn.danger:hover { color: var(--reparatie); border-color: var(--reparatie); }
+  .icon-btn.ghl:hover { color: var(--blue); border-color: var(--blue); }
 
   .appt-name {
     font-family: 'Syne', sans-serif;
     font-weight: 700;
-    font-size: 15px;
+    font-size: 14px;
     letter-spacing: -0.3px;
     margin-bottom: 2px;
   }
 
-  .appt-address { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
-  .appt-desc { font-size: 12px; color: #8888aa; font-style: italic; margin-bottom: 8px; }
+  .appt-address { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .appt-desc { font-size: 11px; color: #8888aa; font-style: italic; margin-bottom: 6px; }
+
+  /* Extra info rij */
+  .appt-meta {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+  .meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .meta-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 8px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .meta-value {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--text);
+  }
+  .appt-notes {
+    font-size: 11px;
+    color: var(--accent);
+    background: rgba(255,107,53,0.08);
+    border: 1px solid rgba(255,107,53,0.2);
+    border-radius: 4px;
+    padding: 4px 8px;
+    margin-bottom: 6px;
+  }
 
   .appt-footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
   }
 
   .appt-tags { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
@@ -218,19 +268,19 @@
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 1px;
-    padding: 3px 8px;
+    padding: 3px 7px;
     border-radius: 4px;
   }
   .tag.reparatie { background: rgba(255,107,53,0.15); color: var(--reparatie); }
   .tag.onderhoud { background: rgba(0,212,170,0.15); color: var(--onderhoud); }
   .tag.installatie { background: rgba(74,158,255,0.15); color: var(--installatie); }
 
-  .appt-phone { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); }
+  .appt-phone { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); }
   .appt-price { font-family: 'DM Mono', monospace; font-size: 13px; font-weight: 500; color: var(--accent2); }
   .appt-card.done .appt-price { color: var(--muted); }
 
-  .status-dot { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-family: 'DM Mono', monospace; }
-  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+  .status-dot { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-family: 'DM Mono', monospace; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
   .dot.klaar { background: var(--accent2); }
   .dot.onderweg { background: var(--blue); animation: pulse 1.5s infinite; }
 
@@ -240,15 +290,16 @@
     background: var(--surface3);
     border: 1px solid var(--border);
     color: var(--muted);
-    padding: 6px 12px;
+    padding: 5px 10px;
     border-radius: 6px;
-    font-size: 12px;
+    font-size: 11px;
     font-family: 'DM Sans', sans-serif;
     cursor: pointer;
     transition: all 0.2s;
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
+    white-space: nowrap;
   }
   .btn-done:hover { background: rgba(0,212,170,0.1); border-color: var(--accent2); color: var(--accent2); }
   .btn-done.active { background: rgba(74,158,255,0.1); border-color: var(--blue); color: var(--blue); }
@@ -258,9 +309,9 @@
     display: none;
     background: var(--surface2);
     border-top: 1px solid var(--border);
-    padding: 12px 14px 12px 40px;
+    padding: 10px 12px 10px 36px;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
   }
   .complete-bar.visible { display: flex; }
 
@@ -276,7 +327,7 @@
     align-items: center;
     gap: 8px;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--muted);
     user-select: none;
   }
@@ -309,18 +360,19 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--muted);
+    flex-wrap: wrap;
   }
 
   .service-date-row input {
     background: var(--surface3);
     border: 1px solid var(--border);
     color: var(--text);
-    padding: 5px 8px;
+    padding: 4px 8px;
     border-radius: 6px;
     font-family: 'DM Mono', monospace;
-    font-size: 12px;
+    font-size: 11px;
     outline: none;
   }
   .service-date-row input:focus { border-color: var(--accent); }
@@ -329,7 +381,7 @@
     background: var(--accent2);
     color: #0a0a0f;
     border: none;
-    padding: 7px 14px;
+    padding: 6px 14px;
     border-radius: 6px;
     font-family: 'DM Sans', sans-serif;
     font-weight: 500;
@@ -342,22 +394,22 @@
 
   /* ROUTE PANEL */
   .route-panel {
-    padding: 20px;
+    padding: 16px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
   }
 
   .btn-optimize {
     background: var(--accent);
     color: white;
     border: none;
-    padding: 12px;
+    padding: 10px;
     border-radius: 8px;
     font-family: 'Syne', sans-serif;
     font-weight: 700;
-    font-size: 13px;
+    font-size: 12px;
     cursor: pointer;
     width: 100%;
     letter-spacing: 0.5px;
@@ -374,8 +426,8 @@
   .route-item {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 10px 0;
+    gap: 10px;
+    padding: 8px 0;
     border-bottom: 1px solid var(--border);
     cursor: pointer;
     transition: opacity 0.15s;
@@ -385,8 +437,8 @@
   .route-item.done { opacity: 0.4; }
 
   .route-num {
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
     background: var(--surface3);
     border: 1px solid var(--border);
@@ -394,25 +446,25 @@
     align-items: center;
     justify-content: center;
     font-family: 'DM Mono', monospace;
-    font-size: 10px;
+    font-size: 9px;
     color: var(--muted);
     flex-shrink: 0;
   }
-  .route-num.depot { background: rgba(255,107,53,0.15); border-color: var(--accent); color: var(--accent); font-size: 12px; }
+  .route-num.depot { background: rgba(255,107,53,0.15); border-color: var(--accent); color: var(--accent); font-size: 11px; }
 
   .route-info { flex: 1; min-width: 0; }
-  .route-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .route-addr { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .route-time { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--muted); flex-shrink: 0; }
+  .route-name { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .route-addr { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .route-time { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); flex-shrink: 0; }
 
-  .btn-maps {
+  .btn-maps, .btn-morning {
     background: var(--surface2);
     border: 1px solid var(--border);
     color: var(--text);
-    padding: 10px;
+    padding: 9px;
     border-radius: 8px;
     font-family: 'DM Sans', sans-serif;
-    font-size: 13px;
+    font-size: 12px;
     cursor: pointer;
     width: 100%;
     transition: all 0.15s;
@@ -423,59 +475,22 @@
     text-decoration: none;
   }
   .btn-maps:hover { border-color: var(--blue); color: var(--blue); }
-
-  .btn-morning {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    color: var(--muted);
-    padding: 10px;
-    border-radius: 8px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px;
-    cursor: pointer;
-    width: 100%;
-    transition: all 0.15s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-  }
+  .btn-morning { color: var(--muted); }
   .btn-morning:hover { border-color: var(--accent2); color: var(--accent2); }
 
-  /* QUICK ADD */
-  .quick-add {
+  /* TOTAL BAR */
+  .total-bar {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 16px;
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 4px;
   }
-
-  .quick-add-title {
-    font-family: 'DM Mono', monospace;
-    font-size: 10px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    margin-bottom: 12px;
-  }
-
-  .form-row { margin-bottom: 10px; }
-  .form-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; display: block; }
-  .form-input, .form-select {
-    width: 100%;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 8px 10px;
-    border-radius: 6px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 13px;
-    transition: border-color 0.15s;
-    outline: none;
-  }
-  .form-input:focus, .form-select:focus { border-color: var(--accent); }
-  .form-select option { background: var(--surface2); }
-  .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .total-label { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .total-amount { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 16px; color: var(--accent2); }
 
   /* MODAL */
   .modal-overlay {
@@ -486,6 +501,7 @@
     z-index: 200;
     align-items: center;
     justify-content: center;
+    padding: 16px;
   }
   .modal-overlay.visible { display: flex; }
 
@@ -493,45 +509,52 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 24px;
+    padding: 20px;
     width: 400px;
-    max-width: 90vw;
+    max-width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
   }
 
-  .modal-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 16px; margin-bottom: 16px; }
-  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
-  .btn-cancel { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); padding: 8px 16px; border-radius: 6px; font-family: 'DM Sans', sans-serif; font-size: 13px; cursor: pointer; }
-  .btn-save { background: var(--accent); border: none; color: white; padding: 8px 16px; border-radius: 6px; font-family: 'DM Sans', sans-serif; font-weight: 500; font-size: 13px; cursor: pointer; }
+  .modal-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px; margin-bottom: 14px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+  .btn-cancel { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); padding: 7px 14px; border-radius: 6px; font-family: 'DM Sans', sans-serif; font-size: 12px; cursor: pointer; }
+  .btn-save { background: var(--accent); border: none; color: white; padding: 7px 14px; border-radius: 6px; font-family: 'DM Sans', sans-serif; font-weight: 500; font-size: 12px; cursor: pointer; }
 
-  .total-bar {
-    background: var(--surface);
+  .form-row { margin-bottom: 8px; }
+  .form-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; display: block; }
+  .form-input, .form-select {
+    width: 100%;
+    background: var(--surface2);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 12px 14px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 4px;
+    color: var(--text);
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    transition: border-color 0.15s;
+    outline: none;
   }
-  .total-label { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
-  .total-amount { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 18px; color: var(--accent2); }
+  .form-input:focus, .form-select:focus { border-color: var(--accent); }
+  .form-select option { background: var(--surface2); }
+  .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
 
   /* TOAST */
   .toast {
     position: fixed;
-    bottom: 24px;
-    right: 24px;
+    bottom: 16px;
+    right: 16px;
     background: var(--surface2);
     border: 1px solid var(--border);
     color: var(--text);
-    padding: 12px 16px;
+    padding: 10px 14px;
     border-radius: 8px;
-    font-size: 13px;
+    font-size: 12px;
     z-index: 300;
     transform: translateY(80px);
     opacity: 0;
     transition: all 0.3s;
-    max-width: 320px;
+    max-width: 280px;
     line-height: 1.5;
   }
   .toast.show { transform: translateY(0); opacity: 1; }
@@ -552,27 +575,28 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 16px;
   }
   .login-overlay.hidden { display: none; }
   .login-box {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 16px;
-    padding: 40px;
-    width: 360px;
-    max-width: 90vw;
+    padding: 32px;
+    width: 340px;
+    max-width: 100%;
   }
-  .login-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 24px; letter-spacing: -0.5px; margin-bottom: 8px; }
+  .login-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 22px; letter-spacing: -0.5px; margin-bottom: 6px; }
   .login-logo span { color: var(--accent); }
-  .login-sub { font-size: 13px; color: var(--muted); margin-bottom: 32px; }
-  .login-field { margin-bottom: 16px; }
-  .login-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; display: block; }
+  .login-sub { font-size: 12px; color: var(--muted); margin-bottom: 28px; }
+  .login-field { margin-bottom: 14px; }
+  .login-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; display: block; }
   .login-input {
     width: 100%;
     background: var(--surface2);
     border: 1px solid var(--border);
     color: var(--text);
-    padding: 10px 14px;
+    padding: 10px 12px;
     border-radius: 8px;
     font-family: 'DM Sans', sans-serif;
     font-size: 14px;
@@ -580,25 +604,71 @@
     transition: border-color 0.15s;
   }
   .login-input:focus { border-color: var(--accent); }
-  .login-error { font-size: 12px; color: var(--reparatie); margin-bottom: 12px; display: none; }
+  .login-error { font-size: 12px; color: var(--reparatie); margin-bottom: 10px; display: none; }
   .login-error.visible { display: block; }
   .btn-login {
     width: 100%;
     background: var(--accent);
     color: white;
     border: none;
-    padding: 12px;
+    padding: 11px;
     border-radius: 8px;
     font-family: 'Syne', sans-serif;
     font-weight: 700;
-    font-size: 14px;
+    font-size: 13px;
     cursor: pointer;
     transition: opacity 0.15s;
     letter-spacing: 0.5px;
-    margin-top: 8px;
+    margin-top: 6px;
   }
   .btn-login:hover { opacity: 0.85; }
-  .login-hint { font-size: 11px; color: var(--muted); text-align: center; margin-top: 20px; }
+  .login-hint { font-size: 11px; color: var(--muted); text-align: center; margin-top: 16px; }
+
+  /* MOBILE */
+  @media (max-width: 768px) {
+    header { padding: 0 10px; gap: 6px; }
+    .logo { font-size: 14px; }
+    .date-label { width: 140px; font-size: 10px; padding: 8px 6px; }
+    .header-stats { gap: 8px; }
+    .stat-val { font-size: 14px; }
+    .stat-label { display: none; }
+
+    .layout {
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr auto;
+      height: auto;
+      min-height: calc(100vh - 56px);
+    }
+
+    .appointments {
+      border-right: none;
+      border-bottom: 1px solid var(--border);
+      height: auto;
+      overflow-y: visible;
+      padding: 12px;
+    }
+
+    .route-panel {
+      padding: 12px;
+      height: auto;
+    }
+
+    .appt-inner { padding: 10px 10px 10px 32px; }
+    .appt-number { left: 10px; }
+    .icon-btn { width: 32px; height: 32px; font-size: 14px; }
+    .appt-name { font-size: 13px; }
+    .appt-time { font-size: 13px; }
+
+    .form-row-2 { grid-template-columns: 1fr; }
+
+    .toast { left: 16px; right: 16px; max-width: none; }
+  }
+
+  @media (max-width: 480px) {
+    .date-label { width: 120px; font-size: 9px; }
+    .stat { display: none; }
+    .stat:first-child { display: flex; }
+  }
 </style>
 </head>
 <body>
@@ -645,47 +715,6 @@
     <div class="route-list" id="routeList"></div>
     <a class="btn-maps" href="#" onclick="openMaps(event)">🗺 Open volledige route in Maps</a>
     <button class="btn-morning" onclick="sendMorningMessages()">☀️ Stuur ochtendmeldingen</button>
-
-    <div class="quick-add" style="margin-top:8px">
-      <div class="quick-add-title">⚡ Snel toevoegen</div>
-      <div class="form-row-2">
-        <div>
-          <label class="form-label">Tijd</label>
-          <input class="form-input" type="time" id="qTime" value="09:00">
-        </div>
-        <div>
-          <label class="form-label">Type</label>
-          <select class="form-select" id="qType">
-            <option>Reparatie</option>
-            <option>Onderhoud</option>
-            <option>Installatie</option>
-          </select>
-        </div>
-      </div>
-      <div class="form-row">
-        <label class="form-label">Naam klant</label>
-        <input class="form-input" type="text" id="qName" placeholder="Achternaam">
-      </div>
-      <div class="form-row">
-        <label class="form-label">Adres</label>
-        <input class="form-input" type="text" id="qAddress" placeholder="Straat 12, Amsterdam">
-      </div>
-      <div class="form-row-2">
-        <div>
-          <label class="form-label">Telefoon</label>
-          <input class="form-input" type="text" id="qPhone" placeholder="06-...">
-        </div>
-        <div>
-          <label class="form-label">Prijs (€)</label>
-          <input class="form-input" type="number" id="qPrice" placeholder="0">
-        </div>
-      </div>
-      <div class="form-row">
-        <label class="form-label">Omschrijving</label>
-        <input class="form-input" type="text" id="qDesc" placeholder="Kort omschrijven">
-      </div>
-      <button class="btn-add" style="width:100%;justify-content:center;margin-top:4px" onclick="quickAdd()">Toevoegen aan planning</button>
-    </div>
   </div>
 </div>
 
@@ -745,57 +774,68 @@
 <script>
 const DAYS = ['ZONDAG','MAANDAG','DINSDAG','WOENSDAG','DONDERDAG','VRIJDAG','ZATERDAG'];
 const MONTHS = ['JAN','FEB','MRT','APR','MEI','JUN','JUL','AUG','SEP','OKT','NOV','DEC'];
+const GHL_BASE_URL = 'https://app.gohighlevel.com/v2/location/KVD6wOE9g1g2V9z7Zxj7';
 
-let currentDate = new Date(2026, 2, 11);
-let nextId = 6;
-
+let currentDate = new Date();
+let nextId = 100;
 let appointments = [];
 
-// Laad afspraken uit GHL voor de geselecteerde datum
 async function loadAppointments(date) {
-  const dateStr = date.toISOString().split('T')[0];
+  const dateStr = date.toLocaleDateString('nl-NL', {year:'numeric', month:'2-digit', day:'2-digit', timeZone:'Europe/Amsterdam'}).split('-').reverse().join('-');
   try {
+    showToast('⏳ Afspraken laden...', 'loading');
     const res = await fetch(`/api/ghl?action=getAppointments&date=${dateStr}`);
     const data = await res.json();
-    const events = data?.events || data?.appointments || [];
+    const events = data?.events || [];
 
     appointments = events.map((e, i) => {
       const start = new Date(e.startTime);
-      const time = start.toTimeString().slice(0,5);
-      const work = e.title || e.notes || 'Werkzaamheden';
+      const time = start.toLocaleTimeString('nl-NL', {hour:'2-digit', minute:'2-digit', timeZone:'Europe/Amsterdam'});
+      const work = e.title || 'Werkzaamheden';
       let type = 'onderhoud';
       if (/instal|plaatsen|nieuw|monter/i.test(work)) type = 'installatie';
       if (/repar|lek|storing|kijken|nazorg|vervang/i.test(work)) type = 'reparatie';
-      const address = e.parsedAddress || e.location || '';
+
+      const address = e.parsedAddress || '';
       const price = e.parsedPrice || '0';
-      const name = e.contact?.name || address.split(',')[0] || 'Klant';
+      const contact = e.contact || {};
+      const firstName = contact.firstName || '';
+      const lastName = contact.lastName || '';
+      const name = (firstName + ' ' + lastName).trim() || address.split(' ')[0] || 'Klant';
       const mapsUrl = address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : '';
+      const ghlUrl = e.contactId ? `${GHL_BASE_URL}/contacts/${e.contactId}` : '';
+
       return {
         id: i + 1,
         ghlId: e.id,
         contactId: e.contactId || '',
+        ghlUrl,
         time,
         name,
         address,
         mapsUrl,
-        phone: e.contact?.phone || '',
-        desc: work,
+        phone: contact.phone || '',
+        desc: e.parsedWork || work,
+        notes: e.parsedNotes || '',
         type,
-        price: parseFloat(price.replace(/[^0-9.]/g, '')) || 0,
-        priceLabel: price,
+        price: parseFloat(String(price).replace(/[^0-9.]/g, '')) || 0,
+        priceLabel: price && price !== '0' ? `€${price}` : '—',
+        datumInstallatie: contact.customFields?.find(f => f.id === 'kYP2SCmhZ21Ig0aaLl5l')?.value || '',
+        datumOnderhoud: contact.customFields?.find(f => f.id === 'hiTe3Yi5TlxheJq4bLzy')?.value || '',
         status: 'ingepland',
         review: false,
       };
     });
 
     if (appointments.length === 0) {
-      showToast('Geen afspraken gevonden voor deze dag', 'info');
+      showToast('Geen afspraken voor deze dag', 'info');
     } else {
-      showToast('✓ ' + appointments.length + ' afspraken geladen uit GHL', 'success');
+      showToast(`✓ ${appointments.length} afspraken geladen`, 'success');
     }
-  } catch(e) {
-    console.warn('GHL niet bereikbaar', e);
+  } catch(err) {
+    console.warn('GHL niet bereikbaar', err);
     appointments = [];
+    showToast('Kon afspraken niet laden', 'info');
   }
   render();
 }
@@ -827,6 +867,10 @@ function render() {
     const isOnderweg = a.status === 'onderweg';
     const showServiceDate = isOnderweg && a.type === 'reparatie';
 
+    const metaItems = [];
+    if (a.datumInstallatie) metaItems.push(`<div class="meta-item"><div class="meta-label">Installatie</div><div class="meta-value">${a.datumInstallatie}</div></div>`);
+    if (a.datumOnderhoud) metaItems.push(`<div class="meta-item"><div class="meta-label">Laatste onderhoud</div><div class="meta-value">${a.datumOnderhoud}</div></div>`);
+
     return `
     <div class="appt-card ${isDone?'done':''} ${isOnderweg?'onderweg':''}" id="card-${a.id}">
       <div class="appt-number">#${i+1}</div>
@@ -834,21 +878,24 @@ function render() {
         <div class="appt-top">
           <div class="appt-time">${a.time}</div>
           <div class="appt-actions">
-            <a class="icon-btn" href="tel:${a.phone}" title="Bellen">📞</a>
-            <a class="icon-btn" href="${a.mapsUrl || 'https://maps.google.com?q='+encodeURIComponent(a.address)}" target="_blank" title="Maps">📍</a>
+            ${a.phone ? `<a class="icon-btn" href="tel:${a.phone}" title="Bellen">📞</a>` : ''}
+            ${a.mapsUrl ? `<a class="icon-btn" href="${a.mapsUrl}" target="_blank" title="Maps">📍</a>` : ''}
+            ${a.ghlUrl ? `<a class="icon-btn ghl" href="${a.ghlUrl}" target="_blank" title="Open in GHL">🔗</a>` : ''}
             <button class="icon-btn danger" onclick="deleteAppt(${a.id})" title="Verwijderen">✕</button>
           </div>
         </div>
         <div class="appt-name">${a.name.toUpperCase()}</div>
-        <div class="appt-address">📍 ${a.address}</div>
+        ${a.address ? `<div class="appt-address">📍 ${a.address}</div>` : ''}
         <div class="appt-desc">${a.desc}</div>
+        ${metaItems.length ? `<div class="appt-meta">${metaItems.join('')}</div>` : ''}
+        ${a.notes ? `<div class="appt-notes">💬 ${a.notes}</div>` : ''}
         <div class="appt-footer">
           <div class="appt-tags">
             <span class="tag ${a.type}">${a.type}</span>
-            <span class="appt-phone">${a.phone}</span>
+            ${a.phone ? `<span class="appt-phone">${a.phone}</span>` : ''}
           </div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span class="appt-price">€${a.price}</span>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+            <span class="appt-price">${a.priceLabel}</span>
             <div class="status-dot">
               <div class="dot ${a.status}"></div>
               <span style="color:var(--muted);font-size:10px">${a.status}</span>
@@ -869,9 +916,8 @@ function render() {
         </div>
         ${showServiceDate ? `
         <div class="service-date-row">
-          <span>Laatste onderhoud was:</span>
+          <span>Laatste onderhoud:</span>
           <input type="date" id="sdate-${a.id}" value="${a.lastService||''}" onchange="setLastService(${a.id}, this.value)">
-          <span style="font-size:11px;color:var(--muted)">(voor 5-jaar herinnering)</span>
         </div>` : ''}
         <div class="complete-row">
           <button class="btn-confirm" onclick="confirmDone(${a.id})">✓ Bevestig klaar</button>
@@ -910,7 +956,6 @@ function toggleOnderweg(id) {
   if (!a) return;
   a.status = a.status === 'onderweg' ? 'ingepland' : 'onderweg';
   if (a.status === 'onderweg') {
-    // Stuur ETA naar volgende klant
     const sorted = [...appointments].sort((a,b)=>a.time.localeCompare(b.time));
     const idx = sorted.findIndex(x=>x.id===id);
     const next = sorted.slice(idx+1).find(x=>x.status==='ingepland');
@@ -935,36 +980,19 @@ function setLastService(id, val) {
 async function confirmDone(id) {
   const a = appointments.find(x=>x.id===id);
   if (!a) return;
-
   showToast('⏳ Bezig...', 'loading');
-
-  // API call naar GHL als contactId bekend is
   if (a.contactId) {
     try {
       await fetch('/api/ghl?action=completeAppointment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contactId: a.contactId,
-          type: a.type,
-          sendReview: a.review,
-          lastService: a.lastService || null
-        })
+        body: JSON.stringify({ contactId: a.contactId, type: a.type, sendReview: a.review, lastService: a.lastService || null })
       });
-    } catch(e) {
-      console.log('GHL API niet beschikbaar (demo modus)', e);
-    }
+    } catch(e) { console.log('GHL niet bereikbaar', e); }
   }
-
   a.status = 'klaar';
-
-  const msgs = [];
-  msgs.push('✓ Klant afgerond');
-  msgs.push('📧 Factuur workflow getriggerd');
-  if (a.review) msgs.push('⭐ Review mail ingepland voor morgen');
-  if (a.type === 'onderhoud' || a.type === 'installatie') msgs.push('📅 5-jaar herinnering ingepland');
-  if (a.type === 'reparatie' && a.lastService) msgs.push('📅 5-jaar herinnering vanaf laatste onderhoud ingepland');
-
+  const msgs = ['✓ Klant afgerond', '📧 Factuur workflow getriggerd'];
+  if (a.review) msgs.push('⭐ Review mail ingepland');
   showToast(msgs.join('\n'), 'success');
   render();
 }
@@ -975,22 +1003,15 @@ async function sendETA(nextAppt, currentTime) {
     await fetch('/api/ghl?action=sendETA', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contactId: nextAppt.contactId,
-        eta: nextAppt.time
-      })
+      body: JSON.stringify({ contactId: nextAppt.contactId, eta: nextAppt.time })
     });
-  } catch(e) {
-    console.log('GHL API niet beschikbaar (demo modus)', e);
-  }
+  } catch(e) {}
 }
 
 async function sendMorningMessages() {
   showToast('☀️ Ochtendmeldingen worden verstuurd...', 'info');
-  const appts = appointments
-    .filter(a => a.contactId && a.status === 'ingepland')
+  const appts = appointments.filter(a => a.contactId && a.status === 'ingepland')
     .map(a => ({ contactId: a.contactId, timeFrom: a.time, timeTo: a.time }));
-
   if (appts.length > 0) {
     try {
       await fetch('/api/ghl?action=sendMorningMessages', {
@@ -998,11 +1019,9 @@ async function sendMorningMessages() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ appointments: appts })
       });
-    } catch(e) {
-      console.log('GHL API niet beschikbaar (demo modus)', e);
-    }
+    } catch(e) {}
   }
-  showToast(`☀️ Ochtendmeldingen verstuurd naar ${appointments.filter(a=>a.status==='ingepland').length} klanten`, 'success');
+  showToast(`☀️ Verstuurd naar ${appts.length} klanten`, 'success');
 }
 
 function optimizeRoute() {
@@ -1014,33 +1033,12 @@ function optimizeRoute() {
 function openMaps(e) {
   e.preventDefault();
   const sorted = [...appointments].sort((a,b)=>a.time.localeCompare(b.time));
-  const addrs = sorted.map(a=>encodeURIComponent(a.address)).join('/');
-  window.open('https://www.google.com/maps/dir/'+addrs, '_blank');
+  const addrs = sorted.filter(a=>a.address).map(a=>encodeURIComponent(a.address)).join('/');
+  if (addrs) window.open('https://www.google.com/maps/dir/'+addrs, '_blank');
 }
 
 function deleteAppt(id) {
   appointments = appointments.filter(x=>x.id!==id);
-  render();
-}
-
-function quickAdd() {
-  const name = document.getElementById('qName').value.trim();
-  const address = document.getElementById('qAddress').value.trim();
-  if (!name||!address) { showToast('Vul naam en adres in', 'info'); return; }
-  appointments.push({
-    id: nextId++,
-    time: document.getElementById('qTime').value,
-    name, address,
-    desc: document.getElementById('qDesc').value || '—',
-    type: document.getElementById('qType').value.toLowerCase(),
-    phone: document.getElementById('qPhone').value || '—',
-    price: parseInt(document.getElementById('qPrice').value)||0,
-    status: 'ingepland',
-    review: false,
-    contactId: ''
-  });
-  ['qName','qAddress','qDesc','qPhone','qPrice'].forEach(id => document.getElementById(id).value = '');
-  showToast('✓ Afspraak toegevoegd', 'success');
   render();
 }
 
@@ -1051,17 +1049,19 @@ function saveModal() {
   const name = document.getElementById('mName').value.trim();
   const address = document.getElementById('mAddress').value.trim();
   if (!name||!address) { showToast('Vul naam en adres in', 'info'); return; }
+  const mapsUrl = address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : '';
   appointments.push({
-    id: nextId++,
-    time: document.getElementById('mTime').value,
-    name, address,
+    id: nextId++, time: document.getElementById('mTime').value,
+    name, address, mapsUrl,
     desc: document.getElementById('mDesc').value || '—',
     type: document.getElementById('mType').value.toLowerCase(),
-    phone: document.getElementById('mPhone').value || '—',
+    phone: document.getElementById('mPhone').value || '',
     price: parseInt(document.getElementById('mPrice').value)||0,
-    status: 'ingepland',
-    review: false,
-    contactId: document.getElementById('mContactId').value.trim()
+    priceLabel: '€'+(parseInt(document.getElementById('mPrice').value)||0),
+    status: 'ingepland', review: false,
+    contactId: document.getElementById('mContactId').value.trim(),
+    ghlUrl: document.getElementById('mContactId').value.trim() ? `${GHL_BASE_URL}/contacts/${document.getElementById('mContactId').value.trim()}` : '',
+    notes: '', datumInstallatie: '', datumOnderhoud: ''
   });
   closeModal();
   showToast('✓ Afspraak toegevoegd', 'success');
@@ -1078,15 +1078,12 @@ function showToast(msg, type='info') {
   toastTimer = setTimeout(() => t.classList.remove('show'), 4000);
 }
 
+// Init — automatisch naar vandaag
 document.getElementById('dateLabel').textContent = formatDate(currentDate);
 loadAppointments(currentDate);
 
-// ─── LOGIN ───────────────────────────────────────────────
-// Wachtwoorden aanpassen: verander de waarden hieronder
-const USERS = {
-  'daan':  'wachtwoord1',
-  'jerry': 'wachtwoord2'
-};
+// LOGIN
+const USERS = { 'daan': 'wachtwoord1', 'jerry': 'wachtwoord2' };
 
 function checkLogin() {
   const saved = sessionStorage.getItem('hk_user');
@@ -1100,7 +1097,6 @@ function doLogin() {
   const user = document.getElementById('loginUser').value.trim().toLowerCase();
   const pass = document.getElementById('loginPass').value;
   const err  = document.getElementById('loginError');
-
   if (USERS[user] && USERS[user] === pass) {
     sessionStorage.setItem('hk_user', user);
     document.getElementById('loginOverlay').classList.add('hidden');
