@@ -59,7 +59,9 @@ export default async function handler(req, res) {
             const huisnr     = getField(contact, FIELD_IDS.huisnummer);
             const postcode   = getField(contact, FIELD_IDS.postcode);
             const woonplaats = getField(contact, FIELD_IDS.woonplaats) || contact.city || '';
-            e.parsedAddress  = [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ');
+            // Adres uit custom fields, anders uit afspraak zelf
+            const customAdres = [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ');
+            e.parsedAddress = customAdres || e.address || '';
 
             // Werkzaamheden
             const type    = getField(contact, FIELD_IDS.type_onderhoud);
