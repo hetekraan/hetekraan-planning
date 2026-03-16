@@ -157,7 +157,12 @@ export default async function handler(req, res) {
           console.error('Google Maps fout:', d.status, d.error_message);
         }
 
-        return res.status(200).json({ order: null, status: d.status });
+        return res.status(200).json({ 
+          order: null, 
+          status: d.status, 
+          error: d.error_message,
+          url: url.replace(GOOGLE_API_KEY, 'HIDDEN')
+        });
       }
 
       default:
