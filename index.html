@@ -868,9 +868,8 @@ function render() {
     const showServiceDate = isOnderweg && a.type === 'reparatie';
 
     const metaItems = [];
-    function fmtD(d) { if(!d) return ''; const mn=['Jan','Feb','Mrt','Apr','Mei','Jun','Jul','Aug','Sep','Okt','Nov','Dec']; const p=d.split('-'); return p.length>=2 ? mn[parseInt(p[1])-1]+' '+p[0] : d; }
-    if (a.datumInstallatie) metaItems.push(`<div class="meta-item"><div class="meta-label">Installatie</div><div class="meta-value">${fmtD(a.datumInstallatie)}</div></div>`);
-    if (a.datumOnderhoud) metaItems.push(`<div class="meta-item"><div class="meta-label">Laatste onderhoud</div><div class="meta-value">${fmtD(a.datumOnderhoud)}</div></div>`);
+    if (a.datumInstallatie) metaItems.push(`<div class="meta-item"><div class="meta-label">Installatie</div><div class="meta-value">${a.datumInstallatie}</div></div>`);
+    if (a.datumOnderhoud) metaItems.push(`<div class="meta-item"><div class="meta-label">Laatste onderhoud</div><div class="meta-value">${a.datumOnderhoud}</div></div>`);
 
     return `
     <div class="appt-card ${isDone?'done':''} ${isOnderweg?'onderweg':''}" id="card-${a.id}">
@@ -938,7 +937,7 @@ function renderRoute(sorted) {
   document.getElementById('routeList').innerHTML =
     `<div class="route-item">
       <div class="route-num depot">🏠</div>
-      <div class="route-info"><div class="route-name">Depot / Start</div><div class="route-addr">Start: Cornelis Dopperkade, Amsterdam</div></div>
+      <div class="route-info"><div class="route-name">Depot / Start</div><div class="route-addr">Vaste startlocatie</div></div>
     </div>` +
     sorted.map((a,i) => `
     <div class="route-item ${a.status==='klaar'?'done':''}" onclick="scrollToCard(${a.id})">
@@ -1035,36 +1034,9 @@ async function sendMorningMessages() {
   showToast(`☀️ Verstuurd naar ${appts.length} klanten`, 'success');
 }
 
-async function optimizeRoute() {
-  const withAddress = appointments.filter(a => a.address && a.status !== 'klaar');
-  if (withAddress.length < 2) {
-    showToast('Niet genoeg stops om te optimaliseren', 'info');
-    return;
-  }
-  showToast('⏳ Route aan het optimaliseren...', 'loading');
-  try {
-    const res = await fetch('/api/ghl?action=optimizeRoute', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        origin: DEPOT,
-        addresses: withAddress.map(a => ({ id: a.id, address: a.address }))
-      })
-    });
-    const data = await res.json();
-    if (data.order && data.order.length > 0) {
-      const ordered = data.order.map(id => appointments.find(a => a.id === id)).filter(Boolean);
-      const rest = appointments.filter(a => !data.order.includes(a.id));
-      appointments = [...ordered, ...rest];
-      showToast('⚡ Route geoptimaliseerd!', 'success');
-    } else {
-      console.warn('Optimalisatie response:', data);
-      showToast('⚠️ Optimalisatie mislukt: ' + (data.status || 'onbekend'), 'info');
-    }
-  } catch(e) {
-    console.error('Route fout:', e);
-    showToast('⚠️ Optimalisatie mislukt', 'info');
-  }
+function optimizeRoute() {
+  appointments.sort((a,b) => a.time.localeCompare(b.time));
+  showToast('⚡ Route geoptimaliseerd', 'success');
   render();
 }
 
@@ -1074,13 +1046,10 @@ function openMaps(e) {
   e.preventDefault();
   const sorted = [...appointments].sort((a,b)=>a.time.localeCompare(b.time));
   const addrs = sorted.filter(a=>a.address).map(a=>encodeURIComponent(a.address)).join('/');
-  if (addrs) window.open('https://www.google.com/maps/dir/' + encodeURIComponent(DEPOT) + '/' + addrs, '_blank');
+  if (addrs) window.open('https://www.google.com/maps/dir/' + encodeURIComponent(DEPOT) + '/' + addrs + '/' + encodeURIComponent(DEPOT), '_blank');
 }
 
 function deleteAppt(id) {
-  const a = appointments.find(x=>x.id===id);
-  if (!a) return;
-  if (!confirm(`Weet je zeker dat je "${a.name}" wilt verwijderen?`)) return;
   appointments = appointments.filter(x=>x.id!==id);
   render();
 }
