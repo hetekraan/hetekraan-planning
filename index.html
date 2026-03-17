@@ -1042,44 +1042,57 @@ function extractPostcode(address) {
 }
 
 function optimizeRoute() {
+  const oldOrder = appointments.map(a => a.id);
   const pending = appointments.filter(a => a.status !== 'klaar');
   const done = appointments.filter(a => a.status === 'klaar');
+
+  console.log('[Optimize] pending:', pending.length, 'done:', done.length);
+  console.log('[Optimize] adressen:', pending.map(a => a.address));
+
   if (pending.length < 2) { showToast('Niet genoeg afspraken om te optimaliseren', 'info'); return; }
+
+  const postcodes = pending.map(a => ({ name: a.name, pc: extractPostcode(a.address), addr: a.address }));
+  console.log('[Optimize] postcodes:', postcodes);
 
   const withPostcode = pending.filter(a => extractPostcode(a.address) !== null);
 
+  let newOrder;
   if (withPostcode.length < 2) {
     // Geen postcodes gevonden — sorteer op adres alfabetisch
-    pending.sort((a, b) => (a.address || '').localeCompare(b.address || ''));
-    appointments = [...pending, ...done];
-    routeOptimized = true;
-    showToast('⚡ Route gesorteerd op adres', 'success');
-    render();
-    return;
-  }
+    newOrder = [...pending].sort((a, b) => (a.address || a.name || '').localeCompare(b.address || b.name || ''));
+    console.log('[Optimize] geen postcodes, sorteren op adres/naam');
+  } else {
+    // Nearest-neighbor op postcode
+    const visited = new Array(pending.length).fill(false);
+    newOrder = [];
+    let currentPc = 1021; // Depot: Cornelis Dopperkade Amsterdam
 
-  // Nearest-neighbor op postcode (NL postcodes zijn geografisch geordend)
-  const visited = new Array(pending.length).fill(false);
-  const order = [];
-  // Depot postcode: Cornelis Dopperkade Amsterdam ≈ 1021
-  let currentPc = 1021;
-
-  for (let i = 0; i < pending.length; i++) {
-    let best = -1, bestDist = Infinity;
-    for (let j = 0; j < pending.length; j++) {
-      if (visited[j]) continue;
-      const pc = extractPostcode(pending[j].address);
-      const dist = pc !== null ? Math.abs(pc - currentPc) : 9999;
-      if (dist < bestDist) { bestDist = dist; best = j; }
+    for (let i = 0; i < pending.length; i++) {
+      let best = -1, bestDist = Infinity;
+      for (let j = 0; j < pending.length; j++) {
+        if (visited[j]) continue;
+        const pc = extractPostcode(pending[j].address);
+        const dist = pc !== null ? Math.abs(pc - currentPc) : 9999;
+        if (dist < bestDist) { bestDist = dist; best = j; }
+      }
+      visited[best] = true;
+      newOrder.push(pending[best]);
+      currentPc = extractPostcode(pending[best].address) ?? currentPc;
     }
-    visited[best] = true;
-    order.push(pending[best]);
-    currentPc = extractPostcode(pending[best].address) ?? currentPc;
   }
 
-  appointments = [...order, ...done];
+  appointments = [...newOrder, ...done];
   routeOptimized = true;
-  showToast('⚡ Route geoptimaliseerd op postcode', 'success');
+
+  const newIds = appointments.map(a => a.id);
+  const changed = oldOrder.some((id, i) => id !== newIds[i]);
+  console.log('[Optimize] volgorde gewijzigd:', changed, 'nieuw:', newOrder.map(a => a.name));
+
+  if (!changed) {
+    showToast('✓ Volgorde was al optimaal', 'info');
+  } else {
+    showToast(`⚡ Route geoptimaliseerd (${withPostcode.length} postcodes)`, 'success');
+  }
   render();
 }
 
