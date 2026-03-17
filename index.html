@@ -1146,10 +1146,6 @@ function showToast(msg, type='info') {
   toastTimer = setTimeout(() => t.classList.remove('show'), 4000);
 }
 
-// Init — automatisch naar vandaag
-document.getElementById('dateLabel').textContent = formatDate(currentDate);
-loadAppointments(currentDate);
-
 // LOGIN
 const USERS = { 'daan': 'wachtwoord1', 'jerry': 'wachtwoord2' };
 
@@ -1176,6 +1172,10 @@ function doLogin() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Init — automatisch naar vandaag
+  document.getElementById('dateLabel').textContent = formatDate(currentDate);
+  loadAppointments(currentDate);
+
   document.getElementById('loginPass').addEventListener('keydown', e => {
     if (e.key === 'Enter') doLogin();
   });
