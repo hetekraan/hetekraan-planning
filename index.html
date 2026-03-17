@@ -1175,11 +1175,12 @@ function doLogin() {
   }
 }
 
-document.getElementById('loginPass').addEventListener('keydown', e => {
-  if (e.key === 'Enter') doLogin();
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('loginPass').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+  checkLogin();
 });
-
-checkLogin();
 </script>
 
 <!-- LOGIN SCHERM -->
