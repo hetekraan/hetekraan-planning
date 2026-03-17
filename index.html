@@ -779,8 +779,10 @@ const GHL_BASE_URL = 'https://app.gohighlevel.com/v2/location/KVD6wOE9g1g2V9z7Zx
 let currentDate = new Date();
 let nextId = 100;
 let appointments = [];
+let routeOptimized = false;
 
 async function loadAppointments(date) {
+  routeOptimized = false;
   const dateStr = date.toLocaleDateString('nl-NL', {year:'numeric', month:'2-digit', day:'2-digit', timeZone:'Europe/Amsterdam'}).split('-').reverse().join('-');
   try {
     showToast('⏳ Afspraken laden...', 'loading');
@@ -861,7 +863,7 @@ function calcStats() {
 }
 
 function render() {
-  const sorted = [...appointments].sort((a,b) => a.time.localeCompare(b.time));
+  const sorted = routeOptimized ? [...appointments] : [...appointments].sort((a,b) => a.time.localeCompare(b.time));
   document.getElementById('apptList').innerHTML = sorted.map((a,i) => {
     const isDone = a.status === 'klaar';
     const isOnderweg = a.status === 'onderweg';
@@ -1034,9 +1036,65 @@ async function sendMorningMessages() {
   showToast(`☀️ Verstuurd naar ${appts.length} klanten`, 'success');
 }
 
-function optimizeRoute() {
-  appointments.sort((a,b) => a.time.localeCompare(b.time));
-  showToast('⚡ Route geoptimaliseerd', 'success');
+async function geocode(address) {
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`, {
+      headers: { 'Accept-Language': 'nl' }
+    });
+    const data = await res.json();
+    if (data[0]) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+  } catch(e) {}
+  return null;
+}
+
+function haversine(a, b) {
+  const R = 6371;
+  const dLat = (b.lat - a.lat) * Math.PI / 180;
+  const dLng = (b.lng - a.lng) * Math.PI / 180;
+  const x = Math.sin(dLat/2)**2 + Math.cos(a.lat*Math.PI/180) * Math.cos(b.lat*Math.PI/180) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
+}
+
+async function optimizeRoute() {
+  const pending = appointments.filter(a => a.status !== 'klaar');
+  const done = appointments.filter(a => a.status === 'klaar');
+  if (pending.length < 2) { showToast('Niet genoeg afspraken om te optimaliseren', 'info'); return; }
+
+  showToast('⏳ Route optimaliseren...', 'loading');
+
+  const depotCoord = await geocode(DEPOT);
+  const coords = await Promise.all(pending.map(a => a.address ? geocode(a.address) : Promise.resolve(null)));
+
+  // Als geocoding mislukt, fallback op tijdsortering
+  if (!depotCoord || coords.every(c => !c)) {
+    appointments.sort((a,b) => a.time.localeCompare(b.time));
+    showToast('⚡ Gesorteerd op tijd (geen GPS)', 'info');
+    render();
+    return;
+  }
+
+  // Nearest-neighbor algoritme
+  const visited = new Array(pending.length).fill(false);
+  const order = [];
+  let current = depotCoord;
+
+  for (let i = 0; i < pending.length; i++) {
+    let best = -1, bestDist = Infinity;
+    for (let j = 0; j < pending.length; j++) {
+      if (visited[j]) continue;
+      const c = coords[j];
+      if (!c) { if (bestDist === Infinity) { best = j; bestDist = 0; } continue; }
+      const d = haversine(current, c);
+      if (d < bestDist) { bestDist = d; best = j; }
+    }
+    visited[best] = true;
+    order.push(pending[best]);
+    current = coords[best] || current;
+  }
+
+  appointments = [...order, ...done];
+  routeOptimized = true;
+  showToast('⚡ Route geografisch geoptimaliseerd', 'success');
   render();
 }
 
