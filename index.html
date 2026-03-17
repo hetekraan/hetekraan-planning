@@ -1039,12 +1039,22 @@ async function sendMorningMessages() {
 async function geocode(address) {
   try {
     const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`, {
-      headers: { 'Accept-Language': 'nl' }
+      headers: { 'Accept-Language': 'nl', 'User-Agent': 'HetekraanPlanning/1.0' }
     });
     const data = await res.json();
     if (data[0]) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
   } catch(e) {}
   return null;
+}
+
+async function geocodeSequential(addresses) {
+  const results = [];
+  for (const addr of addresses) {
+    if (!addr) { results.push(null); continue; }
+    results.push(await geocode(addr));
+    await new Promise(r => setTimeout(r, 1100)); // Nominatim: max 1 req/sec
+  }
+  return results;
 }
 
 function haversine(a, b) {
@@ -1060,15 +1070,24 @@ async function optimizeRoute() {
   const done = appointments.filter(a => a.status === 'klaar');
   if (pending.length < 2) { showToast('Niet genoeg afspraken om te optimaliseren', 'info'); return; }
 
-  showToast('⏳ Route optimaliseren...', 'loading');
+  const total = pending.length + 1;
+  showToast(`⏳ Adressen ophalen (0/${total})...`, 'loading');
 
   const depotCoord = await geocode(DEPOT);
-  const coords = await Promise.all(pending.map(a => a.address ? geocode(a.address) : Promise.resolve(null)));
+  await new Promise(r => setTimeout(r, 1100));
+
+  const coords = [];
+  for (let i = 0; i < pending.length; i++) {
+    showToast(`⏳ Adressen ophalen (${i+1}/${total})...`, 'loading');
+    const c = pending[i].address ? await geocode(pending[i].address) : null;
+    coords.push(c);
+    if (i < pending.length - 1) await new Promise(r => setTimeout(r, 1100));
+  }
 
   // Als geocoding mislukt, fallback op tijdsortering
-  if (!depotCoord || coords.every(c => !c)) {
+  if (!depotCoord && coords.every(c => !c)) {
     appointments.sort((a,b) => a.time.localeCompare(b.time));
-    showToast('⚡ Gesorteerd op tijd (geen GPS)', 'info');
+    showToast('⚡ Gesorteerd op tijd (adressen niet gevonden)', 'info');
     render();
     return;
   }
