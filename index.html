@@ -1036,84 +1036,50 @@ async function sendMorningMessages() {
   showToast(`☀️ Verstuurd naar ${appts.length} klanten`, 'success');
 }
 
-async function geocode(address) {
-  try {
-    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`, {
-      headers: { 'Accept-Language': 'nl', 'User-Agent': 'HetekraanPlanning/1.0' }
-    });
-    const data = await res.json();
-    if (data[0]) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-  } catch(e) {}
-  return null;
+function extractPostcode(address) {
+  const m = address && address.match(/\b(\d{4})\s*[A-Z]{2}\b/i);
+  return m ? parseInt(m[1], 10) : null;
 }
 
-async function geocodeSequential(addresses) {
-  const results = [];
-  for (const addr of addresses) {
-    if (!addr) { results.push(null); continue; }
-    results.push(await geocode(addr));
-    await new Promise(r => setTimeout(r, 1100)); // Nominatim: max 1 req/sec
-  }
-  return results;
-}
-
-function haversine(a, b) {
-  const R = 6371;
-  const dLat = (b.lat - a.lat) * Math.PI / 180;
-  const dLng = (b.lng - a.lng) * Math.PI / 180;
-  const x = Math.sin(dLat/2)**2 + Math.cos(a.lat*Math.PI/180) * Math.cos(b.lat*Math.PI/180) * Math.sin(dLng/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
-}
-
-async function optimizeRoute() {
+function optimizeRoute() {
   const pending = appointments.filter(a => a.status !== 'klaar');
   const done = appointments.filter(a => a.status === 'klaar');
   if (pending.length < 2) { showToast('Niet genoeg afspraken om te optimaliseren', 'info'); return; }
 
-  const total = pending.length + 1;
-  showToast(`⏳ Adressen ophalen (0/${total})...`, 'loading');
+  const withPostcode = pending.filter(a => extractPostcode(a.address) !== null);
 
-  const depotCoord = await geocode(DEPOT);
-  await new Promise(r => setTimeout(r, 1100));
-
-  const coords = [];
-  for (let i = 0; i < pending.length; i++) {
-    showToast(`⏳ Adressen ophalen (${i+1}/${total})...`, 'loading');
-    const c = pending[i].address ? await geocode(pending[i].address) : null;
-    coords.push(c);
-    if (i < pending.length - 1) await new Promise(r => setTimeout(r, 1100));
-  }
-
-  // Als geocoding mislukt, fallback op tijdsortering
-  if (!depotCoord && coords.every(c => !c)) {
-    appointments.sort((a,b) => a.time.localeCompare(b.time));
-    showToast('⚡ Gesorteerd op tijd (adressen niet gevonden)', 'info');
+  if (withPostcode.length < 2) {
+    // Geen postcodes gevonden — sorteer op adres alfabetisch
+    pending.sort((a, b) => (a.address || '').localeCompare(b.address || ''));
+    appointments = [...pending, ...done];
+    routeOptimized = true;
+    showToast('⚡ Route gesorteerd op adres', 'success');
     render();
     return;
   }
 
-  // Nearest-neighbor algoritme
+  // Nearest-neighbor op postcode (NL postcodes zijn geografisch geordend)
   const visited = new Array(pending.length).fill(false);
   const order = [];
-  let current = depotCoord;
+  // Depot postcode: Cornelis Dopperkade Amsterdam ≈ 1021
+  let currentPc = 1021;
 
   for (let i = 0; i < pending.length; i++) {
     let best = -1, bestDist = Infinity;
     for (let j = 0; j < pending.length; j++) {
       if (visited[j]) continue;
-      const c = coords[j];
-      if (!c) { if (bestDist === Infinity) { best = j; bestDist = 0; } continue; }
-      const d = haversine(current, c);
-      if (d < bestDist) { bestDist = d; best = j; }
+      const pc = extractPostcode(pending[j].address);
+      const dist = pc !== null ? Math.abs(pc - currentPc) : 9999;
+      if (dist < bestDist) { bestDist = dist; best = j; }
     }
     visited[best] = true;
     order.push(pending[best]);
-    current = coords[best] || current;
+    currentPc = extractPostcode(pending[best].address) ?? currentPc;
   }
 
   appointments = [...order, ...done];
   routeOptimized = true;
-  showToast('⚡ Route geografisch geoptimaliseerd', 'success');
+  showToast('⚡ Route geoptimaliseerd op postcode', 'success');
   render();
 }
 
