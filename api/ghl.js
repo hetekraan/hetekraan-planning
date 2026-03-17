@@ -13,7 +13,7 @@ const FIELD_IDS = {
   type_onderhoud:      'EXSQmlt7BqkXJMs8F3Qk',
   probleemomschrijving:'BBcbPCNA9Eu0Kyi4U1LN',
   prijs:               'HGjlT6ofaBiMz3j2HsXL', // vul in als bekend
-  opmerkingen:         'YOUR_OPMERKINGEN_ID',
+  opmerkingen:         'LCIFALarX3WZI5jsBbDA',
 };
 
 function getField(contact, fieldId) {
