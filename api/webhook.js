@@ -5,32 +5,35 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 
-// Velden die Claude probeert te vullen (keys moeten overeenkomen met GHL veldnamen)
-const TARGET_FIELD_KEYS = [
-  'straatnaam', 'huisnummer', 'postcode', 'woonplaats',
-  'type_onderhoud', 'probleemomschrijving', 'prijs', 'opmerkingen',
-];
+// Hardcoded custom field IDs uit GHL (Settings → Custom Fields)
+const FIELD_IDS = {
+  straatnaam:           'ZwIMY4VPelG5rKROb5NR',
+  huisnummer:           'co5Mr16rF6S6ay5hJOSJ',
+  postcode:             '3bCi5hL0rR9XGG33x2Gv',
+  woonplaats:           'mFRQjlUppycMfyjENKF9',
+  type_onderhoud:       'EXSQmlt7BqkXJMs8F3Qk',
+  probleemomschrijving: 'BBcbPCNA9Eu0Kyi4U1LN',
+  prijs:                'HGjlT6ofaBiMz3j2HsXL',
+  opmerkingen:          null, // wordt hieronder dynamisch opgehaald als null
+};
 
-let cachedFieldMap = null;
-
-async function getFieldMap() {
-  if (cachedFieldMap) return cachedFieldMap;
-  const res = await fetch(`${GHL_BASE}/locations/${GHL_LOCATION_ID}/customFields`, {
-    headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
-  });
-  const data = await res.json();
-  const fields = data?.customFields || data?.list || [];
-  const map = {};
-  for (const f of fields) {
-    if (f.fieldKey || f.key) {
-      // GHL slaat veldkeys op als "contact.straatnaam" — haal het deel na de punt op
-      const key = (f.fieldKey || f.key).replace(/^contact\./, '');
-      map[key] = f.id;
+async function resolveOpmerkingen() {
+  if (FIELD_IDS.opmerkingen) return;
+  try {
+    const res = await fetch(`${GHL_BASE}/locations/${GHL_LOCATION_ID}/customFields`, {
+      headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
+    });
+    const data = await res.json();
+    const fields = data?.customFields || data?.list || [];
+    console.log('Alle GHL custom fields:', JSON.stringify(fields.map(f => ({ id: f.id, key: f.fieldKey || f.key, name: f.name }))));
+    const f = fields.find(f => (f.fieldKey || f.key || '').includes('opmerkingen'));
+    if (f) {
+      FIELD_IDS.opmerkingen = f.id;
+      console.log('opmerkingen veld-ID gevonden:', f.id);
     }
+  } catch (e) {
+    console.error('resolveOpmerkingen error:', e.message);
   }
-  cachedFieldMap = map;
-  console.log('Veld-ID mapping geladen:', map);
-  return map;
 }
 
 async function getContact(contactId) {
@@ -121,15 +124,18 @@ Regels:
 }
 
 async function updateContact(contactId, extracted) {
-  const fieldMap = await getFieldMap();
+  await resolveOpmerkingen();
 
-  const customFields = TARGET_FIELD_KEYS
-    .filter(key => extracted[key] && String(extracted[key]).trim() && fieldMap[key])
-    .map(key => ({ id: fieldMap[key], field_value: String(extracted[key]).trim() }));
+  const customFields = Object.entries(FIELD_IDS)
+    .filter(([key, id]) => id && extracted[key] && String(extracted[key]).trim())
+    .map(([key, id]) => ({ id, field_value: String(extracted[key]).trim() }));
 
-  if (customFields.length === 0) return 0;
+  if (customFields.length === 0) {
+    console.log('Geen velden om op te slaan. extracted:', JSON.stringify(extracted), 'FIELD_IDS:', JSON.stringify(FIELD_IDS));
+    return 0;
+  }
 
-  await fetch(`${GHL_BASE}/contacts/${contactId}`, {
+  const updateRes = await fetch(`${GHL_BASE}/contacts/${contactId}`, {
     method: 'PUT',
     headers: {
       'Authorization': `Bearer ${GHL_API_KEY}`,
@@ -138,6 +144,8 @@ async function updateContact(contactId, extracted) {
     },
     body: JSON.stringify({ customFields }),
   });
+  const updateData = await updateRes.json();
+  console.log('GHL update response:', JSON.stringify(updateData));
 
   return customFields.length;
 }
