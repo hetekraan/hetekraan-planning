@@ -125,6 +125,9 @@ export default async function handler(req, res) {
   const body = req.body;
   const type = body?.type || '';
 
+  // Debug: log alles wat binnenkomt
+  console.log('Webhook ontvangen:', JSON.stringify({ type, contactId: body?.contactId, conversationId: body?.conversationId, keys: Object.keys(body || {}) }));
+
   // Alleen berichtgebeurtenissen verwerken
   const MESSAGE_TYPES = ['InboundMessage', 'OutboundMessage', 'ConversationProviderInboundMessage', 'ConversationProviderOutboundMessage'];
   if (!MESSAGE_TYPES.includes(type)) {
