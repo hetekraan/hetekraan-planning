@@ -165,6 +165,19 @@ export default async function handler(req, res) {
         });
       }
 
+      case 'getCustomFields': {
+        const r = await fetch(`${GHL_BASE}/locations/${GHL_LOCATION_ID}/customFields`, {
+          headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
+        });
+        const d = await r.json();
+        const fields = (d?.customFields || d?.list || []).map(f => ({
+          id: f.id,
+          name: f.name,
+          key: f.fieldKey || f.key,
+        }));
+        return res.status(200).json({ fields });
+      }
+
       default:
         return res.status(400).json({ error: 'Onbekende actie' });
     }
