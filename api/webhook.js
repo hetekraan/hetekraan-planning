@@ -163,6 +163,49 @@ ${messageText}`;
   }
 }
 
+// ─── GHL laatste bericht ophalen ────────────────────────────────────────────
+
+/**
+ * Haal de tekst van het laatste inkomende bericht op via de GHL Conversations API.
+ * Wordt gebruikt als de webhook body alleen contactId + keys bevat (geen message body).
+ */
+async function fetchLastInboundMessage(contactId) {
+  // Zoek de conversation voor dit contact
+  const searchRes = await fetch(
+    `${GHL_BASE}/conversations/search?contactId=${contactId}`,
+    { headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' } }
+  );
+  const searchData = await searchRes.json();
+  console.log('[GHL conversations search]', JSON.stringify(searchData).slice(0, 500));
+
+  const conversation = safeGet(searchData, 'conversations', 0);
+  if (!conversation?.id) {
+    console.warn('[GHL] Geen conversation gevonden voor contact', contactId);
+    return null;
+  }
+
+  // Haal berichten op, meest recente eerst
+  const msgRes = await fetch(
+    `${GHL_BASE}/conversations/${conversation.id}/messages`,
+    { headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' } }
+  );
+  const msgData = await msgRes.json();
+  console.log('[GHL messages]', JSON.stringify(msgData).slice(0, 500));
+
+  const messages = safeGet(msgData, 'messages', 'messages') || safeGet(msgData, 'messages') || [];
+  if (!Array.isArray(messages) || messages.length === 0) {
+    console.warn('[GHL] Geen berichten gevonden in conversation', conversation.id);
+    return null;
+  }
+
+  // Pak het meest recente inkomende bericht (direction 'inbound' of type incoming)
+  const inbound = messages.find(m =>
+    m.direction === 'inbound' || m.messageType === 'TYPE_INCOMING' || m.type === 'incoming'
+  ) || messages[0];
+
+  return inbound?.body || inbound?.message || inbound?.text || null;
+}
+
 // ─── GHL contact updater ────────────────────────────────────────────────────
 
 async function updateGhlContact(contactId, extracted, attachmentFoto, attachmentFilmpje) {
@@ -260,21 +303,34 @@ export default async function handler(req, res) {
   }
 
   // ── 3. Haal berichttekst op (meerdere paden) ──────────────────────────────
-  const messageText = firstNonEmpty(
+  let messageText = firstNonEmpty(
     safeGet(body, 'message', 'body'),
     safeGet(body, 'message', 'text'),
-    safeGet(body, 'message'),
+    // Alleen gebruiken als body.message een string is (niet array/object)
+    typeof safeGet(body, 'message') === 'string' ? safeGet(body, 'message') : null,
     safeGet(body, 'triggerData', 'message'),
     safeGet(body, 'triggerData', 'body'),
     safeGet(body, 'customData', 'message'),
   );
-  console.log('[berichttekst gekozen]', messageText);
+  console.log('[berichttekst uit body]', messageText);
+
+  // Fallback: als GHL alleen contactId + keys stuurt, haal laatste bericht op via API
+  if (!messageText && Array.isArray(body.keys)) {
+    console.log('[GHL webhook formaat] Alleen keys ontvangen — ophalen via Conversations API');
+    try {
+      messageText = await fetchLastInboundMessage(contactId);
+      console.log('[berichttekst via API]', messageText);
+    } catch (e) {
+      console.error('[GHL fetchLastInboundMessage fout]', e.message);
+    }
+  }
 
   if (!messageText) {
     return res.status(400).json({
       error:  'Geen berichttekst gevonden',
       debug:  {
         contactId,
+        bodyKeys: Object.keys(body),
         beschikbarePaden: {
           'message':             safeGet(body, 'message'),
           'message.body':        safeGet(body, 'message', 'body'),
