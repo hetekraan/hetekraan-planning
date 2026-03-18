@@ -67,31 +67,72 @@ Schema:
 WhatsApp-bericht:
 ${messageText}`;
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key':         ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'content-type':      'application/json',
-    },
-    body: JSON.stringify({
-      model:      'claude-haiku-4-5-20251001',
-      max_tokens: 512,
-      messages:   [{ role: 'user', content: prompt }],
-    }),
-  });
+  const requestBody = {
+    model:      'claude-haiku-4-5-20251001',
+    max_tokens: 512,
+    messages:   [{ role: 'user', content: prompt }],
+  };
+  console.log('[Anthropic request body]', JSON.stringify(requestBody, null, 2));
 
-  const data = await res.json();
-  const rawText = data?.content?.[0]?.text || '';
-  console.log('[Claude raw response]', rawText);
+  let res;
+  try {
+    res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key':         ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type':      'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+  } catch (e) {
+    throw new Error('Anthropic fetch mislukt: ' + e.message);
+  }
 
-  const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('Claude gaf geen geldige JSON terug: ' + rawText);
+  let data;
+  try {
+    data = await res.json();
+  } catch (e) {
+    throw new Error('Anthropic response is geen geldige JSON: ' + e.message);
+  }
+
+  console.log('[Anthropic raw response]', JSON.stringify(data, null, 2));
+
+  if (!res.ok) {
+    throw new Error(`Anthropic API fout: HTTP ${res.status} — ${JSON.stringify(data)}`);
+  }
+
+  // Haal tekst op: eerst content[0].text, dan alle text-blokken samenvoegen
+  let rawText = null;
+  if (Array.isArray(data.content) && data.content.length > 0) {
+    rawText = data.content[0]?.text ?? null;
+    if (!rawText) {
+      rawText = data.content
+        .filter(b => b.type === 'text' && b.text)
+        .map(b => b.text)
+        .join('\n') || null;
+    }
+  }
+  console.log('[Anthropic extracted raw text]', rawText);
+
+  if (!rawText) {
+    throw new Error('Anthropic response bevatte geen tekstcontent: ' + JSON.stringify(data));
+  }
+
+  // Verwijder markdown code fences als Claude die toch terugstuurt
+  let cleanText = rawText.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  console.log('[Anthropic cleaned text]', cleanText);
+
+  // Zoek JSON object in de tekst
+  const jsonMatch = cleanText.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error('Geen JSON object gevonden in Anthropic response: ' + cleanText);
+  }
 
   try {
     return JSON.parse(jsonMatch[0]);
   } catch (e) {
-    throw new Error('Claude JSON parse mislukt: ' + e.message);
+    throw new Error('JSON.parse mislukt op: ' + jsonMatch[0] + ' — ' + e.message);
   }
 }
 
