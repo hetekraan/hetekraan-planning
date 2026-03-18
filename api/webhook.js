@@ -3,15 +3,35 @@ const GHL_API_KEY = process.env.GHL_API_KEY;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
-const FIELD_IDS = {
-  straatnaam:          'ZwIMY4VPelG5rKROb5NR',
-  huisnummer:          'co5Mr16rF6S6ay5hJOSJ',
-  postcode:            '3bCi5hL0rR9XGG33x2Gv',
-  woonplaats:          'mFRQjlUppycMfyjENKF9',
-  type_onderhoud:      'EXSQmlt7BqkXJMs8F3Qk',
-  probleemomschrijving:'BBcbPCNA9Eu0Kyi4U1LN',
-  prijs:               'HGjlT6ofaBiMz3j2HsXL',
-};
+const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
+
+// Velden die Claude probeert te vullen (keys moeten overeenkomen met GHL veldnamen)
+const TARGET_FIELD_KEYS = [
+  'straatnaam', 'huisnummer', 'postcode', 'woonplaats',
+  'type_onderhoud', 'probleemomschrijving', 'prijs', 'opmerkingen',
+];
+
+let cachedFieldMap = null;
+
+async function getFieldMap() {
+  if (cachedFieldMap) return cachedFieldMap;
+  const res = await fetch(`${GHL_BASE}/locations/${GHL_LOCATION_ID}/customFields`, {
+    headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
+  });
+  const data = await res.json();
+  const fields = data?.customFields || data?.list || [];
+  const map = {};
+  for (const f of fields) {
+    if (f.fieldKey || f.key) {
+      // GHL slaat veldkeys op als "contact.straatnaam" — haal het deel na de punt op
+      const key = (f.fieldKey || f.key).replace(/^contact\./, '');
+      map[key] = f.id;
+    }
+  }
+  cachedFieldMap = map;
+  console.log('Veld-ID mapping geladen:', map);
+  return map;
+}
 
 async function getContact(contactId) {
   const res = await fetch(`${GHL_BASE}/contacts/${contactId}`, {
@@ -21,8 +41,16 @@ async function getContact(contactId) {
   return data?.contact || data;
 }
 
+async function getLatestConversationId(contactId) {
+  const res = await fetch(`${GHL_BASE}/conversations/search?contactId=${contactId}&limit=1`, {
+    headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
+  });
+  const data = await res.json();
+  const conversations = data?.conversations || data?.list || [];
+  return conversations[0]?.id || null;
+}
+
 async function getConversationMessages(conversationId) {
-  // Probeer twee endpoints (GHL heeft inconsistente API versies)
   const urls = [
     `${GHL_BASE}/conversations/${conversationId}/messages?limit=30`,
     `${GHL_BASE}/conversations/messages?conversationId=${conversationId}&limit=30`,
@@ -93,9 +121,11 @@ Regels:
 }
 
 async function updateContact(contactId, extracted) {
-  const customFields = Object.entries(FIELD_IDS)
-    .filter(([key, id]) => extracted[key] && String(extracted[key]).trim())
-    .map(([key, id]) => ({ id, field_value: String(extracted[key]).trim() }));
+  const fieldMap = await getFieldMap();
+
+  const customFields = TARGET_FIELD_KEYS
+    .filter(key => extracted[key] && String(extracted[key]).trim() && fieldMap[key])
+    .map(key => ({ id: fieldMap[key], field_value: String(extracted[key]).trim() }));
 
   if (customFields.length === 0) return 0;
 
@@ -119,25 +149,18 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  // Altijd 200 teruggeven zodat GHL niet blijft herproberen
   const respond = (data) => res.status(200).json(data);
 
   const body = req.body;
-  const type = body?.type || '';
 
-  // Debug: log alles wat binnenkomt
-  console.log('Webhook ontvangen:', JSON.stringify({ type, contactId: body?.contactId, conversationId: body?.conversationId, keys: Object.keys(body || {}) }));
+  // GHL Automation webhooks gebruiken snake_case, native webhooks camelCase
+  const contactId = body?.contactId || body?.contact_id;
+  const conversationId = body?.conversationId;
 
-  // Alleen berichtgebeurtenissen verwerken
-  const MESSAGE_TYPES = ['InboundMessage', 'OutboundMessage', 'ConversationProviderInboundMessage', 'ConversationProviderOutboundMessage'];
-  if (!MESSAGE_TYPES.includes(type)) {
-    return respond({ ok: true, skipped: `type=${type}` });
-  }
+  console.log('Webhook ontvangen:', JSON.stringify({ type: body?.type, contactId, conversationId, keys: Object.keys(body || {}) }));
 
-  const contactId = body.contactId;
-  const conversationId = body.conversationId;
-  if (!contactId || !conversationId) {
-    return respond({ ok: true, skipped: 'missing contactId or conversationId' });
+  if (!contactId) {
+    return respond({ ok: true, skipped: 'missing contactId' });
   }
 
   if (!ANTHROPIC_API_KEY) {
@@ -145,9 +168,16 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Haal conversationId op via API als die niet in de webhook zat
+    const resolvedConversationId = conversationId || await getLatestConversationId(contactId);
+
+    if (!resolvedConversationId) {
+      return respond({ ok: true, skipped: 'no conversation found for contact' });
+    }
+
     const [contact, messages] = await Promise.all([
       getContact(contactId),
-      getConversationMessages(conversationId),
+      getConversationMessages(resolvedConversationId),
     ]);
 
     if (messages.length === 0) return respond({ ok: true, skipped: 'no messages' });
@@ -173,6 +203,6 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error('Webhook error:', err.message);
-    return respond({ ok: true, error: err.message }); // Altijd 200 voor GHL
+    return respond({ ok: true, error: err.message });
   }
 }
