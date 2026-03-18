@@ -2,38 +2,82 @@
 const GHL_API_KEY = process.env.GHL_API_KEY;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 
-// Hardcoded custom field IDs uit GHL (Settings → Custom Fields)
-const FIELD_IDS = {
-  straatnaam:           'ZwIMY4VPelG5rKROb5NR',
-  huisnummer:           'co5Mr16rF6S6ay5hJOSJ',
-  postcode:             '3bCi5hL0rR9XGG33x2Gv',
-  woonplaats:           'mFRQjlUppycMfyjENKF9',
-  type_onderhoud:       'EXSQmlt7BqkXJMs8F3Qk',
-  probleemomschrijving: 'BBcbPCNA9Eu0Kyi4U1LN',
-  prijs:                'HGjlT6ofaBiMz3j2HsXL',
-  opmerkingen:          null, // wordt hieronder dynamisch opgehaald als null
-};
+// Alle custom velden die we willen opslaan (key = GHL contact.{key})
+// FILE_UPLOAD velden (fotos, filmpje) slaan we niet op via tekst
+const TEXT_FIELDS = [
+  'woonplaats', 'straatnaam', 'huisnummer', 'postcode', 'volledige_adres',
+  'type_onderhoud', 'probleemomschrijving', 'type_probleem',
+  'leeftijd_kraan', 'leeftijd_quooker', 'laatste_onderhoudsbeurt',
+  'knippert', 'knippert_aantal',
+  'foto_ontvangen', 'filmpje_ontvangen',
+  'opmerkingen', 'prijs',
+];
 
-async function resolveOpmerkingen() {
-  if (FIELD_IDS.opmerkingen) return;
-  try {
-    const res = await fetch(`${GHL_BASE}/locations/${GHL_LOCATION_ID}/customFields`, {
-      headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
-    });
-    const data = await res.json();
-    const fields = data?.customFields || data?.list || [];
-    console.log('Alle GHL custom fields:', JSON.stringify(fields.map(f => ({ id: f.id, key: f.fieldKey || f.key, name: f.name }))));
-    const f = fields.find(f => (f.fieldKey || f.key || '').includes('opmerkingen'));
-    if (f) {
-      FIELD_IDS.opmerkingen = f.id;
-      console.log('opmerkingen veld-ID gevonden:', f.id);
-    }
-  } catch (e) {
-    console.error('resolveOpmerkingen error:', e.message);
+// Velden die via het standaard contact object gaan (niet customFields)
+const STANDARD_FIELDS = ['email'];
+
+let cachedFieldMap = null;
+
+async function getFieldMap() {
+  if (cachedFieldMap) return cachedFieldMap;
+  const res = await fetch(`${GHL_BASE}/locations/${GHL_LOCATION_ID}/customFields`, {
+    headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
+  });
+  if (!res.ok) {
+    console.error('getFieldMap HTTP error:', res.status, await res.text());
+    return {};
   }
+  const data = await res.json();
+  const fields = data?.customFields || data?.list || [];
+  const map = {};
+  for (const f of fields) {
+    const rawKey = f.fieldKey || f.key || '';
+    const key = rawKey.replace(/^contact\./, '');
+    if (key) map[key] = f.id;
+  }
+  console.log('Veld-ID mapping geladen:', JSON.stringify(map));
+  cachedFieldMap = map;
+  return map;
+}
+
+async function ensureCustomFields(fieldMap) {
+  // Velden die nog niet bestaan in GHL aanmaken
+  const missing = [
+    { name: 'Volledige Adres', key: 'volledige_adres', dataType: 'TEXT' },
+    { name: 'Type Probleem',   key: 'type_probleem',   dataType: 'TEXT' },
+    { name: 'Knippert',        key: 'knippert',        dataType: 'TEXT' },
+    { name: 'Knippert Aantal', key: 'knippert_aantal', dataType: 'TEXT' },
+    { name: 'Laatste Onderhoudsbeurt', key: 'laatste_onderhoudsbeurt', dataType: 'TEXT' },
+  ].filter(f => !fieldMap[f.key]);
+
+  for (const f of missing) {
+    try {
+      const res = await fetch(`${GHL_BASE}/locations/${GHL_LOCATION_ID}/customFields`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${GHL_API_KEY}`,
+          'Content-Type': 'application/json',
+          'Version': '2021-04-15',
+        },
+        body: JSON.stringify({ name: f.name, dataType: f.dataType }),
+      });
+      const data = await res.json();
+      const newId = data?.customField?.id || data?.id;
+      if (newId) {
+        fieldMap[f.key] = newId;
+        console.log(`Custom field aangemaakt: ${f.key} → ${newId}`);
+      } else {
+        console.error(`Aanmaken ${f.key} mislukt:`, JSON.stringify(data));
+      }
+    } catch (e) {
+      console.error(`Fout bij aanmaken ${f.key}:`, e.message);
+    }
+  }
+  // Reset cache zodat volgende request de nieuwe velden oppikt
+  cachedFieldMap = null;
+  return fieldMap;
 }
 
 async function getContact(contactId) {
@@ -55,8 +99,8 @@ async function getLatestConversationId(contactId) {
 
 async function getConversationMessages(conversationId) {
   const urls = [
-    `${GHL_BASE}/conversations/${conversationId}/messages?limit=30`,
-    `${GHL_BASE}/conversations/messages?conversationId=${conversationId}&limit=30`,
+    `${GHL_BASE}/conversations/${conversationId}/messages?limit=50`,
+    `${GHL_BASE}/conversations/messages?conversationId=${conversationId}&limit=50`,
   ];
   for (const url of urls) {
     try {
@@ -84,9 +128,9 @@ async function parseWithClaude(convoText, contact) {
       max_tokens: 1024,
       messages: [{
         role: 'user',
-        content: `Je analyseert een gesprek met een klant van een cv-ketel/verwarmingsbedrijf in Nederland.
-Extraheer ALLEEN informatie die expliciet in het gesprek wordt genoemd. Gok nooit.
-Geef uitsluitend een JSON object terug zonder uitleg.
+        content: `Je analyseert een WhatsApp gesprek met een klant van Hetekraan.nl — een Quooker installatiebedrijf.
+Extraheer ALLEEN informatie die expliciet in het gesprek staat. Gok nooit. Laat velden leeg als niet vermeld.
+Geef uitsluitend een JSON object terug, zonder uitleg.
 
 Huidige klantgegevens:
 Naam: ${(contact.firstName || '') + ' ' + (contact.lastName || '')}
@@ -96,23 +140,40 @@ Telefoon: ${contact.phone || ''}
 Gesprek (nieuwste onderaan):
 ${convoText}
 
-Geef dit exacte JSON formaat terug. Laat velden leeg als niet expliciet vermeld:
+Geef dit exacte JSON formaat terug:
 {
+  "woonplaats": "",
   "straatnaam": "",
   "huisnummer": "",
   "postcode": "",
-  "woonplaats": "",
+  "volledige_adres": "",
   "type_onderhoud": "",
   "probleemomschrijving": "",
+  "type_probleem": "",
+  "leeftijd_kraan": "",
+  "leeftijd_quooker": "",
+  "laatste_onderhoudsbeurt": "",
+  "knippert": "",
+  "knippert_aantal": "",
+  "foto_ontvangen": "",
+  "filmpje_ontvangen": "",
+  "opmerkingen": "",
   "prijs": "",
-  "opmerkingen": ""
+  "email": ""
 }
 
 Regels:
-- type_onderhoud: alleen "reparatie", "onderhoud", "installatie" of leeg
+- type_onderhoud: alleen "reparatie", "onderhoud" of "nieuwe_quooker"
+- type_probleem: kort specifiek probleem, bijv. "lekkende quooker", "knippert 4x", "geen water"
+- knippert: "ja" of "nee"
+- knippert_aantal: "2" of "4"
+- foto_ontvangen: "ja" als klant foto's heeft gestuurd, anders "nee" of leeg
+- filmpje_ontvangen: "ja" als klant een filmpje heeft gestuurd, anders "nee" of leeg
 - postcode: formaat 1234AB (zonder spatie)
+- leeftijd_kraan / leeftijd_quooker: alleen het getal in jaren
+- volledige_adres: combineer straat + huisnummer + postcode + woonplaats als alles bekend is
 - prijs: alleen het getal, geen euroteken
-- opmerkingen: bijzonderheden, wensen, of afspraken die niet in andere velden passen`
+- email: e-mailadres als vermeld in het gesprek`
       }]
     })
   });
@@ -124,16 +185,31 @@ Regels:
 }
 
 async function updateContact(contactId, extracted) {
-  await resolveOpmerkingen();
+  let fieldMap = await getFieldMap();
+  fieldMap = await ensureCustomFields(fieldMap);
 
-  const customFields = Object.entries(FIELD_IDS)
-    .filter(([key, id]) => id && extracted[key] && String(extracted[key]).trim())
-    .map(([key, id]) => ({ id, field_value: String(extracted[key]).trim() }));
+  // Custom fields
+  const customFields = TEXT_FIELDS
+    .filter(key => extracted[key] && String(extracted[key]).trim() && fieldMap[key])
+    .map(key => ({ id: fieldMap[key], field_value: String(extracted[key]).trim() }));
 
-  if (customFields.length === 0) {
-    console.log('Geen velden om op te slaan. extracted:', JSON.stringify(extracted), 'FIELD_IDS:', JSON.stringify(FIELD_IDS));
+  // Standaard velden (email)
+  const standardUpdate = {};
+  for (const key of STANDARD_FIELDS) {
+    if (extracted[key] && String(extracted[key]).trim()) {
+      standardUpdate[key] = String(extracted[key]).trim();
+    }
+  }
+
+  const body = { ...standardUpdate };
+  if (customFields.length > 0) body.customFields = customFields;
+
+  if (Object.keys(body).length === 0) {
+    console.log('Niets te updaten. extracted:', JSON.stringify(extracted));
     return 0;
   }
+
+  console.log('GHL update body:', JSON.stringify(body));
 
   const updateRes = await fetch(`${GHL_BASE}/contacts/${contactId}`, {
     method: 'PUT',
@@ -142,12 +218,12 @@ async function updateContact(contactId, extracted) {
       'Content-Type': 'application/json',
       'Version': '2021-04-15',
     },
-    body: JSON.stringify({ customFields }),
+    body: JSON.stringify(body),
   });
   const updateData = await updateRes.json();
-  console.log('GHL update response:', JSON.stringify(updateData));
+  console.log('GHL update response status:', updateRes.status, JSON.stringify(updateData).slice(0, 300));
 
-  return customFields.length;
+  return customFields.length + Object.keys(standardUpdate).length;
 }
 
 export default async function handler(req, res) {
@@ -158,30 +234,20 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const respond = (data) => res.status(200).json(data);
-
   const body = req.body;
 
-  // GHL Automation webhooks gebruiken snake_case, native webhooks camelCase
   const contactId = body?.contactId || body?.contact_id;
   const conversationId = body?.conversationId;
 
-  console.log('Webhook ontvangen:', JSON.stringify({ type: body?.type, contactId, conversationId, keys: Object.keys(body || {}) }));
+  console.log('Webhook ontvangen:', JSON.stringify({ contactId, conversationId, keys: Object.keys(body || {}) }));
 
-  if (!contactId) {
-    return respond({ ok: true, skipped: 'missing contactId' });
-  }
-
-  if (!ANTHROPIC_API_KEY) {
-    return respond({ ok: false, error: 'ANTHROPIC_API_KEY niet ingesteld' });
-  }
+  if (!contactId) return respond({ ok: true, skipped: 'missing contactId' });
+  if (!ANTHROPIC_API_KEY) return respond({ ok: false, error: 'ANTHROPIC_API_KEY niet ingesteld' });
+  if (!GHL_LOCATION_ID) return respond({ ok: false, error: 'GHL_LOCATION_ID niet ingesteld' });
 
   try {
-    // Haal conversationId op via API als die niet in de webhook zat
     const resolvedConversationId = conversationId || await getLatestConversationId(contactId);
-
-    if (!resolvedConversationId) {
-      return respond({ ok: true, skipped: 'no conversation found for contact' });
-    }
+    if (!resolvedConversationId) return respond({ ok: true, skipped: 'no conversation found' });
 
     const [contact, messages] = await Promise.all([
       getContact(contactId),
@@ -190,13 +256,12 @@ export default async function handler(req, res) {
 
     if (messages.length === 0) return respond({ ok: true, skipped: 'no messages' });
 
-    // Bouw gesprekstekst op (klant vs bedrijf)
     const convoText = messages
-      .slice(-25)
+      .slice(-30)
       .map(m => {
-        const body = m.body || m.text || m.messageBody || '';
-        const dir = (m.direction === 'inbound' || m.messageType === 'inbound') ? 'Klant' : 'Bedrijf';
-        return body ? `${dir}: ${body}` : null;
+        const text = m.body || m.text || m.messageBody || '';
+        const dir = (m.direction === 'inbound' || m.messageType === 'inbound') ? 'Klant' : 'Bot';
+        return text ? `${dir}: ${text}` : null;
       })
       .filter(Boolean)
       .join('\n');
@@ -204,13 +269,14 @@ export default async function handler(req, res) {
     if (!convoText.trim()) return respond({ ok: true, skipped: 'empty conversation' });
 
     const extracted = await parseWithClaude(convoText, contact);
+    console.log('Claude extracted:', JSON.stringify(extracted));
+
     const updated = await updateContact(contactId, extracted);
 
-    console.log(`Webhook: contact ${contactId}, ${updated} velden bijgewerkt`, extracted);
     return respond({ ok: true, contactId, fieldsUpdated: updated, extracted });
 
   } catch (err) {
-    console.error('Webhook error:', err.message);
+    console.error('Webhook error:', err.message, err.stack);
     return respond({ ok: true, error: err.message });
   }
 }
