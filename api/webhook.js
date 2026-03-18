@@ -8,30 +8,25 @@ const GHL_BASE          = 'https://services.leadconnectorhq.com';
 
 // ─── Custom field mapping (GHL field ID's) ──────────────────────────────────
 const CUSTOM_FIELD_MAP = {
-  postcode:                 '3bCi5hL0rR9XGG33x2Gv',
-  filmpje_ontvangen:        '6x5xXbNjkqLwD58eipi1',
-  probleemomschrijving:     'BBcbPCNA9Eu0Kyi4U1LN',
-  type_onderhoud:           'EXSQmlt7BqkXJMs8F3Qk',
-  prijs:                    'HGjlT6ofaBiMz3j2HsXL',
-  opmerkingen:              'LCIFALarX3WZI5jsBbDA',
-  leeftijd_quooker:         'WLUAFmNnaVTCK4wdhqVg',
-  straatnaam:               'ZwIMY4VPelG5rKROb5NR',
-  leeftijd_kraan:           'bYYyKo1Wyqxntc0UL2lY',
-  huisnummer:               'co5Mr16rF6S6ay5hJOSJ',
-  datum_installatie:        'hiTe3Yi5TlxheJq4bLzy',
-  datum_laatste_onderhoud:  'kYP2SCmhZ21Ig0aaLl5l',
-  woonplaats:               'mFRQjlUppycMfyjENKF9',
-  // fotos / filmpje zijn file upload velden — niet vullen via tekst
-};
-
-// foto_ontvangen zit in een apart veld
-const EXTRA_CUSTOM_FIELD_MAP = {
-  foto_ontvangen: 'D4eigmtm87z5Np8tZv8n',
+  postcode:                '3bCi5hL0rR9XGG33x2Gv',
+  probleemomschrijving:    'BBcbPCNA9Eu0Kyi4U1LN',
+  type_onderhoud:          'EXSQmlt7BqkXJMs8F3Qk',
+  opmerkingen:             'LCIFALarX3WZI5jsBbDA',
+  leeftijd_quooker:        'WLUAFmNnaVTCK4wdhqVg',
+  straatnaam:              'ZwIMY4VPelG5rKROb5NR',
+  huisnummer:              'co5Mr16rF6S6ay5hJOSJ',
+  woonplaats:              'mFRQjlUppycMfyjENKF9',
+  leeftijd_kraan:          'bYYyKo1Wyqxntc0UL2lY',
+  datum_installatie:       'hiTe3Yi5TlxheJq4bLzy',
+  datum_laatste_onderhoud: 'kYP2SCmhZ21Ig0aaLl5l',
+  foto_ontvangen:          'D4eigmtm87z5Np8tZv8n',
+  filmpje_ontvangen:       '6x5xXbNjkqLwD58eipi1',
+  prijs:                   'HGjlT6ofaBiMz3j2HsXL',
 };
 
 // Toegestane waarden voor SINGLE_OPTIONS velden
-const ALLOWED_TYPE_ONDERHOUD   = ['onderhoud', 'reparatie', 'nieuwe quooker'];
-const ALLOWED_JA_NEE           = ['ja', 'nee'];
+const ALLOWED_TYPE_ONDERHOUD = ['onderhoud', 'reparatie', 'nieuwe quooker'];
+const ALLOWED_JA_NEE         = ['ja', 'nee'];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -104,14 +99,18 @@ function detectFilmpjeOntvangen(body) {
 // ─── Claude extractor ───────────────────────────────────────────────────────
 
 async function extractWithClaude(messageText) {
-  const prompt = `Je ontvangt een WhatsApp-bericht van een klant van een Quooker installatiebedrijf.
-Extraheer ALLEEN informatie die expliciet in het bericht staat. Gok nooit. Laat velden null als niet vermeld.
-Geef UITSLUITEND geldige JSON terug, zonder uitleg, zonder markdown, zonder codeblokken.
-
-Bericht:
-${messageText}
-
-Geef dit exacte JSON object terug:
+  // Exacte prompt zoals opgegeven — niet aanpassen
+  const prompt = `Je bent een CRM extractor voor Quooker-aanvragen.
+Lees het WhatsApp-bericht en haal alleen informatie eruit die expliciet genoemd wordt.
+Verzin niets.
+Gebruik null voor onbekende velden.
+Geef uitsluitend geldige JSON terug, zonder markdown, zonder uitleg, zonder extra tekst.
+Regels:
+- type_onderhoud mag alleen "onderhoud", "reparatie" of "nieuwe quooker" zijn.
+- foto_ontvangen en filmpje_ontvangen mogen alleen "ja" of "nee" zijn.
+- datumvelden alleen invullen als een duidelijke datum expliciet genoemd wordt.
+- prijs alleen invullen als een concreet bedrag expliciet genoemd wordt.
+Schema:
 {
   "postcode": null,
   "probleemomschrijving": null,
@@ -123,17 +122,13 @@ Geef dit exacte JSON object terug:
   "woonplaats": null,
   "leeftijd_kraan": null,
   "datum_installatie": null,
-  "datum_laatste_onderhoud": null
+  "datum_laatste_onderhoud": null,
+  "foto_ontvangen": null,
+  "filmpje_ontvangen": null,
+  "prijs": null
 }
-
-Regels:
-- type_onderhoud: alleen exact "onderhoud", "reparatie" of "nieuwe quooker" — anders null
-- postcode: formaat 1234AB zonder spatie
-- leeftijd_kraan / leeftijd_quooker: alleen het getal in jaren als string, bijv. "5"
-- datum_installatie / datum_laatste_onderhoud: alleen vullen bij expliciete datum, formaat YYYY-MM-DD
-- opmerkingen: overige relevante info die nergens anders past
-- foto_ontvangen en filmpje_ontvangen: NIET in JSON opnemen — worden apart bepaald
-- Verzin geen waarden. Liever null dan een gok.`;
+WhatsApp-bericht:
+${messageText}`;
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -170,14 +165,17 @@ Regels:
 
 // ─── GHL contact updater ────────────────────────────────────────────────────
 
-async function updateGhlContact(contactId, extracted, fotoOntvangen, filmpjeOntvangen) {
-  // Valideer SINGLE_OPTIONS velden
+async function updateGhlContact(contactId, extracted, attachmentFoto, attachmentFilmpje) {
+  // Valideer SINGLE_OPTIONS velden uit Claude
   const typeOnderhoud = ALLOWED_TYPE_ONDERHOUD.includes(extracted.type_onderhoud)
     ? extracted.type_onderhoud : null;
 
-  // Stel filmpje_ontvangen in op basis van attachment detectie (niet Claude)
-  const filmpjeValue = ALLOWED_JA_NEE.includes(filmpjeOntvangen) ? filmpjeOntvangen : null;
-  const fotoValue    = ALLOWED_JA_NEE.includes(fotoOntvangen)    ? fotoOntvangen    : null;
+  // foto_ontvangen / filmpje_ontvangen: Claude bepaalt op basis van tekst.
+  // Als er een attachment gedetecteerd is, overschrijft dat altijd naar "ja".
+  const fotoRaw    = attachmentFoto === 'ja' ? 'ja' : extracted.foto_ontvangen;
+  const filmpjeRaw = attachmentFilmpje === 'ja' ? 'ja' : extracted.filmpje_ontvangen;
+  const fotoValue    = ALLOWED_JA_NEE.includes(fotoRaw)    ? fotoRaw    : null;
+  const filmpjeValue = ALLOWED_JA_NEE.includes(filmpjeRaw) ? filmpjeRaw : null;
 
   // Bouw customFields array op — alleen velden met echte waarden
   const customFields = [];
@@ -188,7 +186,6 @@ async function updateGhlContact(contactId, extracted, fotoOntvangen, filmpjeOntv
     }
   };
 
-  // Standaard velden uit Claude
   addField(CUSTOM_FIELD_MAP.postcode,                extracted.postcode);
   addField(CUSTOM_FIELD_MAP.probleemomschrijving,    extracted.probleemomschrijving);
   addField(CUSTOM_FIELD_MAP.type_onderhoud,          typeOnderhoud);
@@ -200,10 +197,9 @@ async function updateGhlContact(contactId, extracted, fotoOntvangen, filmpjeOntv
   addField(CUSTOM_FIELD_MAP.leeftijd_kraan,          extracted.leeftijd_kraan);
   addField(CUSTOM_FIELD_MAP.datum_installatie,       extracted.datum_installatie);
   addField(CUSTOM_FIELD_MAP.datum_laatste_onderhoud, extracted.datum_laatste_onderhoud);
-
-  // Attachment-gebaseerde velden
+  addField(CUSTOM_FIELD_MAP.foto_ontvangen,          fotoValue);
   addField(CUSTOM_FIELD_MAP.filmpje_ontvangen,       filmpjeValue);
-  addField(EXTRA_CUSTOM_FIELD_MAP.foto_ontvangen,    fotoValue);
+  addField(CUSTOM_FIELD_MAP.prijs,                   extracted.prijs);
 
   if (customFields.length === 0) {
     console.log('[GHL update] Geen velden om bij te werken — skip.');
