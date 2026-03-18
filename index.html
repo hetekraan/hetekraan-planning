@@ -802,7 +802,7 @@ async function loadAppointments(date) {
       const firstName = contact.firstName || '';
       const lastName = contact.lastName || '';
       const name = (firstName + ' ' + lastName).trim() || address.split(' ')[0] || 'Klant';
-      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address || name)}`;
+      const mapsUrl = address ? `https://maps.google.com/?q=${encodeURIComponent(address)}` : '';
       const ghlUrl = e.contactId ? `${GHL_BASE_URL}/contacts/${e.contactId}` : '';
 
       return {
@@ -879,7 +879,7 @@ function render() {
           <div class="appt-time">${a.time}</div>
           <div class="appt-actions">
             ${a.phone ? `<a class="icon-btn" href="tel:${a.phone}" title="Bellen">📞</a>` : ''}
-            <a class="icon-btn" href="${a.mapsUrl || 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(a.name)}" target="_blank" title="Maps">📍</a>
+            ${a.mapsUrl ? `<a class="icon-btn" href="${a.mapsUrl}" target="_blank" title="Maps">📍</a>` : ''}
             ${a.ghlUrl ? `<a class="icon-btn ghl" href="${a.ghlUrl}" target="_blank" title="Open in GHL">🔗</a>` : ''}
             <button class="icon-btn danger" onclick="deleteAppt(${a.id})" title="Verwijderen">✕</button>
           </div>
@@ -1045,8 +1045,12 @@ const DEPOT = 'Cornelis Dopperkade, Amsterdam';
 function openMaps(e) {
   e.preventDefault();
   const sorted = [...appointments].sort((a,b)=>a.time.localeCompare(b.time));
-  const addrs = sorted.filter(a=>a.address).map(a=>encodeURIComponent(a.address)).join('/');
-  if (addrs) window.open('https://www.google.com/maps/dir/' + encodeURIComponent(DEPOT) + '/' + addrs + '/' + encodeURIComponent(DEPOT), '_blank');
+  const enc = addr => addr.trim().replace(/ /g, '+');
+  const addrs = sorted.filter(a=>a.address).map(a=>enc(a.address));
+  if (addrs.length) {
+    const url = 'https://www.google.com/maps/dir/' + [enc(DEPOT), ...addrs, enc(DEPOT)].join('/');
+    window.open(url, '_blank');
+  }
 }
 
 function deleteAppt(id) {
