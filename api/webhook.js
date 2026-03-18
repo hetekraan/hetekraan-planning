@@ -241,9 +241,10 @@ export default async function handler(req, res) {
 
   console.log('Webhook ontvangen:', JSON.stringify({ contactId, conversationId, keys: Object.keys(body || {}) }));
 
-  if (!contactId) return respond({ ok: true, skipped: 'missing contactId' });
-  if (!ANTHROPIC_API_KEY) return respond({ ok: false, error: 'ANTHROPIC_API_KEY niet ingesteld' });
-  if (!GHL_LOCATION_ID) return respond({ ok: false, error: 'GHL_LOCATION_ID niet ingesteld' });
+  console.log('Env check — ANTHROPIC_API_KEY:', !!ANTHROPIC_API_KEY, '| GHL_LOCATION_ID:', !!GHL_LOCATION_ID, '| GHL_API_KEY:', !!GHL_API_KEY);
+  if (!contactId) { console.log('Skip: missing contactId'); return respond({ ok: true, skipped: 'missing contactId' }); }
+  if (!ANTHROPIC_API_KEY) { console.error('STOP: ANTHROPIC_API_KEY niet ingesteld'); return respond({ ok: false, error: 'ANTHROPIC_API_KEY niet ingesteld' }); }
+  if (!GHL_LOCATION_ID) { console.error('STOP: GHL_LOCATION_ID niet ingesteld'); return respond({ ok: false, error: 'GHL_LOCATION_ID niet ingesteld' }); }
 
   try {
     // Contact info: gebruik payload data als beschikbaar, anders API call
