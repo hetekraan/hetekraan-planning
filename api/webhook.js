@@ -3,15 +3,35 @@ const GHL_API_KEY = process.env.GHL_API_KEY;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
-const FIELD_IDS = {
-  straatnaam:          'ZwIMY4VPelG5rKROb5NR',
-  huisnummer:          'co5Mr16rF6S6ay5hJOSJ',
-  postcode:            '3bCi5hL0rR9XGG33x2Gv',
-  woonplaats:          'mFRQjlUppycMfyjENKF9',
-  type_onderhoud:      'EXSQmlt7BqkXJMs8F3Qk',
-  probleemomschrijving:'BBcbPCNA9Eu0Kyi4U1LN',
-  prijs:               'HGjlT6ofaBiMz3j2HsXL',
-};
+const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
+
+// Velden die Claude probeert te vullen (keys moeten overeenkomen met GHL veldnamen)
+const TARGET_FIELD_KEYS = [
+  'straatnaam', 'huisnummer', 'postcode', 'woonplaats',
+  'type_onderhoud', 'probleemomschrijving', 'prijs', 'opmerkingen',
+];
+
+let cachedFieldMap = null;
+
+async function getFieldMap() {
+  if (cachedFieldMap) return cachedFieldMap;
+  const res = await fetch(`${GHL_BASE}/locations/${GHL_LOCATION_ID}/customFields`, {
+    headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
+  });
+  const data = await res.json();
+  const fields = data?.customFields || data?.list || [];
+  const map = {};
+  for (const f of fields) {
+    if (f.fieldKey || f.key) {
+      // GHL slaat veldkeys op als "contact.straatnaam" — haal het deel na de punt op
+      const key = (f.fieldKey || f.key).replace(/^contact\./, '');
+      map[key] = f.id;
+    }
+  }
+  cachedFieldMap = map;
+  console.log('Veld-ID mapping geladen:', map);
+  return map;
+}
 
 async function getContact(contactId) {
   const res = await fetch(`${GHL_BASE}/contacts/${contactId}`, {
@@ -101,9 +121,11 @@ Regels:
 }
 
 async function updateContact(contactId, extracted) {
-  const customFields = Object.entries(FIELD_IDS)
-    .filter(([key, id]) => extracted[key] && String(extracted[key]).trim())
-    .map(([key, id]) => ({ id, field_value: String(extracted[key]).trim() }));
+  const fieldMap = await getFieldMap();
+
+  const customFields = TARGET_FIELD_KEYS
+    .filter(key => extracted[key] && String(extracted[key]).trim() && fieldMap[key])
+    .map(key => ({ id: fieldMap[key], field_value: String(extracted[key]).trim() }));
 
   if (customFields.length === 0) return 0;
 
