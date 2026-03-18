@@ -21,8 +21,16 @@ async function getContact(contactId) {
   return data?.contact || data;
 }
 
+async function getLatestConversationId(contactId) {
+  const res = await fetch(`${GHL_BASE}/conversations/search?contactId=${contactId}&limit=1`, {
+    headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
+  });
+  const data = await res.json();
+  const conversations = data?.conversations || data?.list || [];
+  return conversations[0]?.id || null;
+}
+
 async function getConversationMessages(conversationId) {
-  // Probeer twee endpoints (GHL heeft inconsistente API versies)
   const urls = [
     `${GHL_BASE}/conversations/${conversationId}/messages?limit=30`,
     `${GHL_BASE}/conversations/messages?conversationId=${conversationId}&limit=30`,
@@ -119,25 +127,18 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  // Altijd 200 teruggeven zodat GHL niet blijft herproberen
   const respond = (data) => res.status(200).json(data);
 
   const body = req.body;
-  const type = body?.type || '';
 
-  // Debug: log alles wat binnenkomt
-  console.log('Webhook ontvangen:', JSON.stringify({ type, contactId: body?.contactId, conversationId: body?.conversationId, keys: Object.keys(body || {}) }));
+  // GHL Automation webhooks gebruiken snake_case, native webhooks camelCase
+  const contactId = body?.contactId || body?.contact_id;
+  const conversationId = body?.conversationId;
 
-  // Alleen berichtgebeurtenissen verwerken
-  const MESSAGE_TYPES = ['InboundMessage', 'OutboundMessage', 'ConversationProviderInboundMessage', 'ConversationProviderOutboundMessage'];
-  if (!MESSAGE_TYPES.includes(type)) {
-    return respond({ ok: true, skipped: `type=${type}` });
-  }
+  console.log('Webhook ontvangen:', JSON.stringify({ type: body?.type, contactId, conversationId, keys: Object.keys(body || {}) }));
 
-  const contactId = body.contactId;
-  const conversationId = body.conversationId;
-  if (!contactId || !conversationId) {
-    return respond({ ok: true, skipped: 'missing contactId or conversationId' });
+  if (!contactId) {
+    return respond({ ok: true, skipped: 'missing contactId' });
   }
 
   if (!ANTHROPIC_API_KEY) {
@@ -145,9 +146,16 @@ export default async function handler(req, res) {
   }
 
   try {
+    // Haal conversationId op via API als die niet in de webhook zat
+    const resolvedConversationId = conversationId || await getLatestConversationId(contactId);
+
+    if (!resolvedConversationId) {
+      return respond({ ok: true, skipped: 'no conversation found for contact' });
+    }
+
     const [contact, messages] = await Promise.all([
       getContact(contactId),
-      getConversationMessages(conversationId),
+      getConversationMessages(resolvedConversationId),
     ]);
 
     if (messages.length === 0) return respond({ ok: true, skipped: 'no messages' });
@@ -173,6 +181,6 @@ export default async function handler(req, res) {
 
   } catch (err) {
     console.error('Webhook error:', err.message);
-    return respond({ ok: true, error: err.message }); // Altijd 200 voor GHL
+    return respond({ ok: true, error: err.message });
   }
 }
