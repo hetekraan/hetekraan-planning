@@ -802,7 +802,7 @@ async function loadAppointments(date) {
       const firstName = contact.firstName || '';
       const lastName = contact.lastName || '';
       const name = (firstName + ' ' + lastName).trim() || address.split(' ')[0] || 'Klant';
-      const mapsUrl = address ? `https://maps.google.com/?q=${encodeURIComponent(address)}` : `https://maps.google.com/?q=${encodeURIComponent(name)}`;
+      const mapsUrl = address ? `https://maps.google.com/?q=${encodeURIComponent(address)}` : '';
       const ghlUrl = e.contactId ? `${GHL_BASE_URL}/contacts/${e.contactId}` : '';
 
       return {
@@ -879,7 +879,7 @@ function render() {
           <div class="appt-time">${a.time}</div>
           <div class="appt-actions">
             ${a.phone ? `<a class="icon-btn" href="tel:${a.phone}" title="Bellen">📞</a>` : ''}
-            <a class="icon-btn" href="${a.mapsUrl}" target="_blank" title="Maps">📍</a>
+            ${a.mapsUrl ? `<a class="icon-btn" href="${a.mapsUrl}" target="_blank" title="Maps">📍</a>` : ''}
             ${a.ghlUrl ? `<a class="icon-btn ghl" href="${a.ghlUrl}" target="_blank" title="Open in GHL">🔗</a>` : ''}
             <button class="icon-btn danger" onclick="deleteAppt(${a.id})" title="Verwijderen">✕</button>
           </div>
