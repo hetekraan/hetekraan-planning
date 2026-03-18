@@ -246,27 +246,58 @@ export default async function handler(req, res) {
   if (!GHL_LOCATION_ID) return respond({ ok: false, error: 'GHL_LOCATION_ID niet ingesteld' });
 
   try {
+    // Contact info: gebruik payload data als beschikbaar, anders API call
+    const payloadContact = body?.contact || {};
+    const contactFromPayload = {
+      firstName: body?.first_name || payloadContact?.firstName || payloadContact?.first_name || '',
+      lastName: body?.last_name || payloadContact?.lastName || payloadContact?.last_name || '',
+      email: payloadContact?.email || '',
+      phone: body?.phone || payloadContact?.phone || '',
+    };
+
+    // Huidig bericht uit payload
+    const payloadMessage = body?.message || {};
+    const payloadMessageText = payloadMessage?.body || payloadMessage?.text || payloadMessage?.messageBody || '';
+    const payloadMessageDir = (payloadMessage?.direction === 'inbound' || payloadMessage?.type === 'inbound') ? 'Klant' : 'Bot';
+    console.log('Payload message:', JSON.stringify({ text: payloadMessageText, dir: payloadMessageDir }));
+
+    // Probeer conversation history op te halen
     const resolvedConversationId = conversationId || await getLatestConversationId(contactId);
-    if (!resolvedConversationId) return respond({ ok: true, skipped: 'no conversation found' });
+    console.log('Conversation ID gevonden:', resolvedConversationId);
 
-    const [contact, messages] = await Promise.all([
-      getContact(contactId),
-      getConversationMessages(resolvedConversationId),
-    ]);
+    let convoLines = [];
 
-    if (messages.length === 0) return respond({ ok: true, skipped: 'no messages' });
+    if (resolvedConversationId) {
+      const [contactFull, messages] = await Promise.all([
+        getContact(contactId),
+        getConversationMessages(resolvedConversationId),
+      ]);
+      // Gebruik API contact als die meer info heeft
+      if (contactFull?.email) contactFromPayload.email = contactFull.email;
+      if (contactFull?.firstName) contactFromPayload.firstName = contactFull.firstName;
+      if (contactFull?.lastName) contactFromPayload.lastName = contactFull.lastName;
 
-    const convoText = messages
-      .slice(-30)
-      .map(m => {
-        const text = m.body || m.text || m.messageBody || '';
-        const dir = (m.direction === 'inbound' || m.messageType === 'inbound') ? 'Klant' : 'Bot';
-        return text ? `${dir}: ${text}` : null;
-      })
-      .filter(Boolean)
-      .join('\n');
+      convoLines = messages
+        .slice(-30)
+        .map(m => {
+          const text = m.body || m.text || m.messageBody || '';
+          const dir = (m.direction === 'inbound' || m.messageType === 'inbound') ? 'Klant' : 'Bot';
+          return text ? `${dir}: ${text}` : null;
+        })
+        .filter(Boolean);
+      console.log(`Conversation messages geladen: ${convoLines.length}`);
+    }
 
-    if (!convoText.trim()) return respond({ ok: true, skipped: 'empty conversation' });
+    // Als geen history, gebruik dan huidig bericht uit payload
+    if (convoLines.length === 0 && payloadMessageText) {
+      convoLines = [`${payloadMessageDir}: ${payloadMessageText}`];
+      console.log('Fallback: gebruik payload message als gesprek');
+    }
+
+    if (convoLines.length === 0) return respond({ ok: true, skipped: 'no messages found anywhere' });
+
+    const convoText = convoLines.join('\n');
+    const contact = contactFromPayload;
 
     const extracted = await parseWithClaude(convoText, contact);
     console.log('Claude extracted:', JSON.stringify(extracted));
