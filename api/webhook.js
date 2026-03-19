@@ -1,52 +1,49 @@
-// api/webhook.js — GHL webhook ontvanger + Claude AI extractor
-// Vercel Serverless Function (Node.js, ES Modules)
+// api/webhook.js
+// Tijdelijke debugversie: ontvangt GHL webhook, haalt berichttekst op,
+// stuurt die naar Anthropic Claude, parsed JSON, en geeft dat terug.
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const GHL_API_KEY       = process.env.GHL_API_KEY;
-const GHL_BASE          = 'https://services.leadconnectorhq.com';
 
-const CUSTOM_FIELD_MAP = {
-  postcode:                '3bCi5hL0rR9XGG33x2Gv',
-  filmpje_ontvangen:       '6x5xXbNjkqLwD58eipi1',
-  probleemomschrijving:    'BBcbPCNA9Eu0Kyi4U1LN',
-  type_onderhoud:          'EXSQmlt7BqkXJMs8F3Qk',
-  prijs:                   'HGjlT6ofaBiMz3j2HsXL',
-  opmerkingen:             'LCIFALarX3WZI5jsBbDA',
-  leeftijd_quooker:        'WLUAFmNnaVTCK4wdhqVg',
-  straatnaam:              'ZwIMY4VPelG5rKROb5NR',
-  leeftijd_kraan:          'bYYyKo1Wyqxntc0UL2lY',
-  huisnummer:              'co5Mr16rF6S6ay5hJOSJ',
-  fotos:                   'hE5KrXL5baV00uyH6Ofy',
-  filmpje:                 '56SngmGWQuhulwEhioA3',
-  datum_installatie:       'hiTe3Yi5TlxheJq4bLzy',
-  datum_laatste_onderhoud: 'kYP2SCmhZ21Ig0aaLl5l',
-  woonplaats:              'mFRQjlUppycMfyjENKF9',
-  foto_ontvangen:          'D4eigmtm87z5Np8tZv8n',
-};
+export default async function handler(req, res) {
+  try {
+    console.log("=== WEBHOOK HIT ===");
+    console.log("[METHOD]", req.method);
+    console.log("[BODY]", JSON.stringify(req.body, null, 2));
+    console.log("[HAS ANTHROPIC KEY]", !!ANTHROPIC_API_KEY);
 
-const ALLOWED_TYPE_ONDERHOUD = ['onderhoud', 'reparatie', 'nieuwe quooker'];
-const ALLOWED_JA_NEE         = ['ja', 'nee'];
+    const messageText =
+      req.body?.message?.body ||
+      req.body?.message ||
+      req.body?.triggerData?.message ||
+      req.body?.triggerData?.body ||
+      req.body?.customData?.messageText ||
+      req.body?.customData?.lastMessage ||
+      "";
 
-function firstNonEmpty(...candidates) {
-  for (const c of candidates) {
-    const v = typeof c === 'function' ? c() : c;
-    if (v != null && typeof v === 'string' && v.trim() !== '') return v.trim();
-  }
-  return null;
-}
+    console.log("[MESSAGE TEXT]", messageText);
 
-async function extractWithClaude(messageText) {
-  const prompt = `Je bent een CRM extractor voor Quooker-aanvragen.
+    if (!messageText || !String(messageText).trim()) {
+      return res.status(400).json({
+        ok: false,
+        error: "Geen berichttekst gevonden in webhook payload"
+      });
+    }
+
+    const extractorPrompt = `
+Je bent een CRM extractor voor Quooker-aanvragen.
+
 Lees het WhatsApp-bericht en haal alleen informatie eruit die expliciet genoemd wordt.
 Verzin niets.
 Gebruik null voor onbekende velden.
 Geef uitsluitend geldige JSON terug, zonder markdown, zonder uitleg, zonder extra tekst.
+
 Regels:
 - type_onderhoud mag alleen "onderhoud", "reparatie" of "nieuwe quooker" zijn.
 - foto_ontvangen en filmpje_ontvangen mogen alleen "ja" of "nee" zijn, en alleen als dat expliciet zeker is.
 - datumvelden alleen invullen als een duidelijke datum expliciet genoemd wordt.
 - prijs alleen invullen als een concreet bedrag expliciet genoemd wordt.
 - Gebruik korte, schone tekstwaarden.
+
 Schema:
 {
   "postcode": null,
@@ -64,161 +61,101 @@ Schema:
   "filmpje_ontvangen": null,
   "prijs": null
 }
+
 WhatsApp-bericht:
-${messageText}`;
+${messageText}
+`.trim();
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key':         ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'content-type':      'application/json',
-    },
-    body: JSON.stringify({
-      model:      'claude-haiku-4-5-20251001',
-      max_tokens: 512,
-      messages:   [{ role: 'user', content: prompt }],
-    }),
-  });
+    const anthropicBody = {
+      model: "claude-3-haiku-20240307",
+      max_tokens: 500,
+      messages: [
+        {
+          role: "user",
+          content: extractorPrompt
+        }
+      ]
+    };
 
-  const data = await res.json();
-  const rawText = data?.content?.[0]?.text || '';
-  console.log('[Claude raw response]', rawText);
+    console.log("[ANTHROPIC REQUEST BODY]", JSON.stringify(anthropicBody, null, 2));
 
-  const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error('Claude gaf geen geldige JSON terug: ' + rawText);
-
-  try {
-    return JSON.parse(jsonMatch[0]);
-  } catch (e) {
-    throw new Error('Claude JSON parse mislukt: ' + e.message);
-  }
-}
-
-async function updateGhlContact(contactId, extracted) {
-  const customFields = [];
-
-  const add = (fieldId, value, allowedValues) => {
-    if (value == null || String(value).trim() === '') return;
-    const v = String(value).trim();
-    if (allowedValues && !allowedValues.includes(v)) return;
-    customFields.push({ id: fieldId, field_value: v });
-  };
-
-  add(CUSTOM_FIELD_MAP.postcode,                extracted.postcode);
-  add(CUSTOM_FIELD_MAP.probleemomschrijving,    extracted.probleemomschrijving);
-  add(CUSTOM_FIELD_MAP.type_onderhoud,          extracted.type_onderhoud,    ALLOWED_TYPE_ONDERHOUD);
-  add(CUSTOM_FIELD_MAP.opmerkingen,             extracted.opmerkingen);
-  add(CUSTOM_FIELD_MAP.leeftijd_quooker,        extracted.leeftijd_quooker);
-  add(CUSTOM_FIELD_MAP.straatnaam,              extracted.straatnaam);
-  add(CUSTOM_FIELD_MAP.huisnummer,              extracted.huisnummer);
-  add(CUSTOM_FIELD_MAP.woonplaats,              extracted.woonplaats);
-  add(CUSTOM_FIELD_MAP.leeftijd_kraan,          extracted.leeftijd_kraan);
-  add(CUSTOM_FIELD_MAP.datum_installatie,       extracted.datum_installatie);
-  add(CUSTOM_FIELD_MAP.datum_laatste_onderhoud, extracted.datum_laatste_onderhoud);
-  add(CUSTOM_FIELD_MAP.foto_ontvangen,          extracted.foto_ontvangen,    ALLOWED_JA_NEE);
-  add(CUSTOM_FIELD_MAP.filmpje_ontvangen,       extracted.filmpje_ontvangen, ALLOWED_JA_NEE);
-  add(CUSTOM_FIELD_MAP.prijs,                   extracted.prijs);
-
-  if (customFields.length === 0) {
-    console.log('[GHL update] Geen velden om bij te werken — skip.');
-    return null;
-  }
-
-  const payload = { customFields };
-  console.log('[GHL update payload]', JSON.stringify(payload, null, 2));
-
-  const res = await fetch(`${GHL_BASE}/contacts/${contactId}`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${GHL_API_KEY}`,
-      'Content-Type':  'application/json',
-      'Version':       '2021-04-15',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  const responseText = await res.text();
-  console.log('[GHL response status]', res.status);
-  console.log('[GHL response body]',   responseText.slice(0, 500));
-
-  if (!res.ok) throw new Error(`GHL update mislukt: HTTP ${res.status} — ${responseText.slice(0, 200)}`);
-
-  try { return JSON.parse(responseText); } catch (_) { return responseText; }
-}
-
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin',  '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST')   return res.status(405).json({ error: 'Method not allowed' });
-
-  const body = req.body || {};
-  console.log('[Webhook] Body:', JSON.stringify(body, null, 2));
-
-  // ── 1. contactId ──────────────────────────────────────────────────────────
-  const contactId = firstNonEmpty(
-    req.headers['contactid'],
-    body.contactId,
-    body.contact_id,
-    body.contact?.id,
-  );
-  console.log('[contactId]', contactId);
-
-  if (!contactId) {
-    return res.status(400).json({
-      error:    'Geen contactId gevonden',
-      debug:    { headerKeys: Object.keys(req.headers), bodyKeys: Object.keys(body) },
-    });
-  }
-
-  // ── 2. berichttekst direct uit de webhook body ────────────────────────────
-  const messageText = firstNonEmpty(
-    body.message?.body,
-    body.message?.text,
-    typeof body.message === 'string' ? body.message : null,
-    body.triggerData?.message,
-    body.triggerData?.body,
-    body.customData?.messageText,
-    body.customData?.lastMessage,
-    body.customData?.message,
-  );
-  console.log('[messageText]', messageText);
-
-  if (!messageText) {
-    return res.status(400).json({
-      error: 'Geen berichttekst gevonden in webhook body',
-      debug: {
-        contactId,
-        'message':                body.message,
-        'message.body':           body.message?.body,
-        'triggerData.message':    body.triggerData?.message,
-        'triggerData.body':       body.triggerData?.body,
-        'customData.messageText': body.customData?.messageText,
-        'customData.lastMessage': body.customData?.lastMessage,
-        'customData.message':     body.customData?.message,
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json"
       },
+      body: JSON.stringify(anthropicBody)
     });
-  }
 
-  try {
-    // ── 3. Claude extractie ───────────────────────────────────────────────
-    const extracted = await extractWithClaude(messageText);
-    console.log('[Claude extracted JSON]', JSON.stringify(extracted, null, 2));
+    console.log("[ANTHROPIC HTTP STATUS]", response.status);
 
-    // ── 4. GHL contact updaten ────────────────────────────────────────────
-    const ghlResult = await updateGhlContact(contactId, extracted);
+    const rawResponseText = await response.text();
+    console.log("[ANTHROPIC RAW TEXT RESPONSE]", rawResponseText);
+
+    let anthropicJson;
+    try {
+      anthropicJson = JSON.parse(rawResponseText);
+    } catch (err) {
+      return res.status(500).json({
+        ok: false,
+        error: "Anthropic response was geen geldige JSON",
+        rawResponseText
+      });
+    }
+
+    console.log("[ANTHROPIC PARSED RESPONSE JSON]", JSON.stringify(anthropicJson, null, 2));
+
+    const textBlocks = Array.isArray(anthropicJson?.content)
+      ? anthropicJson.content
+          .filter(block => block?.type === "text")
+          .map(block => block?.text || "")
+      : [];
+
+    let modelText = textBlocks.join("").trim();
+
+    console.log("[ANTHROPIC EXTRACTED TEXT]", modelText);
+
+    if (!modelText) {
+      return res.status(500).json({
+        ok: false,
+        error: "Anthropic response bevatte geen tekstcontent",
+        anthropicJson
+      });
+    }
+
+    modelText = modelText
+      .replace(/^```json\s*/i, "")
+      .replace(/^```\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
+
+    console.log("[ANTHROPIC CLEANED TEXT]", modelText);
+
+    let parsed;
+    try {
+      parsed = JSON.parse(modelText);
+    } catch (err) {
+      return res.status(500).json({
+        ok: false,
+        error: `Claude gaf geen geldige JSON terug: ${modelText}`
+      });
+    }
+
+    console.log("[FINAL PARSED JSON]", JSON.stringify(parsed, null, 2));
 
     return res.status(200).json({
-      ok:         true,
-      contactId,
-      extracted,
-      ghlUpdated: ghlResult != null,
+      ok: true,
+      messageText,
+      parsed
     });
-
   } catch (err) {
-    console.error('[Webhook error]', err.message, err.stack);
-    return res.status(500).json({ ok: false, error: err.message });
+    console.error("[UNCAUGHT ERROR]", err);
+
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || "Onbekende serverfout"
+    });
   }
 }
