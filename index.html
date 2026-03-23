@@ -17,6 +17,7 @@
     --blue: #4a9eff;
     --text: #e8e8f0;
     --muted: #666680;
+    --yellow: #ffd000;
     --reparatie: #ff6b35;
     --onderhoud: #00d4aa;
     --installatie: #4a9eff;
@@ -145,6 +146,34 @@
   }
   .btn-add:hover { opacity: 0.85; }
 
+  .btn-blocked {
+    background: transparent;
+    border: 1px solid #333;
+    color: #888;
+    padding: 7px 12px;
+    border-radius: 6px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-blocked:hover { border-color: #ff6060; color: #ff6060; }
+  .btn-blocked.active { background: #2a1515; border-color: #ff6060; color: #ff6060; }
+
+  .blocked-banner {
+    display: none;
+    background: #2a1515;
+    border: 1px solid #ff6060;
+    color: #ff6060;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 12px;
+  }
+  .blocked-banner.visible { display: block; }
+
   /* KAART */
   .appt-card {
     background: var(--surface);
@@ -181,9 +210,30 @@
     font-family: 'DM Mono', monospace;
     font-size: 14px;
     font-weight: 500;
-    color: var(--accent2);
+    color: var(--yellow);
   }
   .appt-card.done .appt-time { color: var(--muted); }
+
+  .time-window-badge {
+    display: inline-block;
+    font-size: 9px;
+    font-family: 'DM Mono', monospace;
+    background: rgba(255,208,0,0.12);
+    border: 1px solid rgba(255,208,0,0.3);
+    color: var(--yellow);
+    border-radius: 4px;
+    padding: 1px 5px;
+    margin-left: 5px;
+    vertical-align: middle;
+    opacity: 0.75;
+  }
+  .appt-card.violation .time-window-badge {
+    background: rgba(255,80,80,0.12);
+    border-color: rgba(255,80,80,0.4);
+    color: #ff6060;
+    opacity: 1;
+  }
+  .appt-card.violation { border-color: rgba(255,80,80,0.4); }
 
   .appt-actions { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 
@@ -215,8 +265,8 @@
     margin-bottom: 2px;
   }
 
-  .appt-address { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
-  .appt-desc { font-size: 11px; color: #8888aa; font-style: italic; margin-bottom: 6px; }
+  .appt-address { font-size: 11px; color: var(--muted); margin-bottom: 4px; font-style: italic; }
+  .appt-desc { font-size: 11px; color: #8888aa; font-style: normal; margin-bottom: 6px; }
 
   /* Extra info rij */
   .appt-meta {
@@ -392,6 +442,34 @@
   }
   .btn-confirm:hover { opacity: 0.85; }
 
+  .btn-prijs {
+    background: var(--surface3);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-prijs:hover, .btn-prijs.active { background: rgba(255,208,0,0.1); border-color: var(--yellow); color: var(--yellow); }
+
+  .btn-afrekenen {
+    background: rgba(255,208,0,0.12);
+    border: 1px solid var(--yellow);
+    color: var(--yellow);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-afrekenen:hover { background: rgba(255,208,0,0.22); }
+
   /* ROUTE PANEL */
   .route-panel {
     padding: 16px;
@@ -420,8 +498,41 @@
     gap: 8px;
   }
   .btn-optimize:hover { opacity: 0.85; }
+  .btn-optimize:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn-unlock-route { background: var(--surface3); border: 1px solid var(--border); color: var(--muted); padding: 8px 10px; border-radius: 8px; font-size: 11px; cursor: pointer; white-space: nowrap; }
+  .btn-unlock-route:hover { border-color: var(--accent); color: var(--accent); }
+
+  .btn-confirm-route {
+    background: rgba(0,212,170,0.1);
+    border: 1px solid var(--accent2);
+    color: var(--accent2);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+  }
+  .btn-confirm-route:hover { background: rgba(0,212,170,0.2); }
+  .btn-confirm-route.saved { background: rgba(0,212,170,0.25); }
 
   .route-list { display: flex; flex-direction: column; }
+
+  .route-drag-handle {
+    color: #888;
+    font-size: 18px;
+    line-height: 1;
+    cursor: grab;
+    padding: 4px 6px;
+    flex-shrink: 0;
+    user-select: none;
+    border-radius: 4px;
+  }
+  .route-drag-handle:hover { background: var(--surface3); color: white; }
+  .route-item.dragging { opacity: 0.35; }
+  .route-item.drag-over { border-top: 2px solid var(--accent); }
 
   .route-item {
     display: flex;
@@ -520,6 +631,9 @@
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
   .btn-cancel { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); padding: 7px 14px; border-radius: 6px; font-family: 'DM Sans', sans-serif; font-size: 12px; cursor: pointer; }
   .btn-save { background: var(--accent); border: none; color: white; padding: 7px 14px; border-radius: 6px; font-family: 'DM Sans', sans-serif; font-weight: 500; font-size: 12px; cursor: pointer; }
+  .btn-send-link { background: #25D366; border: none; color: white; padding: 7px 14px; border-radius: 6px; font-family: 'DM Sans', sans-serif; font-weight: 500; font-size: 12px; cursor: pointer; }
+  .btn-delete-appt { background: rgba(255,80,80,0.1); border: 1px solid rgba(255,80,80,0.35); color: #ff6060; padding: 7px 14px; border-radius: 6px; font-family: 'DM Sans', sans-serif; font-size: 12px; cursor: pointer; }
+  .btn-delete-appt:hover { background: rgba(255,80,80,0.2); }
 
   .form-row { margin-bottom: 8px; }
   .form-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; display: block; }
@@ -561,6 +675,77 @@
   .toast.success { border-color: var(--accent2); }
   .toast.info { border-color: var(--blue); }
   .toast.loading { border-color: var(--accent); }
+
+  /* PRIJS SECTIE */
+  .price-section {
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+    margin-top: 2px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .price-section-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .extra-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text);
+    padding: 2px 0;
+  }
+  .extra-remove {
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 10px;
+    padding: 0 4px;
+    transition: color 0.15s;
+  }
+  .extra-remove:hover { color: var(--reparatie); }
+  .add-extra-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+  }
+  .add-extra-row .form-input {
+    padding: 5px 8px;
+    font-size: 11px;
+    height: 30px;
+  }
+  .price-input { width: 72px; flex-shrink: 0; }
+  .btn-add-extra {
+    background: var(--surface3);
+    border: 1px solid var(--border);
+    color: var(--accent2);
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+  .btn-add-extra:hover { border-color: var(--accent2); background: rgba(0,212,170,0.1); }
+  .price-total-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--accent2);
+    border-top: 1px solid var(--border);
+    padding-top: 6px;
+    margin-top: 4px;
+  }
 
   ::-webkit-scrollbar { width: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -653,11 +838,17 @@
       height: auto;
     }
 
-    .appt-inner { padding: 10px 10px 10px 32px; }
-    .appt-number { left: 10px; }
-    .icon-btn { width: 32px; height: 32px; font-size: 14px; }
-    .appt-name { font-size: 13px; }
-    .appt-time { font-size: 13px; }
+    .appt-inner { padding: 12px 10px 12px 36px; }
+    .appt-number { left: 10px; font-size: 12px; }
+    .icon-btn { width: 36px; height: 36px; font-size: 16px; }
+    .appt-name { font-size: 17px; }
+    .appt-time { font-size: 20px; }
+    .appt-address { font-size: 15px; }
+    .appt-desc { font-size: 15px; }
+    .tag { font-size: 11px; padding: 4px 9px; }
+    .appt-phone { font-size: 13px; }
+    .appt-price { font-size: 16px; }
+    .btn-done { font-size: 13px; padding: 7px 12px; }
 
     .form-row-2 { grid-template-columns: 1fr; }
 
@@ -700,8 +891,10 @@
   <div class="appointments">
     <div class="appointments-header">
       <div class="section-title">⬛ Afspraken van de dag</div>
+      <button class="btn-blocked" id="btnBlocked" onclick="toggleBlocked()"></button>
       <button class="btn-add" onclick="openModal()">+ Afspraak</button>
     </div>
+    <div class="blocked-banner" id="blockedBanner">🚫 Deze dag is geblokkeerd (vakantie / vrij)</div>
     <div id="apptList"></div>
     <div class="total-bar">
       <div class="total-label">Totaal dagomzet</div>
@@ -711,10 +904,63 @@
 
   <div class="route-panel">
     <div class="section-title">⚡ Routevolgorde</div>
-    <button class="btn-optimize" onclick="optimizeRoute()">⚡ OPTIMALISEER VOLGORDE</button>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <button class="btn-optimize" id="btnOptimize" style="flex:1" onclick="optimizeRoute()">⚡ OPTIMALISEER</button>
+      <button class="btn-unlock-route" id="btnUnlock" style="display:none" onclick="unlockRoute()" title="Handmatige volgorde verwijderen en opnieuw optimaliseren">🔓 Ontgrendel</button>
+      <button class="btn-confirm-route" id="btnConfirmRoute" onclick="confirmRoute()" title="Sla geplande tijden op in GHL zodat ochtendmeldingen de juiste aankomsttijd sturen">✓ Bevestig route</button>
+    </div>
+    <div id="routeLocalHint" style="font-size:11px;color:var(--muted);margin:-2px 0 10px;line-height:1.35;display:none"></div>
+    <button type="button" onclick="resetLocalRouteTimes()" style="font-size:11px;background:transparent;border:none;color:var(--muted);cursor:pointer;text-decoration:underline;padding:0;margin:-6px 0 10px;display:none" id="btnResetLocalRoute">↺ Reset naar GHL-agenda (wis lokale tijden)</button>
     <div class="route-list" id="routeList"></div>
     <a class="btn-maps" href="#" onclick="openMaps(event)">🗺 Open volledige route in Maps</a>
     <button class="btn-morning" onclick="sendMorningMessages()">☀️ Stuur ochtendmeldingen</button>
+  </div>
+</div>
+
+<!-- ONDERWEG BEVESTIGING POPUP -->
+<div class="modal-overlay" id="onderwegOverlay">
+  <div class="modal" style="max-width:340px">
+    <div class="modal-title" id="onderwegTitle">Onderweg?</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5" id="onderwegText"></div>
+    <div class="modal-actions" style="flex-direction:column;gap:8px">
+      <button class="btn-save" style="width:100%;padding:10px" onclick="onderwegJaStuur()">📱 Ja, stuur WhatsApp met ETA</button>
+      <button class="btn-cancel" style="width:100%;padding:10px;text-align:center" onclick="onderwegJeenBericht()">Alleen status veranderen</button>
+      <button class="btn-cancel" style="width:100%;padding:10px;text-align:center;color:#ff6060" onclick="closeOnderwegModal()">Annuleren</button>
+    </div>
+  </div>
+</div>
+
+<!-- VERPLAATS / VERWIJDER MODAL -->
+<div class="modal-overlay" id="rescheduleOverlay">
+  <div class="modal">
+    <div class="modal-title" id="rescheduleTitle">Afspraak</div>
+
+    <div style="margin-bottom:16px;padding:12px;background:var(--surface3);border-radius:8px;font-size:13px;color:var(--muted)">
+      Wil je deze afspraak verplaatsen naar een andere datum of tijd, of verwijderen?
+    </div>
+
+    <div class="form-row-2" style="margin-bottom:12px">
+      <div>
+        <label class="form-label">Nieuwe datum</label>
+        <input class="form-input" type="date" id="rDate">
+      </div>
+      <div>
+        <label class="form-label">Nieuwe tijd</label>
+        <input class="form-input" type="time" id="rTime">
+      </div>
+    </div>
+    <div class="form-row" style="margin-bottom:4px">
+      <label class="form-label">Tijdsvenster afgesproken (optioneel)</label>
+      <input class="form-input" type="text" id="rTimeWindow" placeholder="bijv. 09:00-11:00 of ochtend">
+    </div>
+
+    <div class="modal-actions" style="justify-content:space-between;margin-top:16px">
+      <button class="btn-delete-appt" onclick="confirmDeleteAppt()">🗑 Verwijderen</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn-cancel" onclick="closeRescheduleModal()">Annuleren</button>
+        <button class="btn-save" onclick="confirmReschedule()">↗ Verplaatsen</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -724,17 +970,21 @@
     <div class="modal-title">Nieuwe afspraak</div>
     <div class="form-row-2">
       <div>
+        <label class="form-label">Datum</label>
+        <input class="form-input" type="date" id="mDate">
+      </div>
+      <div>
         <label class="form-label">Tijd</label>
         <input class="form-input" type="time" id="mTime" value="09:00">
       </div>
-      <div>
-        <label class="form-label">Type</label>
-        <select class="form-select" id="mType">
-          <option>Reparatie</option>
-          <option>Onderhoud</option>
-          <option>Installatie</option>
-        </select>
-      </div>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Type</label>
+      <select class="form-select" id="mType">
+        <option>Reparatie</option>
+        <option>Onderhoud</option>
+        <option>Installatie</option>
+      </select>
     </div>
     <div class="form-row">
       <label class="form-label">Naam klant</label>
@@ -764,6 +1014,7 @@
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal()">Annuleren</button>
+      <button class="btn-send-link" onclick="sendBookingLink()" title="Stuur de klant een boekingslink via WhatsApp">📲 Stuur boekingslink</button>
       <button class="btn-save" onclick="saveModal()">Toevoegen</button>
     </div>
   </div>
@@ -780,6 +1031,215 @@ let currentDate = new Date();
 let nextId = 100;
 let appointments = [];
 
+/** Minuten per type werkzaamheid (ook gebruikt bij route / GHL) */
+const JOB_DURATION = { onderhoud: 30, reparatie: 45, installatie: 60 };
+
+// Geblokkeerde datums (vakantie/vrij) — opgeslagen in localStorage
+function getBlockedDates() {
+  try { return JSON.parse(localStorage.getItem('blockedDates') || '[]'); } catch { return []; }
+}
+function saveBlockedDates(dates) {
+  localStorage.setItem('blockedDates', JSON.stringify(dates));
+}
+function isDateBlocked(dateStr) {
+  return getBlockedDates().includes(dateStr);
+}
+function getDateStr(d) {
+  return d.toLocaleDateString('nl-NL', {year:'numeric', month:'2-digit', day:'2-digit', timeZone:'Europe/Amsterdam'}).split('-').reverse().join('-');
+}
+
+function routeSnapshotKey(dateStr) {
+  return `hk_route_times_${dateStr}`;
+}
+
+/** HH:mm voor sorteren en API (nl-NL kan "9:30" geven) */
+function normalizeTimeStr(t) {
+  if (t == null || t === '') return '';
+  const s = String(t).replace(/^~/, '').trim();
+  const parts = s.split(':');
+  const h = Math.min(23, Math.max(0, parseInt(parts[0], 10) || 0));
+  const m = Math.min(59, Math.max(0, parseInt(parts[1], 10) || 0));
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/** Zet `appointments` in de opgeslagen volgorde (alleen bekende contactIds). */
+function applyAppointmentsOrder(contactIdsOrder) {
+  if (!contactIdsOrder?.length) return;
+  const byC = Object.fromEntries(
+    appointments.filter(a => a.contactId).map(a => [a.contactId, a])
+  );
+  const used = new Set();
+  const out = [];
+  for (const cid of contactIdsOrder) {
+    if (byC[cid] && !used.has(cid)) {
+      out.push(byC[cid]);
+      used.add(cid);
+    }
+  }
+  appointments.forEach(a => {
+    if (!a.contactId || !used.has(a.contactId)) {
+      out.push(a);
+      if (a.contactId) used.add(a.contactId);
+    }
+  });
+  appointments = out;
+}
+
+/**
+ * Direct na slepen: volgorde + tijden naar localStorage (geen wachten op Maps).
+ * Anders sorteert de UI weer op kloktijd en lijkt je volgorde “weer weg”.
+ */
+function mergeRouteOrderIntoSnapshot(dateStr) {
+  const active = appointments.filter(a => a.address && a.status !== 'klaar');
+  const contactIdsOrder = active.map(a => a.contactId).filter(Boolean);
+  let prev = {};
+  try {
+    const raw = localStorage.getItem(routeSnapshotKey(dateStr));
+    if (raw) prev = JSON.parse(raw);
+  } catch (_) {}
+  const byContactId = { ...(prev.byContactId || {}) };
+  appointments.forEach(a => {
+    if (!a.contactId || !a.time) return;
+    byContactId[a.contactId] = { time: normalizeTimeStr(a.time), estimated: !!a.estimated };
+  });
+  try {
+    localStorage.setItem(
+      routeSnapshotKey(dateStr),
+      JSON.stringify({ savedAt: Date.now(), byContactId, contactIdsOrder })
+    );
+  } catch (_) {}
+}
+
+function saveRouteSnapshot(dateStr) {
+  const active = appointments.filter(a => a.address && a.status !== 'klaar');
+  const contactIdsOrder = active.map(a => a.contactId).filter(Boolean);
+  const byContactId = {};
+  appointments.forEach(a => {
+    if (!a.contactId || !a.time) return;
+    byContactId[a.contactId] = { time: normalizeTimeStr(a.time), estimated: !!a.estimated };
+  });
+  try {
+    let order = contactIdsOrder;
+    if (!order.length) {
+      try {
+        const raw = localStorage.getItem(routeSnapshotKey(dateStr));
+        if (raw) {
+          const p = JSON.parse(raw);
+          if (p.contactIdsOrder?.length) order = p.contactIdsOrder;
+        }
+      } catch (_) {}
+    }
+    localStorage.setItem(
+      routeSnapshotKey(dateStr),
+      JSON.stringify({ savedAt: Date.now(), byContactId, contactIdsOrder: order })
+    );
+  } catch (_) {}
+}
+
+function applyRouteSnapshot(dateStr) {
+  try {
+    const raw = localStorage.getItem(routeSnapshotKey(dateStr));
+    if (!raw) return false;
+    const snap = JSON.parse(raw);
+    let n = 0;
+    if (snap.byContactId && typeof snap.byContactId === 'object') {
+      appointments.forEach(a => {
+        const o = snap.byContactId[a.contactId];
+        if (o?.time && a.contactId) {
+          a.time = normalizeTimeStr(o.time);
+          a.estimated = !!o.estimated;
+          n++;
+        }
+      });
+    }
+    if (snap.contactIdsOrder?.length) {
+      applyAppointmentsOrder(snap.contactIdsOrder);
+    }
+    return n > 0 || (snap.contactIdsOrder?.length > 0);
+  } catch (_) {
+    return false;
+  }
+}
+
+/** Routestops in dezelfde volgorde als je handmatig hebt gezet (of anders op tijd). */
+function getRouteStopsForSidebar() {
+  const active = appointments.filter(a => a.address && a.status !== 'klaar');
+  const ds = getDateStr(currentDate);
+  let orderIds = [];
+  try {
+    const raw = localStorage.getItem(routeSnapshotKey(ds));
+    if (raw) {
+      const snap = JSON.parse(raw);
+      if (snap.contactIdsOrder?.length) orderIds = snap.contactIdsOrder;
+    }
+  } catch (_) {}
+  if (!orderIds.length) {
+    return [...active].sort((a, b) => a.time.localeCompare(b.time));
+  }
+  const byC = Object.fromEntries(active.filter(a => a.contactId).map(a => [a.contactId, a]));
+  const used = new Set();
+  const out = [];
+  for (const cid of orderIds) {
+    if (byC[cid] && !used.has(cid)) {
+      out.push(byC[cid]);
+      used.add(cid);
+    }
+  }
+  active.forEach(a => {
+    if (!a.contactId || !used.has(a.contactId)) {
+      if (!out.includes(a)) out.push(a);
+      if (a.contactId) used.add(a.contactId);
+    }
+  });
+  return out;
+}
+
+function updateRouteLocalUi() {
+  const ds = getDateStr(currentDate);
+  const has = !!localStorage.getItem(routeSnapshotKey(ds));
+  const hint = document.getElementById('routeLocalHint');
+  const btn = document.getElementById('btnResetLocalRoute');
+  if (hint) {
+    if (has) {
+      hint.style.display = 'block';
+      hint.textContent = 'ℹ️ Lokale route (volgorde + tijden) actief — blijft zo na verversen of andere dag, tot je opnieuw bevestigt of hieronder reset.';
+    } else {
+      hint.style.display = 'none';
+      hint.textContent = '';
+    }
+  }
+  if (btn) btn.style.display = has ? 'block' : 'none';
+}
+
+async function resetLocalRouteTimes() {
+  localStorage.removeItem(routeSnapshotKey(getDateStr(currentDate)));
+  updateRouteLocalUi();
+  await loadAppointments(currentDate);
+  showToast('Lokale tijden gewist — opnieuw uit GHL geladen', 'success');
+}
+function toggleBlocked() {
+  const dateStr = getDateStr(currentDate);
+  let blocked = getBlockedDates();
+  if (blocked.includes(dateStr)) {
+    blocked = blocked.filter(d => d !== dateStr);
+    showToast('Dag weer beschikbaar', 'success');
+  } else {
+    blocked.push(dateStr);
+    showToast('Dag geblokkeerd — geen afspraken mogelijk', 'info');
+  }
+  saveBlockedDates(blocked);
+  updateBlockedUI();
+}
+function updateBlockedUI() {
+  const dateStr = getDateStr(currentDate);
+  const blocked = isDateBlocked(dateStr);
+  const btn = document.getElementById('btnBlocked');
+  const banner = document.getElementById('blockedBanner');
+  btn.textContent = blocked ? '✓ Vrij gezet' : '🚫 Blokkeer dag';
+  btn.classList.toggle('active', blocked);
+  banner.classList.toggle('visible', blocked);
+}
+
 async function loadAppointments(date) {
   const dateStr = date.toLocaleDateString('nl-NL', {year:'numeric', month:'2-digit', day:'2-digit', timeZone:'Europe/Amsterdam'}).split('-').reverse().join('-');
   try {
@@ -790,7 +1250,7 @@ async function loadAppointments(date) {
 
     appointments = events.map((e, i) => {
       const start = new Date(e.startTime);
-      const time = start.toLocaleTimeString('nl-NL', {hour:'2-digit', minute:'2-digit', timeZone:'Europe/Amsterdam'});
+      const time = normalizeTimeStr(start.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }));
       const work = e.title || 'Werkzaamheden';
       let type = 'onderhoud';
       if (/instal|plaatsen|nieuw|monter/i.test(work)) type = 'installatie';
@@ -802,12 +1262,13 @@ async function loadAppointments(date) {
       const firstName = contact.firstName || '';
       const lastName = contact.lastName || '';
       const name = (firstName + ' ' + lastName).trim() || address.split(' ')[0] || 'Klant';
-      const mapsUrl = address ? `https://maps.google.com/?q=${encodeURIComponent(address)}` : '';
+      const mapsUrl = address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : '';
       const ghlUrl = e.contactId ? `${GHL_BASE_URL}/contacts/${e.contactId}` : '';
 
       return {
         id: i + 1,
-        ghlId: e.id,
+        // Kalender-event id (DELETE /calendars/events/:id); server probeert ook …/appointments/:id
+        ghlId: e.id || e.appointmentId,
         contactId: e.contactId || '',
         ghlUrl,
         time,
@@ -818,12 +1279,15 @@ async function loadAppointments(date) {
         desc: e.parsedWork || work,
         notes: e.parsedNotes || '',
         type,
-        price: parseFloat(String(price).replace(/[^0-9.]/g, '')) || 0,
+        price: (e.parsedExtras?.length > 0) ? 0 : (parseFloat(String(price).replace(/[^0-9.]/g, '')) || 0),
         priceLabel: price ? `€${price}` : '',
+        extras: Array.isArray(e.parsedExtras) ? e.parsedExtras.map(r => ({ desc: r.desc, price: Number(r.price) || 0 })) : [],
+        timeWindow: e.parsedTimeWindow || null,
         datumInstallatie: contact.customFields?.find(f => f.id === 'kYP2SCmhZ21Ig0aaLl5l')?.value || '',
         datumOnderhoud: contact.customFields?.find(f => f.id === 'hiTe3Yi5TlxheJq4bLzy')?.value || '',
         status: 'ingepland',
         review: false,
+        priceVisible: false,
       };
     });
 
@@ -837,6 +1301,7 @@ async function loadAppointments(date) {
     appointments = [];
     showToast('Kon afspraken niet laden', 'info');
   }
+  applyRouteSnapshot(dateStr);
   render();
 }
 
@@ -847,6 +1312,7 @@ function formatDate(d) {
 function changeDay(dir) {
   currentDate = new Date(currentDate.getTime() + dir * 86400000);
   document.getElementById('dateLabel').textContent = formatDate(currentDate);
+  updateBlockedUI();
   loadAppointments(currentDate);
 }
 
@@ -865,6 +1331,8 @@ function render() {
   document.getElementById('apptList').innerHTML = sorted.map((a,i) => {
     const isDone = a.status === 'klaar';
     const isOnderweg = a.status === 'onderweg';
+    const isViolation = !!a.violation;
+    const barVisible = isOnderweg || !!a.priceVisible;
     const showServiceDate = isOnderweg && a.type === 'reparatie';
 
     const metaItems = [];
@@ -872,11 +1340,14 @@ function render() {
     if (a.datumOnderhoud) metaItems.push(`<div class="meta-item"><div class="meta-label">Laatste onderhoud</div><div class="meta-value">${a.datumOnderhoud}</div></div>`);
 
     return `
-    <div class="appt-card ${isDone?'done':''} ${isOnderweg?'onderweg':''}" id="card-${a.id}">
+    <div class="appt-card ${isDone?'done':''} ${isOnderweg?'onderweg':''} ${isViolation?'violation':''}" id="card-${a.id}">
       <div class="appt-number">#${i+1}</div>
       <div class="appt-inner">
         <div class="appt-top">
-          <div class="appt-time">${a.time}</div>
+          <div class="appt-time">
+            ${a.estimated ? '~' : ''}${a.time}
+            ${a.timeWindow ? `<span class="time-window-badge">${a.timeWindow}</span>` : ''}
+          </div>
           <div class="appt-actions">
             ${a.phone ? `<a class="icon-btn" href="tel:${a.phone}" title="Bellen">📞</a>` : ''}
             ${a.mapsUrl ? `<a class="icon-btn" href="${a.mapsUrl}" target="_blank" title="Maps">📍</a>` : ''}
@@ -900,14 +1371,16 @@ function render() {
               <div class="dot ${a.status}"></div>
               <span style="color:var(--muted);font-size:10px">${a.status}</span>
             </div>
-            ${!isDone ? `<button class="btn-done ${isOnderweg?'active':''}" onclick="toggleOnderweg(${a.id})">
-              ${isOnderweg ? '✓ Klaar?' : '→ Onderweg'}
+            ${!isDone ? `<button class="btn-prijs ${barVisible&&!isOnderweg?'active':''}" onclick="togglePrijs(${a.id})" title="Prijsoverzicht bekijken">💶 Prijs</button>` : ''}
+            ${!isDone ? `<button class="btn-done ${isOnderweg?'active':''}" onclick="${isOnderweg ? `scrollToPrijs(${a.id})` : `askOnderweg(${a.id})`}">
+              ${isOnderweg ? '💳 Afrekenen' : '→ Onderweg'}
             </button>` : ''}
+            ${isOnderweg ? `<button class="btn-afrekenen" onclick="scrollToPrijs(${a.id})">💳 Afrekenen</button>` : ''}
           </div>
         </div>
       </div>
 
-      <div class="complete-bar ${isOnderweg?'visible':''}" id="bar-${a.id}">
+      <div class="complete-bar ${barVisible?'visible':''}" id="bar-${a.id}">
         <div class="complete-row">
           <label class="review-toggle" onclick="toggleReview(${a.id})">
             <div class="toggle ${a.review?'on':''}" id="tog-${a.id}"></div>
@@ -919,6 +1392,36 @@ function render() {
           <span>Laatste onderhoud:</span>
           <input type="date" id="sdate-${a.id}" value="${a.lastService||''}" onchange="setLastService(${a.id}, this.value)">
         </div>` : ''}
+
+        <div class="price-section" id="price-${a.id}">
+          <div class="price-section-label">Prijsoverzicht${(a.extras||[]).length === 0 && !a.price ? '<span style="color:var(--muted);font-size:10px;font-weight:400;margin-left:6px">Nog geen prijs uit chat</span>' : ''}</div>
+          ${a.price && (a.extras||[]).length === 0 ? `<div class="extra-item"><span>Basis</span><span>€${a.price}</span></div>` : ''}
+          ${(a.extras||[]).map((e,i) => `
+            <div class="extra-item">
+              <span>${e.desc}</span>
+              <div style="display:flex;gap:8px;align-items:center">
+                <span>€${e.price}</span>
+                <span class="extra-remove" onclick="removeExtra(${a.id},${i})">✕</span>
+              </div>
+            </div>`).join('')}
+          <div class="add-extra-row" style="flex-direction:column;gap:5px">
+            <select class="form-select" id="extra-select-${a.id}" onchange="onProductSelect(${a.id})">
+              <option value="">— Kies product / onderdeel —</option>
+              ${PRODUCTS.map(p => `<option value="${p.desc}|${p.price}">${p.desc} — €${p.price}</option>`).join('')}
+              <option value="eigen|0">Eigen omschrijving...</option>
+            </select>
+            <div style="display:flex;gap:6px">
+              <input class="form-input" type="text" id="extra-desc-${a.id}" placeholder="Omschrijving" style="flex:1">
+              <input class="form-input price-input" type="number" id="extra-price-${a.id}" placeholder="€" min="0">
+              <button class="btn-add-extra" onclick="addExtra(${a.id})">+</button>
+            </div>
+          </div>
+          <div class="price-total-row">
+            <span>Totaal</span>
+            <span>€${calcTotalPrice(a)}</span>
+          </div>
+        </div>
+
         <div class="complete-row">
           <div style="display:flex;gap:8px;margin-left:auto">
             <button class="btn-cancel" onclick="cancelOnderweg(${a.id})">✕ Annuleer</button>
@@ -929,25 +1432,147 @@ function render() {
     </div>`;
   }).join('');
 
-  renderRoute(sorted);
+  renderRoute(getRouteStopsForSidebar());
   calcStats();
+  updateRouteLocalUi();
 }
 
-function renderRoute(sorted) {
-  document.getElementById('routeList').innerHTML =
+function renderRoute(routeStops) {
+  const list = document.getElementById('routeList');
+  list.innerHTML =
     `<div class="route-item">
+      <div class="route-drag-handle" style="visibility:hidden">&#8801;</div>
       <div class="route-num depot">🏠</div>
       <div class="route-info"><div class="route-name">Depot / Start</div><div class="route-addr">Vaste startlocatie</div></div>
     </div>` +
-    sorted.map((a,i) => `
-    <div class="route-item ${a.status==='klaar'?'done':''}" onclick="scrollToCard(${a.id})">
+    routeStops.map((a,i) => `
+    <div class="route-item ${a.status==='klaar'?'done':''}"
+         draggable="true"
+         data-appt-id="${a.id}"
+         onclick="scrollToCard(${a.id})">
+      <div class="route-drag-handle" onclick="event.stopPropagation()" title="Slepen om te herordenen">&#8801;</div>
       <div class="route-num">${i+1}</div>
       <div class="route-info">
         <div class="route-name">${a.name}</div>
         <div class="route-addr">${a.address}</div>
       </div>
-      <div class="route-time">${a.time}</div>
+      <div class="route-time">${a.estimated ? '~' : ''}${a.time}</div>
     </div>`).join('');
+
+  initRouteDrag(list);
+}
+
+/** Zelfde volgorde als `active` (array), ETAs via Google Distance Matrix / Directions */
+async function recalculateRouteTimesPreservingOrder(active) {
+  if (!active.length) return;
+  const res = await fetch('/api/optimize-route', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      appointments: active.map(a => ({
+        address:     a.address,
+        timeWindow:  a.timeWindow || null,
+        jobDuration: JOB_DURATION[a.type] || 30,
+      })),
+      preserveOrder: true,
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || data.error || 'Route-API fout');
+
+  active.forEach(a => { a.violation = false; });
+  data.order.forEach((apptIdx, step) => {
+    const appt = active[apptIdx];
+    if (appt) {
+      appt.time      = data.etas[step];
+      appt.estimated = true;
+    }
+  });
+  if (data.violations?.length) {
+    data.violations.forEach(v => {
+      const appt = active[v.apptIdx];
+      if (appt) appt.violation = true;
+    });
+  }
+}
+
+let _dragSrcId = null;
+let routeLocked = false;
+
+function unlockRoute() {
+  routeLocked = false;
+  document.getElementById('btnOptimize').disabled = false;
+  document.getElementById('btnUnlock').style.display = 'none';
+  showToast('Volgorde ontgrendeld — je kunt nu opnieuw optimaliseren', 'info');
+}
+
+function initRouteDrag(list) {
+  const items = list.querySelectorAll('[data-appt-id]');
+
+  items.forEach(el => {
+    el.addEventListener('dragstart', e => {
+      _dragSrcId = parseInt(el.dataset.apptId);
+      el.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+
+    el.addEventListener('dragend', () => {
+      el.classList.remove('dragging');
+      list.querySelectorAll('.drag-over').forEach(x => x.classList.remove('drag-over'));
+    });
+
+    el.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      list.querySelectorAll('.drag-over').forEach(x => x.classList.remove('drag-over'));
+      if (parseInt(el.dataset.apptId) !== _dragSrcId) el.classList.add('drag-over');
+    });
+
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      const targetId = parseInt(el.dataset.apptId);
+      if (targetId === _dragSrcId) return;
+
+      const srcIdx = appointments.findIndex(a => a.id === _dragSrcId);
+      const tgtIdx = appointments.findIndex(a => a.id === targetId);
+      if (srcIdx === -1 || tgtIdx === -1) return;
+
+      const [moved] = appointments.splice(srcIdx, 1);
+      appointments.splice(tgtIdx, 0, moved);
+
+      mergeRouteOrderIntoSnapshot(getDateStr(currentDate));
+      updateRouteLocalUi();
+
+      const active = appointments.filter(a => a.address && a.status !== 'klaar');
+      routeLocked = true;
+      document.getElementById('btnOptimize').disabled = true;
+      document.getElementById('btnUnlock').style.display = 'inline-flex';
+
+      (async () => {
+        showToast('⏳ Reistijden berekenen (Google Maps)...', 'loading');
+        try {
+          await recalculateRouteTimesPreservingOrder(active);
+          saveRouteSnapshot(getDateStr(currentDate));
+          render();
+          showToast('Volgorde aangepast met echte reistijden · 🔓 om opnieuw te optimaliseren', 'success');
+        } catch (err) {
+          console.error(err);
+          let mins = 9 * 60;
+          active.forEach((a, i) => {
+            a.time      = i === 0 ? '09:00' : minsToTime(mins);
+            a.estimated = true;
+            const jobMins    = JOB_DURATION[a.type] || 30;
+            const travelMins = 15;
+            mins = Math.ceil((mins + jobMins + travelMins) / 15) * 15;
+          });
+          saveRouteSnapshot(getDateStr(currentDate));
+          render();
+          showToast('Maps niet bereikbaar — tijden geschat (15 min tussen stops). ' + (err.message || ''), 'info');
+        }
+      })();
+    });
+  });
 }
 
 function scrollToCard(id) {
@@ -961,20 +1586,69 @@ function cancelOnderweg(id) {
   render();
 }
 
+let _onderwegId = null;
+
+function togglePrijs(id) {
+  const a = appointments.find(x => x.id === id);
+  if (!a) return;
+  a.priceVisible = !a.priceVisible;
+  render();
+  if (a.priceVisible) setTimeout(() => scrollToPrijs(id), 80);
+}
+
+function askOnderweg(id) {
+  const a = appointments.find(x => x.id === id);
+  if (!a) return;
+  _onderwegId = id;
+  document.getElementById('onderwegTitle').textContent = `Onderweg naar ${a.name}?`;
+  document.getElementById('onderwegText').innerHTML =
+    `Zal ik een WhatsApp sturen met de verwachte aankomsttijd?<br><br>` +
+    `<strong style="color:var(--yellow);font-size:15px">ETA: ${a.time}</strong>`;
+  document.getElementById('onderwegOverlay').classList.add('visible');
+}
+
+function closeOnderwegModal() {
+  document.getElementById('onderwegOverlay').classList.remove('visible');
+  _onderwegId = null;
+}
+
+function onderwegJaStuur() {
+  const a = appointments.find(x => x.id === _onderwegId);
+  if (!a) return;
+  a.status = 'onderweg';
+  a.priceVisible = false;
+  sendETA(a);
+  showToast(`📱 WhatsApp verstuurd naar ${a.name}`, 'info');
+  closeOnderwegModal();
+  render();
+  setTimeout(() => scrollToPrijs(_onderwegId || a.id), 80);
+}
+
+function onderwegJeenBericht() {
+  const a = appointments.find(x => x.id === _onderwegId);
+  if (!a) return;
+  a.status = 'onderweg';
+  a.priceVisible = false;
+  closeOnderwegModal();
+  render();
+  setTimeout(() => scrollToPrijs(a.id), 80);
+}
+
 function toggleOnderweg(id) {
+  // Wordt alleen nog aangeroepen voor "✓ Klaar?" (isOnderweg → klaar flow)
   const a = appointments.find(x=>x.id===id);
   if (!a) return;
-  a.status = a.status === 'onderweg' ? 'ingepland' : 'onderweg';
   if (a.status === 'onderweg') {
-    const sorted = [...appointments].sort((a,b)=>a.time.localeCompare(b.time));
-    const idx = sorted.findIndex(x=>x.id===id);
-    const next = sorted.slice(idx+1).find(x=>x.status==='ingepland');
-    if (next) {
-      sendETA(next, a.time);
-      showToast(`📱 ETA bericht verstuurd naar ${next.name}`, 'info');
-    }
+    // Klaar knop → open complete bar als die al niet open is
+    a.priceVisible = false;
+    render();
+    setTimeout(() => scrollToPrijs(id), 80);
   }
-  render();
+}
+
+function scrollToPrijs(id) {
+  const el = document.getElementById(`price-${id}`);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function toggleReview(id) {
@@ -987,33 +1661,132 @@ function setLastService(id, val) {
   if (a) a.lastService = val;
 }
 
+const PRODUCTS = [
+  { desc: 'Slang FLEX',        price: 70  },
+  { desc: 'Cartridge FLEX',    price: 195 },
+  { desc: 'Reduceerventiel',   price: 125 },
+  { desc: 'Mengventiel',       price: 195 },
+  { desc: 'Knop FLEX',         price: 110 },
+  { desc: 'Perlator',          price: 30  },
+  { desc: 'Binnenwerk Pro 3',  price: 280 },
+  { desc: 'Binnenwerk COMBI',  price: 320 },
+  { desc: 'Voorrijkosten',     price: 50  },
+  { desc: 'Montagekosten',     price: 105 },
+];
+
+function onProductSelect(id) {
+  const val = document.getElementById(`extra-select-${id}`)?.value;
+  if (!val) return;
+  const [desc, price] = val.split('|');
+  const descEl  = document.getElementById(`extra-desc-${id}`);
+  const priceEl = document.getElementById(`extra-price-${id}`);
+  if (descEl)  descEl.value  = desc;
+  if (priceEl) priceEl.value = price;
+}
+
+function calcTotalPrice(a) {
+  const base = a.price || 0;
+  const extrasTotal = (a.extras || []).reduce((s, e) => s + (e.price || 0), 0);
+  return base + extrasTotal;
+}
+
+function addExtra(id) {
+  const a = appointments.find(x=>x.id===id);
+  if (!a) return;
+  const descEl   = document.getElementById(`extra-desc-${id}`);
+  const priceEl  = document.getElementById(`extra-price-${id}`);
+  const selectEl = document.getElementById(`extra-select-${id}`);
+  const desc  = descEl?.value?.trim();
+  const price = parseFloat(priceEl?.value);
+  if (!desc || isNaN(price) || price <= 0) {
+    showToast('Vul omschrijving én bedrag in', 'info');
+    return;
+  }
+  if (!a.extras) a.extras = [];
+  a.extras.push({ desc, price });
+  // Reset velden
+  if (descEl)   descEl.value  = '';
+  if (priceEl)  priceEl.value = '';
+  if (selectEl) selectEl.value = '';
+  render();
+}
+
+function removeExtra(id, idx) {
+  const a = appointments.find(x=>x.id===id);
+  if (!a || !a.extras) return;
+  a.extras.splice(idx, 1);
+  render();
+}
+
 async function confirmDone(id) {
   const a = appointments.find(x=>x.id===id);
   if (!a) return;
-  showToast('⏳ Bezig...', 'loading');
+  showToast('⏳ Bezig met afronden...', 'loading');
+
+  const total  = calcTotalPrice(a);
+  const lines  = a.extras || [];
+  const contact = a.contact || {};
+
+  // 1. GHL afronden (datum, tags, stage)
   if (a.contactId) {
     try {
       await fetch('/api/ghl?action=completeAppointment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contactId: a.contactId, type: a.type, sendReview: a.review, lastService: a.lastService || null })
+        body: JSON.stringify({
+          contactId:   a.contactId,
+          type:        a.type,
+          sendReview:  a.review,
+          lastService: a.lastService || null,
+          totalPrice:  total,
+          extras:      lines,
+        })
       });
     } catch(e) { console.log('GHL niet bereikbaar', e); }
   }
+
+  // 2. Betaallink + factuur PDF versturen
+  if (a.contactId && total > 0) {
+    try {
+      const resp = await fetch('/api/create-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contactId:      a.contactId,
+          contactName:    a.name,
+          contactEmail:   contact.email || '',
+          contactAddress: a.address,
+          contactCity:    contact.city || '',
+          lines,
+          basePrice:      a.price || 0,
+          appointmentDesc: a.desc || 'Werkzaamheden',
+        })
+      });
+      const result = await resp.json();
+      if (result.paymentUrl) {
+        showToast(`✓ Klaar!\n💳 Betaallink verstuurd via WhatsApp\n📄 Factuur ${result.invoiceNumber} per email`, 'success');
+      } else {
+        showToast('✓ Klaar! (betaallink kon niet worden aangemaakt)', 'success');
+      }
+    } catch(e) {
+      console.log('create-payment fout', e);
+      showToast('✓ Klaar! (fout bij betaallink)', 'success');
+    }
+  } else {
+    showToast('✓ Klant afgerond', 'success');
+  }
+
   a.status = 'klaar';
-  const msgs = ['✓ Klant afgerond', '📧 Factuur workflow getriggerd'];
-  if (a.review) msgs.push('⭐ Review mail ingepland');
-  showToast(msgs.join('\n'), 'success');
   render();
 }
 
-async function sendETA(nextAppt, currentTime) {
-  if (!nextAppt.contactId) return;
+async function sendETA(appt) {
+  if (!appt.contactId) return;
   try {
     await fetch('/api/ghl?action=sendETA', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contactId: nextAppt.contactId, eta: nextAppt.time })
+      body: JSON.stringify({ contactId: appt.contactId, eta: appt.time, name: appt.name })
     });
   } catch(e) {}
 }
@@ -1034,54 +1807,324 @@ async function sendMorningMessages() {
   showToast(`☀️ Verstuurd naar ${appts.length} klanten`, 'success');
 }
 
-function optimizeRoute() {
-  appointments.sort((a,b) => a.time.localeCompare(b.time));
-  showToast('⚡ Route geoptimaliseerd', 'success');
-  render();
+function minsToTime(totalMins) {
+  const h = Math.floor(totalMins / 60) % 24;
+  const m = totalMins % 60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
+
+function timeToMins(timeStr) {
+  const [h, m] = timeStr.split(':').map(Number);
+  return h * 60 + m;
+}
+
+async function optimizeRoute() {
+  const active = appointments.filter(a => a.address && a.status !== 'klaar');
+  const done   = appointments.filter(a => !a.address || a.status === 'klaar');
+
+  if (active.length < 2) {
+    showToast('Minimaal 2 adressen nodig om te optimaliseren', 'info');
+    return;
+  }
+
+  showToast('⏳ Route wordt geoptimaliseerd...', 'loading');
+
+  try {
+    const res = await fetch('/api/optimize-route', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        appointments: active.map(a => ({
+          address:     a.address,
+          timeWindow:  a.timeWindow || null,
+          jobDuration: JOB_DURATION[a.type] || 30,
+        }))
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Onbekende fout');
+
+    // Herorden op basis van geplande volgorde
+    const optimized = data.order.map((i, step) => {
+      const appt = active[i];
+      appt.time      = data.etas[step];
+      appt.estimated = true;
+      appt.violation = false;
+      return appt;
+    });
+
+    // Markeer schendingen (aankomst ná tijdsvenster)
+    if (data.violations?.length > 0) {
+      data.violations.forEach(v => {
+        const appt = optimized[data.order.indexOf(v.apptIdx)];
+        if (appt) appt.violation = true;
+      });
+    }
+
+    appointments = [...optimized, ...done];
+
+    const totalTravel = (data.legInfo || []).reduce((s, l) => s + (l.durationSeconds || 0), 0);
+    const totalTravelMins = Math.round(totalTravel / 60);
+
+    const violationMsg = data.violations?.length > 0
+      ? ` · ⚠️ ${data.violations.length} tijdsvenster${data.violations.length > 1 ? 's' : ''} niet haalbaar`
+      : '';
+
+    routeLocked = false;
+    document.getElementById('btnOptimize').disabled = false;
+    document.getElementById('btnUnlock').style.display = 'none';
+    saveRouteSnapshot(getDateStr(currentDate));
+    showToast(`⚡ Route geoptimaliseerd!\n${active.length} stops · ~${totalTravelMins} min rijden${violationMsg}`, 'success');
+    render();
+  } catch(e) {
+    console.error('Optimalisatie mislukt:', e);
+    showToast('Kon route niet optimaliseren: ' + e.message, 'info');
+  }
 }
 
 const DEPOT = 'Cornelis Dopperkade, Amsterdam';
 
 function openMaps(e) {
   e.preventDefault();
-  const sorted = [...appointments].sort((a,b)=>a.time.localeCompare(b.time));
-  const enc = addr => addr.trim().replace(/ /g, '+');
-  const addrs = sorted.filter(a=>a.address).map(a=>enc(a.address));
-  if (addrs.length) {
-    const url = 'https://www.google.com/maps/dir/' + [enc(DEPOT), ...addrs, enc(DEPOT)].join('/');
-    window.open(url, '_blank');
+  const sorted = [...appointments]
+    .filter(a => a.status !== 'klaar' && a.address)
+    .sort((a,b) => a.time.localeCompare(b.time));
+
+  if (!sorted.length) { showToast('Geen adressen beschikbaar', 'info'); return; }
+
+  // Google Maps waypoints formaat: origin → stops → destination (terug naar depot)
+  const waypoints = sorted.map(a => encodeURIComponent(a.address)).join('|');
+  const url = `https://www.google.com/maps/dir/?api=1` +
+    `&origin=${encodeURIComponent(DEPOT)}` +
+    `&destination=${encodeURIComponent(DEPOT)}` +
+    `&waypoints=${waypoints}` +
+    `&travelmode=driving`;
+
+  window.open(url, '_blank');
+}
+
+let _rescheduleId = null;
+
+function deleteAppt(id) {
+  const a = appointments.find(x => x.id === id);
+  if (!a) return;
+  _rescheduleId = id;
+
+  document.getElementById('rescheduleTitle').textContent = a.name.toUpperCase();
+
+  // Vul huidige datum en tijd in als startpunt
+  const todayVal = document.getElementById('dateInput')?.value || new Date().toISOString().split('T')[0];
+  document.getElementById('rDate').value       = todayVal;
+  document.getElementById('rTime').value       = a.time || '09:00';
+  document.getElementById('rTimeWindow').value = a.timeWindow || '';
+
+  document.getElementById('rescheduleOverlay').classList.add('visible');
+}
+
+function closeRescheduleModal() {
+  document.getElementById('rescheduleOverlay').classList.remove('visible');
+  _rescheduleId = null;
+}
+
+function confirmDeleteAppt() {
+  if (_rescheduleId == null) return;
+  appointments = appointments.filter(x => x.id !== _rescheduleId);
+  closeRescheduleModal();
+  render();
+  showToast('Afspraak verwijderd', 'info');
+}
+
+function timeToWindow(timeStr, isFirst) {
+  if (isFirst || timeStr === '09:00') return timeStr; // eerste afspraak: exact tijdstip
+  const [h, m] = timeStr.split(':').map(Number);
+  const totalMin = h * 60 + m;
+  const fmt = min => {
+    const hh = Math.max(0, Math.floor(min / 60));
+    const mm = min % 60;
+    return `${String(hh).padStart(2,'0')}:${String(mm < 0 ? 0 : mm).padStart(2,'0')}`;
+  };
+  return `${fmt(totalMin - 60)}-${fmt(totalMin + 60)}`;
+}
+
+async function confirmRoute() {
+  const active = appointments.filter(a => a.contactId && a.time && a.status !== 'klaar');
+  const routeDate = getDateStr(currentDate);
+  const routeSequence = [...active].sort((a, b) => a.time.localeCompare(b.time));
+  const toSave = routeSequence.map((a, i) => ({
+    contactId: a.contactId,
+    plannedTime: timeToWindow(a.time, i === 0),
+    ghlAppointmentId: a.ghlId || undefined,
+    routeDate,
+    startTime: a.time,
+    durationMin: JOB_DURATION[a.type] || 30,
+  }));
+
+  if (toSave.length === 0) {
+    showToast('Geen afspraken met GHL contactId om op te slaan', 'info');
+    return;
+  }
+
+  const btn = document.getElementById('btnConfirmRoute');
+  btn.textContent = '⏳ Opslaan...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/ghl?action=saveRouteTimes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ routeTimes: toSave })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Fout');
+
+    btn.textContent = '✓ Opgeslagen';
+    btn.classList.add('saved');
+    let msg = `✓ ${data.saved} klanten: geplande aankomst opgeslagen`;
+    if (data.calendarSynced > 0) msg += ` · ${data.calendarSynced} afspraak${data.calendarSynced > 1 ? 'en' : ''} in GHL-agenda bijgewerkt`;
+    if (data.calendarErrors?.length) msg += ` · ⚠️ ${data.calendarErrors.length} agenda-update mislukt (zie serverlog)`;
+    showToast(msg, 'success');
+    saveRouteSnapshot(getDateStr(currentDate));
+    setTimeout(() => {
+      btn.textContent = '✓ Bevestig route';
+      btn.classList.remove('saved');
+      btn.disabled = false;
+    }, 3000);
+  } catch (e) {
+    btn.textContent = '✓ Bevestig route';
+    btn.disabled = false;
+    showToast('Opslaan mislukt: ' + e.message, 'info');
   }
 }
 
-function deleteAppt(id) {
-  appointments = appointments.filter(x=>x.id!==id);
+function confirmReschedule() {
+  const a = appointments.find(x => x.id === _rescheduleId);
+  if (!a) return;
+
+  const newDate       = document.getElementById('rDate').value;
+  const newTime       = document.getElementById('rTime').value;
+  const newTimeWindow = document.getElementById('rTimeWindow').value.trim() || null;
+
+  const currentDate = document.getElementById('dateInput')?.value || '';
+
+  if (newDate && newDate !== currentDate) {
+    // Andere dag → verwijder uit huidig overzicht
+    appointments = appointments.filter(x => x.id !== _rescheduleId);
+    showToast(`${a.name} verplaatst naar ${newDate} ${newTime}`, 'success');
+  } else {
+    // Zelfde dag → update tijd en tijdvenster
+    a.time       = newTime;
+    a.timeWindow = newTimeWindow;
+    a.estimated  = false;
+    showToast(`${a.name} verplaatst naar ${newTime}`, 'success');
+  }
+
+  closeRescheduleModal();
   render();
 }
 
-function openModal() { document.getElementById('modalOverlay').classList.add('visible'); }
+function openModal() {
+  const today = document.getElementById('dateInput')?.value || new Date().toISOString().split('T')[0];
+  document.getElementById('mDate').value = today;
+  document.getElementById('modalOverlay').classList.add('visible');
+}
 function closeModal() { document.getElementById('modalOverlay').classList.remove('visible'); }
 
-function saveModal() {
-  const name = document.getElementById('mName').value.trim();
+async function sendBookingLink() {
+  const name    = document.getElementById('mName').value.trim();
+  const phone   = document.getElementById('mPhone').value.trim();
   const address = document.getElementById('mAddress').value.trim();
-  if (!name||!address) { showToast('Vul naam en adres in', 'info'); return; }
-  const mapsUrl = address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : '';
+  const type    = document.getElementById('mType').value.toLowerCase();
+  const desc    = document.getElementById('mDesc').value.trim();
+  const date    = document.getElementById('mDate')?.value || new Date().toISOString().split('T')[0];
+
+  if (!name) { showToast('Vul de naam in', 'info'); return; }
+  if (!phone) { showToast('Vul het telefoonnummer in voor de boekingslink', 'info'); return; }
+
+  showToast('⏳ Boekingslink aanmaken...', 'loading');
+
+  try {
+    const res = await fetch('/api/book', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, phone, address, date, type, desc })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message || data.error || 'Fout');
+
+    const bookingUrl = data.bookingUrl;
+
+    // Kopieer link naar klembord
+    try {
+      await navigator.clipboard.writeText(bookingUrl);
+      showToast(`✓ Link gekopieerd!\n${bookingUrl}`, 'success');
+    } catch {
+      showToast(`Boekingslink:\n${bookingUrl}`, 'success');
+    }
+
+    // Open WhatsApp met de link als telefoon bekend is
+    if (phone) {
+      const cleanPhone = phone.replace(/[^0-9+]/g, '').replace(/^0/, '+31');
+      const msg = encodeURIComponent(
+        `Hallo ${name}! Je kunt hier je afspraak inplannen voor ${new Date(date+'T12:00:00+01:00').toLocaleDateString('nl-NL', {weekday:'long', day:'numeric', month:'long'})}: ${bookingUrl}`
+      );
+      window.open(`https://wa.me/${cleanPhone}?text=${msg}`, '_blank');
+    }
+
+    closeModal();
+  } catch(e) {
+    showToast(`Fout: ${e.message}`, 'info');
+  }
+}
+
+async function saveModal() {
+  const name    = document.getElementById('mName').value.trim();
+  const address = document.getElementById('mAddress').value.trim();
+  if (!name || !address) { showToast('Vul naam en adres in', 'info'); return; }
+
+  const time    = document.getElementById('mTime').value;
+  const type    = document.getElementById('mType').value.toLowerCase();
+  const phone   = document.getElementById('mPhone').value.trim();
+  const price   = parseInt(document.getElementById('mPrice').value) || 0;
+  const desc    = document.getElementById('mDesc').value.trim() || '—';
+  const contactId = document.getElementById('mContactId').value.trim();
+  const date    = document.getElementById('mDate')?.value || document.getElementById('dateInput')?.value || new Date().toISOString().split('T')[0];
+  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+
+  // Lokaal alvast toevoegen
+  const localId = nextId++;
   appointments.push({
-    id: nextId++, time: document.getElementById('mTime').value,
-    name, address, mapsUrl,
-    desc: document.getElementById('mDesc').value || '—',
-    type: document.getElementById('mType').value.toLowerCase(),
-    phone: document.getElementById('mPhone').value || '',
-    price: parseInt(document.getElementById('mPrice').value)||0,
-    priceLabel: '€'+(parseInt(document.getElementById('mPrice').value)||0),
-    status: 'ingepland', review: false,
-    contactId: document.getElementById('mContactId').value.trim(),
-    ghlUrl: document.getElementById('mContactId').value.trim() ? `${GHL_BASE_URL}/contacts/${document.getElementById('mContactId').value.trim()}` : '',
-    notes: '', datumInstallatie: '', datumOnderhoud: ''
+    id: localId, time, name, address, mapsUrl, desc, type, phone,
+    price, priceLabel: price ? `€${price}` : '',
+    status: 'ingepland', review: false, priceVisible: false,
+    contactId, extras: [],
+    ghlUrl: contactId ? `${GHL_BASE_URL}/contacts/${contactId}` : '',
+    notes: '', datumInstallatie: '', datumOnderhoud: '',
   });
   closeModal();
-  showToast('✓ Afspraak toegevoegd', 'success');
   render();
+  showToast('⏳ Afspraak opslaan in GHL...', 'loading');
+
+  // Opslaan in GHL
+  try {
+    const res = await fetch('/api/ghl?action=createAppointment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, phone, address, date, time, type, desc, contactId })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Onbekende fout');
+
+    // Update lokale afspraak met het echte contactId en GHL-url
+    const a = appointments.find(x => x.id === localId);
+    if (a) {
+      a.contactId = data.contactId;
+      a.ghlUrl    = `${GHL_BASE_URL}/contacts/${data.contactId}`;
+    }
+    render();
+    showToast('✓ Afspraak opgeslagen in GHL', 'success');
+  } catch(e) {
+    showToast(`Lokaal opgeslagen, GHL mislukt: ${e.message}`, 'info');
+  }
 }
 
 let toastTimer;
@@ -1096,6 +2139,7 @@ function showToast(msg, type='info') {
 
 // Init — automatisch naar vandaag
 document.getElementById('dateLabel').textContent = formatDate(currentDate);
+updateBlockedUI();
 loadAppointments(currentDate);
 
 // LOGIN

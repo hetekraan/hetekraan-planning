@@ -1,6 +1,22 @@
 {
+  "cleanUrls": true,
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/booking", "destination": "/booking.html" }
-  ]
+    { "source": "/book/:token", "destination": "/book?token=:token" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/daily-analysis",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/morning-messages",
+      "schedule": "0 6 * * *"
+    }
+  ],
+  "functions": {
+    "api/cron/daily-analysis.js": {
+      "maxDuration": 300
+    }
+  }
 }

@@ -1,0 +1,10 @@
+{
+  "name": "hetekraan-planning",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@mollie/api-client": "^3.7.0",
+    "pdfkit": "^0.15.0",
+    "resend": "^4.0.0"
+  }
+}
