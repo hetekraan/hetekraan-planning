@@ -370,14 +370,22 @@
       hide('resultCard');
       hide('messageCard');
 
-      if (data.success) {
+        if (data.success) {
         const s1 = data.slots?.[0];
         const s2 = data.slots?.[1];
         const d = data.diag || {};
         let sub = `${data.contactName}: gegevens zijn opgeslagen in GHL.`;
-        if (data.messageSent) sub += ' Extra direct WhatsApp is ook verstuurd (alleen als BOOKING_SEND_DIRECT_WHATSAPP aan staat).';
-        else if (d.tagAdd) sub += ' Tag / velden gezet — je GHL-workflow stuurt het template (geen dubbel bericht meer vanuit onze server).';
-        else sub += ' ⚠️ Tag zetten mislukt (API). Open browser DevTools → Network om de fout te zien.';
+        if (data.messageSent) sub += ' WhatsApp is direct verstuurd via de API.';
+        else if (d.fieldsPut && !data.messageSent) {
+          sub += ' ⚠️ WhatsApp niet verstuurd na alle API-pogingen.';
+          if (data.contactPhonePresent === false) sub += ' Geen geldig mobiel nummer op het GHL-contact.';
+          if (d.whatsappAttempts?.length) {
+            const a = d.whatsappAttempts[d.whatsappAttempts.length - 1];
+            sub += ' Laatste poging: ' + a.mode + ' (HTTP ' + a.status + ')' + (a.detail ? ' — ' + String(a.detail).slice(0, 220) : '') + '.';
+          }
+          sub += ' Staat op Vercel BOOKING_SEND_DIRECT_WHATSAPP op false?';
+        } else if (d.tagAdd) sub += ' Tag gezet — workflow kan ook een bericht sturen.';
+        else sub += ' ⚠️ Controleer Vercel logs (custom fields / WhatsApp).';
         if (data.workflowTip) sub += '\n\n' + data.workflowTip;
         document.getElementById('successSub').textContent = sub;
         show('successCard');

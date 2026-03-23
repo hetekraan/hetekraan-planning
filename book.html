@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-store, max-age=0" />
+  <!-- Versie-marker: als je dit niet in "Paginabron bekijken" ziet, laadt je niet de nieuwste book.html -->
+  <meta name="hetekraan-book-build" content="2026-03-17-layout" />
   <title>Afspraak bevestigen – Hetekraan</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -40,7 +43,10 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 22px;
+      font-size: 13px;
+      font-weight: 800;
+      color: #111;
+      letter-spacing: -0.05em;
     }
     .logo-text { font-weight: 700; font-size: 18px; color: #111; }
     .logo-sub  { font-size: 12px; color: #888; }
@@ -66,7 +72,16 @@
       font-size: 15px;
       color: #333;
     }
-    .info-row .icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+    .info-row .info-label {
+      flex-shrink: 0;
+      width: 72px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding-top: 2px;
+    }
     .info-divider {
       height: 1px;
       background: #eee;
@@ -83,7 +98,7 @@
     .slot-btn {
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 14px;
       width: 100%;
       background: #f9f9f9;
       border: 2px solid #e5e5e5;
@@ -102,11 +117,7 @@
       border-color: #ffd000;
       background: #fffbea;
     }
-    .slot-icon {
-      font-size: 28px;
-      flex-shrink: 0;
-    }
-    .slot-info {}
+    .slot-info { flex: 1; min-width: 0; }
     .slot-title {
       font-weight: 700;
       font-size: 16px;
@@ -119,21 +130,28 @@
     }
     .slot-check {
       margin-left: auto;
-      width: 24px;
-      height: 24px;
+      width: 22px;
+      height: 22px;
       border-radius: 50%;
-      border: 2px solid #ddd;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
+      border: 2px solid #ccc;
       flex-shrink: 0;
       transition: all 0.15s;
+      position: relative;
     }
     .slot-btn.selected .slot-check {
       background: #ffd000;
       border-color: #ffd000;
-      color: #111;
+    }
+    .slot-btn.selected .slot-check::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 6px;
+      height: 10px;
+      border: solid #111;
+      border-width: 0 2px 2px 0;
+      transform: translate(-50%, -60%) rotate(45deg);
     }
 
     .confirm-btn {
@@ -175,8 +193,24 @@
       padding: 20px 0;
     }
     .success-icon {
-      font-size: 64px;
-      margin-bottom: 20px;
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 20px;
+      border-radius: 50%;
+      background: #e8f5e9;
+      border: 2px solid #4caf50;
+      position: relative;
+    }
+    .success-icon::after {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: 45%;
+      width: 10px;
+      height: 18px;
+      border: solid #2e7d32;
+      border-width: 0 3px 3px 0;
+      transform: translate(-50%, -50%) rotate(45deg);
     }
     .success-title {
       font-size: 22px;
@@ -205,7 +239,14 @@
       text-align: center;
       padding: 20px 0;
     }
-    .error-icon { font-size: 56px; margin-bottom: 16px; }
+    .error-icon {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 16px;
+      border-radius: 50%;
+      background: #ffebee;
+      border: 2px solid #e57373;
+    }
     .error-title { font-size: 20px; font-weight: 700; color: #111; margin-bottom: 8px; }
     .error-msg { font-size: 15px; color: #666; line-height: 1.6; }
 
@@ -231,16 +272,16 @@
 <body>
   <div class="card">
     <div class="logo">
-      <div class="logo-icon">🔥</div>
+      <div class="logo-icon">HK</div>
       <div>
         <div class="logo-text">Hetekraan</div>
-        <div class="logo-sub">Kraan- en leidingspecialist</div>
+        <div class="logo-sub">Dé Quooker specialist.</div>
       </div>
     </div>
 
     <div id="bookingScreen">
       <h1>Kies jouw tijdslot</h1>
-      <p class="subtitle" id="subtitleText">Selecteer het tijdstip dat het beste uitkomt. De monteur neemt contact op als we een precisere tijd weten.</p>
+      <p class="subtitle" id="subtitleText">We sturen u op de dag van de afspraak een appje met een geschatte aankomsttijd.</p>
 
       <div id="infoRows"></div>
       <div class="info-divider"></div>
@@ -260,26 +301,39 @@
     </div>
 
     <div class="success-screen" id="successScreen">
-      <div class="success-icon">✅</div>
+      <div class="success-icon" aria-hidden="true"></div>
       <div class="success-title">Afspraak bevestigd!</div>
       <div class="success-msg">Bedankt! Je afspraak is ingepland. Je ontvangt een WhatsApp bevestiging.</div>
       <div class="success-detail" id="successDetail"></div>
     </div>
 
     <div class="error-screen" id="errorScreen">
-      <div class="error-icon">😕</div>
+      <div class="error-icon" aria-hidden="true"></div>
       <div class="error-title" id="errorTitle">Er ging iets mis</div>
       <div class="error-msg" id="errorMsg">Neem contact op via WhatsApp of bel ons.</div>
     </div>
   </div>
 
   <script>
-    const SLOT_ICONS = { morning: '🌅', afternoon: '☀️' };
     const SLOT_LABELS = { morning: 'Ochtend', afternoon: 'Middag' };
+
+    /** Unicode-streepje + oude links met kapotte tekens tussen twee tijden */
+    function sanitizeTimeDisplay(str) {
+      if (!str || typeof str !== 'string') return str;
+      let s = str
+        .replace(/\u2013|\u2014|\u2212/g, ' - ')
+        .replace(/\s*-\s*-\s*/g, ' - ')
+        .trim();
+      const times = s.match(/\d{1,2}:\d{2}/g);
+      if (times && times.length >= 2) return `${times[0]} - ${times[1]}`;
+      return s;
+    }
 
     let token = null;
     let selectedSlot = null;
     let bookingData = null;
+
+    const esc = (s) => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 
     function getParam(name) {
       // Ondersteun zowel /book?token=XXX als /book/XXX
@@ -294,10 +348,14 @@
 
     function decodeToken(t) {
       try {
-        // base64url decode
-        const b64 = t.replace(/-/g, '+').replace(/_/g, '/');
+        const raw = decodeURIComponent(String(t).trim());
+        const b64 = raw.replace(/-/g, '+').replace(/_/g, '/');
         const pad = b64 + '=='.slice(0, (4 - b64.length % 4) % 4);
-        return JSON.parse(atob(pad));
+        const binary = atob(pad);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const json = new TextDecoder('utf-8').decode(bytes);
+        return JSON.parse(json);
       } catch { return null; }
     }
 
@@ -323,27 +381,26 @@
       // Vul info rows (geen vaste datum – elk slot heeft eigen datum)
       const infoRows = document.getElementById('infoRows');
       infoRows.innerHTML = `
-        <div class="info-row"><span class="icon">👤</span><span>${bookingData.name}</span></div>
-        ${bookingData.address ? `<div class="info-row"><span class="icon">📍</span><span>${bookingData.address}</span></div>` : ''}
+        <div class="info-row"><span class="info-label">Naam</span><span>${esc(bookingData.name)}</span></div>
+        ${bookingData.address ? `<div class="info-row"><span class="info-label">Adres</span><span>${esc(bookingData.address)}</span></div>` : ''}
       `;
 
       // Vul slot buttons
       const slotContainer = document.getElementById('slotButtons');
       slotContainer.innerHTML = '';
       bookingData.slots.forEach((slot, i) => {
-        const block = slot.block || slot.id; // ondersteun oud én nieuw formaat
-        const icon  = SLOT_ICONS[block] || '🕐';
-        const label = slot.label || SLOT_LABELS[block] || slot.id;
+        const block = slot.block || slot.id;
+        const label = esc(slot.label || SLOT_LABELS[block] || slot.id);
+        const timeShown = esc(sanitizeTimeDisplay(slot.time));
         const btn = document.createElement('button');
         btn.className = 'slot-btn';
         btn.dataset.slotId = slot.id;
         btn.innerHTML = `
-          <span class="slot-icon">${icon}</span>
           <div class="slot-info">
             <div class="slot-title">Optie ${i + 1}: ${label}</div>
-            <div class="slot-time">${slot.time}</div>
+            <div class="slot-time">${timeShown}</div>
           </div>
-          <div class="slot-check">✓</div>
+          <div class="slot-check" aria-hidden="true"></div>
         `;
         btn.onclick = () => selectSlot(slot.id, btn);
         slotContainer.appendChild(btn);
@@ -375,10 +432,13 @@
 
         if (data.success) {
           const chosenSlot = bookingData.slots.find(s => s.id === selectedSlot);
+          const tslot = esc(sanitizeTimeDisplay(chosenSlot?.time) || selectedSlot);
+          const d = esc(data.date);
+          const addr = esc(bookingData.address || '—');
           document.getElementById('successDetail').innerHTML = `
-            <strong>📅 Datum:</strong> ${data.date}<br>
-            <strong>🕐 Tijdslot:</strong> ${chosenSlot?.time || selectedSlot}<br>
-            <strong>📍 Adres:</strong> ${bookingData.address || '—'}
+            <strong>Datum:</strong> ${d}<br>
+            <strong>Tijdslot:</strong> ${tslot}<br>
+            <strong>Adres:</strong> ${addr}
           `;
           document.getElementById('successScreen').style.display = 'block';
         } else {
@@ -402,7 +462,23 @@
       return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
     }
 
-    init();
+    function runInit() {
+      try {
+        init();
+      } catch (e) {
+        console.error('[book]', e);
+        showError('Fout bij laden', 'Ververs de pagina of open de link opnieuw. Lukt het niet? Neem contact op.');
+      }
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', runInit);
+    } else {
+      runInit();
+    }
+    // iOS/back-forward cache: pagina opnieuw initialiseren
+    window.addEventListener('pageshow', (ev) => {
+      if (ev.persisted) runInit();
+    });
   </script>
 </body>
 </html>

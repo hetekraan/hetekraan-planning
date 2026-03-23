@@ -1,7 +1,20 @@
 {
   "cleanUrls": true,
+  "headers": [
+    {
+      "source": "/book(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/book.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, must-revalidate" }
+      ]
+    }
+  ],
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/book/:token", "destination": "/book?token=:token" }
   ],
   "crons": [

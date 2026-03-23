@@ -33,6 +33,20 @@ Zo triggert de workflow **elke keer** dat er een nieuwe boekingslink wordt gegen
   - **hele map / alle custom fields** — kies exact **Boekings token** als trigger, niet “Quooker map” of “elk veld”.
 - Ochtend-cron zet alleen tag `ochtend-melding` als **`MORNING_MESSAGES_ENABLED=true`** in Vercel staat. Zonder die env doet de cron **geen** tags (geen vroege ochtend-trigger door de server).
 
+## Debug: komt er geen WhatsApp van de server?
+
+1. **Network-response** van `POST /api/send-booking-invite` openen → `diag.whatsappAttempts[].detail` bevat meestal de **exacte GHL-fout** (scopes, template, nummer, …).
+2. **Losse API-test** (zonder slots):  
+   - Vercel → Environment → `BOOKING_DEBUG_SECRET` = willekeurige lange string.  
+   - **Optie A** — `POST https://jouw-domein/api/health` (werkt ook als `booking-whatsapp-test` 404 geeft)  
+   - **Optie B** — `POST https://jouw-domein/api/booking-whatsapp-test`  
+   - Header: `x-booking-debug-secret: <zelfde waarde>`  
+   - Body JSON: `{ "contactId": "…" }`  
+   - Response: `attempts` per payload-variant (`message` vs `body`, met/zonder `locationId`).
+3. **Vercel (optioneel)**  
+   - `BOOKING_FALLBACK_TAG=true` — als de conversatie-API faalt, wordt tag `stuur-tijdsloten` getoggled zodat je **workflow** het alsnog kan sturen (niet tegelijk met een tweede workflow op custom field, anders dubbel).  
+   - `BOOKING_SEND_DIRECT_WHATSAPP=false` — alleen als je **uitsluitend** GHL-workflow wilt (geen server-WhatsApp).
+
 ## Checklist
 
 - [ ] WhatsApp Business gekoppeld in GHL

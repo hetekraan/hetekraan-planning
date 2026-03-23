@@ -3,14 +3,23 @@
 // en stuurt automatisch een WhatsApp-bericht via GHL met een boekingslink.
 
 import { fetchWithRetry } from '../lib/retry.js';
+import { normalizeNlPhone } from '../lib/ghl-phone.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_CALENDAR_ID = process.env.GHL_CALENDAR_ID;
 const MAPS_KEY        = process.env.GOOGLE_MAPS_KEY;
 const GHL_BASE        = 'https://services.leadconnectorhq.com';
-const BASE_URL        = 'https://hetekraan-planning.vercel.app';
 const MAX_PER_BLOCK   = 4;
+
+/** Publieke basis-URL voor boekingslinks (Vercel: zet BASE_URL of gebruik automatisch VERCEL_URL) */
+function publicBaseUrl() {
+  const fromEnv = process.env.BASE_URL;
+  if (fromEnv) return fromEnv.replace(/\/$/, '');
+  const vu = process.env.VERCEL_URL;
+  if (vu) return `https://${vu.replace(/^https?:\/\//, '')}`;
+  return 'https://hetekraan-planning.vercel.app';
+}
 const DAYS_AHEAD      = 7;
 
 const FIELD_IDS = {
@@ -103,7 +112,8 @@ async function getBestSlots(address) {
         block,
         existingCount: blockEvents.length,
         slotsLeft: MAX_PER_BLOCK - blockEvents.length,
-        timeLabel: block === 'morning' ? '09:00–13:00' : '13:00–17:00',
+        // ASCII-streepje (geen Unicode-en-dash): anders soms kapotte tekens op mobiel
+        timeLabel: block === 'morning' ? '09:00 - 13:00' : '13:00 - 17:00',
         blockLabel: block === 'morning' ? 'ochtend' : 'middag',
         suggestedTime: block === 'morning' ? '09:00' : '13:00',
         dateLabel: day.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' }),
@@ -116,11 +126,37 @@ async function getBestSlots(address) {
   return candidates.slice(0, 2);
 }
 
+const GHL_MSG_HEADERS = () => ({
+  Authorization: `Bearer ${GHL_API_KEY}`,
+  'Content-Type': 'application/json',
+  Version: '2021-07-28',
+});
+
+async function listConversationsForContact(contactId) {
+  const url = `${GHL_BASE}/conversations/search?locationId=${GHL_LOCATION_ID}&contactId=${encodeURIComponent(contactId)}&limit=30`;
+  const sr = await fetch(url, { headers: GHL_MSG_HEADERS() });
+  if (!sr.ok) return [];
+  const sd = await sr.json();
+  return sd?.conversations || [];
+}
+
+/** Eerste hit is vaak géén WhatsApp (e-mail/SMS) → bericht kwam nergens aan. */
+function isLikelyWhatsAppConversation(c) {
+  if (!c) return false;
+  const ch = String(
+    c.lastMessageChannel || c.lastManualMessageChannel || c.channel || c.preferredChannel || ''
+  ).toLowerCase();
+  if (ch.includes('whatsapp')) return true;
+  const t = c.type;
+  if (t === 19 || t === 47) return true;
+  if (String(t).toUpperCase().includes('WHATSAPP')) return true;
+  return false;
+}
+
 async function getOrCreateConversation(contactId) {
-  // Zoek bestaande conversatie
   const sr = await fetch(
-    `${GHL_BASE}/conversations/search?locationId=${GHL_LOCATION_ID}&contactId=${contactId}`,
-    { headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' } }
+    `${GHL_BASE}/conversations/search?locationId=${GHL_LOCATION_ID}&contactId=${encodeURIComponent(contactId)}&limit=5`,
+    { headers: GHL_MSG_HEADERS() }
   );
   if (sr.ok) {
     const sd = await sr.json();
@@ -128,17 +164,156 @@ async function getOrCreateConversation(contactId) {
     if (conv?.id) return conv.id;
   }
 
-  // Maak nieuwe conversatie aan
   const cr = await fetch(`${GHL_BASE}/conversations/`, {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-04-15' },
+    headers: GHL_MSG_HEADERS(),
     body: JSON.stringify({ locationId: GHL_LOCATION_ID, contactId })
   });
   if (cr.ok) {
     const cd = await cr.json();
     return cd?.conversation?.id || cd?.id || null;
   }
+  const errTxt = await cr.text().catch(() => '');
+  console.error('[send-booking-invite] conversations/ POST mislukt:', cr.status, errTxt);
   return null;
+}
+
+/**
+ * Probeert meerdere GHL-payloads: alleen contactId (zoals ghl.js sendMorningMessages),
+ * daarna expliciete WhatsApp-threads, daarna legacy conversationId.
+ */
+async function sendWhatsAppMessage(contactId, message, diag) {
+  const attempts = [];
+  const push = (mode, res, detail) => {
+    attempts.push({
+      mode,
+      ok: res.ok,
+      status: res.status,
+      detail: typeof detail === 'string' ? detail.slice(0, 400) : null,
+    });
+  };
+
+  async function post(payload) {
+    return fetchWithRetry(`${GHL_BASE}/conversations/messages`, {
+      method: 'POST',
+      headers: GHL_MSG_HEADERS(),
+      body: JSON.stringify(payload),
+    });
+  }
+
+  // 1) Alleen contactId — werkt in veel subaccounts (geen verkeerde conversationId)
+  let res = await post({ type: 'WhatsApp', contactId, message });
+  let errBody = res.ok ? '' : await res.text().catch(() => '');
+  push('WhatsApp + alleen contactId + message', res, errBody);
+  if (res.ok) {
+    diag.whatsappAttempts = attempts;
+    return true;
+  }
+
+  // 1b) Sommige GHL-versies verwachten "body" i.p.v. "message"
+  res = await post({ type: 'WhatsApp', contactId, body: message });
+  errBody = res.ok ? '' : await res.text().catch(() => '');
+  push('WhatsApp + alleen contactId + body', res, errBody);
+  if (res.ok) {
+    diag.whatsappAttempts = attempts;
+    return true;
+  }
+
+  // 2) Met locationId (sommige setups verwachten dit)
+  res = await post({ type: 'WhatsApp', contactId, message, locationId: GHL_LOCATION_ID });
+  errBody = res.ok ? '' : await res.text().catch(() => '');
+  push('WhatsApp + contactId + locationId + message', res, errBody);
+  if (res.ok) {
+    diag.whatsappAttempts = attempts;
+    return true;
+  }
+
+  res = await post({ type: 'WhatsApp', contactId, body: message, locationId: GHL_LOCATION_ID });
+  errBody = res.ok ? '' : await res.text().catch(() => '');
+  push('WhatsApp + contactId + locationId + body', res, errBody);
+  if (res.ok) {
+    diag.whatsappAttempts = attempts;
+    return true;
+  }
+
+  // 3) Zoek WhatsApp-gesprek, niet alleen conversations[0]
+  const convs = await listConversationsForContact(contactId);
+  const wa = convs.filter(isLikelyWhatsAppConversation);
+  const rest = convs.filter(c => !isLikelyWhatsAppConversation(c));
+  const tryOrder = [...wa, ...rest];
+
+  for (const conv of tryOrder.slice(0, 15)) {
+    const convId = conv?.id;
+    if (!convId) continue;
+    res = await post({ type: 'WhatsApp', conversationId: convId, contactId, message });
+    errBody = res.ok ? '' : await res.text().catch(() => '');
+    push(`WhatsApp + conversationId (${convId.slice(0, 8)}…)`, res, errBody);
+    if (res.ok) {
+      diag.whatsappAttempts = attempts;
+      return true;
+    }
+  }
+
+  // 4) Fallback: oude gedrag (eerste / nieuwe conversatie)
+  const fallbackConv = await getOrCreateConversation(contactId);
+  if (fallbackConv) {
+    res = await post({ type: 'WhatsApp', conversationId: fallbackConv, contactId, message });
+    errBody = res.ok ? '' : await res.text().catch(() => '');
+    push('WhatsApp + fallback getOrCreateConversation', res, errBody);
+    if (res.ok) {
+      diag.whatsappAttempts = attempts;
+      return true;
+    }
+  } else {
+    attempts.push({ mode: 'geen conversationId (aanmaken mislukt)', ok: false, status: 0, detail: null });
+  }
+
+  diag.whatsappAttempts = attempts;
+  console.error('[send-booking-invite] Alle WhatsApp-pogingen mislukt:', JSON.stringify(attempts));
+  return false;
+}
+
+function parseRequestBody(req) {
+  if (req.method !== 'POST') return req.query || {};
+  let b = req.body;
+  if (typeof b === 'string') {
+    try {
+      b = JSON.parse(b);
+    } catch {
+      return {};
+    }
+  }
+  return b && typeof b === 'object' ? b : {};
+}
+
+/** Als API-WhatsApp faalt: workflow op tag stuur-tijdsloten — alleen met BOOKING_FALLBACK_TAG=true (anders dubbel met field-workflow). */
+async function applyStuurTijdslotenTag(contactId, diag) {
+  const delRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}/tags`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${GHL_API_KEY}`,
+      'Content-Type': 'application/json',
+      Version: '2021-07-28',
+    },
+    body: JSON.stringify({ tags: ['stuur-tijdsloten'] }),
+  });
+  diag.tagFallbackRemove = delRes.ok;
+  await new Promise((r) => setTimeout(r, 2000));
+  const addRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}/tags`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${GHL_API_KEY}`,
+      'Content-Type': 'application/json',
+      Version: '2021-07-28',
+    },
+    body: JSON.stringify({ tags: ['stuur-tijdsloten'] }),
+  });
+  diag.tagFallbackAdd = addRes.ok;
+  if (!addRes.ok) {
+    const t = await addRes.text().catch(() => '');
+    diag.tagFallbackError = t.slice(0, 400);
+  }
+  return addRes.ok;
 }
 
 export default async function handler(req, res) {
@@ -147,7 +322,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const body = req.method === 'POST' ? req.body : req.query;
+  const body = parseRequestBody(req);
   let { contactId, name: nameParam, phone: phoneParam, address: addressParam } = body;
 
   // Zoek contact op naam of telefoon als er geen contactId is
@@ -177,7 +352,7 @@ export default async function handler(req, res) {
           locationId: GHL_LOCATION_ID,
           firstName: parts[0] || nameParam,
           lastName: parts.slice(1).join(' ') || '',
-          phone: (phoneParam || '').replace(/\s/g, '') || '',
+          phone: normalizeNlPhone((phoneParam || '').replace(/\s/g, '')) || (phoneParam || '').replace(/\s/g, '') || '',
           address1: addressParam || '',
         })
       });
@@ -207,6 +382,26 @@ export default async function handler(req, res) {
   const address    = [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ')
     || contact.address1 || addressParam || '';
 
+  /** Vóór token: sync 06… → +31… zodat bookingData.phone en WhatsApp kloppen. */
+  let phoneSyncedToE164 = false;
+  const normPhone0 = normalizeNlPhone(contact.phone || '');
+  if (normPhone0 && /^\+31[1-9]\d{8}$/.test(normPhone0)) {
+    const raw = String(contact.phone || '').trim();
+    if (!raw.startsWith('+')) {
+      const sync = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${GHL_API_KEY}`,
+          'Content-Type': 'application/json',
+          Version: '2021-07-28',
+        },
+        body: JSON.stringify({ phone: normPhone0 }),
+      });
+      phoneSyncedToE164 = sync.ok;
+      if (sync.ok) contact.phone = normPhone0;
+    }
+  }
+
   // Bereken de 2 beste slots
   const slots = await getBestSlots(address);
   if (slots.length === 0) {
@@ -229,7 +424,8 @@ export default async function handler(req, res) {
     })),
   };
   const token = Buffer.from(JSON.stringify(bookingData)).toString('base64url');
-  const bookingUrl = `${BASE_URL}/book?token=${token}`;
+  // Pad-URL: sommige apps/webviews gaan beter om met een lang pad dan met een enorme querystring
+  const bookingUrl = `${publicBaseUrl()}/book/${encodeURIComponent(token)}`;
 
   // Custom field IDs voor GHL workflow
   const FIELD_SLOT1  = 'EiSw9gZQSG4kyhPn1rtF'; // Tijdslot optie 1
@@ -253,16 +449,26 @@ export default async function handler(req, res) {
     customFields.push({ id: FIELD_SLOT2, field_value: `${capitalize(slot2.dateLabel)} tussen ${slot2.timeLabel}` });
   }
 
-  const diag = { fieldsPut: false, tagRemove: false, tagAdd: false, directWhatsapp: false };
+  const diag = {
+    fieldsPut: false,
+    tagRemove: false,
+    tagAdd: false,
+    directWhatsapp: false,
+    phoneSyncedToE164,
+  };
 
   // Standaard GEEN tag: workflow op "Boekings token" triggert één keer.
   // Zet BOOKING_ADD_TAG=true in Vercel als je alleen een workflow op tag stuur-tijdsloten gebruikt.
   const addBookingTag = process.env.BOOKING_ADD_TAG === 'true';
 
+  // Phone meesturen: sommige GHL-PUTs overschrijven het hele contact-object zonder merge.
   const fieldsRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
     method: 'PUT',
     headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-04-15' },
-    body: JSON.stringify({ customFields })
+    body: JSON.stringify({
+      customFields,
+      ...(contact.phone ? { phone: contact.phone } : {}),
+    })
   });
   diag.fieldsPut = fieldsRes.ok;
   if (!fieldsRes.ok) {
@@ -300,39 +506,40 @@ export default async function handler(req, res) {
     console.log('[send-booking-invite] BOOKING_ADD_TAG=false — geen stuur-tijdsloten tag (alleen custom fields)');
   }
 
-  // Standaard GEEN tweede WhatsApp via conversations API: die zou dubbel zijn met het GHL-template
-  // (workflow op tag / Boekings token). Zet BOOKING_SEND_DIRECT_WHATSAPP=true als je tóch beide wilt.
+  // Standaard: WhatsApp direct via GHL Conversations API (betrouwbaar).
+  // Gebruik je al een GHL-workflow die hetzelfde bericht stuurt? Zet dan op Vercel:
+  // BOOKING_SEND_DIRECT_WHATSAPP=false (anders dubbel bericht).
+  const sendDirectWhatsapp = process.env.BOOKING_SEND_DIRECT_WHATSAPP !== 'false';
   let messageSent = false;
   diag.directWhatsapp = false;
-  if (process.env.BOOKING_SEND_DIRECT_WHATSAPP === 'true') {
-    const conversationId = await getOrCreateConversation(contactId);
-    if (conversationId) {
-      const mr = await fetch(`${GHL_BASE}/conversations/messages`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${GHL_API_KEY}`,
-          'Content-Type': 'application/json',
-          'Version': '2021-04-15',
-        },
-        body: JSON.stringify({ type: 'WhatsApp', conversationId, contactId, message })
-      });
-      messageSent = mr.ok;
-      diag.directWhatsapp = mr.ok;
-      if (!mr.ok) console.log('[send-booking-invite] Direct sturen mislukt');
-    }
+  if (sendDirectWhatsapp) {
+    messageSent = await sendWhatsAppMessage(contactId, message, diag);
+    diag.directWhatsapp = messageSent;
   }
 
+  // Laatste redmiddel: zelfde tag-sequence als BOOKING_ADD_TAG (alleen bij expliciete env).
+  if (!messageSent && sendDirectWhatsapp && process.env.BOOKING_FALLBACK_TAG === 'true') {
+    diag.tagFallbackTriggered = true;
+    await applyStuurTijdslotenTag(contactId, diag);
+  }
+
+  const pCheck = normalizeNlPhone(contact.phone || '');
+  const phoneOk = /^\+31[1-9]\d{8}$/.test(pCheck);
   return res.status(200).json({
     success: true,
     messageSent,
     contactName: name,
+    contactPhonePresent: phoneOk,
     slots: slots.map(s => ({ dateLabel: s.dateLabel, timeLabel: s.timeLabel, block: s.block })),
     bookingUrl,
     message,
     diag,
     workflowTip:
-      'Als je geen WhatsApp krijgt: (1) Workflow moet actief zijn. (2) Trigger exacte tag: stuur-tijdsloten. ' +
-      '(3) Betrouwbaarder: maak een tweede workflow met trigger "Custom field updated" op veld Boekings token — die triggert altijd als wij de link opslaan.',
+      '1) Open Network-tab bij “Stuur”: kijk naar diag.whatsappAttempts[].detail (GHL-fouttekst). ' +
+      '2) Test alleen WhatsApp-API: POST /api/booking-whatsapp-test met header x-booking-debug-secret (zet BOOKING_DEBUG_SECRET in Vercel). ' +
+      '3) Nummer moet in GHL als +31… (we syncen vanaf 06… automatisch). ' +
+      '4) API lukt niet maar workflow wel? Zet BOOKING_FALLBACK_TAG=true (triggert tag stuur-tijdsloten) — niet combineren met een tweede workflow op hetzelfde moment. ' +
+      '5) Private app in GHL: scopes o.a. conversations.write / messages.',
   });
 }
 

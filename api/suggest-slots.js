@@ -225,7 +225,7 @@ export default async function handler(req, res) {
         block,
         existingCount: count,
         score,
-        timeLabel: block === 'morning' ? '09:00–13:00' : '13:00–17:00',
+        timeLabel: block === 'morning' ? '09:00 - 13:00' : '13:00 - 17:00',
         blockLabel: block === 'morning' ? 'ochtend' : 'middag',
       });
     }
