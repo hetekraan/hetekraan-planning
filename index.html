@@ -971,6 +971,86 @@
   </div>
 </div>
 
+<!-- DAAN: bewerk contact + GHL-velden -->
+<div class="modal-overlay" id="daanEditOverlay">
+  <div class="modal" style="max-width:420px;max-height:90vh;overflow-y:auto">
+    <div class="modal-title">Bewerk in GHL</div>
+    <p style="font-size:12px;color:var(--muted);margin:-8px 0 12px">Wijzigingen worden opgeslagen op het contact en (optioneel) op de kalenderafspraak.</p>
+    <input type="hidden" id="deApptId">
+    <div class="form-row-2">
+      <div>
+        <label class="form-label">Voornaam</label>
+        <input class="form-input" type="text" id="deFirstName" autocomplete="given-name">
+      </div>
+      <div>
+        <label class="form-label">Achternaam</label>
+        <input class="form-input" type="text" id="deLastName" autocomplete="family-name">
+      </div>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Telefoon</label>
+      <input class="form-input" type="tel" id="dePhone" autocomplete="tel">
+    </div>
+    <div class="form-row">
+      <label class="form-label">Straatnaam</label>
+      <input class="form-input" type="text" id="deStraat">
+    </div>
+    <div class="form-row-2">
+      <div>
+        <label class="form-label">Huisnr.</label>
+        <input class="form-input" type="text" id="deHuisnr">
+      </div>
+      <div>
+        <label class="form-label">Postcode</label>
+        <input class="form-input" type="text" id="dePostcode">
+      </div>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Woonplaats</label>
+      <input class="form-input" type="text" id="deWoonplaats">
+    </div>
+    <div class="form-row">
+      <label class="form-label">Type (GHL custom field)</label>
+      <select class="form-select" id="deType">
+        <option value="onderhoud">onderhoud</option>
+        <option value="reparatie">reparatie</option>
+        <option value="installatie">installatie</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Werkzaamheden / omschrijving</label>
+      <textarea class="form-input" id="deDesc" rows="2" style="resize:vertical;min-height:48px"></textarea>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Tijdsvenster (klantafspraak)</label>
+      <input class="form-input" type="text" id="deTimeWindow" placeholder="bijv. ochtend of 09:00-11:00">
+    </div>
+    <div class="form-row">
+      <label class="form-label">Opmerkingen</label>
+      <textarea class="form-input" id="deNotes" rows="2" style="resize:vertical;min-height:44px"></textarea>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Prijs (tekst zoals in GHL)</label>
+      <input class="form-input" type="text" id="dePrijs" placeholder="bijv. 245 of €245">
+    </div>
+    <div class="form-row-2" style="margin-top:8px;padding-top:12px;border-top:1px solid var(--border)">
+      <div>
+        <label class="form-label">Agenda-tijd deze dag</label>
+        <input class="form-input" type="time" id="deApptTime" title="Starttijd van de afspraak in de GHL-kalender">
+      </div>
+      <div>
+        <label class="form-label">Duur (min)</label>
+        <input class="form-input" type="number" id="deDuration" min="15" max="480" step="5">
+      </div>
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin:8px 0 0">Agenda: alleen als er een kalender-id is; duur standaard uit type (onderhoud 30, reparatie 45, installatie 60).</p>
+    <div class="modal-actions" style="margin-top:16px">
+      <button type="button" class="btn-cancel" onclick="closeDaanEditModal()">Annuleren</button>
+      <button type="button" class="btn-save" id="deSaveBtn" onclick="saveDaanEditToGhl()">Opslaan in GHL</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL -->
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal">
@@ -1053,6 +1133,17 @@ function isDateBlocked(dateStr) {
 }
 function getDateStr(d) {
   return d.toLocaleDateString('nl-NL', {year:'numeric', month:'2-digit', day:'2-digit', timeZone:'Europe/Amsterdam'}).split('-').reverse().join('-');
+}
+
+/** Alleen gebruiker *daan* (juiste dag-login) ziet bewerk-dashboard voor GHL */
+function isDaanEditor() {
+  try {
+    const u = localStorage.getItem('hk_user');
+    const d = localStorage.getItem('hk_login_day_amsterdam');
+    return u === 'daan' && d === getDateStr(new Date());
+  } catch (_) {
+    return false;
+  }
 }
 
 function routeSnapshotKey(dateStr) {
@@ -1280,7 +1371,13 @@ async function loadAppointments(date) {
         ghlUrl,
         time,
         name,
+        firstName: contact.firstName || '',
+        lastName: contact.lastName || '',
         address,
+        straatnaam: e.parsedStraatnaam || '',
+        huisnummer: e.parsedHuisnummer || '',
+        postcode: e.parsedPostcode || '',
+        woonplaats: e.parsedWoonplaats || '',
         mapsUrl,
         phone: contact.phone || '',
         desc: e.parsedWork || work,
@@ -1359,6 +1456,7 @@ function render() {
             ${a.phone ? `<a class="icon-btn" href="tel:${a.phone}" title="Bellen">📞</a>` : ''}
             ${a.mapsUrl ? `<a class="icon-btn" href="${a.mapsUrl}" target="_blank" title="Maps">📍</a>` : ''}
             ${a.ghlUrl ? `<a class="icon-btn ghl" href="${a.ghlUrl}" target="_blank" title="Open in GHL">🔗</a>` : ''}
+            ${isDaanEditor() && a.contactId ? `<button type="button" class="icon-btn" onclick="openDaanEditModal(${a.id})" title="Bewerk klantgegevens in GHL">✎</button>` : ''}
             <button class="icon-btn danger" onclick="deleteAppt(${a.id})" title="Verwijderen">✕</button>
           </div>
         </div>
@@ -1908,6 +2006,96 @@ function openMaps(e) {
     `&travelmode=driving`;
 
   window.open(url, '_blank');
+}
+
+function openDaanEditModal(apptId) {
+  if (!isDaanEditor()) {
+    showToast('Alleen Daan kan klantgegevens zo bewerken', 'info');
+    return;
+  }
+  const a = appointments.find(x => x.id === apptId);
+  if (!a || !a.contactId) {
+    showToast('Geen GHL-contact op deze kaart', 'info');
+    return;
+  }
+  document.getElementById('deApptId').value = String(apptId);
+  document.getElementById('deFirstName').value = a.firstName || '';
+  document.getElementById('deLastName').value = a.lastName || '';
+  document.getElementById('dePhone').value = a.phone || '';
+  document.getElementById('deStraat').value = a.straatnaam || '';
+  document.getElementById('deHuisnr').value = a.huisnummer || '';
+  document.getElementById('dePostcode').value = a.postcode || '';
+  document.getElementById('deWoonplaats').value = a.woonplaats || '';
+  document.getElementById('deType').value = (a.type === 'installatie' || a.type === 'reparatie' || a.type === 'onderhoud') ? a.type : 'onderhoud';
+  document.getElementById('deDesc').value = a.desc || '';
+  document.getElementById('deTimeWindow').value = a.timeWindow || '';
+  document.getElementById('deNotes').value = a.notes || '';
+  const prijsTxt = a.priceLabel ? a.priceLabel.replace(/^€\s*/, '').trim() : (a.price ? String(a.price) : '');
+  document.getElementById('dePrijs').value = prijsTxt;
+  const tm = normalizeTimeStr(a.time || '09:00');
+  document.getElementById('deApptTime').value = tm.length >= 5 ? tm : '09:00';
+  document.getElementById('deDuration').value = String(JOB_DURATION[a.type] || 30);
+  document.getElementById('daanEditOverlay').classList.add('visible');
+}
+
+function closeDaanEditModal() {
+  document.getElementById('daanEditOverlay').classList.remove('visible');
+}
+
+async function saveDaanEditToGhl() {
+  if (!isDaanEditor()) return;
+  const apptId = parseInt(document.getElementById('deApptId').value, 10);
+  const a = appointments.find(x => x.id === apptId);
+  if (!a || !a.contactId) return;
+
+  const btn = document.getElementById('deSaveBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Opslaan...';
+
+  const selType = document.getElementById('deType').value;
+  const durVal = parseInt(document.getElementById('deDuration').value, 10);
+  const body = {
+    editedBy: 'daan',
+    contactId: a.contactId,
+    firstName: document.getElementById('deFirstName').value.trim(),
+    lastName: document.getElementById('deLastName').value.trim(),
+    phone: document.getElementById('dePhone').value.trim(),
+    straatnaam: document.getElementById('deStraat').value.trim(),
+    huisnummer: document.getElementById('deHuisnr').value.trim(),
+    postcode: document.getElementById('dePostcode').value.trim(),
+    woonplaats: document.getElementById('deWoonplaats').value.trim(),
+    typeOnderhoud: selType,
+    probleemomschrijving: document.getElementById('deDesc').value.trim(),
+    tijdafspraak: document.getElementById('deTimeWindow').value.trim(),
+    opmerkingen: document.getElementById('deNotes').value.trim(),
+    prijs: document.getElementById('dePrijs').value.trim(),
+    appointmentTime: document.getElementById('deApptTime').value,
+    routeDate: getDateStr(currentDate),
+    ghlAppointmentId: a.ghlId || undefined,
+    durationMin: Number.isFinite(durVal) && durVal > 0 ? durVal : (JOB_DURATION[selType] || 30),
+  };
+
+  try {
+    const res = await fetch('/api/ghl?action=updateContactDashboard', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || data.detail || 'Onbekende fout');
+
+    closeDaanEditModal();
+    let msg = '✓ Contact bijgewerkt in GHL';
+    if (data.calendarSynced) msg += ' · agenda bijgewerkt';
+    if (data.calendarError) msg += ' · agenda: ' + String(data.calendarError).slice(0, 100);
+    showToast(msg, 'success');
+    await loadAppointments(currentDate);
+  } catch (e) {
+    showToast('Opslaan mislukt: ' + e.message, 'info');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Opslaan in GHL';
+  }
 }
 
 let _rescheduleId = null;

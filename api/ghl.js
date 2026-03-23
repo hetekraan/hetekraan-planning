@@ -113,6 +113,10 @@ export default async function handler(req, res) {
             const postcode   = getField(contact, FIELD_IDS.postcode);
             const woonplaats = getField(contact, FIELD_IDS.woonplaats) || contact.city || '';
             e.parsedAddress  = [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ');
+            e.parsedStraatnaam = straat;
+            e.parsedHuisnummer = huisnr;
+            e.parsedPostcode   = postcode;
+            e.parsedWoonplaats = woonplaats;
 
             // Werkzaamheden
             const werkzaamheden = getField(contact, FIELD_IDS.probleemomschrijving);
@@ -136,6 +140,104 @@ export default async function handler(req, res) {
         }));
 
         return res.status(200).json({ events: enriched });
+      }
+
+      case 'updateContactDashboard': {
+        const editedBy = String(req.body?.editedBy || '').toLowerCase().trim();
+        if (editedBy !== 'daan') {
+          return res.status(403).json({ error: 'Alleen ingelogde gebruiker Daan kan dit endpoint gebruiken' });
+        }
+
+        const {
+          contactId,
+          firstName,
+          lastName,
+          phone,
+          straatnaam,
+          huisnummer,
+          postcode,
+          woonplaats,
+          typeOnderhoud,
+          probleemomschrijving,
+          tijdafspraak,
+          opmerkingen,
+          prijs,
+          appointmentTime,
+          routeDate,
+          ghlAppointmentId,
+          durationMin,
+        } = req.body;
+
+        if (!contactId) {
+          return res.status(400).json({ error: 'contactId vereist' });
+        }
+
+        const customFields = [];
+        const pushField = (id, val) => {
+          if (val === undefined || val === null) return;
+          const s = String(val).trim();
+          customFields.push({ id, field_value: s });
+        };
+
+        pushField(FIELD_IDS.straatnaam, straatnaam);
+        pushField(FIELD_IDS.huisnummer, huisnummer);
+        pushField(FIELD_IDS.postcode, postcode);
+        pushField(FIELD_IDS.woonplaats, woonplaats);
+        pushField(FIELD_IDS.type_onderhoud, typeOnderhoud);
+        pushField(FIELD_IDS.probleemomschrijving, probleemomschrijving);
+        pushField(FIELD_IDS.tijdafspraak, tijdafspraak);
+        pushField(FIELD_IDS.opmerkingen, opmerkingen);
+        pushField(FIELD_IDS.prijs, prijs);
+
+        const payload = {};
+        if (firstName !== undefined) payload.firstName = String(firstName).trim();
+        if (lastName !== undefined) payload.lastName = String(lastName).trim();
+        if (phone !== undefined) payload.phone = String(phone).replace(/\s/g, '');
+        if (customFields.length) payload.customFields = customFields;
+
+        if (Object.keys(payload).length === 0) {
+          return res.status(400).json({ error: 'Geen velden om bij te werken' });
+        }
+
+        const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${GHL_API_KEY}`,
+            'Content-Type': 'application/json',
+            Version: '2021-04-15',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!putRes.ok) {
+          const t = await putRes.text();
+          console.error('[updateContactDashboard] GHL PUT contact:', t);
+          return res.status(502).json({ error: 'GHL contact bijwerken mislukt', detail: t.slice(0, 400) });
+        }
+
+        let calendarSynced = false;
+        let calendarError;
+        if (ghlAppointmentId && routeDate && appointmentTime) {
+          const dur = Math.max(5, Math.min(480, Number(durationMin) || 30));
+          const tm = String(appointmentTime).trim().replace(/^~/, '');
+          const parts = tm.split(':');
+          const hh = String(Math.min(23, Math.max(0, parseInt(parts[0], 10) || 0))).padStart(2, '0');
+          const mm = String(Math.min(59, Math.max(0, parseInt(parts[1], 10) || 0))).padStart(2, '0');
+          const startMs = new Date(`${routeDate}T${hh}:${mm}:00+01:00`).getTime();
+          if (!Number.isNaN(startMs)) {
+            const startIso = new Date(startMs).toISOString();
+            const endIso   = new Date(startMs + dur * 60 * 1000).toISOString();
+            const cal = await putCalendarStartEnd(ghlAppointmentId, startIso, endIso);
+            calendarSynced = cal.ok;
+            if (!cal.ok) calendarError = cal.err;
+          }
+        }
+
+        return res.status(200).json({
+          success: true,
+          calendarSynced,
+          calendarError: calendarError || undefined,
+        });
       }
 
       case 'completeAppointment': {
