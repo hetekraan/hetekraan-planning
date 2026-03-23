@@ -95,6 +95,12 @@
   }
 
   .header-stats { display: flex; gap: 12px; align-items: center; flex-shrink: 0; }
+  .btn-logout {
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    font-size: 11px; padding: 6px 10px; border-radius: 6px; cursor: pointer;
+    font-family: inherit; flex-shrink: 0;
+  }
+  .btn-logout:hover { color: var(--text); border-color: var(--muted); }
   .stat { display: flex; flex-direction: column; align-items: center; }
   .stat-val { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 16px; line-height: 1; }
   .stat-val.green { color: var(--accent2); }
@@ -884,6 +890,7 @@
       <div class="stat-val orange" id="totalOmzet">€0</div>
       <div class="stat-label">Omzet dag</div>
     </div>
+    <button type="button" class="btn-logout" onclick="logoutPlanning()" title="Vandaag opnieuw inloggen of andere gebruiker">Uitloggen</button>
   </div>
 </header>
 
@@ -2142,14 +2149,42 @@ document.getElementById('dateLabel').textContent = formatDate(currentDate);
 updateBlockedUI();
 loadAppointments(currentDate);
 
-// LOGIN
+// LOGIN — 1× per dag (Amsterdam) in dezelfde browser; sessionStorage = per tab tot we dit zetten
 const USERS = { 'daan': 'wachtwoord1', 'jerry': 'wachtwoord2' };
+const HK_USER_KEY = 'hk_user';
+const HK_LOGIN_DAY_KEY = 'hk_login_day_amsterdam';
+
+function getTodayLoginKey() {
+  return getDateStr(new Date());
+}
+
+function clearLoginState() {
+  try {
+    localStorage.removeItem(HK_USER_KEY);
+    localStorage.removeItem(HK_LOGIN_DAY_KEY);
+    sessionStorage.removeItem(HK_USER_KEY);
+  } catch (_) {}
+}
+
+function logoutPlanning() {
+  clearLoginState();
+  const ov = document.getElementById('loginOverlay');
+  if (ov) ov.classList.remove('hidden');
+  const p = document.getElementById('loginPass');
+  if (p) p.value = '';
+  const e = document.getElementById('loginError');
+  if (e) e.classList.remove('visible');
+}
 
 function checkLogin() {
-  const saved = sessionStorage.getItem('hk_user');
-  if (saved && USERS[saved]) {
+  const saved = localStorage.getItem(HK_USER_KEY);
+  const daySaved = localStorage.getItem(HK_LOGIN_DAY_KEY);
+  const today = getTodayLoginKey();
+  if (saved && USERS[saved] && daySaved === today) {
     document.getElementById('loginOverlay').classList.add('hidden');
     render();
+  } else {
+    clearLoginState();
   }
 }
 
@@ -2158,7 +2193,10 @@ function doLogin() {
   const pass = document.getElementById('loginPass').value;
   const err  = document.getElementById('loginError');
   if (USERS[user] && USERS[user] === pass) {
-    sessionStorage.setItem('hk_user', user);
+    try {
+      localStorage.setItem(HK_USER_KEY, user);
+      localStorage.setItem(HK_LOGIN_DAY_KEY, getTodayLoginKey());
+    } catch (_) {}
     document.getElementById('loginOverlay').classList.add('hidden');
     render();
   } else {
@@ -2189,7 +2227,7 @@ checkLogin();
     </div>
     <div class="login-error" id="loginError">Gebruikersnaam of wachtwoord onjuist</div>
     <button class="btn-login" onclick="doLogin()">INLOGGEN</button>
-    <div class="login-hint">Problemen met inloggen? Neem contact op met Daan.</div>
+    <div class="login-hint">Je blijft vandaag ingelogd in deze browser (tot middernacht NL-tijd). Problemen? Neem contact op met Daan.</div>
   </div>
 </div>
 
