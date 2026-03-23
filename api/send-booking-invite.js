@@ -536,7 +536,7 @@ export default async function handler(req, res) {
     diag,
     workflowTip:
       '1) Open Network-tab bij “Stuur”: kijk naar diag.whatsappAttempts[].detail (GHL-fouttekst). ' +
-      '2) Test alleen WhatsApp-API: POST /api/booking-whatsapp-test met header x-booking-debug-secret (zet BOOKING_DEBUG_SECRET in Vercel). ' +
+      '2) Test WhatsApp-API: POST /api/health met header x-booking-debug-secret + JSON {"contactId":"…"} (BOOKING_DEBUG_SECRET in Vercel). ' +
       '3) Nummer moet in GHL als +31… (we syncen vanaf 06… automatisch). ' +
       '4) API lukt niet maar workflow wel? Zet BOOKING_FALLBACK_TAG=true (triggert tag stuur-tijdsloten) — niet combineren met een tweede workflow op hetzelfde moment. ' +
       '5) Private app in GHL: scopes o.a. conversations.write / messages.',

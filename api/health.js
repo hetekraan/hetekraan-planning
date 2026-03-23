@@ -3,7 +3,7 @@
 // Kan worden gemonitord door bijv. UptimeRobot (gratis).
 //
 // POST /api/health + header x-booking-debug-secret + JSON { "contactId": "…" }
-// =zelfde WhatsApp/GHL-test als /api/booking-whatsapp-test (handig als die route 404 geeft).
+// = WhatsApp/GHL API-diagnose (Hobby-plan: geen apart endpoint om functielimiet te sparen).
 
 import { fetchWithRetry } from '../lib/retry.js';
 import { runWhatsappDebugTest } from '../lib/ghl-whatsapp-debug-test.js';
