@@ -98,14 +98,17 @@ export default async function handler(req, res) {
         const events = data?.events || [];
 
         const enriched = await Promise.all(events.map(async (e) => {
-          if (!e.contactId) return e;
+          const rawCid = e.contactId || e.contact_id;
+          if (!rawCid) return e;
+          e.contactId = rawCid;
           try {
-            const cr = await fetchWithRetry(`${GHL_BASE}/contacts/${e.contactId}`, {
+            const cr = await fetchWithRetry(`${GHL_BASE}/contacts/${rawCid}`, {
               headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
             });
             const cd = await cr.json();
             const contact = cd?.contact || cd;
             e.contact = contact;
+            if (contact?.id) e.contactId = contact.id;
 
             // Adres opbouwen uit custom fields
             const straat     = getField(contact, FIELD_IDS.straatnaam);

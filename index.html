@@ -262,6 +262,26 @@
   .icon-btn:hover { color: var(--text); border-color: var(--muted); }
   .icon-btn.danger:hover { color: var(--reparatie); border-color: var(--reparatie); }
   .icon-btn.ghl:hover { color: var(--blue); border-color: var(--blue); }
+  .icon-btn.daan-edit {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--accent);
+    border-color: rgba(0, 212, 170, 0.45);
+    min-width: 52px;
+    padding: 0 6px;
+  }
+  .icon-btn.daan-edit:hover { color: #00ffc8; border-color: var(--accent); }
+  .daan-edit-badge {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-left: 10px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 212, 170, 0.35);
+    white-space: nowrap;
+  }
 
   .appt-name {
     font-family: 'Syne', sans-serif;
@@ -871,7 +891,10 @@
 <body>
 
 <header>
-  <div class="logo">HET<span>EKRAAN</span></div>
+  <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">
+    <div class="logo">HET<span>EKRAAN</span></div>
+    <span id="daanEditBadge" class="daan-edit-badge" style="display:none" title="Je ziet de groene GHL-bewerkknop op elke kaart">GHL bewerken</span>
+  </div>
   <div class="date-nav">
     <button onclick="changeDay(-1)">‹</button>
     <div class="date-label" id="dateLabel"></div>
@@ -1136,11 +1159,10 @@ function getDateStr(d) {
 }
 
 /** Alleen gebruiker *daan* (juiste dag-login) ziet bewerk-dashboard voor GHL */
+/** Ingelogd als gebruiker daan (zelfde key als login; geen extra datum-check i.v.m. edge cases) */
 function isDaanEditor() {
   try {
-    const u = localStorage.getItem('hk_user');
-    const d = localStorage.getItem('hk_login_day_amsterdam');
-    return u === 'daan' && d === getDateStr(new Date());
+    return localStorage.getItem('hk_user') === 'daan';
   } catch (_) {
     return false;
   }
@@ -1361,13 +1383,14 @@ async function loadAppointments(date) {
       const lastName = contact.lastName || '';
       const name = (firstName + ' ' + lastName).trim() || address.split(' ')[0] || 'Klant';
       const mapsUrl = address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : '';
-      const ghlUrl = e.contactId ? `${GHL_BASE_URL}/contacts/${e.contactId}` : '';
+      const cid = e.contactId || e.contact_id || contact.id || '';
+      const ghlUrl = cid ? `${GHL_BASE_URL}/contacts/${cid}` : '';
 
       return {
         id: i + 1,
         // Kalender-event id (DELETE /calendars/events/:id); server probeert ook …/appointments/:id
         ghlId: e.id || e.appointmentId,
-        contactId: e.contactId || '',
+        contactId: cid,
         ghlUrl,
         time,
         name,
@@ -1456,7 +1479,7 @@ function render() {
             ${a.phone ? `<a class="icon-btn" href="tel:${a.phone}" title="Bellen">📞</a>` : ''}
             ${a.mapsUrl ? `<a class="icon-btn" href="${a.mapsUrl}" target="_blank" title="Maps">📍</a>` : ''}
             ${a.ghlUrl ? `<a class="icon-btn ghl" href="${a.ghlUrl}" target="_blank" title="Open in GHL">🔗</a>` : ''}
-            ${isDaanEditor() && a.contactId ? `<button type="button" class="icon-btn" onclick="openDaanEditModal(${a.id})" title="Bewerk klantgegevens in GHL">✎</button>` : ''}
+            ${isDaanEditor() && a.contactId ? `<button type="button" class="icon-btn daan-edit" onclick="openDaanEditModal(${a.id})" title="Bewerk klantgegevens in GHL">bewerk</button>` : ''}
             <button class="icon-btn danger" onclick="deleteAppt(${a.id})" title="Verwijderen">✕</button>
           </div>
         </div>
@@ -1540,6 +1563,8 @@ function render() {
   renderRoute(getRouteStopsForSidebar());
   calcStats();
   updateRouteLocalUi();
+  const badge = document.getElementById('daanEditBadge');
+  if (badge) badge.style.display = isDaanEditor() ? 'inline-flex' : 'none';
 }
 
 function renderRoute(routeStops) {
