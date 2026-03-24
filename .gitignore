@@ -4,4 +4,5 @@
 !.env.example
 .env*.local
 node_modules/
+public/
 .DS_Store
