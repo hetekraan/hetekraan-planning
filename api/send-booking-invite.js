@@ -261,8 +261,8 @@ export default async function handler(req, res) {
     })),
   };
   const token = Buffer.from(JSON.stringify(bookingData)).toString('base64url');
-  // Pad-URL: sommige apps/webviews gaan beter om met een lang pad dan met een enorme querystring
-  const bookingUrl = `${publicBaseUrl()}/book/${encodeURIComponent(token)}`;
+  // Query-URL: /book/<token> geeft met cleanUrls 404 op Vercel; /book?token= laadt book.html wel.
+  const bookingUrl = `${publicBaseUrl()}/book?token=${encodeURIComponent(token)}`;
 
   // Custom field IDs voor GHL workflow
   const FIELD_SLOT1  = 'EiSw9gZQSG4kyhPn1rtF'; // Tijdslot optie 1

@@ -2,6 +2,13 @@
   "buildCommand": "npm run build",
   "outputDirectory": "public",
   "cleanUrls": true,
+  "redirects": [
+    {
+      "source": "/book/:token",
+      "destination": "/book?token=:token",
+      "permanent": false
+    }
+  ],
   "headers": [
     {
       "source": "/book(.*)",
@@ -15,9 +22,6 @@
         { "key": "Cache-Control", "value": "no-store, must-revalidate" }
       ]
     }
-  ],
-  "rewrites": [
-    { "source": "/book/:token", "destination": "/book.html?token=:token" }
   ],
   "crons": [
     {

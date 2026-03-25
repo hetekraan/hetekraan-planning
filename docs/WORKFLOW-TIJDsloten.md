@@ -14,7 +14,7 @@ Betrouwbaarder dan alleen een tag:
 4. Vul template-variabelen:
    - Body `{{1}}` → **Tijdslot optie 1**
    - Body `{{2}}` → **Tijdslot optie 2**
-   - Button `{{1}}` → **Boekings token** (pad na `/book/`)
+   - Button-URL: `https://jouw-domein.vercel.app/book?token={{1}}` met `{{1}}` = **Boekings token**, óf `https://…/book/{{1}}` (oude stijl — Vercel redirect naar `?token=`). API schrijft alleen de token in het veld; het voorvoegsel `…/book?token=` zet je vast in het Meta-template.
 
 Zo triggert de workflow **elke keer** dat er een nieuwe boekingslink wordt gegenereerd.
 
