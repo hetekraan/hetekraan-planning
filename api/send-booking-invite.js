@@ -2,6 +2,7 @@
 // Berekent de 2 beste tijdsloten voor een klant (op basis van adres + bestaande routes)
 // en zet custom fields (+ optioneel tag) zodat een GHL-workflow het WhatsApp-template verstuurt.
 
+import { maxCustomerAppointmentsPerDay } from '../lib/calendar-customer-cap.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
 
@@ -89,6 +90,9 @@ async function getBestSlots(address) {
       );
       if (er.ok) events = (await er.json())?.events || [];
     } catch {}
+
+    const dayCap = maxCustomerAppointmentsPerDay();
+    if (events.length >= dayCap) continue;
 
     const morningEvents   = events.filter(e => new Date(e.startTime).getHours() < 13);
     const afternoonEvents = events.filter(e => new Date(e.startTime).getHours() >= 13);

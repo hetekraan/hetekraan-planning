@@ -3,6 +3,7 @@
 // Maakt de GHL-afspraak aan; WhatsApp alleen via GHL-workflow (tag-puls).
 
 import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
+import { fetchCalendarEventCountForDay, maxCustomerAppointmentsPerDay } from '../lib/calendar-customer-cap.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
@@ -104,6 +105,26 @@ export default async function handler(req, res) {
 
   const date = chosenSlot.dateStr || legacyDate;
   if (!date) return res.status(400).json({ error: 'Geen datum in slot' });
+
+  const dayCap = maxCustomerAppointmentsPerDay();
+  const dayCount = await fetchCalendarEventCountForDay(date, {
+    base: GHL_BASE,
+    locationId: GHL_LOCATION_ID,
+    calendarId: GHL_CALENDAR_ID,
+    apiKey: GHL_API_KEY,
+  });
+  if (dayCount !== null && dayCount >= dayCap) {
+    return res.status(409).json({
+      error:
+        `Er staan al ${dayCap} afspraken op deze dag via de agenda. Online boeken is niet meer mogelijk; neem contact op of kies een andere dag. Handmatig kun je in GHL nog een extra afspraak toevoegen.`,
+      code: 'DAY_CAP_REACHED',
+      dayCount,
+      maxPerDay: dayCap,
+    });
+  }
+  if (dayCount === null) {
+    console.warn('[confirm-booking] dag-event count niet opgehaald; bevestigen gaat door');
+  }
 
   const block = chosenSlot.block || chosenSlot.id;
   const timeMap = { morning: '09:00', afternoon: '13:00' };
