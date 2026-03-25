@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="nl">
+<html lang="nl" style="background-color:#111111;">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark" />
   <meta http-equiv="Cache-Control" content="no-store, max-age=0" />
   <!-- Versie-marker: als je dit niet in "Paginabron bekijken" ziet, laadt je niet de nieuwste book.html -->
-  <meta name="hetekraan-book-build" content="2026-03-25-whatsapp-literals" />
+  <meta name="hetekraan-book-build" content="2026-03-26-inline-shell" />
   <title>Afspraak bevestigen – Hetekraan</title>
   <style>
     /* Geen var(--…) hier: WhatsApp in-app browser negeert :root vaak → witte achtergrond. Alles vast hex/rgba. */
@@ -335,29 +335,30 @@
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
-<body>
-  <div class="card">
-    <header class="brand-header">
-      <div class="brand-mark" aria-hidden="true" title="Hetekraan">
+<body style="margin:0;background-color:#111111;color:#f0f0f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;box-sizing:border-box;padding:24px 16px 40px;">
+  <!-- Inline styles op html/body/card: backup als in-app browser <style> niet goed toepast -->
+  <div class="card" style="background-color:#1a1a1a;border:1px solid #272727;border-radius:16px;padding:28px 24px;width:100%;max-width:480px;box-sizing:border-box;box-shadow:0 8px 40px rgba(0,0,0,0.35);">
+    <header class="brand-header" style="display:flex;align-items:center;gap:12px;margin-bottom:22px;padding-bottom:18px;border-bottom:1px solid #333333;">
+      <div class="brand-mark" aria-hidden="true" title="Hetekraan" style="width:44px;height:44px;background-color:#ffd000;border-radius:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
         <!-- Inline SVG: emoji + externe /logo falen vaak in WhatsApp WebView -->
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" aria-hidden="true">
           <path fill="#111111" d="M16 5.2c-1.6 2.8-.7 5 1.4 6.9 2.4-2 1.6-4.5 0-6.4 2.2 2.6 5.5 9.2-.2 15.4-1.4 1.8-4 3-7.2 2.8-.3-3.7 3-8 7.4-9.2.4-2.6-.3-6.5 1-9.5Z"/>
         </svg>
       </div>
-      <div class="brand-text">
-        <div class="brand-title">Hetekraan</div>
-        <div class="brand-sub">Dé Quooker specialist · Boek je tijdslot</div>
+      <div class="brand-text" style="min-width:0;">
+        <div class="brand-title" style="font-weight:800;font-size:18px;color:#ffffff;letter-spacing:-0.02em;">Hetekraan</div>
+        <div class="brand-sub" style="font-size:11px;color:#666666;margin-top:3px;text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Dé Quooker specialist · Boek je tijdslot</div>
       </div>
     </header>
 
     <div id="bookingScreen">
-      <h1>Kies jouw tijdslot</h1>
-      <p class="subtitle" id="subtitleText">We sturen u op de dag van de afspraak een appje met een geschatte aankomsttijd.</p>
+      <h1 style="font-size:22px;font-weight:700;color:#ffffff;margin:0 0 6px 0;">Kies jouw tijdslot</h1>
+      <p class="subtitle" id="subtitleText" style="font-size:15px;color:#9a9a9a;margin:0 0 24px 0;line-height:1.5;">We sturen u op de dag van de afspraak een appje met een geschatte aankomsttijd.</p>
 
       <div id="infoRows"></div>
       <div class="info-divider"></div>
 
-      <div class="slots-label">Beschikbare tijdsloten</div>
+      <div class="slots-label" style="font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:0.06em;color:#666666;margin-bottom:14px;">Beschikbare tijdsloten</div>
       <div id="slotButtons"></div>
 
       <div class="email-block" id="phoneBlock" hidden>
@@ -390,10 +391,10 @@
         <p class="email-hint" id="emailHint">Verplicht voor facturatie als we je e-mail nog niet hebben. We slaan dit op in GHL.</p>
       </div>
 
-      <button type="button" class="confirm-btn" id="confirmBtn" disabled>
+      <button type="button" class="confirm-btn" id="confirmBtn" disabled style="display:block;width:100%;background-color:#ffd000;color:#111111;border:none;border-radius:12px;padding:16px;font-size:16px;font-weight:700;margin-top:20px;box-sizing:border-box;">
         Bevestig afspraak
       </button>
-      <p class="note">Je ontvangt een WhatsApp bevestiging na het kiezen.</p>
+      <p class="note" style="font-size:13px;color:#666666;text-align:center;margin-top:14px;line-height:1.5;">Je ontvangt een WhatsApp bevestiging na het kiezen.</p>
     </div>
 
     <div class="loading" id="loadingScreen">
@@ -518,12 +519,14 @@
         btn.type = 'button';
         btn.className = 'slot-btn';
         btn.dataset.slotId = slot.id;
+        btn.style.cssText =
+          'display:flex;align-items:center;gap:14px;width:100%;background-color:#111111;border:2px solid #272727;border-radius:12px;padding:18px 20px;text-align:left;color:#f0f0f0;cursor:pointer;margin-bottom:12px;box-sizing:border-box;font:inherit;-webkit-tap-highlight-color:transparent;';
         btn.innerHTML = `
-          <div class="slot-info">
-            <div class="slot-title">Optie ${i + 1}: ${label}</div>
-            <div class="slot-time">${timeShown}</div>
+          <div class="slot-info" style="flex:1;min-width:0;">
+            <div class="slot-title" style="font-weight:700;font-size:16px;color:#ffffff;margin-bottom:2px;">Optie ${i + 1}: ${label}</div>
+            <div class="slot-time" style="font-size:14px;color:#9a9a9a;">${timeShown}</div>
           </div>
-          <div class="slot-check" aria-hidden="true"></div>
+          <div class="slot-check" aria-hidden="true" style="margin-left:auto;width:22px;height:22px;border-radius:50%;border:2px solid #555555;flex-shrink:0;box-sizing:border-box;"></div>
         `;
         btn.onclick = () => selectSlot(slot.id, btn);
         slotContainer.appendChild(btn);
@@ -562,8 +565,24 @@
     }
 
     function selectSlot(slotId, btn) {
-      document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('selected'));
+      document.querySelectorAll('.slot-btn').forEach((b) => {
+        b.classList.remove('selected');
+        b.style.borderColor = '#272727';
+        b.style.backgroundColor = '#111111';
+        const chk = b.querySelector('.slot-check');
+        if (chk) {
+          chk.style.backgroundColor = 'transparent';
+          chk.style.borderColor = '#555555';
+        }
+      });
       btn.classList.add('selected');
+      btn.style.borderColor = '#ffd000';
+      btn.style.backgroundColor = 'rgba(255,208,0,0.12)';
+      const check = btn.querySelector('.slot-check');
+      if (check) {
+        check.style.backgroundColor = '#ffd000';
+        check.style.borderColor = '#ffd000';
+      }
       selectedSlot = slotId;
       if (!hasMobileFromToken(bookingData.phone)) {
         document.getElementById('phoneBlock').hidden = false;
