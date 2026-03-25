@@ -630,14 +630,10 @@
           const tslot = esc(sanitizeTimeDisplay(chosenSlot?.time) || selectedSlot);
           const d = esc(data.date);
           const addr = esc(bookingData.address || '—');
-          const waNote =
-            data.workflowTriggered
-              ? '<br><br><em>Je afspraak staat in de agenda. Je ontvangt zo een WhatsApp (goedgekeurd template) via onze workflow.</em>'
-              : '<br><br><em>Je afspraak staat in de agenda. Geen bevestigingsmail/app ontvangen? Neem contact op — controleer of de workflow op tag “boeking-bevestigd” actief is.</em>';
           document.getElementById('successDetail').innerHTML = `
             <strong>Datum:</strong> ${d}<br>
             <strong>Tijdslot:</strong> ${tslot}<br>
-            <strong>Adres:</strong> ${addr}${waNote}
+            <strong>Adres:</strong> ${addr}
           `;
           document.getElementById('successScreen').style.display = 'block';
         } else {
