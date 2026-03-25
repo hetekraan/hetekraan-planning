@@ -146,42 +146,96 @@ export default async function handler(req, res) {
     return res.status(502).json({ error: 'Kon gegevens niet opslaan in GHL. Probeer het later opnieuw.' });
   }
 
+  function pickAppointmentId(data) {
+    if (!data || typeof data !== 'object') return null;
+    return (
+      data.id ||
+      data.appointmentId ||
+      data.appointment?.id ||
+      data.event?.id ||
+      data.data?.id ||
+      null
+    );
+  }
+
+  /** Zelfde basis-payload als api/booking.js createBooking (werkt in jullie omgeving). */
+  function buildApptBody(tryStart, tryEnd, extra = {}) {
+    return {
+      calendarId: GHL_CALENDAR_ID,
+      locationId: GHL_LOCATION_ID,
+      contactId,
+      startTime: tryStart.toISOString(),
+      endTime: tryEnd.toISOString(),
+      title: `${name} – ${type || 'afspraak'}`,
+      address: address || '',
+      ...extra,
+    };
+  }
+
   const offsets = [0, -5, 5, -10, 10, -15, 15, -30, 30];
   let appointmentId = null;
   let lastError = null;
+  let lastStatus = 0;
 
-  for (const offsetMin of offsets) {
-    const tryStart = new Date(startMs + offsetMin * 60 * 1000);
-    const tryEnd   = new Date(startMs + offsetMin * 60 * 1000 + durationMin * 60 * 1000);
+  const attempts = [
+    { label: 'v1-04-15', version: '2021-04-15', extra: {} },
+    { label: 'v2-07-28-confirmed', version: '2021-07-28', extra: { appointmentStatus: 'confirmed', ignoreLimits: true } },
+  ];
 
-    const apptRes = await fetch(`${GHL_BASE}/calendars/events/appointments`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-07-28' },
-      body: JSON.stringify({
-        calendarId: GHL_CALENDAR_ID,
-        locationId: GHL_LOCATION_ID,
-        contactId,
-        startTime: tryStart.toISOString(),
-        endTime: tryEnd.toISOString(),
-        title: `${name} – ${type || 'afspraak'}`,
-        appointmentStatus: 'confirmed',
-        ignoreLimits: true,
-      })
-    });
+  outer: for (const { version, extra } of attempts) {
+    for (const offsetMin of offsets) {
+      const tryStart = new Date(startMs + offsetMin * 60 * 1000);
+      const tryEnd = new Date(startMs + offsetMin * 60 * 1000 + durationMin * 60 * 1000);
 
-    if (apptRes.ok) {
-      const apptData = await apptRes.json();
-      appointmentId = apptData?.id;
-      break;
+      const apptRes = await fetchWithRetry(`${GHL_BASE}/calendars/events/appointments`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${GHL_API_KEY}`,
+          'Content-Type': 'application/json',
+          Version: version,
+        },
+        body: JSON.stringify(buildApptBody(tryStart, tryEnd, extra)),
+      });
+
+      lastStatus = apptRes.status;
+      const errText = await apptRes.text().catch(() => '');
+      let apptData = null;
+      if (apptRes.ok) {
+        try {
+          apptData = errText ? JSON.parse(errText) : {};
+        } catch {
+          apptData = {};
+        }
+        appointmentId = pickAppointmentId(apptData);
+        if (appointmentId) break outer;
+        lastError = errText || JSON.stringify(apptData) || 'empty id';
+        console.error('[confirm-booking] GHL 200 maar geen id:', lastError.slice(0, 500));
+        break;
+      }
+
+      lastError = errText;
+      const lower = errText.toLowerCase();
+      const maybeSlotConflict =
+        lower.includes('slot') ||
+        lower.includes('available') ||
+        lower.includes('conflict') ||
+        lower.includes('bezet') ||
+        lower.includes('busy') ||
+        lower.includes('overlap');
+      if (!maybeSlotConflict) break;
     }
-    const errText = await apptRes.text();
-    lastError = errText;
-    if (!errText.includes('slot') && !errText.includes('available')) break;
   }
 
   if (!appointmentId) {
-    console.error('[confirm-booking] Alle slots geprobeerd, mislukt:', lastError);
-    return res.status(500).json({ error: 'Kon geen afspraak aanmaken in de agenda' });
+    console.error('[confirm-booking] Agenda-POST mislukt:', lastStatus, (lastError || '').slice(0, 800));
+    const hint =
+      process.env.BOOKING_CONFIRM_DEBUG === 'true'
+        ? { ghlStatus: lastStatus, ghlBody: (lastError || '').slice(0, 400) }
+        : {};
+    return res.status(500).json({
+      error: 'Kon geen afspraak aanmaken in de agenda',
+      ...hint,
+    });
   }
 
   const dateFormatted = new Date(`${date}T12:00:00+01:00`).toLocaleDateString('nl-NL', {
