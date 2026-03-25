@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark" />
   <meta http-equiv="Cache-Control" content="no-store, max-age=0" />
   <!-- Versie-marker: als je dit niet in "Paginabron bekijken" ziet, laadt je niet de nieuwste book.html -->
-  <meta name="hetekraan-book-build" content="2026-03-26-inline-shell" />
+  <meta name="hetekraan-book-build" content="2026-03-26-confirm-tz" />
   <title>Afspraak bevestigen – Hetekraan</title>
   <style>
     /* Geen var(--…) hier: WhatsApp in-app browser negeert :root vaak → witte achtergrond. Alles vast hex/rgba. */
@@ -641,7 +641,10 @@
           `;
           document.getElementById('successScreen').style.display = 'block';
         } else {
-          showError('Niet gelukt', data.error || 'Er is een fout opgetreden. Neem contact met ons op.');
+          let msg = data.error || 'Er is een fout opgetreden. Neem contact met ons op.';
+          if (data.ghlBody) msg += '\n\n' + String(data.ghlBody);
+          else if (data.hint) msg += '\n\n' + String(data.hint);
+          showError('Niet gelukt', msg);
         }
       } catch (e) {
         document.getElementById('loadingScreen').style.display = 'none';

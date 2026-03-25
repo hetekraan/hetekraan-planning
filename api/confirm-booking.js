@@ -2,6 +2,7 @@
 // Verwerkt de klantenkeuze uit de boekingspagina.
 // Maakt de GHL-afspraak aan; WhatsApp alleen via GHL-workflow (tag-puls).
 
+import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
@@ -107,11 +108,17 @@ export default async function handler(req, res) {
   const block = chosenSlot.block || chosenSlot.id;
   const timeMap = { morning: '09:00', afternoon: '13:00' };
   const startTimeStr = chosenSlot.suggestedTime || timeMap[block] || '09:00';
-  const [hours, minutes] = startTimeStr.split(':').map(Number);
+  const timeParts = startTimeStr.split(':').map(Number);
+  const hours = timeParts[0] ?? 9;
+  const minutes = Number.isFinite(timeParts[1]) ? timeParts[1] : 0;
   const durationMap = { installatie: 60, onderhoud: 30, reparatie: 45 };
   const durationMin = durationMap[type] || 30;
 
-  const startMs = new Date(`${date}T${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}:00+01:00`).getTime();
+  const startAnchor = amsterdamWallTimeToDate(date, hours, minutes);
+  const startMs = startAnchor ? startAnchor.getTime() : NaN;
+  if (!Number.isFinite(startMs)) {
+    return res.status(400).json({ error: 'Ongeldige datum of tijd in het tijdslot.' });
+  }
 
   const phoneForPut = firstValidNlMobile(phoneRaw, phone, contactSnap?.phone);
   const putPayload = { email };
@@ -150,17 +157,54 @@ export default async function handler(req, res) {
     if (!data || typeof data !== 'object') return null;
     return (
       data.id ||
+      data._id ||
       data.appointmentId ||
       data.appointment?.id ||
+      data.appointment?._id ||
       data.event?.id ||
+      data.event?._id ||
       data.data?.id ||
+      data.data?._id ||
       null
     );
   }
 
-  /** Zelfde basis-payload als api/booking.js createBooking (werkt in jullie omgeving). */
+  async function resolveAssignedUserId() {
+    const envId = (process.env.GHL_APPOINTMENT_ASSIGNED_USER_ID || '').trim();
+    if (envId) return envId;
+    const urls = [
+      `${GHL_BASE}/calendars/${GHL_CALENDAR_ID}?locationId=${GHL_LOCATION_ID}`,
+      `${GHL_BASE}/locations/${GHL_LOCATION_ID}/calendars/${GHL_CALENDAR_ID}`,
+    ];
+    for (const url of urls) {
+      try {
+        const r = await fetch(url, {
+          headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' },
+        });
+        if (!r.ok) continue;
+        const j = await r.json();
+        const cal = j?.calendar || j?.data || j;
+        const uid =
+          cal?.userId ||
+          cal?.primaryUserId ||
+          cal?.assignedUserId ||
+          cal?.teamMembers?.[0]?.userId ||
+          cal?.teamMembers?.[0]?.id ||
+          (Array.isArray(cal?.calendarUserIds) ? cal.calendarUserIds[0] : null) ||
+          (Array.isArray(cal?.memberIds) ? cal.memberIds[0] : null);
+        if (uid) return String(uid);
+      } catch {
+        /* ignore */
+      }
+    }
+    return '';
+  }
+
+  const assignedUserId = await resolveAssignedUserId();
+
+  /** Zelfde basis-payload als api/booking.js + ignoreDateRange (kalender buiten “boekbare range”). */
   function buildApptBody(tryStart, tryEnd, extra = {}) {
-    return {
+    const body = {
       calendarId: GHL_CALENDAR_ID,
       locationId: GHL_LOCATION_ID,
       contactId,
@@ -168,8 +212,11 @@ export default async function handler(req, res) {
       endTime: tryEnd.toISOString(),
       title: `${name} – ${type || 'afspraak'}`,
       address: address || '',
+      ignoreDateRange: true,
       ...extra,
     };
+    if (assignedUserId) body.assignedUserId = assignedUserId;
+    return body;
   }
 
   const offsets = [0, -5, 5, -10, 10, -15, 15, -30, 30];
@@ -228,13 +275,24 @@ export default async function handler(req, res) {
 
   if (!appointmentId) {
     console.error('[confirm-booking] Agenda-POST mislukt:', lastStatus, (lastError || '').slice(0, 800));
-    const hint =
-      process.env.BOOKING_CONFIRM_DEBUG === 'true'
-        ? { ghlStatus: lastStatus, ghlBody: (lastError || '').slice(0, 400) }
-        : {};
+    const showPublic =
+      process.env.BOOKING_CONFIRM_DEBUG === 'true' ||
+      process.env.BOOKING_CONFIRM_PUBLIC_ERROR === 'true';
+    const hint = showPublic
+      ? {
+          ghlStatus: lastStatus,
+          ghlBody: (lastError || '').slice(0, 500),
+        }
+      : {};
     return res.status(500).json({
       error: 'Kon geen afspraak aanmaken in de agenda',
       ...hint,
+      ...(showPublic
+        ? {}
+        : {
+            hint:
+              'Tip: zet in Vercel BOOKING_CONFIRM_PUBLIC_ERROR=true voor de GHL-foutmelding, of GHL_APPOINTMENT_ASSIGNED_USER_ID met je GHL user-id als de kalender een medewerker vereist.',
+          }),
     });
   }
 
