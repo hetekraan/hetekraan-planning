@@ -3,30 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark" />
   <meta http-equiv="Cache-Control" content="no-store, max-age=0" />
   <!-- Versie-marker: als je dit niet in "Paginabron bekijken" ziet, laadt je niet de nieuwste book.html -->
-  <meta name="hetekraan-book-build" content="2026-03-25-dark-brand" />
+  <meta name="hetekraan-book-build" content="2026-03-25-whatsapp-literals" />
   <title>Afspraak bevestigen – Hetekraan</title>
   <style>
-    :root {
-      --bg: #111;
-      --card: #1a1a1a;
-      --card-border: #272727;
-      --ink: #f0f0f0;
-      --ink-muted: #9a9a9a;
-      --accent: #ffd000;
-      --accent-ink: #111;
-      --accent-soft: rgba(255, 208, 0, 0.12);
-      --accent-hover: #e6bc00;
-      --line: #333;
-    }
+    /* Geen var(--…) hier: WhatsApp in-app browser negeert :root vaak → witte achtergrond. Alles vast hex/rgba. */
+    html { color-scheme: dark; }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: var(--bg);
-      color: var(--ink);
+      background: #111111;
+      color: #f0f0f0;
       min-height: 100vh;
       display: flex;
       align-items: flex-start;
@@ -35,8 +26,8 @@
     }
 
     .card {
-      background: var(--card);
-      border: 1px solid var(--card-border);
+      background: #1a1a1a;
+      border: 1px solid #272727;
       border-radius: 16px;
       box-shadow: 0 8px 40px rgba(0,0,0,0.35);
       padding: 28px 24px;
@@ -51,7 +42,7 @@
       gap: 12px;
       margin-bottom: 22px;
       padding-bottom: 18px;
-      border-bottom: 1px solid var(--line);
+      border-bottom: 1px solid #333333;
     }
     .brand-mark {
       width: 44px;
@@ -61,10 +52,10 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 22px;
       flex-shrink: 0;
-      line-height: 1;
+      line-height: 0;
     }
+    .brand-mark svg { width: 26px; height: 26px; display: block; }
     .brand-text { min-width: 0; }
     .brand-title {
       font-weight: 800;
@@ -89,7 +80,7 @@
     }
     .subtitle {
       font-size: 15px;
-      color: var(--ink-muted);
+      color: #9a9a9a;
       margin-bottom: 24px;
       line-height: 1.5;
     }
@@ -100,7 +91,7 @@
       align-items: flex-start;
       margin-bottom: 10px;
       font-size: 15px;
-      color: var(--ink);
+      color: #f0f0f0;
     }
     .info-row .info-label {
       flex-shrink: 0;
@@ -114,7 +105,7 @@
     }
     .info-divider {
       height: 1px;
-      background: var(--line);
+      background: #333333;
       margin: 20px 0;
     }
 
@@ -133,7 +124,7 @@
       gap: 14px;
       width: 100%;
       background: #111;
-      border: 2px solid var(--card-border);
+      border: 2px solid #272727;
       border-radius: 12px;
       padding: 18px 20px;
       cursor: pointer;
@@ -144,11 +135,11 @@
     }
     .slot-btn:hover {
       border-color: rgba(255, 208, 0, 0.45);
-      background: var(--accent-soft);
+      background: rgba(255, 208, 0, 0.12);
     }
     .slot-btn.selected {
-      border-color: var(--accent);
-      background: var(--accent-soft);
+      border-color: #ffd000;
+      background: rgba(255, 208, 0, 0.12);
     }
     .slot-info { flex: 1; min-width: 0; }
     .slot-title {
@@ -159,7 +150,7 @@
     }
     .slot-time {
       font-size: 14px;
-      color: var(--ink-muted);
+      color: #9a9a9a;
     }
     .slot-check {
       margin-left: auto;
@@ -172,8 +163,8 @@
       position: relative;
     }
     .slot-btn.selected .slot-check {
-      background: var(--accent);
-      border-color: var(--accent);
+      background: #ffd000;
+      border-color: #ffd000;
     }
     .slot-btn.selected .slot-check::after {
       content: '';
@@ -182,7 +173,7 @@
       top: 50%;
       width: 6px;
       height: 10px;
-      border: solid var(--accent-ink);
+      border: solid #111111;
       border-width: 0 2px 2px 0;
       transform: translate(-50%, -60%) rotate(45deg);
     }
@@ -190,8 +181,8 @@
     .confirm-btn {
       display: block;
       width: 100%;
-      background: var(--accent);
-      color: var(--accent-ink);
+      background: #ffd000;
+      color: #111111;
       border: none;
       border-radius: 12px;
       padding: 16px;
@@ -202,7 +193,7 @@
       transition: background 0.15s, opacity 0.15s, transform 0.1s;
     }
     .confirm-btn:hover:not(:disabled) {
-      background: var(--accent-hover);
+      background: #e6bc00;
       transform: translateY(-1px);
     }
     .confirm-btn:disabled {
@@ -222,7 +213,7 @@
     .email-block {
       margin-top: 18px;
       padding-top: 18px;
-      border-top: 1px solid var(--line);
+      border-top: 1px solid #333333;
     }
     .email-block .email-label {
       display: block;
@@ -238,8 +229,8 @@
       padding: 12px 14px;
       font-size: 16px;
       background: #111;
-      color: var(--ink);
-      border: 2px solid var(--card-border);
+      color: #f0f0f0;
+      border: 2px solid #272727;
       border-radius: 10px;
       font-family: inherit;
       box-sizing: border-box;
@@ -249,8 +240,8 @@
     }
     .email-block .email-input:focus {
       outline: none;
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-soft);
+      border-color: #ffd000;
+      box-shadow: 0 0 0 3px rgba(255, 208, 0, 0.12);
     }
     .email-block .email-input.invalid {
       border-color: #e57373;
@@ -295,12 +286,12 @@
     }
     .success-msg {
       font-size: 15px;
-      color: var(--ink-muted);
+      color: #9a9a9a;
       line-height: 1.6;
     }
     .success-detail {
-      background: #111;
-      border: 1px solid var(--card-border);
+      background: #111111;
+      border: 1px solid #272727;
       border-radius: 10px;
       padding: 16px;
       margin-top: 20px;
@@ -324,7 +315,7 @@
       border: 2px solid #e57373;
     }
     .error-title { font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 8px; }
-    .error-msg { font-size: 15px; color: var(--ink-muted); line-height: 1.6; }
+    .error-msg { font-size: 15px; color: #9a9a9a; line-height: 1.6; }
 
     .loading {
       display: none;
@@ -335,8 +326,8 @@
     }
     .spinner {
       width: 36px; height: 36px;
-      border: 3px solid var(--card-border);
-      border-top-color: var(--accent);
+      border: 3px solid #272727;
+      border-top-color: #ffd000;
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
       margin: 0 auto 16px;
@@ -347,7 +338,12 @@
 <body>
   <div class="card">
     <header class="brand-header">
-      <div class="brand-mark" aria-hidden="true">🔥</div>
+      <div class="brand-mark" aria-hidden="true" title="Hetekraan">
+        <!-- Inline SVG: emoji + externe /logo falen vaak in WhatsApp WebView -->
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <path fill="#111111" d="M16 5.2c-1.6 2.8-.7 5 1.4 6.9 2.4-2 1.6-4.5 0-6.4 2.2 2.6 5.5 9.2-.2 15.4-1.4 1.8-4 3-7.2 2.8-.3-3.7 3-8 7.4-9.2.4-2.6-.3-6.5 1-9.5Z"/>
+        </svg>
+      </div>
       <div class="brand-text">
         <div class="brand-title">Hetekraan</div>
         <div class="brand-sub">Dé Quooker specialist · Boek je tijdslot</div>
