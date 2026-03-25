@@ -186,6 +186,8 @@ export default async function handler(req, res) {
       data.event?._id ||
       data.data?.id ||
       data.data?._id ||
+      data.result?.id ||
+      data.result?._id ||
       null
     );
   }
@@ -223,8 +225,33 @@ export default async function handler(req, res) {
 
   const assignedUserId = await resolveAssignedUserId();
 
-  /** Zelfde basis-payload als api/booking.js + ignoreDateRange (kalender buiten “boekbare range”). */
-  function buildApptBody(tryStart, tryEnd, extra = {}) {
+  function summarizeGhlError(raw) {
+    if (raw == null || typeof raw !== 'string') return '';
+    const t = raw.trim().slice(0, 2000);
+    if (!t) return '';
+    try {
+      const j = JSON.parse(t);
+      const parts = [
+        j.message,
+        j.error,
+        j.msg,
+        j.meta && typeof j.meta === 'object' && j.meta.message,
+        Array.isArray(j.errors) && j.errors[0] && j.errors[0].message,
+      ].filter((x) => typeof x === 'string' && x.trim());
+      if (parts.length) return clipGhlDetail(parts[0].trim(), 300);
+    } catch {
+      /* plain text */
+    }
+    return clipGhlDetail(t.replace(/\s+/g, ' '), 300);
+  }
+
+  function clipGhlDetail(s, max) {
+    if (s.length <= max) return s;
+    return `${s.slice(0, max - 1)}…`;
+  }
+
+  /** includeAssignedUser: false = geen assignedUserId (sommige kalenders falen op auto/user-id). */
+  function buildApptBody(tryStart, tryEnd, extra, includeAssignedUser) {
     const body = {
       calendarId: GHL_CALENDAR_ID,
       locationId: GHL_LOCATION_ID,
@@ -236,7 +263,7 @@ export default async function handler(req, res) {
       ignoreDateRange: true,
       ...extra,
     };
-    if (assignedUserId) body.assignedUserId = assignedUserId;
+    if (includeAssignedUser && assignedUserId) body.assignedUserId = assignedUserId;
     return body;
   }
 
@@ -246,73 +273,72 @@ export default async function handler(req, res) {
   let lastStatus = 0;
 
   const attempts = [
-    { label: 'v1-04-15', version: '2021-04-15', extra: {} },
-    { label: 'v2-07-28-confirmed', version: '2021-07-28', extra: { appointmentStatus: 'confirmed', ignoreLimits: true } },
+    { version: '2021-04-15', extra: {} },
+    { version: '2021-07-28', extra: { appointmentStatus: 'confirmed', ignoreLimits: true } },
   ];
 
-  outer: for (const { version, extra } of attempts) {
-    for (const offsetMin of offsets) {
-      const tryStart = new Date(startMs + offsetMin * 60 * 1000);
-      const tryEnd = new Date(startMs + offsetMin * 60 * 1000 + durationMin * 60 * 1000);
+  const userPasses = assignedUserId ? [true, false] : [false];
 
-      const apptRes = await fetchWithRetry(`${GHL_BASE}/calendars/events/appointments`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${GHL_API_KEY}`,
-          'Content-Type': 'application/json',
-          Version: version,
-        },
-        body: JSON.stringify(buildApptBody(tryStart, tryEnd, extra)),
-      });
+  outer: for (const includeAssignedUser of userPasses) {
+    for (const { version, extra } of attempts) {
+      for (const offsetMin of offsets) {
+        const tryStart = new Date(startMs + offsetMin * 60 * 1000);
+        const tryEnd = new Date(startMs + offsetMin * 60 * 1000 + durationMin * 60 * 1000);
 
-      lastStatus = apptRes.status;
-      const errText = await apptRes.text().catch(() => '');
-      let apptData = null;
-      if (apptRes.ok) {
-        try {
-          apptData = errText ? JSON.parse(errText) : {};
-        } catch {
-          apptData = {};
+        const apptRes = await fetchWithRetry(`${GHL_BASE}/calendars/events/appointments`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${GHL_API_KEY}`,
+            'Content-Type': 'application/json',
+            Version: version,
+          },
+          body: JSON.stringify(buildApptBody(tryStart, tryEnd, extra, includeAssignedUser)),
+        });
+
+        lastStatus = apptRes.status;
+        const errText = await apptRes.text().catch(() => '');
+        let apptData = null;
+        if (apptRes.ok) {
+          try {
+            apptData = errText ? JSON.parse(errText) : {};
+          } catch {
+            apptData = {};
+          }
+          appointmentId = pickAppointmentId(apptData);
+          if (appointmentId) break outer;
+          lastError = errText || JSON.stringify(apptData) || 'empty id';
+          console.error('[confirm-booking] GHL 200 maar geen id:', lastError.slice(0, 500));
+          break;
         }
-        appointmentId = pickAppointmentId(apptData);
-        if (appointmentId) break outer;
-        lastError = errText || JSON.stringify(apptData) || 'empty id';
-        console.error('[confirm-booking] GHL 200 maar geen id:', lastError.slice(0, 500));
-        break;
-      }
 
-      lastError = errText;
-      const lower = errText.toLowerCase();
-      const maybeSlotConflict =
-        lower.includes('slot') ||
-        lower.includes('available') ||
-        lower.includes('conflict') ||
-        lower.includes('bezet') ||
-        lower.includes('busy') ||
-        lower.includes('overlap');
-      if (!maybeSlotConflict) break;
+        lastError = errText;
+        const lower = errText.toLowerCase();
+        const maybeSlotConflict =
+          lower.includes('slot') ||
+          lower.includes('available') ||
+          lower.includes('conflict') ||
+          lower.includes('bezet') ||
+          lower.includes('busy') ||
+          lower.includes('overlap');
+        if (!maybeSlotConflict) break;
+      }
     }
   }
 
   if (!appointmentId) {
     console.error('[confirm-booking] Agenda-POST mislukt:', lastStatus, (lastError || '').slice(0, 800));
-    const showPublic =
-      process.env.BOOKING_CONFIRM_DEBUG === 'true' ||
-      process.env.BOOKING_CONFIRM_PUBLIC_ERROR === 'true';
-    const hint = showPublic
-      ? {
-          ghlStatus: lastStatus,
-          ghlBody: (lastError || '').slice(0, 500),
-        }
-      : {};
+    const ghlSummary = summarizeGhlError(lastError);
+    const showFull = process.env.BOOKING_CONFIRM_PUBLIC_ERROR === 'true' || process.env.BOOKING_CONFIRM_DEBUG === 'true';
     return res.status(500).json({
       error: 'Kon geen afspraak aanmaken in de agenda',
-      ...hint,
-      ...(showPublic
+      ghlStatus: lastStatus,
+      ghlSummary: ghlSummary || undefined,
+      ...(showFull ? { ghlBody: (lastError || '').slice(0, 800) } : {}),
+      ...(ghlSummary
         ? {}
         : {
             hint:
-              'Tip: zet in Vercel BOOKING_CONFIRM_PUBLIC_ERROR=true voor de GHL-foutmelding, of GHL_APPOINTMENT_ASSIGNED_USER_ID met je GHL user-id als de kalender een medewerker vereist.',
+              'Controleer GHL API-scopes (o.a. calendars/events.write), GHL_CALENDAR_ID, en zet eventueel GHL_APPOINTMENT_ASSIGNED_USER_ID.',
           }),
     });
   }

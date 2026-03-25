@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark" />
   <meta http-equiv="Cache-Control" content="no-store, max-age=0" />
   <!-- Versie-marker: als je dit niet in "Paginabron bekijken" ziet, laadt je niet de nieuwste book.html -->
-  <meta name="hetekraan-book-build" content="2026-03-26-confirm-tz" />
+  <meta name="hetekraan-book-build" content="2026-03-26-ghl-summary" />
   <title>Afspraak bevestigen – Hetekraan</title>
   <style>
     /* Geen var(--…) hier: WhatsApp in-app browser negeert :root vaak → witte achtergrond. Alles vast hex/rgba. */
@@ -315,7 +315,7 @@
       border: 2px solid #e57373;
     }
     .error-title { font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 8px; }
-    .error-msg { font-size: 15px; color: #9a9a9a; line-height: 1.6; }
+    .error-msg { font-size: 15px; color: #9a9a9a; line-height: 1.6; white-space: pre-wrap; }
 
     .loading {
       display: none;
@@ -642,8 +642,10 @@
           document.getElementById('successScreen').style.display = 'block';
         } else {
           let msg = data.error || 'Er is een fout opgetreden. Neem contact met ons op.';
+          if (data.ghlSummary) msg += '\n\n' + String(data.ghlSummary);
+          if (data.ghlStatus != null) msg += '\n(HTTP ' + String(data.ghlStatus) + ')';
           if (data.ghlBody) msg += '\n\n' + String(data.ghlBody);
-          else if (data.hint) msg += '\n\n' + String(data.hint);
+          else if (data.hint && !data.ghlSummary) msg += '\n\n' + String(data.hint);
           showError('Niet gelukt', msg);
         }
       } catch (e) {
