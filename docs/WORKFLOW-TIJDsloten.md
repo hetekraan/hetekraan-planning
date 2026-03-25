@@ -18,33 +18,35 @@ Betrouwbaarder dan alleen een tag:
 
 Zo triggert de workflow **elke keer** dat er een nieuwe boekingslink wordt gegenereerd.
 
+**Zelfde token / geen trigger:** de API **wist het veld Boekings token eerst** (lege waarde), wacht kort (~450 ms), en schrijft daarna sloten + nieuwe token. Dat bootst “handmatig wissen + opnieuw sturen” na. Uitzetten met `BOOKING_TOKEN_CLEAR_BEFORE_SET=false`. Pauze aanpassen: `BOOKING_TOKEN_RESET_MS` (ms, max 5000).
+
+**inviteIssuedAt** in de token-JSON blijft staan als extra uniciteit; sommige GHL-omgevingen negeren dat nog steeds voor triggers — dan helpt vooral de clear-stap.
+
 ## Alternatief: alleen tag
 
 - **Trigger:** Tag added → exact `stuur-tijdsloten` (kleine letters, geen spaties)
 - Workflow moet **Published / Active** zijn
 - Controleer **Execution history** in GHL na een test
 
+## Server en WhatsApp
+
+- **`POST /api/send-booking-invite`** zet **custom fields** (en optioneel de tag) en schrijft het **mobiele nummer** als **+31…** mee. **Geen** WhatsApp via de GHL Conversations API — alleen workflows met **goedgekeurde templates**.
+- **Bevestiging na boeken** (`/api/confirm-booking`): zet o.a. **tijdafspraak** en pulst tag **`boeking-bevestigd`** voor je template-workflow.
+
 ## Dubbele berichten (tijdslot + ochtend)
 
-- Onze server stuurt **geen** tweede vrij WhatsApp meer bij tijdsloten (alleen GHL-workflow). Dubbel = meestal **twee workflows** in GHL.
+- Dubbel = meestal **twee workflows** in GHL die allebei op hetzelfde moment reageren.
 - **Tag vs. custom field:** de API zet standaard **alleen** de velden (Tijdslot 1/2, Boekings token). De tag `stuur-tijdsloten` wordt **niet** meer gezet, tenzij je in Vercel **`BOOKING_ADD_TAG=true`** zet. Zo voorkom je dat zowel “tag workflow” als “Boekings token workflow” tegelijk een template sturen.
 - Controleer of je **ochtend-workflow** niet triggert op:
   - dezelfde tag als tijdsloten (`stuur-tijdsloten`), of
   - **hele map / alle custom fields** — kies exact **Boekings token** als trigger, niet “Quooker map” of “elk veld”.
 - Ochtend-cron zet alleen tag `ochtend-melding` als **`MORNING_MESSAGES_ENABLED=true`** in Vercel staat. Zonder die env doet de cron **geen** tags (geen vroege ochtend-trigger door de server).
 
-## Debug: komt er geen WhatsApp van de server?
+## Debug: geen WhatsApp na “Stuur tijdsloten”
 
-1. **Network-response** van `POST /api/send-booking-invite` openen → `diag.whatsappAttempts[].detail` bevat meestal de **exacte GHL-fout** (scopes, template, nummer, …).
-2. **Losse API-test** (zonder slots):  
-   - Vercel → Environment → `BOOKING_DEBUG_SECRET` = willekeurige lange string.  
-   - `POST https://jouw-domein/api/health`  
-   - Header: `x-booking-debug-secret: <zelfde waarde>`  
-   - Body JSON: `{ "contactId": "…" }`  
-   - Response: `attempts` per payload-variant (`message` vs `body`, met/zonder `locationId`).
-3. **Vercel (optioneel)**  
-   - `BOOKING_FALLBACK_TAG=true` — als de conversatie-API faalt, wordt tag `stuur-tijdsloten` getoggled zodat je **workflow** het alsnog kan sturen (niet tegelijk met een tweede workflow op custom field, anders dubbel).  
-   - `BOOKING_SEND_DIRECT_WHATSAPP=false` — alleen als je **uitsluitend** GHL-workflow wilt (geen server-WhatsApp).
+1. **Network-response** van `POST /api/send-booking-invite`: `workflowReady` moet `true` zijn en `diag.fieldsPut` `true`. Zo niet: GHL PUT / API-key / field-IDs.
+2. **GHL:** workflow **Published**, trigger op **Boekings token** (of tag + `BOOKING_ADD_TAG=true`), **Execution history**, template goedgekeurd, contact **+31** mobiel.
+3. **`GET /api/health`** — alleen GHL/OpenRouter bereikbaarheid; geen WhatsApp-test meer via POST.
 
 ## Checklist
 

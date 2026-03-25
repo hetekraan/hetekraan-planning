@@ -1,4 +1,8 @@
 // api/booking.js — slim boekingssysteem met route-optimalisatie
+import { normalizeNlPhone } from '../lib/ghl-phone.js';
+import { fetchWithRetry } from '../lib/retry.js';
+import { pulseContactTag } from '../lib/ghl-tag.js';
+
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_CALENDAR_ID = process.env.GHL_CALENDAR_ID;
@@ -115,6 +119,8 @@ async function findOrCreateContact({ firstName, lastName, phone, email, address,
     ] : [])
   ].filter(f => f.field_value);
 
+  const phoneNorm = normalizeNlPhone(String(phone || '').replace(/\s/g, '')) || phone;
+
   const createRes = await fetch(`${GHL_BASE}/contacts/`, {
     method: 'POST',
     headers: {
@@ -126,7 +132,7 @@ async function findOrCreateContact({ firstName, lastName, phone, email, address,
       locationId: GHL_LOCATION_ID,
       firstName,
       lastName: lastName || '',
-      phone,
+      phone: phoneNorm,
       email: email || '',
       address1: address || '',
       customFields,
@@ -259,12 +265,48 @@ export default async function handler(req, res) {
         });
         const apptData = await apptRes.json();
 
+        const norm = normalizeNlPhone(String(phone || '').replace(/\s/g, ''));
+        if (/^\+31[1-9]\d{8}$/.test(norm)) {
+          await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
+            method: 'PUT',
+            headers: {
+              Authorization: `Bearer ${GHL_API_KEY}`,
+              'Content-Type': 'application/json',
+              Version: '2021-04-15',
+            },
+            body: JSON.stringify({ phone: norm }),
+          });
+        }
+
+        const confirmTag =
+          process.env.BOOKING_CONFIRM_TAG === undefined || process.env.BOOKING_CONFIRM_TAG === ''
+            ? 'boeking-bevestigd'
+            : process.env.BOOKING_CONFIRM_TAG;
+        const tagDisabled = confirmTag === 'false' || confirmTag === 'none';
+        const tagFallback = process.env.BOOKING_CONFIRM_TAG_FALLBACK !== 'false' && !tagDisabled;
+
+        const delayMs = Math.min(Math.max(parseInt(process.env.BOOKING_CONFIRM_DELAY_MS || '600', 10) || 600, 0), 5000);
+        if (delayMs > 0) {
+          await new Promise((r) => setTimeout(r, delayMs));
+        }
+
+        let workflowTriggered = false;
+        if (tagFallback) {
+          workflowTriggered = await pulseContactTag(contactId, confirmTag, '[booking]');
+          if (workflowTriggered) {
+            console.log('[booking] Tag-puls voor workflow:', confirmTag);
+          }
+        }
+
         return res.status(200).json({
           success: true,
           contactId,
           appointmentId: apptData?.id,
           date,
           time,
+          messageSent: false,
+          whatsappViaApi: false,
+          workflowTriggered,
         });
       }
 

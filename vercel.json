@@ -1,4 +1,5 @@
 {
+  "buildCommand": "npm run build",
   "outputDirectory": "public",
   "cleanUrls": true,
   "headers": [
@@ -16,7 +17,7 @@
     }
   ],
   "rewrites": [
-    { "source": "/book/:token", "destination": "/book?token=:token" }
+    { "source": "/book/:token", "destination": "/book.html?token=:token" }
   ],
   "crons": [
     {

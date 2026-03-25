@@ -74,6 +74,8 @@
       padding: 13px; font-size: 15px; font-weight: 700;
       cursor: pointer; transition: opacity 0.15s;
       margin-top: 4px;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
     }
     .btn-search:hover:not(:disabled) { opacity: 0.88; }
     .btn-search:disabled { opacity: 0.35; cursor: not-allowed; }
@@ -140,6 +142,9 @@
       border: none; border-radius: 11px;
       padding: 15px; font-size: 15px; font-weight: 700;
       cursor: pointer; transition: opacity 0.15s, transform 0.1s;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
     }
     .btn-send:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
     .btn-send:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
@@ -178,7 +183,7 @@
 <!-- Stap 1: Zoekformulier -->
 <div class="card" id="searchCard">
   <div class="search-title">Stuur tijdsloten naar klant</div>
-  <div class="search-sub">Vul de klantgegevens in. Het systeem berekent de beste beschikbare tijdsloten en stuurt automatisch een WhatsApp.</div>
+  <div class="search-sub">Vul de klantgegevens in. Het systeem berekent tijdsloten en zet ze in GHL; WhatsApp verstuurt je <strong>workflow</strong> (goedgekeurd template).</div>
 
   <div class="field-row">
     <label class="field-label">Naam klant</label>
@@ -192,7 +197,7 @@
     <label class="field-label">Adres klant</label>
     <input class="field-input" type="text" id="inputAddress" placeholder="Hoofdstraat 12, Amsterdam">
   </div>
-  <button class="btn-search" id="searchBtn" onclick="loadSlots()">Tijdsloten berekenen →</button>
+  <button type="button" class="btn-search" id="searchBtn">Tijdsloten berekenen →</button>
 </div>
 
 <!-- Stap 2: Loading -->
@@ -218,10 +223,10 @@
 <div class="card hidden" id="messageCard">
   <div class="preview-label">📱 WhatsApp bericht dat verstuurd wordt</div>
   <div class="preview-bubble" id="previewText"></div>
-  <button class="btn-send" id="sendBtn" onclick="sendInvite()">
+  <button type="button" class="btn-send" id="sendBtn">
     <span>📲</span> Stuur WhatsApp
   </button>
-  <button class="btn-back" onclick="resetForm()">← Andere klant</button>
+  <button type="button" class="btn-back" onclick="resetForm()">← Andere klant</button>
 </div>
 
 <!-- Stap 3: Success -->
@@ -244,12 +249,43 @@
   const BLOCK_ICONS = { morning: '🌅', afternoon: '☀️' };
   let resolvedContactId = null;
   let loadedSlots       = [];
+  let sendInviteInFlight = false;
+
+  /** iOS/Safari/Chrome: autofill zet .value vaak pas ná de huidige click-tick; één tick wachten voorkomt “eerste klik doet niks”. */
+  function deferAction(fn) {
+    setTimeout(fn, 0);
+  }
+
+  function resetSendButton() {
+    const btn = document.getElementById('sendBtn');
+    if (!btn) return;
+    btn.disabled = false;
+    btn.innerHTML = '<span>📲</span> Stuur WhatsApp';
+  }
+
+  /** Voorkomt “knop doet niks” na afgebroken/trage request of bfcache. */
+  function resetInviteFlowState() {
+    sendInviteInFlight = false;
+    resetSendButton();
+  }
 
   function getParam(p) { return new URLSearchParams(window.location.search).get(p); }
   function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 
+  function onSendBtnClick(ev) {
+    const btn = ev.target && ev.target.closest && ev.target.closest('#sendBtn');
+    if (!btn || btn.disabled) return;
+    ev.preventDefault();
+    void sendInvite();
+  }
+
   // Als GHL het contactId meestuurt, vul alvast naam/telefoon in
   window.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('searchBtn').addEventListener('click', () => deferAction(loadSlots));
+    // Delegatie + pointer: betrouwbaarder dan één listener op de knop (WebKit / webviews).
+    const msgCard = document.getElementById('messageCard');
+    if (msgCard) msgCard.addEventListener('click', onSendBtnClick);
+
     const cid   = getParam('contactId');
     const name  = getParam('name');
     const phone = getParam('phone');
@@ -257,9 +293,13 @@
     if (phone) document.getElementById('inputPhone').value = phone;
     if (cid) {
       resolvedContactId = cid;
-      // Als contactId al bekend is, laad direct
-      loadSlots();
+      // Zelfde tick-delay als zoekknop: voorkomt rare eerste-klik op sommige browsers.
+      deferAction(loadSlots);
     }
+  });
+
+  window.addEventListener('pageshow', (ev) => {
+    if (ev.persisted) resetInviteFlowState();
   });
 
   async function loadSlots() {
@@ -338,6 +378,7 @@
       msg += `\nKlik op de link om jouw voorkeur door te geven, dan plannen we het gelijk in:\n[boekingslink]`;
       document.getElementById('previewText').textContent = msg;
       show('messageCard');
+      resetInviteFlowState();
 
     } catch (e) {
       hide('loadingCard');
@@ -346,12 +387,14 @@
   }
 
   async function sendInvite() {
+    if (sendInviteInFlight) return;
+    sendInviteInFlight = true;
     const btn = document.getElementById('sendBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<span>⏳</span> Versturen…';
-
     try {
-      // Bouw request body
+      if (!btn) return;
+      btn.disabled = true;
+      btn.innerHTML = '<span>⏳</span> Versturen…';
+
       const name    = document.getElementById('inputName').value.trim();
       const phone   = document.getElementById('inputPhone').value.trim();
       const address = document.getElementById('inputAddress').value.trim();
@@ -360,44 +403,53 @@
         ? { contactId: resolvedContactId }
         : { name, phone, address };
 
-      const res  = await fetch('/api/send-booking-invite', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
+      const ac = new AbortController();
+      const to = setTimeout(() => ac.abort(), 120000);
+      let res;
+      try {
+        res = await fetch('/api/send-booking-invite', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: ac.signal,
+        });
+      } finally {
+        clearTimeout(to);
+      }
+      const raw = await res.text();
+      let data;
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        throw new Error('Server gaf geen geldige JSON (HTTP ' + res.status + '). Controleer /api/send-booking-invite.');
+      }
 
       hide('resultCard');
       hide('messageCard');
 
-        if (data.success) {
-        const s1 = data.slots?.[0];
-        const s2 = data.slots?.[1];
-        const d = data.diag || {};
-        let sub = `${data.contactName}: gegevens zijn opgeslagen in GHL.`;
-        if (data.messageSent) sub += ' WhatsApp is direct verstuurd via de API.';
-        else if (d.fieldsPut && !data.messageSent) {
-          sub += ' ⚠️ WhatsApp niet verstuurd na alle API-pogingen.';
-          if (data.contactPhonePresent === false) sub += ' Geen geldig mobiel nummer op het GHL-contact.';
-          if (d.whatsappAttempts?.length) {
-            const a = d.whatsappAttempts[d.whatsappAttempts.length - 1];
-            sub += ' Laatste poging: ' + a.mode + ' (HTTP ' + a.status + ')' + (a.detail ? ' — ' + String(a.detail).slice(0, 220) : '') + '.';
-          }
-          sub += ' Staat op Vercel BOOKING_SEND_DIRECT_WHATSAPP op false?';
-        } else if (d.tagAdd) sub += ' Tag gezet — workflow kan ook een bericht sturen.';
-        else sub += ' ⚠️ Controleer Vercel logs (custom fields / WhatsApp).';
+      if (data.success) {
+        let sub = `${data.contactName}: tijdsloten en boekingslink staan in GHL. WhatsApp gaat via je workflow (template).`;
+        if (data.workflowReady === false) {
+          sub += ' ⚠️ Custom fields of tag niet volledig opgeslagen — check Vercel logs en GHL API-key.';
+        }
+        if (data.contactPhonePresent === false) {
+          sub += ' Let op: geen geldig +31-mobiel op het contact; zet 06-nummer in het formulier of in GHL als +316…';
+        }
         if (data.workflowTip) sub += '\n\n' + data.workflowTip;
         document.getElementById('successSub').textContent = sub;
         show('successCard');
       } else {
-        showError('Versturen mislukt', data.message || 'Probeer het opnieuw.');
-        btn.disabled = false;
-        btn.innerHTML = '<span>📲</span> Stuur WhatsApp';
+        showError('Versturen mislukt', data.error || data.message || 'Probeer het opnieuw.');
       }
     } catch (e) {
-      btn.disabled = false;
-      btn.innerHTML = '<span>📲</span> Stuur WhatsApp';
-      showError('Verbindingsfout', e.message);
+      const msg =
+        e && e.name === 'AbortError'
+          ? 'Het duurde te lang (timeout). Probeer opnieuw of ververs de pagina.'
+          : e.message || String(e);
+      showError('Verbindingsfout', msg);
+    } finally {
+      sendInviteInFlight = false;
+      resetSendButton();
     }
   }
 
@@ -409,11 +461,13 @@
     document.getElementById('inputAddress').value = '';
     hide('resultCard'); hide('messageCard'); hide('successCard'); hide('errorCard'); hide('loadingCard');
     show('searchCard');
+    resetSendButton();
   }
 
   function resetError() {
     hide('errorCard');
     show('searchCard');
+    resetSendButton();
   }
 
   function showError(title, msg) {

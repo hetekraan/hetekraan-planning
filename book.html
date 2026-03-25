@@ -5,14 +5,28 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Cache-Control" content="no-store, max-age=0" />
   <!-- Versie-marker: als je dit niet in "Paginabron bekijken" ziet, laadt je niet de nieuwste book.html -->
-  <meta name="hetekraan-book-build" content="2026-03-17-layout" />
+  <meta name="hetekraan-book-build" content="2026-03-25-dark-brand" />
   <title>Afspraak bevestigen – Hetekraan</title>
   <style>
+    :root {
+      --bg: #111;
+      --card: #1a1a1a;
+      --card-border: #272727;
+      --ink: #f0f0f0;
+      --ink-muted: #9a9a9a;
+      --accent: #ffd000;
+      --accent-ink: #111;
+      --accent-soft: rgba(255, 208, 0, 0.12);
+      --accent-hover: #e6bc00;
+      --line: #333;
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #f5f5f5;
+      background: var(--bg);
+      color: var(--ink);
       min-height: 100vh;
       display: flex;
       align-items: flex-start;
@@ -21,45 +35,61 @@
     }
 
     .card {
-      background: white;
+      background: var(--card);
+      border: 1px solid var(--card-border);
       border-radius: 16px;
-      box-shadow: 0 4px 24px rgba(0,0,0,0.10);
-      padding: 32px 28px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.35);
+      padding: 28px 24px;
       width: 100%;
       max-width: 480px;
     }
 
-    .logo {
+    /* Merk: zelfde stijl als suggest — geen externe afbeelding nodig (WhatsApp-browser mist soms /logo). */
+    .brand-header {
       display: flex;
       align-items: center;
-      gap: 10px;
-      margin-bottom: 28px;
+      gap: 12px;
+      margin-bottom: 22px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--line);
     }
-    .logo-icon {
+    .brand-mark {
       width: 44px;
       height: 44px;
       background: #ffd000;
-      border-radius: 12px;
+      border-radius: 11px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 13px;
-      font-weight: 800;
-      color: #111;
-      letter-spacing: -0.05em;
+      font-size: 22px;
+      flex-shrink: 0;
+      line-height: 1;
     }
-    .logo-text { font-weight: 700; font-size: 18px; color: #111; }
-    .logo-sub  { font-size: 12px; color: #888; }
+    .brand-text { min-width: 0; }
+    .brand-title {
+      font-weight: 800;
+      font-size: 18px;
+      color: #fff;
+      letter-spacing: -0.02em;
+    }
+    .brand-sub {
+      font-size: 11px;
+      color: #666;
+      margin-top: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+    }
 
     h1 {
       font-size: 22px;
       font-weight: 700;
-      color: #111;
+      color: #fff;
       margin-bottom: 6px;
     }
     .subtitle {
       font-size: 15px;
-      color: #555;
+      color: var(--ink-muted);
       margin-bottom: 24px;
       line-height: 1.5;
     }
@@ -70,28 +100,30 @@
       align-items: flex-start;
       margin-bottom: 10px;
       font-size: 15px;
-      color: #333;
+      color: var(--ink);
     }
     .info-row .info-label {
       flex-shrink: 0;
       width: 72px;
       font-size: 12px;
       font-weight: 600;
-      color: #888;
+      color: #666;
       text-transform: uppercase;
       letter-spacing: 0.04em;
       padding-top: 2px;
     }
     .info-divider {
       height: 1px;
-      background: #eee;
+      background: var(--line);
       margin: 20px 0;
     }
 
     .slots-label {
       font-weight: 600;
-      font-size: 15px;
-      color: #111;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #666;
       margin-bottom: 14px;
     }
 
@@ -100,47 +132,48 @@
       align-items: center;
       gap: 14px;
       width: 100%;
-      background: #f9f9f9;
-      border: 2px solid #e5e5e5;
+      background: #111;
+      border: 2px solid var(--card-border);
       border-radius: 12px;
       padding: 18px 20px;
       cursor: pointer;
       transition: all 0.15s;
       margin-bottom: 12px;
       text-align: left;
+      color: inherit;
     }
     .slot-btn:hover {
-      border-color: #ffd000;
-      background: #fffbea;
+      border-color: rgba(255, 208, 0, 0.45);
+      background: var(--accent-soft);
     }
     .slot-btn.selected {
-      border-color: #ffd000;
-      background: #fffbea;
+      border-color: var(--accent);
+      background: var(--accent-soft);
     }
     .slot-info { flex: 1; min-width: 0; }
     .slot-title {
       font-weight: 700;
       font-size: 16px;
-      color: #111;
+      color: #fff;
       margin-bottom: 2px;
     }
     .slot-time {
       font-size: 14px;
-      color: #555;
+      color: var(--ink-muted);
     }
     .slot-check {
       margin-left: auto;
       width: 22px;
       height: 22px;
       border-radius: 50%;
-      border: 2px solid #ccc;
+      border: 2px solid #555;
       flex-shrink: 0;
       transition: all 0.15s;
       position: relative;
     }
     .slot-btn.selected .slot-check {
-      background: #ffd000;
-      border-color: #ffd000;
+      background: var(--accent);
+      border-color: var(--accent);
     }
     .slot-btn.selected .slot-check::after {
       content: '';
@@ -149,7 +182,7 @@
       top: 50%;
       width: 6px;
       height: 10px;
-      border: solid #111;
+      border: solid var(--accent-ink);
       border-width: 0 2px 2px 0;
       transform: translate(-50%, -60%) rotate(45deg);
     }
@@ -157,8 +190,8 @@
     .confirm-btn {
       display: block;
       width: 100%;
-      background: #ffd000;
-      color: #111;
+      background: var(--accent);
+      color: var(--accent-ink);
       border: none;
       border-radius: 12px;
       padding: 16px;
@@ -166,27 +199,69 @@
       font-weight: 700;
       cursor: pointer;
       margin-top: 20px;
-      transition: opacity 0.15s, transform 0.1s;
+      transition: background 0.15s, opacity 0.15s, transform 0.1s;
     }
     .confirm-btn:hover:not(:disabled) {
-      opacity: 0.9;
+      background: var(--accent-hover);
       transform: translateY(-1px);
     }
     .confirm-btn:disabled {
-      opacity: 0.4;
+      opacity: 0.35;
       cursor: not-allowed;
       transform: none;
     }
 
     .note {
       font-size: 13px;
-      color: #888;
+      color: #666;
       text-align: center;
       margin-top: 14px;
       line-height: 1.5;
     }
 
-    /* Success state */
+    .email-block {
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+    .email-block .email-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 8px;
+    }
+    .email-block .email-input {
+      width: 100%;
+      padding: 12px 14px;
+      font-size: 16px;
+      background: #111;
+      color: var(--ink);
+      border: 2px solid var(--card-border);
+      border-radius: 10px;
+      font-family: inherit;
+      box-sizing: border-box;
+    }
+    .email-block .email-input::placeholder {
+      color: #555;
+    }
+    .email-block .email-input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+    .email-block .email-input.invalid {
+      border-color: #e57373;
+    }
+    .email-hint {
+      font-size: 12px;
+      color: #666;
+      margin-top: 6px;
+      line-height: 1.4;
+    }
+
     .success-screen {
       display: none;
       text-align: center;
@@ -197,7 +272,7 @@
       height: 56px;
       margin: 0 auto 20px;
       border-radius: 50%;
-      background: #e8f5e9;
+      background: rgba(76, 175, 80, 0.15);
       border: 2px solid #4caf50;
       position: relative;
     }
@@ -208,32 +283,33 @@
       top: 45%;
       width: 10px;
       height: 18px;
-      border: solid #2e7d32;
+      border: solid #81c784;
       border-width: 0 3px 3px 0;
       transform: translate(-50%, -50%) rotate(45deg);
     }
     .success-title {
       font-size: 22px;
       font-weight: 700;
-      color: #111;
+      color: #fff;
       margin-bottom: 10px;
     }
     .success-msg {
       font-size: 15px;
-      color: #555;
+      color: var(--ink-muted);
       line-height: 1.6;
     }
     .success-detail {
-      background: #f9f9f9;
+      background: #111;
+      border: 1px solid var(--card-border);
       border-radius: 10px;
       padding: 16px;
       margin-top: 20px;
       font-size: 14px;
-      color: #333;
+      color: #ccc;
       text-align: left;
     }
+    .success-detail em { color: #888; }
 
-    /* Error / full state */
     .error-screen {
       display: none;
       text-align: center;
@@ -244,24 +320,23 @@
       height: 48px;
       margin: 0 auto 16px;
       border-radius: 50%;
-      background: #ffebee;
+      background: rgba(229, 115, 115, 0.12);
       border: 2px solid #e57373;
     }
-    .error-title { font-size: 20px; font-weight: 700; color: #111; margin-bottom: 8px; }
-    .error-msg { font-size: 15px; color: #666; line-height: 1.6; }
+    .error-title { font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+    .error-msg { font-size: 15px; color: var(--ink-muted); line-height: 1.6; }
 
-    /* Loading */
     .loading {
       display: none;
       text-align: center;
       padding: 40px 0;
-      color: #888;
+      color: #666;
       font-size: 15px;
     }
     .spinner {
       width: 36px; height: 36px;
-      border: 3px solid #eee;
-      border-top-color: #ffd000;
+      border: 3px solid var(--card-border);
+      border-top-color: var(--accent);
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
       margin: 0 auto 16px;
@@ -271,13 +346,13 @@
 </head>
 <body>
   <div class="card">
-    <div class="logo">
-      <div class="logo-icon">HK</div>
-      <div>
-        <div class="logo-text">Hetekraan</div>
-        <div class="logo-sub">Dé Quooker specialist.</div>
+    <header class="brand-header">
+      <div class="brand-mark" aria-hidden="true">🔥</div>
+      <div class="brand-text">
+        <div class="brand-title">Hetekraan</div>
+        <div class="brand-sub">Dé Quooker specialist · Boek je tijdslot</div>
       </div>
-    </div>
+    </header>
 
     <div id="bookingScreen">
       <h1>Kies jouw tijdslot</h1>
@@ -289,7 +364,37 @@
       <div class="slots-label">Beschikbare tijdsloten</div>
       <div id="slotButtons"></div>
 
-      <button class="confirm-btn" id="confirmBtn" disabled onclick="confirmBooking()">
+      <div class="email-block" id="phoneBlock" hidden>
+        <label class="email-label" for="bookingPhone">Telefoonnummer</label>
+        <input
+          type="tel"
+          id="bookingPhone"
+          class="email-input"
+          name="phone"
+          autocomplete="tel"
+          inputmode="tel"
+          placeholder="06-12345678"
+          aria-describedby="phoneHint"
+        />
+        <p class="email-hint" id="phoneHint">Nodig voor je WhatsApp-bevestiging als we je nummer nog niet hebben.</p>
+      </div>
+
+      <div class="email-block" id="emailBlock" hidden>
+        <label class="email-label" for="bookingEmail">E-mailadres</label>
+        <input
+          type="email"
+          id="bookingEmail"
+          class="email-input"
+          name="email"
+          autocomplete="email"
+          inputmode="email"
+          placeholder="naam@voorbeeld.nl"
+          aria-describedby="emailHint"
+        />
+        <p class="email-hint" id="emailHint">Verplicht voor facturatie als we je e-mail nog niet hebben. We slaan dit op in GHL.</p>
+      </div>
+
+      <button type="button" class="confirm-btn" id="confirmBtn" disabled>
         Bevestig afspraak
       </button>
       <p class="note">Je ontvangt een WhatsApp bevestiging na het kiezen.</p>
@@ -332,6 +437,8 @@
     let token = null;
     let selectedSlot = null;
     let bookingData = null;
+    /** Al bekend in link/GHL → geen invoerveld; wel meesturen bij bevestigen */
+    let knownEmailFromToken = '';
 
     const esc = (s) => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 
@@ -378,11 +485,30 @@
         return;
       }
 
+      selectedSlot = null;
+
+      knownEmailFromToken = '';
+      const rawTokenEmail = bookingData.email != null ? String(bookingData.email).trim() : '';
+      if (isValidEmail(rawTokenEmail)) {
+        knownEmailFromToken = rawTokenEmail.toLowerCase();
+      }
+
+      document.getElementById('emailBlock').hidden = true;
+      document.getElementById('phoneBlock').hidden = true;
+      document.getElementById('bookingPhone').value = '';
+      document.getElementById('bookingPhone').classList.remove('invalid');
+
       // Vul info rows (geen vaste datum – elk slot heeft eigen datum)
       const infoRows = document.getElementById('infoRows');
+      const phoneRow =
+        hasMobileFromToken(bookingData.phone)
+          ? `<div class="info-row"><span class="info-label">Telefoon</span><span>${esc(String(bookingData.phone || '').trim())}</span></div>`
+          : '';
       infoRows.innerHTML = `
         <div class="info-row"><span class="info-label">Naam</span><span>${esc(bookingData.name)}</span></div>
         ${bookingData.address ? `<div class="info-row"><span class="info-label">Adres</span><span>${esc(bookingData.address)}</span></div>` : ''}
+        ${phoneRow}
+        ${knownEmailFromToken ? `<div class="info-row"><span class="info-label">E-mail</span><span>${esc(rawTokenEmail)}</span></div>` : ''}
       `;
 
       // Vul slot buttons
@@ -393,6 +519,7 @@
         const label = esc(slot.label || SLOT_LABELS[block] || slot.id);
         const timeShown = esc(sanitizeTimeDisplay(slot.time));
         const btn = document.createElement('button');
+        btn.type = 'button';
         btn.className = 'slot-btn';
         btn.dataset.slotId = slot.id;
         btn.innerHTML = `
@@ -405,17 +532,70 @@
         btn.onclick = () => selectSlot(slot.id, btn);
         slotContainer.appendChild(btn);
       });
+
+      const emailEl = document.getElementById('bookingEmail');
+      queueMicrotask(() => updateConfirmButtonState());
+    }
+
+    function isValidEmail(str) {
+      const s = String(str || '').trim();
+      if (!s || s.length > 254) return false;
+      return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(s);
+    }
+
+    /** NL-mobiel (06… of +31 6…) — sluit aan op server normalizeNlPhone */
+    function isValidNlMobile(str) {
+      const d = String(str || '').replace(/\D/g, '');
+      if (d.length === 10 && d.startsWith('06')) return true;
+      if (d.length === 11 && d.startsWith('316')) return true;
+      return false;
+    }
+
+    function hasMobileFromToken(p) {
+      return isValidNlMobile(String(p || ''));
+    }
+
+    function updateConfirmButtonState() {
+      const emailEl = document.getElementById('bookingEmail');
+      const phoneEl = document.getElementById('bookingPhone');
+      const needEmail = !knownEmailFromToken;
+      const needPhone = bookingData && !hasMobileFromToken(bookingData.phone);
+      const emailOk = !needEmail || isValidEmail(emailEl.value);
+      const phoneOk = !needPhone || isValidNlMobile(phoneEl.value);
+      document.getElementById('confirmBtn').disabled = !selectedSlot || !emailOk || !phoneOk;
     }
 
     function selectSlot(slotId, btn) {
       document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('selected'));
       btn.classList.add('selected');
       selectedSlot = slotId;
-      document.getElementById('confirmBtn').disabled = false;
+      if (!hasMobileFromToken(bookingData.phone)) {
+        document.getElementById('phoneBlock').hidden = false;
+      }
+      if (!knownEmailFromToken) {
+        document.getElementById('emailBlock').hidden = false;
+      }
+      updateConfirmButtonState();
+      queueMicrotask(() => updateConfirmButtonState());
     }
 
     async function confirmBooking() {
       if (!selectedSlot) return;
+      const emailEl = document.getElementById('bookingEmail');
+      const phoneEl = document.getElementById('bookingPhone');
+      const email = knownEmailFromToken || String(emailEl.value || '').trim();
+      if (!isValidEmail(email)) {
+        emailEl.classList.add('invalid');
+        emailEl.focus();
+        return;
+      }
+      const needPhone = !hasMobileFromToken(bookingData.phone);
+      const phone = needPhone ? String(phoneEl.value || '').trim() : String(bookingData.phone || '').trim();
+      if (needPhone && !isValidNlMobile(phone)) {
+        phoneEl.classList.add('invalid');
+        phoneEl.focus();
+        return;
+      }
 
       document.getElementById('bookingScreen').style.display = 'none';
       document.getElementById('loadingScreen').style.display = 'block';
@@ -424,7 +604,7 @@
         const res = await fetch('/api/confirm-booking', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, slotId: selectedSlot })
+          body: JSON.stringify({ token, slotId: selectedSlot, email, phone })
         });
         const data = await res.json();
 
@@ -435,10 +615,14 @@
           const tslot = esc(sanitizeTimeDisplay(chosenSlot?.time) || selectedSlot);
           const d = esc(data.date);
           const addr = esc(bookingData.address || '—');
+          const waNote =
+            data.workflowTriggered
+              ? '<br><br><em>Je afspraak staat in de agenda. Je ontvangt zo een WhatsApp (goedgekeurd template) via onze workflow.</em>'
+              : '<br><br><em>Je afspraak staat in de agenda. Geen bevestigingsmail/app ontvangen? Neem contact op — controleer of de workflow op tag “boeking-bevestigd” actief is.</em>';
           document.getElementById('successDetail').innerHTML = `
             <strong>Datum:</strong> ${d}<br>
             <strong>Tijdslot:</strong> ${tslot}<br>
-            <strong>Adres:</strong> ${addr}
+            <strong>Adres:</strong> ${addr}${waNote}
           `;
           document.getElementById('successScreen').style.display = 'block';
         } else {
@@ -462,9 +646,40 @@
       return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
     }
 
+    function wireConfirmAndEmail() {
+      const confirmBtn = document.getElementById('confirmBtn');
+      confirmBtn.addEventListener('click', () => {
+        deferAction(confirmBooking);
+      });
+      const bump = () => {
+        document.getElementById('bookingEmail').classList.remove('invalid');
+        document.getElementById('bookingPhone').classList.remove('invalid');
+        updateConfirmButtonState();
+      };
+      const emailEl = document.getElementById('bookingEmail');
+      emailEl.addEventListener('input', bump);
+      emailEl.addEventListener('change', bump);
+      emailEl.addEventListener('blur', bump);
+      const phoneEl = document.getElementById('bookingPhone');
+      phoneEl.addEventListener('input', bump);
+      phoneEl.addEventListener('change', bump);
+      phoneEl.addEventListener('blur', bump);
+    }
+
+    /** Zelfde als suggest: autofill vult velden vaak pas ná de click-stack. */
+    function deferAction(fn) {
+      setTimeout(fn, 0);
+    }
+
+    let confirmWired = false;
+
     function runInit() {
       try {
         init();
+        if (!confirmWired) {
+          confirmWired = true;
+          wireConfirmAndEmail();
+        }
       } catch (e) {
         console.error('[book]', e);
         showError('Fout bij laden', 'Ververs de pagina of open de link opnieuw. Lukt het niet? Neem contact op.');

@@ -1,6 +1,7 @@
 // api/ghl.js — met custom field IDs
 import { fetchWithRetry } from '../lib/retry.js';
 import { sendErrorNotification } from '../lib/notify.js';
+import { pulseContactTag } from '../lib/ghl-tag.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -18,6 +19,8 @@ const FIELD_IDS = {
   prijs:               'HGjlT6ofaBiMz3j2HsXL',
   prijs_regels:        'gPjrUG2eH81PeALh8tVS',
   tijdafspraak:        'RfKARymCOYYkufGY053T',
+  /** Zelfde ID als api/cron/morning-messages.js — voor ETA/ochtend-template in workflow */
+  geplande_aankomst:   'XELcOSdWq3tqRtpLE5x8',
   opmerkingen:         'LCIFALarX3WZI5jsBbDA',
 };
 
@@ -446,26 +449,35 @@ export default async function handler(req, res) {
       }
 
       case 'sendETA': {
-        // TESTMODUS: WhatsApp tijdelijk uitgeschakeld
-        const { contactId, eta, name } = req.body;
-        console.log(`[sendETA] TESTMODUS – WhatsApp NIET verstuurd aan contactId=${contactId}, eta=${eta}`);
-        return res.status(200).json({ success: true, testMode: true });
+        const { contactId, eta } = req.body;
+        if (!contactId) return res.status(400).json({ error: 'contactId verplicht' });
+        const etaTag = process.env.GHL_ETA_WORKFLOW_TAG || 'monteur-eta';
+        await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', Version: '2021-04-15' },
+          body: JSON.stringify({
+            customFields: [{ id: FIELD_IDS.geplande_aankomst, field_value: String(eta ?? '').trim() }],
+          }),
+        });
+        const ok = await pulseContactTag(contactId, etaTag, '[ghl sendETA]');
+        return res.status(200).json({ success: true, workflowTag: etaTag, tagPulseOk: ok });
       }
 
       case 'sendMorningMessages': {
         const { appointments } = req.body;
-        for (const appt of appointments) {
-          await fetchWithRetry(`${GHL_BASE}/conversations/messages`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-04-15' },
+        for (const appt of appointments || []) {
+          if (!appt.contactId) continue;
+          const planned = String(appt.timeFrom || appt.timeTo || '09:00').trim();
+          await fetchWithRetry(`${GHL_BASE}/contacts/${appt.contactId}`, {
+            method: 'PUT',
+            headers: { Authorization: `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', Version: '2021-04-15' },
             body: JSON.stringify({
-              type: 'WhatsApp',
-              contactId: appt.contactId,
-              message: `Goedemorgen! U staat vandaag in onze planning. Onze monteur is er rond ${appt.timeFrom}. Kunt u voordat de monteur er is alvast het keukenkastje leeg maken zodat hij er makkelijk bij kan? Tot straks!`
-            })
+              customFields: [{ id: FIELD_IDS.geplande_aankomst, field_value: planned }],
+            }),
           });
+          await pulseContactTag(appt.contactId, 'ochtend-melding', '[ghl sendMorningMessages]');
         }
-        return res.status(200).json({ success: true });
+        return res.status(200).json({ success: true, via: 'workflow-tag-ochtend-melding' });
       }
 
       default:
