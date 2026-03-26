@@ -3,20 +3,33 @@
 // rekening houdend met de bestaande routes voor komende werkdagen.
 // Wordt geopend vanuit GHL als Custom Menu Link.
 
+import {
+  blockAllowsNewCustomerBooking,
+  customerMaxForBlock,
+  normalizeWorkType,
+} from '../lib/booking-blocks.js';
+import {
+  addAmsterdamCalendarDays,
+  amsterdamCalendarDayBoundsMs,
+  amsterdamWeekdaySun0,
+  formatYyyyMmDdInAmsterdam,
+  hourInAmsterdam,
+} from '../lib/amsterdam-calendar-day.js';
+
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_CALENDAR_ID = process.env.GHL_CALENDAR_ID;
 const MAPS_KEY        = process.env.GOOGLE_MAPS_KEY;
 const GHL_BASE        = 'https://services.leadconnectorhq.com';
 const DEPOT           = 'Cornelis Dopperkade, Amsterdam';
-const MAX_PER_BLOCK   = 4; // max afspraken per halve dag
 const DAYS_AHEAD      = 7; // kijk zoveel dagen vooruit
 
 const FIELD_IDS = {
-  straatnaam:  'ZwIMY4VPelG5rKROb5NR',
-  huisnummer:  'co5Mr16rF6S6ay5hJOSJ',
-  postcode:    '3bCi5hL0rR9XGG33x2Gv',
-  woonplaats:  'mFRQjlUppycMfyjENKF9',
+  straatnaam:     'ZwIMY4VPelG5rKROb5NR',
+  huisnummer:     'co5Mr16rF6S6ay5hJOSJ',
+  postcode:       '3bCi5hL0rR9XGG33x2Gv',
+  woonplaats:     'mFRQjlUppycMfyjENKF9',
+  type_onderhoud: 'EXSQmlt7BqkXJMs8F3Qk',
 };
 
 function getField(contact, fieldId) {
@@ -64,7 +77,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const q = req.method === 'POST' ? req.body : req.query;
-  const { contactId, address: addressParam, name: nameParam, phone: phoneParam } = q;
+  const { contactId, address: addressParam, name: nameParam, phone: phoneParam, type: typeQ, workType: workTypeQ } = q;
 
   if (!contactId && !addressParam && !nameParam && !phoneParam) {
     return res.status(400).json({ error: 'contactId, address, name of phone vereist' });
@@ -151,30 +164,50 @@ export default async function handler(req, res) {
     }
   }
 
+  let workType = normalizeWorkType(workTypeQ || typeQ || '');
+  if (!workTypeQ && !typeQ && resolvedContactId) {
+    try {
+      const cr = await fetch(`${GHL_BASE}/contacts/${resolvedContactId}`, {
+        headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' },
+      });
+      if (cr.ok) {
+        const cd = await cr.json();
+        const c = cd?.contact || cd;
+        workType = normalizeWorkType(getField(c, FIELD_IDS.type_onderhoud));
+      }
+    } catch {}
+  }
+
   // Geocodeer het adres van de nieuwe klant
   const newCoord = address ? await geocode(address) : null;
 
-  // Bekijk de komende DAYS_AHEAD werkdagen
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const candidates = []; // { dateStr, dateLabel, block, label, score, existingCount }
 
-  const candidates = []; // { date, dateStr, block, label, score, existingCount }
+  let dateStr = addAmsterdamCalendarDays(formatYyyyMmDdInAmsterdam(new Date()), 1);
+  if (!dateStr) return res.status(500).json({ error: 'Datumfout' });
 
-  for (let d = 1; d <= DAYS_AHEAD + 3; d++) {
-    const day = new Date(today);
-    day.setDate(today.getDate() + d);
-    const dow = day.getDay();
-    if (dow === 0 || dow === 6) continue; // skip weekend
+  const blockedParam = q.blocked || '';
+  const blockedSet = blockedParam ? new Set(blockedParam.split(',').map((s) => s.trim()).filter(Boolean)) : null;
 
-    const dateStr  = day.toISOString().split('T')[0];
+  for (let step = 0; step < DAYS_AHEAD + 10 && candidates.length < 12; step++) {
+    const dow = amsterdamWeekdaySun0(dateStr);
+    if (dow == null) break;
+    if (dow === 0 || dow === 6) {
+      dateStr = addAmsterdamCalendarDays(dateStr, 1);
+      continue;
+    }
+    if (blockedSet?.has(dateStr)) {
+      dateStr = addAmsterdamCalendarDays(dateStr, 1);
+      continue;
+    }
 
-    // Skip geblokkeerde datums (vakantie/vrij)
-    const blockedParam = q.blocked || '';
-    if (blockedParam && blockedParam.split(',').includes(dateStr)) continue;
-    const startMs  = new Date(`${dateStr}T00:00:00+01:00`).getTime();
-    const endMs    = new Date(`${dateStr}T23:59:59+01:00`).getTime();
+    const bounds = amsterdamCalendarDayBoundsMs(dateStr);
+    if (!bounds) {
+      dateStr = addAmsterdamCalendarDays(dateStr, 1);
+      continue;
+    }
+    const { startMs, endMs } = bounds;
 
-    // Haal afspraken op voor die dag
     let events = [];
     try {
       const er = await fetch(
@@ -187,8 +220,8 @@ export default async function handler(req, res) {
       }
     } catch {}
 
-    const morningEvents   = events.filter(e => new Date(e.startTime).getHours() < 13);
-    const afternoonEvents = events.filter(e => new Date(e.startTime).getHours() >= 13);
+    const morningEvents   = events.filter((e) => hourInAmsterdam(e.startTime) < 13);
+    const afternoonEvents = events.filter((e) => hourInAmsterdam(e.startTime) >= 13);
 
     // Geocodeer bestaande adressen voor route-fit berekening
     const geocodeEvents = async (evList) => {
@@ -206,22 +239,28 @@ export default async function handler(req, res) {
     for (const block of ['morning', 'afternoon']) {
       const blockEvents = block === 'morning' ? morningEvents : afternoonEvents;
       const count = blockEvents.length;
-      if (count >= MAX_PER_BLOCK) continue;
+      if (!blockAllowsNewCustomerBooking(block, blockEvents, workType)) continue;
 
+      const maxB = customerMaxForBlock(block);
       let score = count; // basis score: minder afspraken = beter
 
       // Route-fit score als we het adres hebben
       if (newCoord) {
         const existingCoords = await geocodeEvents(blockEvents);
         const fitScore = routeFitScore(newCoord, existingCoords);
-        // Combineer: we willen volle blokken (minder lege km) maar toch route-efficiënt
-        // Score = geografische afstand van dichtstbijzijnd punt × (1 + count/4)
-        score = fitScore * (1 + count / MAX_PER_BLOCK);
+        score = fitScore * (1 + count / maxB);
       }
 
+      const noon = new Date(bounds.startMs + 12 * 3600000);
+      const dateLabel = noon.toLocaleDateString('nl-NL', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        timeZone: 'Europe/Amsterdam',
+      });
       candidates.push({
-        date: day,
         dateStr,
+        dateLabel,
         block,
         existingCount: count,
         score,
@@ -230,7 +269,8 @@ export default async function handler(req, res) {
       });
     }
 
-    if (candidates.length >= 6) break; // genoeg gevonden
+    dateStr = addAmsterdamCalendarDays(dateStr, 1);
+    if (candidates.length >= 6) break;
   }
 
   // Sorteer op score (laagste = beste route-fit)
@@ -239,12 +279,12 @@ export default async function handler(req, res) {
   // Geef de beste 2-3 opties terug
   const suggestions = candidates.slice(0, 3).map(c => ({
     dateStr:   c.dateStr,
-    dateLabel: c.date.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' }),
+    dateLabel: c.dateLabel,
     block:     c.block,
     blockLabel: c.blockLabel,
     timeLabel: c.timeLabel,
     existingCount: c.existingCount,
-    slotsLeft: MAX_PER_BLOCK - c.existingCount,
+    slotsLeft: customerMaxForBlock(c.block) - c.existingCount,
     score:     Math.round(c.score * 10) / 10,
   }));
 

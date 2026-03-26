@@ -1,5 +1,19 @@
 // api/booking.js — slim boekingssysteem met route-optimalisatie
+import {
+  addAmsterdamCalendarDays,
+  amsterdamCalendarDayBoundsMs,
+  amsterdamWeekdaySun0,
+  formatYyyyMmDdInAmsterdam,
+  hourInAmsterdam,
+} from '../lib/amsterdam-calendar-day.js';
+import {
+  blockAllowsNewCustomerBooking,
+  ghlDurationMinutesForType,
+  normalizeWorkType,
+} from '../lib/booking-blocks.js';
+import { fetchCalendarEventCountForDay, maxCustomerAppointmentsPerDay } from '../lib/calendar-customer-cap.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
+import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
 
@@ -11,9 +25,100 @@ const GOOGLE_API_KEY  = process.env.GOOGLE_MAPS_API_KEY;
 
 const DEPOT = 'Cornelis Dopperkade, Amsterdam';
 
-// Beschikbare tijdslots (uur als decimaal)
-const SLOT_HOURS = [8, 9.5, 11, 12.5, 14, 15.5];
-const SLOT_DURATION_MIN = 90;
+function slotLabel(h) {
+  const hours = Math.floor(h);
+  const mins = Math.round((h % 1) * 60);
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+}
+
+/** Starttijden (uur als decimaal) binnen 09–13 / 13–17; afhankelijk van GHL-duur (60 of 90 min). */
+function candidateStartHoursForBlock(block, durationMin) {
+  const starts = [];
+  const stepMin = 30;
+  if (block === 'morning') {
+    for (let m = 9 * 60; m < 13 * 60; m += stepMin) {
+      if (m + durationMin <= 13 * 60) starts.push(m / 60);
+    }
+  } else {
+    for (let m = 13 * 60; m < 17 * 60; m += stepMin) {
+      if (m + durationMin <= 17 * 60) starts.push(m / 60);
+    }
+  }
+  return starts;
+}
+
+function allCandidateHours(durationMin) {
+  return [
+    ...candidateStartHoursForBlock('morning', durationMin),
+    ...candidateStartHoursForBlock('afternoon', durationMin),
+  ];
+}
+
+function splitEventsByBlock(events) {
+  const morning = [];
+  const afternoon = [];
+  for (const e of events) {
+    const h = hourInAmsterdam(e.startTime);
+    if (h < 13) morning.push(e);
+    else afternoon.push(e);
+  }
+  return { morning, afternoon };
+}
+
+function eventIntervalMs(e) {
+  const s = new Date(e.startTime).getTime();
+  const endMs = e.endTime ? new Date(e.endTime).getTime() : s + 60 * 60000;
+  return { startMs: s, endMs };
+}
+
+function rangesOverlap(a0, a1, b0, b1) {
+  return a0 < b1 && b0 < a1;
+}
+
+function bookingIntervalFitsCalendar(dateStr, startHourDec, durationMin, events) {
+  const hh = Math.floor(startHourDec);
+  const mm = Math.round((startHourDec % 1) * 60);
+  const startD = amsterdamWallTimeToDate(dateStr, hh, mm);
+  if (!startD) return null;
+  const startMs = startD.getTime();
+  const endMs = startMs + durationMin * 60000;
+  for (const e of events) {
+    const iv = eventIntervalMs(e);
+    if (rangesOverlap(startMs, endMs, iv.startMs, iv.endMs)) return null;
+  }
+  return { startMs, endMs, startD };
+}
+
+function slotAvailableForWorkType(dateStr, events, workType, startHourDec) {
+  const durationMin = ghlDurationMinutesForType(workType);
+  const block = startHourDec < 13 ? 'morning' : 'afternoon';
+  const { morning, afternoon } = splitEventsByBlock(events);
+  const blockEvents = block === 'morning' ? morning : afternoon;
+  if (!blockAllowsNewCustomerBooking(block, blockEvents, workType)) return false;
+  return bookingIntervalFitsCalendar(dateStr, startHourDec, durationMin, events) != null;
+}
+
+function computeSlotsForDay(dateStr, events, workType) {
+  const durationMin = ghlDurationMinutesForType(workType);
+  const hours = allCandidateHours(durationMin);
+  const { morning, afternoon } = splitEventsByBlock(events);
+  const morningOk = blockAllowsNewCustomerBooking('morning', morning, workType);
+  const afternoonOk = blockAllowsNewCustomerBooking('afternoon', afternoon, workType);
+
+  return hours.map((h) => {
+    const block = h < 13 ? 'morning' : 'afternoon';
+    const blockOk = block === 'morning' ? morningOk : afternoonOk;
+    const interval = blockOk ? bookingIntervalFitsCalendar(dateStr, h, durationMin, events) : null;
+    const available = Boolean(interval);
+    const endH = h + durationMin / 60;
+    return {
+      time: slotLabel(h),
+      timeEnd: slotLabel(endH),
+      hour: h,
+      available,
+    };
+  });
+}
 
 // Custom field IDs
 const FIELD_IDS = {
@@ -23,21 +128,29 @@ const FIELD_IDS = {
   woonplaats:          'mFRQjlUppycMfyjENKF9',
   type_onderhoud:      'EXSQmlt7BqkXJMs8F3Qk',
   probleemomschrijving:'BBcbPCNA9Eu0Kyi4U1LN',
+  tijdafspraak:        'RfKARymCOYYkufGY053T',
 };
 
-function slotLabel(h) {
-  const hours = Math.floor(h);
-  const mins = Math.round((h % 1) * 60);
-  return `${String(hours).padStart(2,'0')}:${String(mins).padStart(2,'0')}`;
-}
-
-function slotEndLabel(h) {
-  return slotLabel(h + SLOT_DURATION_MIN / 60);
+function formatDateLongNlForBooking(dateStr) {
+  const parts = String(dateStr || '').split('-').map(Number);
+  const y = parts[0];
+  const m = parts[1];
+  const d = parts[2];
+  if (!y || !m || !d) return dateStr || '';
+  const utc = Date.UTC(y, m - 1, d, 12, 0, 0);
+  return new Date(utc).toLocaleDateString('nl-NL', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'Europe/Amsterdam',
+  });
 }
 
 async function getAppointmentsForDay(dateStr) {
-  const startMs = new Date(`${dateStr}T00:00:00+01:00`).getTime();
-  const endMs   = new Date(`${dateStr}T23:59:59+01:00`).getTime();
+  const bounds = amsterdamCalendarDayBoundsMs(dateStr);
+  if (!bounds) return [];
+  const { startMs, endMs } = bounds;
   const url = `${GHL_BASE}/calendars/events?locationId=${GHL_LOCATION_ID}&calendarId=${GHL_CALENDAR_ID}&startTime=${startMs}&endTime=${endMs}`;
   try {
     const res = await fetch(url, {
@@ -78,14 +191,6 @@ async function nearestDistanceMeters(existingAddresses, newAddress) {
     const valid = elements.filter(e => e.status === 'OK').map(e => e.distance?.value || 999999);
     return valid.length ? Math.min(...valid) : null;
   } catch (_) { return null; }
-}
-
-// Bepaalt welke slots bezet zijn op basis van afspraken
-function getBookedHours(events) {
-  return events.map(e => {
-    const start = new Date(e.startTime);
-    return start.getHours() + start.getMinutes() / 60;
-  });
 }
 
 // Zoek of maak contact aan in GHL
@@ -156,38 +261,51 @@ export default async function handler(req, res) {
 
       // Geeft beschikbare dagen terug (volgende 14 werkdagen)
       case 'getDays': {
+        const workType = normalizeWorkType(params.workType);
         const days = [];
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        let dateStr = addAmsterdamCalendarDays(formatYyyyMmDdInAmsterdam(new Date()), 1);
+        if (!dateStr) return res.status(500).json({ error: 'Datumfout' });
+
         const dayPromises = [];
         const dayMeta = [];
 
-        for (let i = 1; i <= 28 && dayMeta.length < 14; i++) {
-          const d = new Date(today.getTime() + i * 86400000);
-          if (d.getDay() === 0 || d.getDay() === 6) continue; // skip weekend
-          const dateStr = d.toLocaleDateString('sv-SE'); // YYYY-MM-DD
-          dayMeta.push({ d, dateStr });
+        for (let guard = 0; guard < 40 && dayMeta.length < 14; guard++) {
+          const dow = amsterdamWeekdaySun0(dateStr);
+          if (dow == null) break;
+          if (dow === 0 || dow === 6) {
+            dateStr = addAmsterdamCalendarDays(dateStr, 1);
+            continue;
+          }
+          dayMeta.push({ dateStr });
           dayPromises.push(getAppointmentsForDay(dateStr));
+          dateStr = addAmsterdamCalendarDays(dateStr, 1);
         }
 
         const results = await Promise.all(dayPromises);
 
         for (let i = 0; i < dayMeta.length; i++) {
-          const { d, dateStr } = dayMeta[i];
+          const { dateStr } = dayMeta[i];
+          const bounds = amsterdamCalendarDayBoundsMs(dateStr);
+          if (!bounds) continue;
+          const noon = new Date(bounds.startMs + 12 * 3600000);
           const events = results[i];
-          const booked = getBookedHours(events);
-          const available = SLOT_HOURS.filter(h => !booked.some(b => Math.abs(b - h) < 1));
+          const slots = computeSlotsForDay(dateStr, events, workType);
+          const available = slots.filter((s) => s.available);
           if (available.length > 0) {
             days.push({
               date: dateStr,
-              dayName: d.toLocaleDateString('nl-NL', { weekday: 'long' }),
-              dayShort: d.toLocaleDateString('nl-NL', { weekday: 'short' }),
-              dayNumber: d.getDate(),
-              month: d.toLocaleDateString('nl-NL', { month: 'long' }),
-              monthShort: d.toLocaleDateString('nl-NL', { month: 'short' }),
+              dayName: noon.toLocaleDateString('nl-NL', { weekday: 'long', timeZone: 'Europe/Amsterdam' }),
+              dayShort: noon.toLocaleDateString('nl-NL', { weekday: 'short', timeZone: 'Europe/Amsterdam' }),
+              dayNumber: parseInt(
+                new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Amsterdam', day: 'numeric' }).format(noon),
+                10
+              ),
+              month: noon.toLocaleDateString('nl-NL', { month: 'long', timeZone: 'Europe/Amsterdam' }),
+              monthShort: noon.toLocaleDateString('nl-NL', { month: 'short', timeZone: 'Europe/Amsterdam' }),
               slotsAvailable: available.length,
-              totalSlots: SLOT_HOURS.length,
-              bookedCount: booked.length,
+              totalSlots: slots.length,
+              bookedCount: events.length,
+              workType,
             });
           }
         }
@@ -196,11 +314,12 @@ export default async function handler(req, res) {
 
       // Geeft tijdslots terug voor een dag, gerangschikt op route-vriendelijkheid
       case 'getSlots': {
-        const { date, address } = params;
+        const { date, address, workType: wtParam } = params;
         if (!date) return res.status(400).json({ error: 'date vereist' });
+        const workType = normalizeWorkType(wtParam);
 
         const events = await getAppointmentsForDay(date);
-        const booked = getBookedHours(events);
+        const slots = computeSlotsForDay(date, events, workType);
 
         // Haal adressen bestaande afspraken op
         let existingAddresses = [DEPOT];
@@ -216,16 +335,10 @@ export default async function handler(req, res) {
           distMeters = await nearestDistanceMeters(existingAddresses, address);
         }
 
-        const slots = SLOT_HOURS.map(h => ({
-          time: slotLabel(h),
-          timeEnd: slotEndLabel(h),
-          hour: h,
-          available: !booked.some(b => Math.abs(b - h) < 1),
-        }));
-
         return res.status(200).json({
           slots,
           existingCount: events.length,
+          workType,
           routeDistanceMeters: distMeters,
           routeDistanceKm: distMeters ? Math.round(distMeters / 100) / 10 : null,
         });
@@ -233,37 +346,110 @@ export default async function handler(req, res) {
 
       // Boekt een afspraak aan
       case 'createBooking': {
-        const { firstName, lastName, phone, email, address, date, time, workType, description } = params;
+        const { firstName, lastName, phone, email, address, date, time, workType: wtRaw, description } = params;
 
         if (!firstName || !phone || !date || !time) {
           return res.status(400).json({ error: 'Verplichte velden ontbreken: naam, telefoon, datum, tijd' });
         }
 
+        const workType = normalizeWorkType(wtRaw);
+        const durationMin = ghlDurationMinutesForType(workType);
+
         const contactId = await findOrCreateContact({ firstName, lastName, phone, email, address, workType, description });
         if (!contactId) return res.status(500).json({ error: 'Kon contact niet aanmaken in GHL' });
 
-        const [hours, mins] = time.split(':').map(Number);
-        const startTime = new Date(`${date}T${time}:00+01:00`);
-        const endTime   = new Date(startTime.getTime() + SLOT_DURATION_MIN * 60 * 1000);
+        const dayCap = maxCustomerAppointmentsPerDay();
+        const dayCount = await fetchCalendarEventCountForDay(date, {
+          base: GHL_BASE,
+          locationId: GHL_LOCATION_ID,
+          calendarId: GHL_CALENDAR_ID,
+          apiKey: GHL_API_KEY,
+        });
+        if (dayCount !== null && dayCount >= dayCap) {
+          return res.status(409).json({
+            error: `Er staan al ${dayCap} afspraken op deze dag. Boek een andere dag of plan handmatig in GHL.`,
+            code: 'DAY_CAP_REACHED',
+          });
+        }
 
-        const apptRes = await fetch(`${GHL_BASE}/calendars/events/appointments`, {
+        const events = await getAppointmentsForDay(date);
+        const [hours, mins] = time.split(':').map(Number);
+        const startHourDec = hours + (Number.isFinite(mins) ? mins / 60 : 0);
+        if (!slotAvailableForWorkType(date, events, workType, startHourDec)) {
+          return res.status(409).json({
+            error:
+              'Dit tijdstip past niet (blok vol, te weinig geplande tijd, of overlap met een bestaande afspraak). Kies een andere tijd.',
+            code: 'SLOT_UNAVAILABLE',
+          });
+        }
+
+        const startTime = amsterdamWallTimeToDate(date, hours, mins);
+        if (!startTime) return res.status(400).json({ error: 'Ongeldige datum of tijd' });
+        const endTime = new Date(startTime.getTime() + durationMin * 60 * 1000);
+
+        const title = `${firstName} ${lastName || ''}`.trim() + ` – ${workType}`;
+        let apptRes = await fetch(`${GHL_BASE}/calendars/events/appointments`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${GHL_API_KEY}`,
             'Content-Type': 'application/json',
-            'Version': '2021-04-15',
+            'Version': '2021-07-28',
           },
           body: JSON.stringify({
-            calendarId:  GHL_CALENDAR_ID,
-            locationId:  GHL_LOCATION_ID,
+            calendarId: GHL_CALENDAR_ID,
+            locationId: GHL_LOCATION_ID,
             contactId,
-            startTime:   startTime.toISOString(),
-            endTime:     endTime.toISOString(),
-            title:       `${workType || 'Afspraak'} — ${firstName} ${lastName || ''}`.trim(),
-            address:     address || '',
+            startTime: startTime.toISOString(),
+            endTime: endTime.toISOString(),
+            title,
+            address: address || '',
+            appointmentStatus: 'confirmed',
+            ignoreLimits: true,
+            ignoreDateRange: true,
           }),
         });
-        const apptData = await apptRes.json();
+        if (!apptRes.ok) {
+          apptRes = await fetch(`${GHL_BASE}/calendars/events/appointments`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${GHL_API_KEY}`,
+              'Content-Type': 'application/json',
+              'Version': '2021-04-15',
+            },
+            body: JSON.stringify({
+              calendarId: GHL_CALENDAR_ID,
+              locationId: GHL_LOCATION_ID,
+              contactId,
+              startTime: startTime.toISOString(),
+              endTime: endTime.toISOString(),
+              title,
+              address: address || '',
+              ignoreDateRange: true,
+            }),
+          });
+        }
+        const apptData = await apptRes.json().catch(() => ({}));
+        if (!apptRes.ok) {
+          const errTxt = typeof apptData === 'object' && apptData.message ? apptData.message : JSON.stringify(apptData);
+          return res.status(502).json({ error: 'Kalender boeken mislukt', detail: String(errTxt).slice(0, 300) });
+        }
+
+        const blockPart = startHourDec < 13 ? 'morning' : 'afternoon';
+        const routeStopDay = Math.min(events.length + 1, 7);
+        const slotTxt =
+          blockPart === 'morning' ? 'ochtend 09:00–13:00' : 'middag 13:00–17:00';
+        const tijdafspraakVal = `${formatDateLongNlForBooking(date)}. Geboekt tijdslot: ${slotTxt}. Klant verwacht bezoek binnen dit venster. Routevolgorde deze dag: ${routeStopDay}.`;
+        await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${GHL_API_KEY}`,
+            'Content-Type': 'application/json',
+            Version: '2021-04-15',
+          },
+          body: JSON.stringify({
+            customFields: [{ id: FIELD_IDS.tijdafspraak, field_value: tijdafspraakVal }],
+          }),
+        }).catch(() => {});
 
         const norm = normalizeNlPhone(String(phone || '').replace(/\s/g, ''));
         if (/^\+31[1-9]\d{8}$/.test(norm)) {
@@ -298,10 +484,17 @@ export default async function handler(req, res) {
           }
         }
 
+        const appointmentId =
+          apptData?.id ||
+          apptData?.appointmentId ||
+          apptData?.appointment?.id ||
+          apptData?.data?.id ||
+          null;
+
         return res.status(200).json({
           success: true,
           contactId,
-          appointmentId: apptData?.id,
+          appointmentId,
           date,
           time,
           messageSent: false,

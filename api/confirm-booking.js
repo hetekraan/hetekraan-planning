@@ -2,8 +2,19 @@
 // Verwerkt de klantenkeuze uit de boekingspagina.
 // Maakt de GHL-afspraak aan; WhatsApp alleen via GHL-workflow (tag-puls).
 
+import { hourInAmsterdam } from '../lib/amsterdam-calendar-day.js';
+import {
+  blockAllowsNewCustomerBooking,
+  customerMaxForBlock,
+  ghlDurationMinutesForType,
+  normalizeWorkType,
+} from '../lib/booking-blocks.js';
+import {
+  fetchCalendarEventCountForDay,
+  fetchCalendarEventsForDay,
+  maxCustomerAppointmentsPerDay,
+} from '../lib/calendar-customer-cap.js';
 import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
-import { fetchCalendarEventCountForDay, maxCustomerAppointmentsPerDay } from '../lib/calendar-customer-cap.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
@@ -22,24 +33,42 @@ const FIELD_IDS = {
   tijdafspraak:        'RfKARymCOYYkufGY053T',
 };
 
-/** Tekst voor GHL custom field "Tijdafspraak" / template-variabele 1 */
-function formatBevestigingVoorTemplate(dateStr, slot) {
-  const d = new Date(`${dateStr}T12:00:00+01:00`);
-  const datePart = d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'long' });
-  const timeRaw = String(slot?.time || '').replace(/\u2013|\u2014|\u2212/g, ' - ').trim();
-  const times = timeRaw.match(/\d{1,2}:\d{2}/g);
-  let timePart;
-  if (times && times.length >= 2) {
-    const h1 = parseInt(times[0].split(':')[0], 10);
-    const h2 = parseInt(times[1].split(':')[0], 10);
-    timePart = `${h1} en ${h2} uur`;
-  } else if (times?.length === 1) {
-    const h = parseInt(times[0].split(':')[0], 10);
-    timePart = `om ${h} uur`;
-  } else {
-    timePart = timeRaw || 'het afgesproken tijdstip';
+function getCf(contact, fieldId) {
+  return contact?.customFields?.find((f) => f.id === fieldId)?.value || '';
+}
+
+/** NL datum (kalenderdag Amsterdam) voor custom fields. */
+function formatDateLongNl(dateStr) {
+  const parts = String(dateStr || '').split('-').map(Number);
+  const y = parts[0];
+  const m = parts[1];
+  const d = parts[2];
+  if (!y || !m || !d) return dateStr || '';
+  const utc = Date.UTC(y, m - 1, d, 12, 0, 0);
+  return new Date(utc).toLocaleDateString('nl-NL', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'Europe/Amsterdam',
+  });
+}
+
+/**
+ * Custom field "Tijdafspraak": het **geboekte dagdeel** (09–13 / 13–17), niet de GHL starttijd.
+ * Zo weet de monteur welk venster de klant verwacht; route-optimalisatie gebruikt de dagnummers op het dashboard.
+ */
+function formatGeboektTijdslotField(dateStr, block, routeStopDay) {
+  const dateLong = formatDateLongNl(dateStr);
+  const slot =
+    block === 'morning'
+      ? 'ochtend 09:00–13:00'
+      : 'middag 13:00–17:00';
+  let s = `${dateLong}. Geboekt tijdslot: ${slot}. Klant verwacht bezoek binnen dit venster.`;
+  if (routeStopDay != null && routeStopDay >= 1) {
+    s += ` Routevolgorde deze dag: ${routeStopDay}.`;
   }
-  return `${datePart} tussen ${timePart}`;
+  return s;
 }
 
 function firstValidNlMobile(...candidates) {
@@ -76,9 +105,21 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Ongeldig token' });
   }
 
-  const { contactId, name, phone, address, date: legacyDate, type, desc, slots, email: emailInToken } = bookingData;
+  const { contactId, name, phone, address, date: legacyDate, type: typeRaw, desc, slots, email: emailInToken } = bookingData;
   const chosenSlot = slots.find(s => s.id === slotId);
   if (!chosenSlot) return res.status(400).json({ error: 'Ongeldig slot' });
+
+  /** morning|afternoon uit slot of uit id `YYYY-MM-DD_morning` */
+  function slotBlock(s) {
+    const b = s?.block;
+    if (b === 'morning' || b === 'afternoon') return b;
+    const parts = String(s?.id || '').split('_');
+    const last = parts[parts.length - 1];
+    return last === 'morning' || last === 'afternoon' ? last : '';
+  }
+
+  const block = slotBlock(chosenSlot);
+  if (!block) return res.status(400).json({ error: 'Ongeldig tijdblok in slot' });
 
   let contactSnap = null;
   const gr = await fetch(`${GHL_BASE}/contacts/${contactId}`, {
@@ -106,6 +147,8 @@ export default async function handler(req, res) {
   const date = chosenSlot.dateStr || legacyDate;
   if (!date) return res.status(400).json({ error: 'Geen datum in slot' });
 
+  const type = normalizeWorkType(typeRaw || getCf(contactSnap, FIELD_IDS.type_onderhoud));
+
   const dayCap = maxCustomerAppointmentsPerDay();
   const dayCount = await fetchCalendarEventCountForDay(date, {
     base: GHL_BASE,
@@ -126,14 +169,33 @@ export default async function handler(req, res) {
     console.warn('[confirm-booking] dag-event count niet opgehaald; bevestigen gaat door');
   }
 
-  const block = chosenSlot.block || chosenSlot.id;
+  const eventsForDay = await fetchCalendarEventsForDay(date, {
+    base: GHL_BASE,
+    locationId: GHL_LOCATION_ID,
+    calendarId: GHL_CALENDAR_ID,
+    apiKey: GHL_API_KEY,
+  });
+  if (eventsForDay) {
+    const blockEvents = eventsForDay.filter((e) =>
+      block === 'morning' ? hourInAmsterdam(e.startTime) < 13 : hourInAmsterdam(e.startTime) >= 13
+    );
+    if (!blockAllowsNewCustomerBooking(block, blockEvents, type)) {
+      const maxB = customerMaxForBlock(block);
+      const blokNaam = block === 'morning' ? 'ochtend (09:00–13:00)' : 'middag (13:00–17:00)';
+      return res.status(409).json({
+        error: `Dit tijdslot past niet meer: in de ${blokNaam} zitten al ${maxB} klant-afspraken of er is onvoldoende geplande tijd over voor dit werk. Kies een andere optie of bel ons.`,
+        code: 'BLOCK_FULL',
+        maxPerBlock: maxB,
+      });
+    }
+  }
+
   const timeMap = { morning: '09:00', afternoon: '13:00' };
   const startTimeStr = chosenSlot.suggestedTime || timeMap[block] || '09:00';
   const timeParts = startTimeStr.split(':').map(Number);
   const hours = timeParts[0] ?? 9;
   const minutes = Number.isFinite(timeParts[1]) ? timeParts[1] : 0;
-  const durationMap = { installatie: 60, onderhoud: 30, reparatie: 45 };
-  const durationMin = durationMap[type] || 30;
+  const durationMin = ghlDurationMinutesForType(type);
 
   const startAnchor = amsterdamWallTimeToDate(date, hours, minutes);
   const startMs = startAnchor ? startAnchor.getTime() : NaN;
@@ -152,12 +214,13 @@ export default async function handler(req, res) {
     putPayload.customFields = [
       { id: FIELD_IDS.straatnaam, field_value: straatnaam },
       { id: FIELD_IDS.huisnummer, field_value: huisnummer },
-      { id: FIELD_IDS.type_onderhoud, field_value: type || 'reparatie' },
+      { id: FIELD_IDS.type_onderhoud, field_value: type },
       { id: FIELD_IDS.probleemomschrijving, field_value: desc || '' },
     ];
   }
 
-  const bevestigingTemplate1 = formatBevestigingVoorTemplate(date, chosenSlot);
+  const routeStopDay = eventsForDay ? Math.min(eventsForDay.length + 1, 7) : null;
+  const bevestigingTemplate1 = formatGeboektTijdslotField(date, block, routeStopDay);
   if (!putPayload.customFields) putPayload.customFields = [];
   putPayload.customFields = putPayload.customFields.filter((f) => f.id !== FIELD_IDS.tijdafspraak);
   putPayload.customFields.push({ id: FIELD_IDS.tijdafspraak, field_value: bevestigingTemplate1 });
@@ -258,7 +321,7 @@ export default async function handler(req, res) {
       contactId,
       startTime: tryStart.toISOString(),
       endTime: tryEnd.toISOString(),
-      title: `${name} – ${type || 'afspraak'}`,
+      title: `${name} – ${type}`,
       address: address || '',
       ignoreDateRange: true,
       ...extra,
@@ -272,9 +335,22 @@ export default async function handler(req, res) {
   let lastError = null;
   let lastStatus = 0;
 
+  function isSlotRelatedError(errText) {
+    const lower = String(errText || '').toLowerCase();
+    return (
+      lower.includes('slot') ||
+      lower.includes('available') ||
+      lower.includes('conflict') ||
+      lower.includes('bezet') ||
+      lower.includes('busy') ||
+      lower.includes('overlap')
+    );
+  }
+
   const attempts = [
-    { version: '2021-04-15', extra: {} },
     { version: '2021-07-28', extra: { appointmentStatus: 'confirmed', ignoreLimits: true } },
+    { version: '2021-04-15', extra: { appointmentStatus: 'confirmed', ignoreLimits: true } },
+    { version: '2021-04-15', extra: {} },
   ];
 
   const userPasses = assignedUserId ? [true, false] : [false];
@@ -282,8 +358,9 @@ export default async function handler(req, res) {
   outer: for (const includeAssignedUser of userPasses) {
     for (const { version, extra } of attempts) {
       for (const offsetMin of offsets) {
-        const tryStart = new Date(startMs + offsetMin * 60 * 1000);
-        const tryEnd = new Date(startMs + offsetMin * 60 * 1000 + durationMin * 60 * 1000);
+        const tryStartMs = startMs + offsetMin * 60 * 1000;
+        const tryStart = new Date(tryStartMs);
+        const tryEnd = new Date(tryStartMs + durationMin * 60 * 1000);
 
         const apptRes = await fetchWithRetry(`${GHL_BASE}/calendars/events/appointments`, {
           method: 'POST',
@@ -305,22 +382,17 @@ export default async function handler(req, res) {
             apptData = {};
           }
           appointmentId = pickAppointmentId(apptData);
-          if (appointmentId) break outer;
-          lastError = errText || JSON.stringify(apptData) || 'empty id';
-          console.error('[confirm-booking] GHL 200 maar geen id:', lastError.slice(0, 500));
-          break;
+          if (!appointmentId) {
+            // GHL keerde 200 OK terug maar zonder id — de afspraak IS aangemaakt.
+            // Niet opnieuw proberen: dat maakt een tweede dubbele afspraak in GHL.
+            console.warn('[confirm-booking] GHL 200 maar geen id in response; stoppen om duplicaat te voorkomen', (errText || '').slice(0, 300));
+          }
+          // 200 OK = afspraak aangemaakt → altijd stoppen ongeacht of we een id hebben
+          break outer;
         }
 
         lastError = errText;
-        const lower = errText.toLowerCase();
-        const maybeSlotConflict =
-          lower.includes('slot') ||
-          lower.includes('available') ||
-          lower.includes('conflict') ||
-          lower.includes('bezet') ||
-          lower.includes('busy') ||
-          lower.includes('overlap');
-        if (!maybeSlotConflict) break;
+        if (!isSlotRelatedError(errText)) break;
       }
     }
   }
@@ -378,6 +450,8 @@ export default async function handler(req, res) {
     whatsappViaApi: false,
     workflowTriggered,
     phoneSaved: Boolean(phoneForPut),
+    routeStopDay: routeStopDay ?? undefined,
+    tijdafspraakField: bevestigingTemplate1,
   };
 
   if (process.env.BOOKING_CONFIRM_DEBUG === 'true') {

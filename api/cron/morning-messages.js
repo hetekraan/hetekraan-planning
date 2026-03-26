@@ -1,6 +1,7 @@
 // Dagelijkse cron job: zet tag ochtend-melding → GHL-workflow stuurt WhatsApp.
 // Draait volgens vercel.json (bijv. 06:00 UTC).
 
+import { amsterdamCalendarDayBoundsMs, formatYyyyMmDdInAmsterdam } from '../../lib/amsterdam-calendar-day.js';
 import { fetchWithRetry } from '../../lib/retry.js';
 import { sendErrorNotification } from '../../lib/notify.js';
 
@@ -34,12 +35,15 @@ export default async function handler(req, res) {
     });
   }
 
-  const today = new Date().toLocaleDateString('nl-NL', {
-    year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Europe/Amsterdam'
-  }).split('-').reverse().join('-');
-
-  const startMs = new Date(`${today}T00:00:00+01:00`).getTime();
-  const endMs   = new Date(`${today}T23:59:59+01:00`).getTime();
+  const today = formatYyyyMmDdInAmsterdam(new Date());
+  if (!today) {
+    return res.status(500).json({ error: 'Kon vandaag niet bepalen (tijdzone)' });
+  }
+  const bounds = amsterdamCalendarDayBoundsMs(today);
+  if (!bounds) {
+    return res.status(500).json({ error: 'Ongeldige dag voor agenda-query' });
+  }
+  const { startMs, endMs } = bounds;
 
   console.log(`[morning-messages] ${dryRun ? 'DRY RUN' : 'LIVE'} — ${today}`);
 

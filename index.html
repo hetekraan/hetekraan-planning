@@ -79,6 +79,23 @@
     flex-shrink: 0;
   }
   .date-nav button:hover { color: var(--text); }
+  .date-nav-wrap { display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap; }
+  .btn-demo-agenda {
+    background: var(--surface3);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 7px 10px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .btn-demo-agenda:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-demo-agenda.active { border-color: var(--accent2); color: var(--accent2); }
   .date-label {
     font-family: 'Syne', sans-serif;
     font-weight: 700;
@@ -238,6 +255,18 @@
     border-color: rgba(255,80,80,0.4);
     color: #ff6060;
     opacity: 1;
+  }
+  .slot-daypart-hint {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--yellow);
+  }
+  .ghl-cal-time-hint {
+    font-size: 10px;
+    color: var(--muted);
+    font-weight: 400;
+    margin-left: 4px;
+    font-family: 'DM Mono', monospace;
   }
   .appt-card.violation { border-color: rgba(255,80,80,0.4); }
 
@@ -545,6 +574,67 @@
   .btn-confirm-route.saved { background: rgba(0,212,170,0.25); }
 
   .route-list { display: flex; flex-direction: column; }
+
+  .route-section-head {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 10px 0 6px;
+    border-bottom: 1px solid var(--border);
+    margin-top: 4px;
+  }
+  .route-section-head:first-of-type { margin-top: 0; padding-top: 4px; }
+  .route-section-head--pm { color: var(--accent2); }
+
+  .planning-section { margin-bottom: 18px; }
+  .planning-section:last-child { margin-bottom: 0; }
+  .planning-section-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .demo-empty-hint {
+    background: var(--surface2);
+    border: 1px dashed var(--accent);
+    border-radius: 10px;
+    padding: 16px 18px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text);
+    max-width: 520px;
+  }
+  .demo-empty-hint strong { color: var(--accent); }
+  .demo-empty-hint .demo-link-row {
+    margin-top: 12px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    word-break: break-all;
+    color: var(--muted);
+    background: var(--surface);
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+  }
+  .demo-empty-hint button {
+    margin-top: 12px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .demo-empty-hint button:hover { opacity: 0.9; }
 
   .route-drag-handle {
     color: #888;
@@ -895,10 +985,13 @@
     <div class="logo">HET<span>EKRAAN</span></div>
     <span id="daanEditBadge" class="daan-edit-badge" style="display:none" title="Je ziet de groene GHL-bewerkknop op elke kaart">GHL bewerken</span>
   </div>
-  <div class="date-nav">
-    <button onclick="changeDay(-1)">‹</button>
-    <div class="date-label" id="dateLabel"></div>
-    <button onclick="changeDay(1)">›</button>
+  <div class="date-nav-wrap">
+    <div class="date-nav">
+      <button onclick="changeDay(-1)">‹</button>
+      <div class="date-label" id="dateLabel"></div>
+      <button onclick="changeDay(1)">›</button>
+    </div>
+    <button type="button" class="btn-demo-agenda" id="btnDemoAgenda" onclick="togglePlanningDemo()" title="Overschrijf GHL met 7 testorders op 13 apr 2026 (alleen nodig als GHL die dag al afspraken heeft)">Testorders</button>
   </div>
   <div class="header-stats">
     <div class="stat">
@@ -1133,8 +1226,6 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const DAYS = ['ZONDAG','MAANDAG','DINSDAG','WOENSDAG','DONDERDAG','VRIJDAG','ZATERDAG'];
-const MONTHS = ['JAN','FEB','MRT','APR','MEI','JUN','JUL','AUG','SEP','OKT','NOV','DEC'];
 const GHL_BASE_URL = 'https://app.gohighlevel.com/v2/location/KVD6wOE9g1g2V9z7Zxj7';
 
 let currentDate = new Date();
@@ -1142,7 +1233,82 @@ let nextId = 100;
 let appointments = [];
 
 /** Minuten per type werkzaamheid (ook gebruikt bij route / GHL) */
-const JOB_DURATION = { onderhoud: 30, reparatie: 45, installatie: 60 };
+const JOB_DURATION = { onderhoud: 45, reparatie: 60, installatie: 90 };
+
+function hourInAmsterdamFromMs(ms) {
+  return parseInt(
+    new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Amsterdam', hour: 'numeric', hour12: false }).format(new Date(ms)),
+    10
+  );
+}
+
+/** Zelfde als slotlabels: alleen expliciet `dayPart === 0` is ochtend; anders middag. */
+function routeDayPartKey(a) {
+  return a.dayPart === 0 ? 'am' : 'pm';
+}
+
+/** Sidebar-lijst splitsen: volgorde binnen ochtend / middag blijft zoals in de snapshot. */
+function splitSidebarByDayPart(sidebarList) {
+  const morning = [];
+  const afternoon = [];
+  for (const a of sidebarList) {
+    if (a.dayPart === 0) morning.push(a);
+    else afternoon.push(a);
+  }
+  return { morning, afternoon };
+}
+
+/** Altijd eerst alle ochtendstops (zelfde onderlinge volgorde), dan alle middagstops. */
+function orderRouteMorningFirst(sidebarList) {
+  const { morning, afternoon } = splitSidebarByDayPart(sidebarList);
+  return [...morning, ...afternoon];
+}
+
+/** `appointments` herschikken: eerst deze routestops (volgorde), daarna de rest. */
+function applyRouteOrderFromStops(stopsOrdered) {
+  const used = new Set(stopsOrdered.map((a) => a.id));
+  const byId = Object.fromEntries(appointments.map((a) => [a.id, a]));
+  const out = stopsOrdered.map((a) => byId[a.id]).filter(Boolean);
+  appointments.forEach((a) => {
+    if (!used.has(a.id)) out.push(a);
+  });
+  appointments = out;
+}
+
+/** Actieve route-contactIds voor snapshot: ochtend eerst, dan middag. */
+function activeRouteContactIdsMorningFirst() {
+  const active = appointments.filter((a) => a.address && a.status !== 'klaar');
+  return orderRouteMorningFirst(active)
+    .map((a) => a.contactId)
+    .filter(Boolean);
+}
+
+/** Routevolgorde #1–7: eerst alle ochtend (sidebar + rest op starttijd), daarna alle middag — middag nooit #1 als er ochtend is. */
+function assignRouteStops() {
+  if (!appointments.length) return;
+  const main = getRouteStopsForSidebar();
+  const { morning: mainM, afternoon: mainA } = splitSidebarByDayPart(main);
+  const seen = new Set([...mainM, ...mainA].map((a) => a.id));
+  const restM = appointments
+    .filter((a) => !seen.has(a.id) && a.dayPart === 0)
+    .sort((a, b) => (a.startMs ?? 0) - (b.startMs ?? 0));
+  const restA = appointments
+    .filter((a) => !seen.has(a.id) && a.dayPart !== 0)
+    .sort((a, b) => (a.startMs ?? 0) - (b.startMs ?? 0));
+  let n = 1;
+  mainM.forEach((a) => {
+    a.routeStop = n++;
+  });
+  restM.forEach((a) => {
+    a.routeStop = n++;
+  });
+  mainA.forEach((a) => {
+    a.routeStop = n++;
+  });
+  restA.forEach((a) => {
+    a.routeStop = n++;
+  });
+}
 
 // Geblokkeerde datums (vakantie/vrij) — opgeslagen in localStorage
 function getBlockedDates() {
@@ -1155,7 +1321,99 @@ function isDateBlocked(dateStr) {
   return getBlockedDates().includes(dateStr);
 }
 function getDateStr(d) {
-  return d.toLocaleDateString('nl-NL', {year:'numeric', month:'2-digit', day:'2-digit', timeZone:'Europe/Amsterdam'}).split('-').reverse().join('-');
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Amsterdam',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const y = parts.find((p) => p.type === 'year')?.value;
+  const m = parts.find((p) => p.type === 'month')?.value;
+  const day = parts.find((p) => p.type === 'day')?.value;
+  return y && m && day ? `${y}-${m}-${day}` : '';
+}
+
+/** ms van GHL startveld — zelfde velden als api/ghl.js (browser-side back-up filter). */
+function ghlEventStartMs(e) {
+  const candidates = [
+    e.startTime,
+    e.start_time,
+    e.start,
+    e.appointmentStartTime,
+    e.appointment?.startTime,
+    e.calendarEvent?.startTime,
+  ];
+  for (const c of candidates) {
+    if (c == null) continue;
+    if (typeof c === 'number') {
+      const ms = c < 1e12 ? Math.round(c * 1000) : c;
+      if (!Number.isNaN(ms)) return ms;
+    }
+    if (typeof c === 'string') {
+      const t = Date.parse(c);
+      if (!Number.isNaN(t)) return t;
+    }
+  }
+  return NaN;
+}
+
+function canonicalGhlEventIdClient(e) {
+  const raw =
+    e?.id ??
+    e?.eventId ??
+    e?.appointmentId ??
+    e?.appointment?.id ??
+    e?.calendarEvent?.id;
+  if (raw == null || raw === '') return '';
+  return String(raw);
+}
+
+/**
+ * Filter + dedupe GHL-events voor het dashboard (browser-side spiegellogica van api/ghl.js).
+ * Pass 1: uniek op canoniek event-id.
+ * Pass 2: per contactId → vroegste event houden; events binnen 60 min van het eerste
+ *         event voor dit contact worden als retry-duplicaat beschouwd en weggefilterd.
+ *         Twee echte afspraken (ochtend + middag) hebben >60 min verschil en blijven zichtbaar.
+ */
+function filterGhlEventsForDashboardDay(events, dateStr) {
+  const onDay = (events || []).filter((e) => {
+    const ms = ghlEventStartMs(e);
+    if (Number.isNaN(ms)) return false;
+    return getDateStr(new Date(ms)) === dateStr;
+  });
+
+  const byId = new Set();
+  const pass1 = [];
+  for (const e of onDay) {
+    const id = canonicalGhlEventIdClient(e);
+    if (id) {
+      if (byId.has(id)) continue;
+      byId.add(id);
+    }
+    pass1.push(e);
+  }
+
+  pass1.sort((a, b) => (ghlEventStartMs(a) || 0) - (ghlEventStartMs(b) || 0));
+
+  const firstSeenMs = new Map();
+  const out = [];
+  for (const e of pass1) {
+    const rawCid = e.contactId || e.contact_id || e.contact?.id;
+    const cid = rawCid != null && String(rawCid).trim() !== '' ? String(rawCid).trim() : '';
+    const ms = ghlEventStartMs(e);
+    if (cid && !Number.isNaN(ms)) {
+      const first = firstSeenMs.get(cid);
+      if (first === undefined) {
+        firstSeenMs.set(cid, ms);
+      } else if (ms - first < 60 * 60 * 1000) {
+        continue;
+      } else {
+        firstSeenMs.set(cid, ms);
+      }
+    }
+    out.push(e);
+  }
+  return out;
 }
 
 /** Alleen gebruiker *daan* (juiste dag-login) ziet bewerk-dashboard voor GHL */
@@ -1180,6 +1438,144 @@ function normalizeTimeStr(t) {
   const h = Math.min(23, Math.max(0, parseInt(parts[0], 10) || 0));
   const m = Math.min(59, Math.max(0, parseInt(parts[1], 10) || 0));
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/**
+ * Testagenda ma 13 apr 2026 — max 7 (4 ochtend + 3 middag).
+ * In de echte app: automatisch zichtbaar op die dag zolang GHL 0 afspraken geeft (of GHL faalt).
+ * ?planning_demo=1 of knop: altijd deze testdata, ook als GHL die dag al afspraken heeft.
+ */
+const PLANNING_DEMO_DATE = '2026-04-13';
+const HK_PLANNING_DEMO_KEY = 'hk_planning_demo';
+
+function planningDemoInitFromUrl() {
+  try {
+    const p = new URLSearchParams(location.search).get('planning_demo');
+    if (p === '1') localStorage.setItem(HK_PLANNING_DEMO_KEY, '1');
+    if (p === '0') localStorage.removeItem(HK_PLANNING_DEMO_KEY);
+  } catch (_) {}
+}
+
+function isPlanningDemoMode() {
+  try {
+    if (new URLSearchParams(location.search).get('planning_demo') === '1') return true;
+    return localStorage.getItem(HK_PLANNING_DEMO_KEY) === '1';
+  } catch (_) {
+    return new URLSearchParams(location.search).get('planning_demo') === '1';
+  }
+}
+
+function updateDemoButtonUi() {
+  const b = document.getElementById('btnDemoAgenda');
+  if (!b) return;
+  const on = isPlanningDemoMode();
+  b.textContent = on ? 'Test uit' : 'Testorders';
+  b.classList.toggle('active', on);
+  b.title = on
+    ? 'Terug: GHL weer normaal laden (geen geforceerde testdata)'
+    : 'Forceer 7 testorders op 13 apr 2026 — alleen nodig als GHL die dag al echte afspraken toont';
+}
+
+/** Alleen naar testdatum — laadt GHL; bij 0 events krijg je automatisch de 7 testorders. */
+function goToPlanningTestDay() {
+  currentDate = new Date('2026-04-13T12:00:00+02:00');
+  const dl = document.getElementById('dateLabel');
+  if (dl) dl.textContent = formatDate(currentDate);
+  updateBlockedUI();
+  loadAppointments(currentDate);
+}
+
+/** Forceert testdata (slaat GHL over op die dag). */
+function enterPlanningDemo() {
+  try {
+    localStorage.setItem(HK_PLANNING_DEMO_KEY, '1');
+  } catch (_) {}
+  currentDate = new Date('2026-04-13T12:00:00+02:00');
+  const dl = document.getElementById('dateLabel');
+  if (dl) dl.textContent = formatDate(currentDate);
+  updateBlockedUI();
+  loadAppointments(currentDate);
+}
+
+function exitPlanningDemo() {
+  try {
+    localStorage.removeItem(HK_PLANNING_DEMO_KEY);
+  } catch (_) {}
+  currentDate = new Date();
+  const dl = document.getElementById('dateLabel');
+  if (dl) dl.textContent = formatDate(currentDate);
+  updateBlockedUI();
+  loadAppointments(currentDate);
+}
+
+function togglePlanningDemo() {
+  if (isPlanningDemoMode()) exitPlanningDemo();
+  else enterPlanningDemo();
+}
+
+function amsterdamWallMs(y, mon, day, hour, minute) {
+  const ds = `${y}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const ts = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
+  return new Date(`${ds}T${ts}+02:00`).getTime();
+}
+
+function buildPlanningDemoAppointments() {
+  const y = 2026;
+  const mon = 4;
+  const day = 13;
+  const rows = [
+    { h: 9, m: 15, type: 'onderhoud', name: 'Demo Jansen', work: 'Jaarlijks onderhoud ketel en rookgasafvoer', addr: 'Rijnstraat 45, 1078 PV Amsterdam', timeWindow: 'Ochtend tussen 09 en 13 uur', notes: 'Filter voor volgend jaar vervangen', price: 89 },
+    { h: 9, m: 45, type: 'reparatie', name: 'Demo de Vries', work: 'Lekkage mengkraan badkamer', addr: 'Van Woustraat 112, 1073 LC Amsterdam', timeWindow: null, notes: 'Klant heeft foto gestuurd', price: '' },
+    { h: 10, m: 30, type: 'installatie', name: 'Demo Bakker', work: 'Nieuwe douchethermostaat installeren', addr: 'Ceintuurbaan 200, 1074 CX Amsterdam', timeWindow: 'Rond 10:30', notes: 'Materiaal meenemen uit bus', price: 195 },
+    { h: 11, m: 30, type: 'onderhoud', name: 'Demo Visser', work: 'Cv-onderhoud en ontluchten', addr: 'Ferdinand Bolstraat 88, 1072 LM Amsterdam', timeWindow: null, notes: '', price: '' },
+    { h: 13, m: 0, type: 'reparatie', name: 'Demo Meijer', work: 'Storing warmwaterbereiding', addr: 'Albert Cuypstraat 55, 1072 CM Amsterdam', timeWindow: 'Middag tussen 13 en 17 uur', notes: 'Prio — oude boiler', price: 65 },
+    { h: 14, m: 15, type: 'installatie', name: 'Demo van Dijk', work: 'Cartridge FLEX vervangen', addr: 'Eerste van der Helststraat 42, 1072 NZ Amsterdam', timeWindow: null, notes: '', price: 125 },
+    { h: 15, m: 30, type: 'onderhoud', name: 'Demo Smit', work: 'Legionella-spoeling + controle', addr: 'Marie Heinekenplein 12, 1072 MH Amsterdam', timeWindow: 'Middag', notes: 'Toegang kelder — afrekenflow testen', price: 145 },
+  ];
+  return rows.map((s, i) => {
+    const startMs = amsterdamWallMs(y, mon, day, s.h, s.m);
+    const dayPart = hourInAmsterdamFromMs(startMs) < 13 ? 0 : 1;
+    const time = normalizeTimeStr(`${s.h}:${s.m}`);
+    const address = s.addr;
+    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+    const num = String(12000000 + i * 111103).slice(-8);
+    const priceNum = typeof s.price === 'number' ? s.price : (parseFloat(String(s.price).replace(/[^0-9.]/g, '')) || 0);
+    const nameParts = s.name.trim().split(/\s+/);
+    const firstName = nameParts[0] || 'Demo';
+    const lastName = nameParts.slice(1).join(' ') || 'Klant';
+    return {
+      id: i + 1,
+      startMs,
+      dayPart,
+      ghlId: `demo-${PLANNING_DEMO_DATE}-${i + 1}`,
+      contactId: '',
+      ghlUrl: '',
+      time,
+      name: s.name,
+      firstName,
+      lastName,
+      address,
+      straatnaam: '',
+      huisnummer: '',
+      postcode: '',
+      woonplaats: 'Amsterdam',
+      mapsUrl,
+      phone: `06${num}`,
+      desc: s.work,
+      notes: s.notes || '',
+      type: s.type,
+      price: (s.price === '' || s.price == null) ? 0 : priceNum,
+      priceLabel: s.price !== '' && s.price != null && String(s.price) !== '' ? `€${s.price}` : '',
+      extras: [],
+      timeWindow: s.timeWindow || null,
+      datumInstallatie: '',
+      datumOnderhoud: '',
+      status: 'ingepland',
+      review: false,
+      priceVisible: false,
+      estimated: true,
+    };
+  });
 }
 
 /** Zet `appointments` in de opgeslagen volgorde (alleen bekende contactIds). */
@@ -1210,8 +1606,7 @@ function applyAppointmentsOrder(contactIdsOrder) {
  * Anders sorteert de UI weer op kloktijd en lijkt je volgorde “weer weg”.
  */
 function mergeRouteOrderIntoSnapshot(dateStr) {
-  const active = appointments.filter(a => a.address && a.status !== 'klaar');
-  const contactIdsOrder = active.map(a => a.contactId).filter(Boolean);
+  const contactIdsOrder = activeRouteContactIdsMorningFirst();
   let prev = {};
   try {
     const raw = localStorage.getItem(routeSnapshotKey(dateStr));
@@ -1231,8 +1626,7 @@ function mergeRouteOrderIntoSnapshot(dateStr) {
 }
 
 function saveRouteSnapshot(dateStr) {
-  const active = appointments.filter(a => a.address && a.status !== 'klaar');
-  const contactIdsOrder = active.map(a => a.contactId).filter(Boolean);
+  const contactIdsOrder = activeRouteContactIdsMorningFirst();
   const byContactId = {};
   appointments.forEach(a => {
     if (!a.contactId || !a.time) return;
@@ -1294,7 +1688,12 @@ function getRouteStopsForSidebar() {
     }
   } catch (_) {}
   if (!orderIds.length) {
-    return [...active].sort((a, b) => a.time.localeCompare(b.time));
+    return [...active].sort(
+      (a, b) =>
+        (a.dayPart ?? 0) - (b.dayPart ?? 0) ||
+        (a.startMs ?? 0) - (b.startMs ?? 0) ||
+        a.time.localeCompare(b.time)
+    );
   }
   const byC = Object.fromEntries(active.filter(a => a.contactId).map(a => [a.contactId, a]));
   const used = new Set();
@@ -1361,15 +1760,39 @@ function updateBlockedUI() {
 }
 
 async function loadAppointments(date) {
-  const dateStr = date.toLocaleDateString('nl-NL', {year:'numeric', month:'2-digit', day:'2-digit', timeZone:'Europe/Amsterdam'}).split('-').reverse().join('-');
+  const dateStr = getDateStr(date);
+  planningDemoInitFromUrl();
   try {
-    showToast('⏳ Afspraken laden...', 'loading');
-    const res = await fetch(`/api/ghl?action=getAppointments&date=${dateStr}`);
-    const data = await res.json();
-    const events = data?.events || [];
+    if (isPlanningDemoMode() && dateStr === PLANNING_DEMO_DATE) {
+      try {
+        showToast('⏳ Demo-afspraken laden...', 'loading');
+      } catch (_) {}
+      appointments = buildPlanningDemoAppointments();
+      if (appointments.length === 0) {
+        showToast('Geen demo-data', 'info');
+      } else {
+        showToast(
+          `✓ ${appointments.length} testafspraken (GHL overgeslagen)\nGeen contactId — ETA-WhatsApp alleen met echte GHL-contacten`,
+          'success'
+        );
+      }
+      applyRouteSnapshot(dateStr);
+      render();
+      return;
+    }
+    try {
+      showToast('⏳ Afspraken laden...', 'loading');
+      const res = await fetch(
+        `/api/ghl?action=getAppointments&date=${encodeURIComponent(dateStr)}&_=${Date.now()}`,
+        { cache: 'no-store' }
+      );
+      const data = await res.json();
+      const events = filterGhlEventsForDashboardDay(data?.events, dateStr);
 
-    appointments = events.map((e, i) => {
-      const start = new Date(e.startTime);
+      appointments = events.map((e, i) => {
+      const startMs = ghlEventStartMs(e);
+      const start = new Date(startMs);
+      const dayPart = hourInAmsterdamFromMs(startMs) < 13 ? 0 : 1;
       const time = normalizeTimeStr(start.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }));
       const work = e.title || 'Werkzaamheden';
       let type = 'onderhoud';
@@ -1388,8 +1811,10 @@ async function loadAppointments(date) {
 
       return {
         id: i + 1,
+        startMs,
+        dayPart,
         // Kalender-event id (DELETE /calendars/events/:id); server probeert ook …/appointments/:id
-        ghlId: e.id || e.appointmentId,
+        ghlId: canonicalGhlEventIdClient(e),
         contactId: cid,
         ghlUrl,
         time,
@@ -1416,28 +1841,60 @@ async function loadAppointments(date) {
         review: false,
         priceVisible: false,
       };
-    });
+      });
 
-    if (appointments.length === 0) {
-      showToast('Geen afspraken voor deze dag', 'info');
-    } else {
-      showToast(`✓ ${appointments.length} afspraken geladen`, 'success');
+      if (appointments.length === 0) {
+        if (dateStr === PLANNING_DEMO_DATE) {
+          appointments = buildPlanningDemoAppointments();
+          showToast(
+            `✓ ${appointments.length} testafspraken voor ma 13 apr 2026\n(GHL had deze dag geen afspraken — zelfde scherm als productie)`,
+            'success'
+          );
+        } else {
+          showToast('Geen afspraken voor deze dag', 'info');
+        }
+      } else {
+        showToast(`✓ ${appointments.length} afspraken geladen`, 'success');
+      }
+    } catch (err) {
+      console.warn('GHL niet bereikbaar', err);
+      appointments = [];
+      if (dateStr === PLANNING_DEMO_DATE) {
+        appointments = buildPlanningDemoAppointments();
+        showToast(
+          `✓ ${appointments.length} testafspraken (GHL niet bereikbaar)`,
+          'info'
+        );
+      } else {
+        showToast('Kon afspraken niet laden', 'info');
+      }
     }
-  } catch(err) {
-    console.warn('GHL niet bereikbaar', err);
-    appointments = [];
-    showToast('Kon afspraken niet laden', 'info');
+    applyRouteSnapshot(dateStr);
+    render();
+  } finally {
+    updateDemoButtonUi();
   }
-  applyRouteSnapshot(dateStr);
-  render();
 }
 
 function formatDate(d) {
-  return `${DAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+  return d.toLocaleDateString('nl-NL', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'Europe/Amsterdam',
+  });
 }
 
+/**
+ * Vorige/volgende kalenderdag in Europe/Amsterdam (niet blind +24u op Date — voorkomt dubbele dagen bij GHL/tijdzone).
+ */
 function changeDay(dir) {
-  currentDate = new Date(currentDate.getTime() + dir * 86400000);
+  const ds = getDateStr(currentDate);
+  const parts = ds.split('-').map((x) => parseInt(x, 10));
+  if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return;
+  const [y, m, d] = parts;
+  currentDate = new Date(Date.UTC(y, m - 1, d + dir, 12, 0, 0));
   document.getElementById('dateLabel').textContent = formatDate(currentDate);
   updateBlockedUI();
   loadAppointments(currentDate);
@@ -1453,9 +1910,7 @@ function calcStats() {
   document.getElementById('totalBar').textContent = '€' + total;
 }
 
-function render() {
-  const sorted = [...appointments].sort((a,b) => a.time.localeCompare(b.time));
-  document.getElementById('apptList').innerHTML = sorted.map((a,i) => {
+function renderApptCard(a, i) {
     const isDone = a.status === 'klaar';
     const isOnderweg = a.status === 'onderweg';
     const isViolation = !!a.violation;
@@ -1466,14 +1921,15 @@ function render() {
     if (a.datumInstallatie) metaItems.push(`<div class="meta-item"><div class="meta-label">Installatie</div><div class="meta-value">${a.datumInstallatie}</div></div>`);
     if (a.datumOnderhoud) metaItems.push(`<div class="meta-item"><div class="meta-label">Laatste onderhoud</div><div class="meta-value">${a.datumOnderhoud}</div></div>`);
 
+    const slotHint = (a.dayPart ?? 1) === 0 ? 'Ochtend 09–13' : 'Middag 13–17';
     return `
     <div class="appt-card ${isDone?'done':''} ${isOnderweg?'onderweg':''} ${isViolation?'violation':''}" id="card-${a.id}">
-      <div class="appt-number">#${i+1}</div>
+      <div class="appt-number">#${a.routeStop != null ? a.routeStop : i + 1}</div>
       <div class="appt-inner">
         <div class="appt-top">
           <div class="appt-time">
-            ${a.estimated ? '~' : ''}${a.time}
-            ${a.timeWindow ? `<span class="time-window-badge">${a.timeWindow}</span>` : ''}
+            ${a.timeWindow ? `<span class="time-window-badge">${a.timeWindow}</span>` : `<span class="slot-daypart-hint">${slotHint}</span>`}
+            <span class="ghl-cal-time-hint" title="Starttijd in GHL-agenda (ter referentie)">· agenda ${a.estimated ? '~' : ''}${a.time}</span>
           </div>
           <div class="appt-actions">
             ${a.phone ? `<a class="icon-btn" href="tel:${a.phone}" title="Bellen">📞</a>` : ''}
@@ -1558,7 +2014,38 @@ function render() {
         </div>
       </div>
     </div>`;
-  }).join('');
+}
+
+function render() {
+  assignRouteStops();
+  const sorted = [...appointments].sort((a, b) => (a.routeStop || 99) - (b.routeStop || 99));
+  const morningApts = sorted.filter((x) => x.dayPart === 0);
+  const afternoonApts = sorted.filter((x) => x.dayPart !== 0);
+  const parts = [];
+  if (morningApts.length) {
+    parts.push(
+      `<div class="planning-section"><div class="planning-section-title">Ochtend 09:00–13:00</div>${morningApts.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
+    );
+  }
+  if (afternoonApts.length) {
+    parts.push(
+      `<div class="planning-section"><div class="planning-section-title">Middag 13:00–17:00</div>${afternoonApts.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
+    );
+  }
+  const ds = getDateStr(currentDate);
+  const april13DemoYearMismatch = ds === '2025-04-13';
+  const showDemoEmptyHint = parts.length === 0 && !isPlanningDemoMode() && april13DemoYearMismatch;
+  let listHtml = parts.join('');
+  if (showDemoEmptyHint) {
+    listHtml = `<div class="demo-empty-hint">
+      Je kijkt naar <strong>13 april 2025</strong>. De testdag met 7 automatische testafspraken is <strong>maandag 13 april 2026</strong> (GHL leeg = testorders).
+      <br><br>
+      <button type="button" onclick="goToPlanningTestDay()">Ga naar ma 13 apr 2026</button>
+    </div>`;
+  } else if (parts.length === 0) {
+    listHtml = '<div class="demo-empty-hint" style="border-style:solid;border-color:var(--border)">Geen afspraken voor deze dag.</div>';
+  }
+  document.getElementById('apptList').innerHTML = listHtml;
 
   renderRoute(getRouteStopsForSidebar());
   calcStats();
@@ -1567,27 +2054,39 @@ function render() {
   if (badge) badge.style.display = isDaanEditor() ? 'inline-flex' : 'none';
 }
 
-function renderRoute(routeStops) {
-  const list = document.getElementById('routeList');
-  list.innerHTML =
-    `<div class="route-item">
-      <div class="route-drag-handle" style="visibility:hidden">&#8801;</div>
-      <div class="route-num depot">🏠</div>
-      <div class="route-info"><div class="route-name">Depot / Start</div><div class="route-addr">Vaste startlocatie</div></div>
-    </div>` +
-    routeStops.map((a,i) => `
-    <div class="route-item ${a.status==='klaar'?'done':''}"
+function renderRouteItemHtml(a) {
+  return `
+    <div class="route-item ${a.status === 'klaar' ? 'done' : ''}"
          draggable="true"
          data-appt-id="${a.id}"
+         data-day-part="${routeDayPartKey(a)}"
          onclick="scrollToCard(${a.id})">
       <div class="route-drag-handle" onclick="event.stopPropagation()" title="Slepen om te herordenen">&#8801;</div>
-      <div class="route-num">${i+1}</div>
+      <div class="route-num">${a.routeStop != null ? a.routeStop : '–'}</div>
       <div class="route-info">
         <div class="route-name">${a.name}</div>
         <div class="route-addr">${a.address}</div>
       </div>
-      <div class="route-time">${a.estimated ? '~' : ''}${a.time}</div>
-    </div>`).join('');
+      <div class="route-time">${a.timeWindow ? a.timeWindow : ((a.dayPart ?? 1) === 0 ? '09–13' : '13–17')}${a.estimated ? ` · ~${a.time}` : ''}</div>
+    </div>`;
+}
+
+function renderRoute(routeStops) {
+  const list = document.getElementById('routeList');
+  const { morning, afternoon } = splitSidebarByDayPart(routeStops);
+  let body =
+    `<div class="route-item">
+      <div class="route-drag-handle" style="visibility:hidden">&#8801;</div>
+      <div class="route-num depot">🏠</div>
+      <div class="route-info"><div class="route-name">Depot / Start</div><div class="route-addr">Vaste startlocatie</div></div>
+    </div>`;
+  if (morning.length) {
+    body += `<div class="route-section-head">Ochtend 09:00–13:00</div>` + morning.map((a) => renderRouteItemHtml(a)).join('');
+  }
+  if (afternoon.length) {
+    body += `<div class="route-section-head route-section-head--pm">Middag 13:00–17:00</div>` + afternoon.map((a) => renderRouteItemHtml(a)).join('');
+  }
+  list.innerHTML = body;
 
   initRouteDrag(list);
 }
@@ -1654,23 +2153,36 @@ function initRouteDrag(list) {
     el.addEventListener('dragover', e => {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
+      const tgtId = parseInt(el.dataset.apptId, 10);
+      const srcAp = appointments.find(a => a.id === _dragSrcId);
+      const tgtAp = appointments.find(a => a.id === tgtId);
       list.querySelectorAll('.drag-over').forEach(x => x.classList.remove('drag-over'));
-      if (parseInt(el.dataset.apptId) !== _dragSrcId) el.classList.add('drag-over');
+      if (srcAp && tgtAp && routeDayPartKey(srcAp) !== routeDayPartKey(tgtAp)) return;
+      if (tgtId !== _dragSrcId) el.classList.add('drag-over');
     });
 
     el.addEventListener('drop', e => {
       e.preventDefault();
       e.stopPropagation();
-      const targetId = parseInt(el.dataset.apptId);
+      const targetId = parseInt(el.dataset.apptId, 10);
       if (targetId === _dragSrcId) return;
 
-      const srcIdx = appointments.findIndex(a => a.id === _dragSrcId);
-      const tgtIdx = appointments.findIndex(a => a.id === targetId);
-      if (srcIdx === -1 || tgtIdx === -1) return;
+      const moved = appointments.find(a => a.id === _dragSrcId);
+      const target = appointments.find(a => a.id === targetId);
+      if (!moved || !target) return;
+      if (routeDayPartKey(moved) !== routeDayPartKey(target)) {
+        showToast('Alleen binnen ochtend of binnen middag herschikken', 'info');
+        return;
+      }
 
-      const [moved] = appointments.splice(srcIdx, 1);
-      appointments.splice(tgtIdx, 0, moved);
+      let ordered = orderRouteMorningFirst(getRouteStopsForSidebar());
+      const si = ordered.findIndex(a => a.id === _dragSrcId);
+      const ti = ordered.findIndex(a => a.id === targetId);
+      if (si === -1 || ti === -1) return;
+      const [item] = ordered.splice(si, 1);
+      ordered.splice(ti, 0, item);
 
+      applyRouteOrderFromStops(ordered);
       mergeRouteOrderIntoSnapshot(getDateStr(currentDate));
       updateRouteLocalUi();
 
@@ -1742,16 +2254,39 @@ function closeOnderwegModal() {
   _onderwegId = null;
 }
 
-function onderwegJaStuur() {
-  const a = appointments.find(x => x.id === _onderwegId);
+async function onderwegJaStuur() {
+  const a = appointments.find((x) => x.id === _onderwegId);
   if (!a) return;
+  if (!a.contactId) {
+    showToast('Geen GHL-contact — koppel dit eerst in GHL of laad de dag opnieuw', 'info');
+    return;
+  }
+  const eta = String(a.time || '').trim();
+  if (!eta) {
+    showToast('Geen ETA-tijd bekend. Optimaliseer of bevestig eerst de route.', 'info');
+    return;
+  }
+  const btn = document.querySelector('#onderwegOverlay .btn-save');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Bezig met GHL…';
+  }
+  showToast('⏳ ETA naar GHL en workflow…', 'loading');
+  const result = await sendETA(a);
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = '📱 Ja, stuur WhatsApp met ETA';
+  }
+  if (!result.ok) {
+    showToast(result.error || 'Kon ETA niet doorgeven', 'info');
+    return;
+  }
   a.status = 'onderweg';
   a.priceVisible = false;
-  sendETA(a);
-  showToast(`📱 WhatsApp verstuurd naar ${a.name}`, 'info');
   closeOnderwegModal();
+  showToast(`📱 ETA doorgegeven — WhatsApp gaat via GHL-workflow (${result.workflowTag || 'monteur-eta'})`, 'success');
   render();
-  setTimeout(() => scrollToPrijs(_onderwegId || a.id), 80);
+  setTimeout(() => scrollToPrijs(a.id), 80);
 }
 
 function onderwegJeenBericht() {
@@ -1910,15 +2445,36 @@ async function confirmDone(id) {
   render();
 }
 
+/**
+ * Zet custom field geplande aankomst + pulse workflow-tag (standaard monteur-eta).
+ * @returns {Promise<{ ok: boolean, error?: string, workflowTag?: string }>}
+ */
 async function sendETA(appt) {
-  if (!appt.contactId) return;
+  if (!appt?.contactId) {
+    return { ok: false, error: 'Geen GHL contactId' };
+  }
   try {
-    await fetch('/api/ghl?action=sendETA', {
+    const res = await fetch('/api/ghl?action=sendETA', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contactId: appt.contactId, eta: appt.time, name: appt.name })
+      body: JSON.stringify({
+        contactId: appt.contactId,
+        eta: appt.time,
+        name: appt.name,
+      }),
     });
-  } catch(e) {}
+    let data = {};
+    try {
+      data = await res.json();
+    } catch (_) {}
+    if (!res.ok) {
+      const msg = data.error || data.message || `Serverfout (${res.status})`;
+      return { ok: false, error: msg, workflowTag: data.workflowTag };
+    }
+    return { ok: true, workflowTag: data.workflowTag };
+  } catch (e) {
+    return { ok: false, error: e.message || 'Netwerkfout' };
+  }
 }
 
 async function sendMorningMessages() {
@@ -1949,7 +2505,7 @@ function timeToMins(timeStr) {
 }
 
 async function optimizeRoute() {
-  const active = appointments.filter(a => a.address && a.status !== 'klaar');
+  const active = orderRouteMorningFirst(getRouteStopsForSidebar());
   const done   = appointments.filter(a => !a.address || a.status === 'klaar');
 
   if (active.length < 2) {
@@ -1974,30 +2530,26 @@ async function optimizeRoute() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Onbekende fout');
 
-    // Herorden op basis van geplande volgorde
-    const optimized = data.order.map((i, step) => {
-      const appt = active[i];
-      appt.time      = data.etas[step];
-      appt.estimated = true;
-      appt.violation = false;
-      return appt;
+    const orderIdx = data.order;
+    const morningIdx = orderIdx.filter(i => active[i].dayPart === 0);
+    const afternoonIdx = orderIdx.filter(i => active[i].dayPart !== 0);
+    const stableOrder = [...morningIdx, ...afternoonIdx];
+    const optimized = stableOrder.map(i => active[i]);
+
+    optimized.forEach(a => {
+      a.violation = false;
     });
 
-    // Markeer schendingen (aankomst ná tijdsvenster)
-    if (data.violations?.length > 0) {
-      data.violations.forEach(v => {
-        const appt = optimized[data.order.indexOf(v.apptIdx)];
-        if (appt) appt.violation = true;
-      });
-    }
+    await recalculateRouteTimesPreservingOrder(optimized);
 
     appointments = [...optimized, ...done];
 
     const totalTravel = (data.legInfo || []).reduce((s, l) => s + (l.durationSeconds || 0), 0);
     const totalTravelMins = Math.round(totalTravel / 60);
 
-    const violationMsg = data.violations?.length > 0
-      ? ` · ⚠️ ${data.violations.length} tijdsvenster${data.violations.length > 1 ? 's' : ''} niet haalbaar`
+    const vCount = optimized.filter(a => a.violation).length;
+    const violationMsg = vCount > 0
+      ? ` · ⚠️ ${vCount} tijdsvenster${vCount > 1 ? 's' : ''} niet haalbaar`
       : '';
 
     routeLocked = false;
@@ -2016,9 +2568,9 @@ const DEPOT = 'Cornelis Dopperkade, Amsterdam';
 
 function openMaps(e) {
   e.preventDefault();
-  const sorted = [...appointments]
+  const sorted = appointments
     .filter(a => a.status !== 'klaar' && a.address)
-    .sort((a,b) => a.time.localeCompare(b.time));
+    .sort((a, b) => (a.routeStop || 99) - (b.routeStop || 99));
 
   if (!sorted.length) { showToast('Geen adressen beschikbaar', 'info'); return; }
 
@@ -2169,7 +2721,7 @@ function timeToWindow(timeStr, isFirst) {
 async function confirmRoute() {
   const active = appointments.filter(a => a.contactId && a.time && a.status !== 'klaar');
   const routeDate = getDateStr(currentDate);
-  const routeSequence = [...active].sort((a, b) => a.time.localeCompare(b.time));
+  const routeSequence = [...active].sort((a, b) => (a.routeStop || 99) - (b.routeStop || 99));
   const toSave = routeSequence.map((a, i) => ({
     contactId: a.contactId,
     plannedTime: timeToWindow(a.time, i === 0),
@@ -2357,7 +2909,11 @@ function showToast(msg, type='info') {
   toastTimer = setTimeout(() => t.classList.remove('show'), 4000);
 }
 
-// Init — automatisch naar vandaag
+// Init — vandaag; ?planning_demo=1 springt naar 13 apr 2026 en forceert testdata
+planningDemoInitFromUrl();
+if (isPlanningDemoMode()) {
+  currentDate = new Date('2026-04-13T12:00:00+02:00');
+}
 document.getElementById('dateLabel').textContent = formatDate(currentDate);
 updateBlockedUI();
 loadAppointments(currentDate);
@@ -2440,7 +2996,7 @@ checkLogin();
     </div>
     <div class="login-error" id="loginError">Gebruikersnaam of wachtwoord onjuist</div>
     <button class="btn-login" onclick="doLogin()">INLOGGEN</button>
-    <div class="login-hint">Je blijft vandaag ingelogd in deze browser (tot middernacht NL-tijd). Problemen? Neem contact op met Daan.</div>
+    <div class="login-hint">Je blijft vandaag ingelogd in deze browser (tot middernacht NL-tijd). Op <strong>ma 13 apr 2026</strong> verschijnen automatisch 7 testafspraken als GHL die dag leeg is. Problemen? Neem contact op met Daan.</div>
   </div>
 </div>
 

@@ -1,4 +1,10 @@
 // api/ghl.js — met custom field IDs
+import {
+  amsterdamCalendarDayBoundsMs,
+  formatYyyyMmDdInAmsterdam,
+} from '../lib/amsterdam-calendar-day.js';
+import { ghlDurationMinutesForType, normalizeWorkType } from '../lib/booking-blocks.js';
+import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { sendErrorNotification } from '../lib/notify.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
@@ -7,6 +13,107 @@ const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_CALENDAR_ID = process.env.GHL_CALENDAR_ID;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
+
+/** YYYY-M-DD → YYYY-MM-DD (match met formatYyyyMmDdInAmsterdam) */
+function normalizeYyyyMmDdInput(str) {
+  if (!str || typeof str !== 'string') return null;
+  const p = str.trim().split('-').map((x) => parseInt(x, 10));
+  if (p.length !== 3 || p.some((n) => Number.isNaN(n))) return null;
+  const [y, mo, d] = p;
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  return `${String(y).padStart(4, '0')}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+/** Zelfde id kan als number of string binnenkomen — dedupe faalde dan op duplicaten. */
+function canonicalGhlEventId(e) {
+  const raw =
+    e?.id ??
+    e?.eventId ??
+    e?.appointmentId ??
+    e?.appointment?.id ??
+    e?.calendarEvent?.id;
+  if (raw == null || raw === '') return '';
+  return String(raw);
+}
+
+/** Starttijd in ms (alle gangbare GHL-velden), voor filter + contact-slot-dedupe. */
+function eventStartMsGhl(e) {
+  const candidates = [
+    e?.startTime,
+    e?.start_time,
+    e?.start,
+    e?.appointmentStartTime,
+    e?.appointment?.startTime,
+    e?.calendarEvent?.startTime,
+  ];
+  for (const c of candidates) {
+    if (c == null) continue;
+    if (typeof c === 'number') {
+      const ms = c < 1e12 ? Math.round(c * 1000) : c;
+      if (!Number.isNaN(ms)) return ms;
+    }
+    if (typeof c === 'string') {
+      const t = Date.parse(c);
+      if (!Number.isNaN(t)) return t;
+    }
+  }
+  return NaN;
+}
+
+/** GHL kalender-event → YYYY-MM-DD startdag in Europe/Amsterdam (of null). */
+function getEventStartDayAmsterdam(e) {
+  const ms = eventStartMsGhl(e);
+  if (Number.isNaN(ms)) return null;
+  return formatYyyyMmDdInAmsterdam(new Date(ms));
+}
+
+/**
+ * Dedupe GHL-events voor het dashboard.
+ * Pass 1: uniek op canoniek event-id (voorkomt zelfde id als number + string).
+ * Pass 2: per contactId — behoud het VROEGSTE event; latere events binnen 60 min
+ *         van het eerste event voor dit contact worden als retry-duplicaat beschouwd
+ *         en weggefilterd. Zo verdwijnen afspraken die door de booking-retry-loop
+ *         dubbel zijn aangemaakt (zelfde contact, ±0–30 min verschil).
+ *         Opmerking: twee ECHTE afspraken voor dezelfde klant op dezelfde dag (ochtend +
+ *         middag) hebben >60 min verschil en blijven dus beide zichtbaar.
+ */
+function dedupeGhlEventsForDashboard(list) {
+  const byId = new Set();
+  const pass1 = [];
+  for (const e of list) {
+    const id = canonicalGhlEventId(e);
+    if (id) {
+      if (byId.has(id)) continue;
+      byId.add(id);
+    }
+    pass1.push(e);
+  }
+
+  // Sorteer op starttijd zodat we altijd de vroegste variant houden.
+  pass1.sort((a, b) => (eventStartMsGhl(a) || 0) - (eventStartMsGhl(b) || 0));
+
+  const firstSeenMs = new Map(); // contactId → earliest startMs
+  const out = [];
+  for (const e of pass1) {
+    const rawCid = e.contactId || e.contact_id || e.contact?.id;
+    const cid = rawCid != null && String(rawCid).trim() !== '' ? String(rawCid).trim() : '';
+    const ms = eventStartMsGhl(e);
+    if (cid && !Number.isNaN(ms)) {
+      const first = firstSeenMs.get(cid);
+      if (first === undefined) {
+        firstSeenMs.set(cid, ms);
+      } else if (ms - first < 60 * 60 * 1000) {
+        // Zelfde contact, start binnen 60 min na eerste event → retry-duplicaat, overslaan.
+        continue;
+      } else {
+        // Meer dan 60 min later → legitieme tweede afspraak (bijv. ochtend + middag).
+        firstSeenMs.set(cid, ms);
+      }
+    }
+    out.push(e);
+  }
+  return out;
+}
 
 // Custom field ID mapping
 const FIELD_IDS = {
@@ -90,9 +197,14 @@ export default async function handler(req, res) {
     switch (action) {
 
       case 'getAppointments': {
-        const { date } = req.query;
-        const startMs = new Date(`${date}T00:00:00+01:00`).getTime();
-        const endMs   = new Date(`${date}T23:59:59+01:00`).getTime();
+        const dateRaw = req.query.date;
+        const date = normalizeYyyyMmDdInput(
+          Array.isArray(dateRaw) ? String(dateRaw[0]) : String(dateRaw || '')
+        );
+        if (!date) return res.status(400).json({ error: 'Ongeldige datum' });
+        const bounds = amsterdamCalendarDayBoundsMs(date);
+        if (!bounds) return res.status(400).json({ error: 'Ongeldige datum' });
+        const { startMs, endMs } = bounds;
         const url = `${GHL_BASE}/calendars/events?locationId=${GHL_LOCATION_ID}&calendarId=${GHL_CALENDAR_ID}&startTime=${startMs}&endTime=${endMs}`;
         const response = await fetchWithRetry(url, {
           headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
@@ -145,7 +257,14 @@ export default async function handler(req, res) {
           return e;
         }));
 
-        return res.status(200).json({ events: enriched });
+        /** Alleen events waarvan start op de gevraagde kalenderdag valt (Europe/Amsterdam). */
+        const filtered = enriched.filter((e) => getEventStartDayAmsterdam(e) === date);
+        const unique = dedupeGhlEventsForDashboard(filtered);
+
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('X-HK-GetAppointments-Filter', 'v4-amsterdam-day+id+contact-slot');
+        return res.status(200).json({ events: unique });
       }
 
       case 'updateContactDashboard': {
@@ -248,7 +367,7 @@ export default async function handler(req, res) {
 
       case 'completeAppointment': {
         const { contactId, appointmentId, type, sendReview, lastService, totalPrice, extras } = req.body;
-        const today = new Date().toISOString().split('T')[0];
+        const today = formatYyyyMmDdInAmsterdam(new Date()) || new Date().toISOString().split('T')[0];
         const customFields = [
           { id: 'hiTe3Yi5TlxheJq4bLzy', field_value: today } // datum_laatste_onderhoud
         ];
@@ -298,10 +417,11 @@ export default async function handler(req, res) {
             const dur = Math.max(5, Math.min(480, Number(durationMin) || 30));
             const tm = String(startTime).trim().replace(/^~/, '');
             const parts = tm.split(':');
-            const hh = String(Math.min(23, Math.max(0, parseInt(parts[0], 10) || 0))).padStart(2, '0');
-            const mm = String(Math.min(59, Math.max(0, parseInt(parts[1], 10) || 0))).padStart(2, '0');
-            const startMs = new Date(`${routeDate}T${hh}:${mm}:00+01:00`).getTime();
-            if (Number.isNaN(startMs)) {
+            const hNum = Math.min(23, Math.max(0, parseInt(parts[0], 10) || 0));
+            const mNum = Math.min(59, Math.max(0, parseInt(parts[1], 10) || 0));
+            const startD = amsterdamWallTimeToDate(routeDate, hNum, mNum);
+            const startMs = startD?.getTime();
+            if (startD == null || Number.isNaN(startMs)) {
               calendarErrors.push({ ghlAppointmentId, err: 'Ongeldige datum/tijd' });
               continue;
             }
@@ -401,16 +521,21 @@ export default async function handler(req, res) {
 
         // Stap 3: agenda-afspraak aanmaken (met retry bij slot-conflict)
         const [hours, minutes] = (time || '09:00').split(':').map(Number);
-        const durationMap = { installatie: 60, onderhoud: 30, reparatie: 45 };
-        const durationMin = durationMap[apptType] || 30;
+        const durationMin = ghlDurationMinutesForType(normalizeWorkType(apptType));
+
+        // Basisstarttijd via DST-bewuste helper (niet hardgecodeerd +01:00; anders dag-overschrijding in CEST).
+        const baseStartDt = amsterdamWallTimeToDate(date, hours, minutes);
+        if (!baseStartDt) {
+          return res.status(400).json({ error: 'Ongeldige datum of tijd voor afspraak' });
+        }
+        const baseStartMs = baseStartDt.getTime();
 
         let appointmentId = null;
         let lastError = null;
         // Probeer de gevraagde tijd, dan stapsgewijs eerder (zodat de afspraak op de juiste dag blijft)
         const offsets = [0, -5, 5, -10, 10, -15, 15, -30, 30];
         for (const offsetMin of offsets) {
-          const startMs = new Date(`${date}T${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}:00+01:00`).getTime()
-            + offsetMin * 60 * 1000;
+          const startMs = baseStartMs + offsetMin * 60 * 1000;
           const startTime = new Date(startMs);
           const endTime   = new Date(startMs + durationMin * 60 * 1000);
 
@@ -449,18 +574,42 @@ export default async function handler(req, res) {
       }
 
       case 'sendETA': {
+        if (!GHL_API_KEY) {
+          return res.status(503).json({ error: 'GHL_API_KEY ontbreekt — ETA kan niet naar GHL' });
+        }
         const { contactId, eta } = req.body;
         if (!contactId) return res.status(400).json({ error: 'contactId verplicht' });
+        const etaStr = String(eta ?? '').trim();
+        if (!etaStr) {
+          return res.status(400).json({
+            error: 'Geen aankomsttijd (ETA) bekend. Optimaliseer of bevestig eerst de route, of vul de tijd in GHL.',
+          });
+        }
         const etaTag = process.env.GHL_ETA_WORKFLOW_TAG || 'monteur-eta';
-        await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
+        const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
           method: 'PUT',
           headers: { Authorization: `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', Version: '2021-04-15' },
           body: JSON.stringify({
-            customFields: [{ id: FIELD_IDS.geplande_aankomst, field_value: String(eta ?? '').trim() }],
+            customFields: [{ id: FIELD_IDS.geplande_aankomst, field_value: etaStr }],
           }),
         });
-        const ok = await pulseContactTag(contactId, etaTag, '[ghl sendETA]');
-        return res.status(200).json({ success: true, workflowTag: etaTag, tagPulseOk: ok });
+        if (!putRes.ok) {
+          const detail = (await putRes.text().catch(() => '')).slice(0, 400);
+          return res.status(502).json({
+            error: `GHL: geplande aankomst opslaan mislukt (${putRes.status})`,
+            detail,
+          });
+        }
+        await new Promise((r) => setTimeout(r, 400));
+        const tagPulseOk = await pulseContactTag(contactId, etaTag, '[ghl sendETA]');
+        if (!tagPulseOk) {
+          return res.status(502).json({
+            error: 'ETA wel opgeslagen, maar workflow-tag niet gezet — controleer tagnaam in GHL en env GHL_ETA_WORKFLOW_TAG',
+            workflowTag: etaTag,
+            tagPulseOk: false,
+          });
+        }
+        return res.status(200).json({ success: true, workflowTag: etaTag, tagPulseOk: true });
       }
 
       case 'sendMorningMessages': {

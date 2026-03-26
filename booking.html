@@ -674,7 +674,7 @@ async function loadDays() {
   document.getElementById('btnDayNext').style.display = 'none';
 
   try {
-    const res = await fetch(`/api/booking?action=getDays`);
+    const res = await fetch(`/api/booking?action=getDays&workType=${encodeURIComponent(state.workType)}`);
     const data = await res.json();
     state.days = data.days || [];
     renderCalendar();
@@ -725,7 +725,12 @@ async function loadSlots() {
   document.getElementById('btnSlotNext').style.display = 'none';
 
   try {
-    const params = new URLSearchParams({ action: 'getSlots', date: state.selectedDate, address: state.address });
+    const params = new URLSearchParams({
+      action: 'getSlots',
+      date: state.selectedDate,
+      address: state.address,
+      workType: state.workType,
+    });
     const res = await fetch(`/api/booking?${params}`);
     const data = await res.json();
     state.slots = data.slots || [];

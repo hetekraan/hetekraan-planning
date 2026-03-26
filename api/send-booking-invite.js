@@ -2,16 +2,28 @@
 // Berekent de 2 beste tijdsloten voor een klant (op basis van adres + bestaande routes)
 // en zet custom fields (+ optioneel tag) zodat een GHL-workflow het WhatsApp-template verstuurt.
 
+import {
+  addAmsterdamCalendarDays,
+  amsterdamCalendarDayBoundsMs,
+  amsterdamWeekdaySun0,
+  formatYyyyMmDdInAmsterdam,
+  hourInAmsterdam,
+} from '../lib/amsterdam-calendar-day.js';
+import {
+  blockAllowsNewCustomerBooking,
+  customerMaxForBlock,
+  normalizeWorkType,
+} from '../lib/booking-blocks.js';
 import { maxCustomerAppointmentsPerDay } from '../lib/calendar-customer-cap.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
+import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_CALENDAR_ID = process.env.GHL_CALENDAR_ID;
 const MAPS_KEY        = process.env.GOOGLE_MAPS_KEY;
 const GHL_BASE        = 'https://services.leadconnectorhq.com';
-const MAX_PER_BLOCK   = 4;
 
 /** Publieke basis-URL voor boekingslinks (Vercel: zet BASE_URL of gebruik automatisch VERCEL_URL) */
 function publicBaseUrl() {
@@ -24,10 +36,11 @@ function publicBaseUrl() {
 const DAYS_AHEAD      = 7;
 
 const FIELD_IDS = {
-  straatnaam:  'ZwIMY4VPelG5rKROb5NR',
-  huisnummer:  'co5Mr16rF6S6ay5hJOSJ',
-  postcode:    '3bCi5hL0rR9XGG33x2Gv',
-  woonplaats:  'mFRQjlUppycMfyjENKF9',
+  straatnaam:     'ZwIMY4VPelG5rKROb5NR',
+  huisnummer:     'co5Mr16rF6S6ay5hJOSJ',
+  postcode:       '3bCi5hL0rR9XGG33x2Gv',
+  woonplaats:     'mFRQjlUppycMfyjENKF9',
+  type_onderhoud: 'EXSQmlt7BqkXJMs8F3Qk',
 };
 
 function getField(contact, fieldId) {
@@ -66,64 +79,82 @@ async function geocodeEvents(events) {
   return coords;
 }
 
-async function getBestSlots(address) {
+async function getBestSlots(address, workType) {
   const newCoord = address ? await geocode(address) : null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
   const candidates = [];
 
-  for (let d = 1; d <= DAYS_AHEAD + 3 && candidates.length < 6; d++) {
-    const day = new Date(today);
-    day.setDate(today.getDate() + d);
-    const dow = day.getDay();
-    if (dow === 0 || dow === 6) continue;
+  const todayAmsterdam = formatYyyyMmDdInAmsterdam(new Date());
+  if (!todayAmsterdam) return [];
+  let dateStr = addAmsterdamCalendarDays(todayAmsterdam, 1);
+  if (!dateStr) return [];
 
-    const dateStr = day.toISOString().split('T')[0];
-    const startMs = new Date(`${dateStr}T00:00:00+01:00`).getTime();
-    const endMs   = new Date(`${dateStr}T23:59:59+01:00`).getTime();
+  for (let step = 1; step <= DAYS_AHEAD + 3 && candidates.length < 6; step++) {
+    const dow = amsterdamWeekdaySun0(dateStr);
+    if (dow === 0 || dow === 6) {
+      dateStr = addAmsterdamCalendarDays(dateStr, 1);
+      continue;
+    }
+
+    const bounds = amsterdamCalendarDayBoundsMs(dateStr);
+    if (!bounds) break;
+    const { startMs, endMs } = bounds;
 
     let events = [];
     try {
       const er = await fetch(
         `${GHL_BASE}/calendars/events?locationId=${GHL_LOCATION_ID}&calendarId=${GHL_CALENDAR_ID}&startTime=${startMs}&endTime=${endMs}`,
-        { headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' } }
+        { headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' } }
       );
       if (er.ok) events = (await er.json())?.events || [];
     } catch {}
 
     const dayCap = maxCustomerAppointmentsPerDay();
-    if (events.length >= dayCap) continue;
+    if (events.length >= dayCap) {
+      dateStr = addAmsterdamCalendarDays(dateStr, 1);
+      continue;
+    }
 
-    const morningEvents   = events.filter(e => new Date(e.startTime).getHours() < 13);
-    const afternoonEvents = events.filter(e => new Date(e.startTime).getHours() >= 13);
+    const morningEvents = events.filter((e) => hourInAmsterdam(e.startTime) < 13);
+    const afternoonEvents = events.filter((e) => hourInAmsterdam(e.startTime) >= 13);
+
+    const noon = amsterdamWallTimeToDate(dateStr, 12, 0);
+    const dateLabel = noon
+      ? noon.toLocaleDateString('nl-NL', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+          timeZone: 'Europe/Amsterdam',
+        })
+      : dateStr;
 
     for (const block of ['morning', 'afternoon']) {
       const blockEvents = block === 'morning' ? morningEvents : afternoonEvents;
-      if (blockEvents.length >= MAX_PER_BLOCK) continue;
+      if (!blockAllowsNewCustomerBooking(block, blockEvents, workType)) continue;
 
+      const maxB = customerMaxForBlock(block);
       let score = blockEvents.length;
       if (newCoord) {
         const coords = await geocodeEvents(blockEvents);
         const minDist = coords.length
-          ? Math.min(...coords.map(c => haversine(newCoord.lat, newCoord.lng, c.lat, c.lng)))
+          ? Math.min(...coords.map((c) => haversine(newCoord.lat, newCoord.lng, c.lat, c.lng)))
           : 0;
-        score = minDist * (1 + blockEvents.length / MAX_PER_BLOCK);
+        score = minDist * (1 + blockEvents.length / maxB);
       }
 
       candidates.push({
         dateStr,
-        date: day,
         block,
         existingCount: blockEvents.length,
-        slotsLeft: MAX_PER_BLOCK - blockEvents.length,
-        // ASCII-streepje (geen Unicode-en-dash): anders soms kapotte tekens op mobiel
+        slotsLeft: maxB - blockEvents.length,
         timeLabel: block === 'morning' ? '09:00 - 13:00' : '13:00 - 17:00',
         blockLabel: block === 'morning' ? 'ochtend' : 'middag',
         suggestedTime: block === 'morning' ? '09:00' : '13:00',
-        dateLabel: day.toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' }),
+        dateLabel,
         score,
       });
     }
+
+    dateStr = addAmsterdamCalendarDays(dateStr, 1);
   }
 
   candidates.sort((a, b) => a.score - b.score);
@@ -150,7 +181,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const body = parseRequestBody(req);
-  let { contactId, name: nameParam, phone: phoneParam, address: addressParam } = body;
+  let { contactId, name: nameParam, phone: phoneParam, address: addressParam, type: typeParam, workType: workTypeParam } = body;
 
   // Zoek contact op naam of telefoon als er geen contactId is
   if (!contactId) {
@@ -235,8 +266,10 @@ export default async function handler(req, res) {
     }
   }
 
-  // Bereken de 2 beste slots
-  const slots = await getBestSlots(address);
+  const workType = normalizeWorkType(workTypeParam || typeParam || getField(contact, FIELD_IDS.type_onderhoud));
+
+  // Bereken de 2 beste slots (rekening houdend met max 4/3 per blok + geplande minuten)
+  const slots = await getBestSlots(address, workType);
   if (slots.length === 0) {
     return res.status(200).json({ success: false, message: 'Geen beschikbare slots in de komende 7 werkdagen.' });
   }
@@ -254,6 +287,7 @@ export default async function handler(req, res) {
     phone: phoneInToken,
     email: String(contact.email || '').trim(),
     address,
+    type: workType,
     inviteIssuedAt: Date.now(),
     slots: slots.map(s => ({
       id:            `${s.dateStr}_${s.block}`,
