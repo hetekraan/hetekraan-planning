@@ -19,7 +19,7 @@ import {
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_CALENDAR_ID = process.env.GHL_CALENDAR_ID;
-const MAPS_KEY        = process.env.GOOGLE_MAPS_KEY;
+const MAPS_KEY        = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_KEY;
 const GHL_BASE        = 'https://services.leadconnectorhq.com';
 const DEPOT           = 'Cornelis Dopperkade, Amsterdam';
 const DAYS_AHEAD      = 7; // kijk zoveel dagen vooruit

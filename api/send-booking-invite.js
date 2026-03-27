@@ -22,7 +22,7 @@ import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_CALENDAR_ID = process.env.GHL_CALENDAR_ID;
-const MAPS_KEY        = process.env.GOOGLE_MAPS_KEY;
+const MAPS_KEY        = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_KEY;
 const GHL_BASE        = 'https://services.leadconnectorhq.com';
 
 /** Publieke basis-URL voor boekingslinks (Vercel: zet BASE_URL of gebruik automatisch VERCEL_URL) */

@@ -362,7 +362,8 @@ export default async function handler(req, res) {
         const tryStart = new Date(tryStartMs);
         const tryEnd = new Date(tryStartMs + durationMin * 60 * 1000);
 
-        const apptRes = await fetchWithRetry(`${GHL_BASE}/calendars/events/appointments`, {
+        // Gebruik plain fetch (geen retry): een retry na 5xx zou een tweede GHL-afspraak aanmaken.
+        const apptRes = await fetch(`${GHL_BASE}/calendars/events/appointments`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${GHL_API_KEY}`,

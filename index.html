@@ -2399,12 +2399,13 @@ async function confirmDone(id) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contactId:   a.contactId,
-          type:        a.type,
-          sendReview:  a.review,
-          lastService: a.lastService || null,
-          totalPrice:  total,
-          extras:      lines,
+          contactId:     a.contactId,
+          appointmentId: a.ghlId || undefined,
+          type:          a.type,
+          sendReview:    a.review,
+          lastService:   a.lastService || null,
+          totalPrice:    total,
+          extras:        lines,
         })
       });
     } catch(e) { console.log('GHL niet bereikbaar', e); }

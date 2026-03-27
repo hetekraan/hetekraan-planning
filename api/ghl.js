@@ -346,12 +346,13 @@ export default async function handler(req, res) {
           const dur = Math.max(5, Math.min(480, Number(durationMin) || 30));
           const tm = String(appointmentTime).trim().replace(/^~/, '');
           const parts = tm.split(':');
-          const hh = String(Math.min(23, Math.max(0, parseInt(parts[0], 10) || 0))).padStart(2, '0');
-          const mm = String(Math.min(59, Math.max(0, parseInt(parts[1], 10) || 0))).padStart(2, '0');
-          const startMs = new Date(`${routeDate}T${hh}:${mm}:00+01:00`).getTime();
-          if (!Number.isNaN(startMs)) {
-            const startIso = new Date(startMs).toISOString();
-            const endIso   = new Date(startMs + dur * 60 * 1000).toISOString();
+          const hNum = Math.min(23, Math.max(0, parseInt(parts[0], 10) || 0));
+          const mNum = Math.min(59, Math.max(0, parseInt(parts[1], 10) || 0));
+          // DST-bewust: amsterdamWallTimeToDate ipv hardgecodeerd +01:00
+          const startD = amsterdamWallTimeToDate(routeDate, hNum, mNum);
+          if (startD) {
+            const startIso = startD.toISOString();
+            const endIso   = new Date(startD.getTime() + dur * 60 * 1000).toISOString();
             const cal = await putCalendarStartEnd(ghlAppointmentId, startIso, endIso);
             calendarSynced = cal.ok;
             if (!cal.ok) calendarError = cal.err;
@@ -367,9 +368,11 @@ export default async function handler(req, res) {
 
       case 'completeAppointment': {
         const { contactId, appointmentId, type, sendReview, lastService, totalPrice, extras } = req.body;
+        if (!contactId) return res.status(400).json({ error: 'contactId vereist' });
+
         const today = formatYyyyMmDdInAmsterdam(new Date()) || new Date().toISOString().split('T')[0];
         const customFields = [
-          { id: 'hiTe3Yi5TlxheJq4bLzy', field_value: today } // datum_laatste_onderhoud
+          { id: 'hiTe3Yi5TlxheJq4bLzy', field_value: today }, // datum_laatste_onderhoud
         ];
         if (type === 'installatie') {
           customFields.push({ id: 'kYP2SCmhZ21Ig0aaLl5l', field_value: today }); // datum_installatie
@@ -380,15 +383,35 @@ export default async function handler(req, res) {
         if (Array.isArray(extras) && extras.length > 0) {
           customFields.push({ id: FIELD_IDS.prijs_regels, field_value: JSON.stringify(extras) });
         }
-        await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
+
+        const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
           method: 'PUT',
           headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-04-15' },
-          body: JSON.stringify({ customFields })
+          body: JSON.stringify({ customFields }),
+          _allowPostRetry: false,
         });
-        await addTag(contactId, 'factuur-versturen');
-        if (sendReview) await addTag(contactId, 'review-mail-versturen');
-        if (appointmentId) await updateOpportunityStage(contactId, 'Uitgevoerd');
-        return res.status(200).json({ success: true });
+        if (!putRes.ok) {
+          const detail = (await putRes.text().catch(() => '')).slice(0, 400);
+          console.error('[completeAppointment] GHL contact PUT mislukt:', putRes.status, detail);
+          return res.status(502).json({ error: 'Kon afsluitvelden niet opslaan in GHL', detail });
+        }
+
+        const tagErrors = [];
+        const tagOk = await addTag(contactId, 'factuur-versturen').catch((e) => { tagErrors.push(e.message); return false; });
+        if (sendReview) {
+          await addTag(contactId, 'review-mail-versturen').catch((e) => { tagErrors.push(e.message); });
+        }
+        if (appointmentId) {
+          await updateOpportunityStage(contactId, 'Uitgevoerd').catch((e) => {
+            console.warn('[completeAppointment] opportunity stage update mislukt:', e.message);
+          });
+        }
+
+        return res.status(200).json({
+          success: true,
+          tagOk: tagOk !== false,
+          tagErrors: tagErrors.length ? tagErrors : undefined,
+        });
       }
 
       case 'saveRouteTimes': {

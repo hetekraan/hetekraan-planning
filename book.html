@@ -594,8 +594,13 @@
       queueMicrotask(() => updateConfirmButtonState());
     }
 
+    let _bookingInProgress = false;
+
     async function confirmBooking() {
       if (!selectedSlot) return;
+      // Voorkom dubbele boeking bij snel dubbelklikken of herhaald klikken.
+      if (_bookingInProgress) return;
+
       const emailEl = document.getElementById('bookingEmail');
       const phoneEl = document.getElementById('bookingPhone');
       const email = knownEmailFromToken || String(emailEl.value || '').trim();
@@ -611,6 +616,10 @@
         phoneEl.focus();
         return;
       }
+
+      _bookingInProgress = true;
+      const confirmBtn = document.getElementById('confirmBtn');
+      if (confirmBtn) confirmBtn.disabled = true;
 
       document.getElementById('bookingScreen').style.display = 'none';
       document.getElementById('loadingScreen').style.display = 'block';
@@ -636,16 +645,22 @@
             <strong>Adres:</strong> ${addr}
           `;
           document.getElementById('successScreen').style.display = 'block';
+          // Knop blijft disabled: boeking is gelukt, niet opnieuw proberen.
         } else {
           let msg = data.error || 'Er is een fout opgetreden. Neem contact met ons op.';
           if (data.ghlSummary) msg += '\n\n' + String(data.ghlSummary);
           if (data.ghlStatus != null) msg += '\n(HTTP ' + String(data.ghlStatus) + ')';
           if (data.ghlBody) msg += '\n\n' + String(data.ghlBody);
           else if (data.hint && !data.ghlSummary) msg += '\n\n' + String(data.hint);
+          // Boeking mislukt → knop weer inschakelen zodat gebruiker opnieuw kan proberen.
+          _bookingInProgress = false;
+          if (confirmBtn) confirmBtn.disabled = !selectedSlot;
           showError('Niet gelukt', msg);
         }
       } catch (e) {
         document.getElementById('loadingScreen').style.display = 'none';
+        _bookingInProgress = false;
+        if (confirmBtn) confirmBtn.disabled = !selectedSlot;
         showError('Verbindingsfout', 'Controleer je internet en probeer opnieuw.');
       }
     }

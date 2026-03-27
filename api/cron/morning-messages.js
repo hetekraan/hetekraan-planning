@@ -23,6 +23,16 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // Vercel stuurt Authorization: Bearer <CRON_SECRET> bij scheduled invocations.
+  // Als CRON_SECRET is ingesteld, moet het kloppen; zo niet → endpoint is open (dev-gebruik).
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret) {
+    const authHeader = req.headers['authorization'];
+    if (authHeader !== `Bearer ${cronSecret}`) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+  }
+
   const dryRun = req.query?.dryRun === 'true';
   // Alleen écht tags zetten als dit aan staat (voorkomt per ongeluk ochtend-tags tijdens testen)
   const enabled = process.env.MORNING_MESSAGES_ENABLED === 'true';
