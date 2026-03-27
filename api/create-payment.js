@@ -9,6 +9,7 @@ import { createMollieClient } from '@mollie/api-client';
 import { generateInvoicePDF, calcInvoiceTotal } from '../lib/invoice.js';
 import { fetchWithRetry }     from '../lib/retry.js';
 import { sendErrorNotification } from '../lib/notify.js';
+import { verifySessionToken } from '../lib/session.js';
 
 const GHL_API_KEY  = process.env.GHL_API_KEY;
 const GHL_BASE     = 'https://services.leadconnectorhq.com';
@@ -29,9 +30,15 @@ function invoiceNumber() {
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-HK-Auth');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // Endpoint mag alleen worden aangeroepen vanuit het ingelogde dashboard.
+  const session = verifySessionToken(req.headers['x-hk-auth']);
+  if (!session) {
+    return res.status(401).json({ error: 'Niet geautoriseerd — log opnieuw in op het dashboard' });
+  }
 
   const {
     contactId,

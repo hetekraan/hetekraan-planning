@@ -2416,7 +2416,7 @@ async function confirmDone(id) {
     try {
       const resp = await fetch('/api/create-payment', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
         body: JSON.stringify({
           contactId:      a.contactId,
           contactName:    a.name,
@@ -2919,18 +2919,41 @@ document.getElementById('dateLabel').textContent = formatDate(currentDate);
 updateBlockedUI();
 loadAppointments(currentDate);
 
-// LOGIN — 1× per dag (Amsterdam) in dezelfde browser; sessionStorage = per tab tot we dit zetten
-const USERS = { 'daan': 'wachtwoord1', 'jerry': 'wachtwoord2' };
-const HK_USER_KEY = 'hk_user';
+// LOGIN — wachtwoorden staan NIET meer in de browser-code.
+// Credentials worden gevalideerd door /api/auth tegen env vars (HK_USERS).
+// Na succesvolle login slaan we een HMAC-gesigneerd token op (geldig t/m middernacht NL-tijd).
+const HK_USER_KEY      = 'hk_user';
+const HK_SESSION_KEY   = 'hk_session_token';
 const HK_LOGIN_DAY_KEY = 'hk_login_day_amsterdam';
 
-function getTodayLoginKey() {
-  return getDateStr(new Date());
+/** Geef de opgeslagen sessie terug als die vandaag nog geldig is, anders null. */
+function getStoredSession() {
+  try {
+    const token = localStorage.getItem(HK_SESSION_KEY);
+    const user  = localStorage.getItem(HK_USER_KEY);
+    const day   = localStorage.getItem(HK_LOGIN_DAY_KEY);
+    if (!token || !user || !day) return null;
+    const today = getDateStr(new Date());
+    if (day !== today) return null;
+    // Decode token-payload (voor de punt) en controleer dag zonder geheim.
+    const b64 = token.split('.')[0];
+    if (!b64) return null;
+    const payload = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
+    const [tokenUser, tokenDay] = payload.split('|');
+    if (tokenUser !== user || tokenDay !== today) return null;
+    return { user, token };
+  } catch (_) { return null; }
+}
+
+/** Stuur de sessie-token mee als header bij beveiligde API-aanroepen. */
+function hkAuthHeader() {
+  try { return localStorage.getItem(HK_SESSION_KEY) || ''; } catch (_) { return ''; }
 }
 
 function clearLoginState() {
   try {
     localStorage.removeItem(HK_USER_KEY);
+    localStorage.removeItem(HK_SESSION_KEY);
     localStorage.removeItem(HK_LOGIN_DAY_KEY);
     sessionStorage.removeItem(HK_USER_KEY);
   } catch (_) {}
@@ -2947,10 +2970,8 @@ function logoutPlanning() {
 }
 
 function checkLogin() {
-  const saved = localStorage.getItem(HK_USER_KEY);
-  const daySaved = localStorage.getItem(HK_LOGIN_DAY_KEY);
-  const today = getTodayLoginKey();
-  if (saved && USERS[saved] && daySaved === today) {
+  const session = getStoredSession();
+  if (session) {
     document.getElementById('loginOverlay').classList.add('hidden');
     render();
   } else {
@@ -2958,20 +2979,38 @@ function checkLogin() {
   }
 }
 
-function doLogin() {
+async function doLogin() {
   const user = document.getElementById('loginUser').value.trim().toLowerCase();
   const pass = document.getElementById('loginPass').value;
   const err  = document.getElementById('loginError');
-  if (USERS[user] && USERS[user] === pass) {
-    try {
-      localStorage.setItem(HK_USER_KEY, user);
-      localStorage.setItem(HK_LOGIN_DAY_KEY, getTodayLoginKey());
-    } catch (_) {}
-    document.getElementById('loginOverlay').classList.add('hidden');
-    render();
-  } else {
+  const btn  = document.querySelector('.btn-login');
+  if (btn) btn.disabled = true;
+  err.classList.remove('visible');
+
+  try {
+    const res  = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user, password: pass }),
+    });
+    const data = await res.json();
+    if (res.ok && data.token) {
+      try {
+        localStorage.setItem(HK_USER_KEY, data.user);
+        localStorage.setItem(HK_SESSION_KEY, data.token);
+        localStorage.setItem(HK_LOGIN_DAY_KEY, data.day);
+      } catch (_) {}
+      document.getElementById('loginOverlay').classList.add('hidden');
+      render();
+    } else {
+      err.classList.add('visible');
+      document.getElementById('loginPass').value = '';
+    }
+  } catch (_) {
     err.classList.add('visible');
     document.getElementById('loginPass').value = '';
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
