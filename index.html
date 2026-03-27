@@ -2744,14 +2744,18 @@ async function confirmDone(id) {
         })
       });
       const result = await resp.json();
-      if (result.paymentUrl) {
-        showToast(`✓ Klaar!\n💳 Betaallink verstuurd via WhatsApp\n📄 Factuur ${result.invoiceNumber} per email`, 'success');
+      if (resp.status === 401) {
+        showToast('⚠ Sessie verlopen — log opnieuw in om betaallink te sturen', 'info');
+      } else if (result.paymentUrl) {
+        showToast(`✓ Klaar!\n💳 Betaallink verstuurd via WhatsApp\n📄 Factuur ${result.invoiceNumber}`, 'success');
+      } else if (result.mollieError) {
+        showToast(`✓ Klaar!\n⚠ Mollie-fout: ${result.mollieError.slice(0, 80)}`, 'info');
       } else {
         showToast('✓ Klaar! (betaallink kon niet worden aangemaakt)', 'success');
       }
     } catch(e) {
       console.log('create-payment fout', e);
-      showToast('✓ Klaar! (fout bij betaallink)', 'success');
+      showToast('✓ Klaar! (fout bij betaallink, zie console)', 'success');
     }
   } else {
     showToast('✓ Klant afgerond', 'success');

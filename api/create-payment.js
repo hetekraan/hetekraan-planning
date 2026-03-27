@@ -78,8 +78,7 @@ export default async function handler(req, res) {
           value: totalInclBTW.toFixed(2),
         },
         description: `Hetekraan — Factuur ${invNumber}`,
-        redirectUrl: 'https://hetekraan.nl',
-        method: 'ideal',
+        redirectUrl: process.env.MOLLIE_REDIRECT_URL || 'https://hetekraan.nl',
         metadata: { invoiceNumber: invNumber, contactId },
       });
       paymentUrl = payment.getCheckoutUrl();
