@@ -70,6 +70,7 @@ export default async function handler(req, res) {
 
     // ── 1. Mollie betaallink ─────────────────────────────────────────────────
     let paymentUrl = null;
+    let molliePaymentId = null; // tr_XXXXX — wordt opgeslagen in GHL-veld voor WhatsApp template
     let mollieError = null;
     try {
       const payment = await mollie.payments.create({
@@ -82,7 +83,8 @@ export default async function handler(req, res) {
         metadata: { invoiceNumber: invNumber, contactId },
       });
       paymentUrl = payment.getCheckoutUrl();
-      console.log('[create-payment] Mollie link:', paymentUrl);
+      molliePaymentId = payment.id;
+      console.log('[create-payment] Mollie link:', paymentUrl, '| id:', molliePaymentId);
     } catch (err) {
       mollieError = err.message;
       console.error('[create-payment] Mollie fout:', err.message, err.stack);
@@ -115,17 +117,17 @@ export default async function handler(req, res) {
       const prijsFormatted = `€${totalInclBTW.toFixed(2).replace('.', ',')} (incl. BTW)`;
 
       try {
-        // GHL WhatsApp-template heeft vaste URL-basis "https://" + {{contact.betaallink}}.
-        // Sla daarom het URL-pad op ZONDER het scheme (https://) zodat de samenvoeging
-        // klopt: "https://" + "checkout.mollie.com/..." = geldige Mollie-betaallink.
-        const betaallinkPath = paymentUrl.replace(/^https?:\/\//, '');
-
+        // GHL WhatsApp-template CTA-knop:
+        //   Vaste basis: "https://www.mollie.com/checkout/pay/"
+        //   Dynamisch:   {{contact.betaallink}} = alleen het transactie-ID (tr_XXXXX)
+        // Zo kent WhatsApp een echt domein als prefix, en kan het template goedgekeurd worden.
+        // molliePaymentId is bijv. "tr_XXXXXXXXXX" — ingesteld bovenaan bij mollie.payments.create().
         const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
           method: 'PUT',
           headers: GHL_HEADERS,
           body: JSON.stringify({
             customFields: [
-              { id: 'wtZj3NPqHc8bFMVUYJMk', field_value: betaallinkPath },
+              { id: 'wtZj3NPqHc8bFMVUYJMk', field_value: molliePaymentId },
               { id: 'HGjlT6ofaBiMz3j2HsXL', field_value: prijsFormatted },
             ]
           })
