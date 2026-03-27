@@ -18,6 +18,7 @@ import { maxCustomerAppointmentsPerDay } from '../lib/calendar-customer-cap.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
+import { signBookingToken } from '../lib/session.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -298,7 +299,7 @@ export default async function handler(req, res) {
       suggestedTime: s.suggestedTime,
     })),
   };
-  const token = Buffer.from(JSON.stringify(bookingData)).toString('base64url');
+  const token = signBookingToken(bookingData);
   // Query-URL: /book/<token> geeft met cleanUrls 404 op Vercel; /book?token= laadt book.html wel.
   const bookingUrl = `${publicBaseUrl()}/book?token=${encodeURIComponent(token)}`;
 

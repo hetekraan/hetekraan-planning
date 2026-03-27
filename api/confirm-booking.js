@@ -18,6 +18,8 @@ import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
+import { isServerDateBlocked } from '../lib/blocked-dates.js';
+import { verifyBookingToken } from '../lib/session.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -98,11 +100,11 @@ export default async function handler(req, res) {
   const { token, slotId, email: emailRaw, phone: phoneRaw } = body || {};
   if (!token || !slotId) return res.status(400).json({ error: 'token en slotId zijn verplicht' });
 
-  let bookingData;
-  try {
-    bookingData = JSON.parse(Buffer.from(token, 'base64url').toString());
-  } catch {
-    return res.status(400).json({ error: 'Ongeldig token' });
+  const bookingData = verifyBookingToken(token);
+  if (!bookingData) {
+    return res.status(400).json({
+      error: 'Ongeldige of verlopen boekingslink. Vraag een nieuwe link aan via onze berichtendienst.',
+    });
   }
 
   const { contactId, name, phone, address, date: legacyDate, type: typeRaw, desc, slots, email: emailInToken } = bookingData;
@@ -146,6 +148,12 @@ export default async function handler(req, res) {
 
   const date = chosenSlot.dateStr || legacyDate;
   if (!date) return res.status(400).json({ error: 'Geen datum in slot' });
+  if (isServerDateBlocked(date)) {
+    return res.status(409).json({
+      error: 'Deze dag is helaas niet meer beschikbaar. Kies een andere dag of neem contact met ons op.',
+      code: 'DATE_BLOCKED',
+    });
+  }
 
   const type = normalizeWorkType(typeRaw || getCf(contactSnap, FIELD_IDS.type_onderhoud));
 

@@ -1310,15 +1310,31 @@ function assignRouteStops() {
   });
 }
 
-// Geblokkeerde datums (vakantie/vrij) — opgeslagen in localStorage
+// Geblokkeerde datums — lokaal (localStorage) + server-side (env BLOCKED_DATES via /api/blocked-dates).
 function getBlockedDates() {
   try { return JSON.parse(localStorage.getItem('blockedDates') || '[]'); } catch { return []; }
 }
 function saveBlockedDates(dates) {
-  localStorage.setItem('blockedDates', JSON.stringify(dates));
+  try { localStorage.setItem('blockedDates', JSON.stringify(dates)); } catch (_) {}
 }
 function isDateBlocked(dateStr) {
   return getBlockedDates().includes(dateStr);
+}
+
+/** Haal server-side geblokkeerde datums op en voeg ze samen met de lokale lijst.
+ *  Stil falen: als het endpoint niet bereikbaar is, werkt de lokale lijst gewoon nog. */
+async function syncServerBlockedDates() {
+  try {
+    const res = await fetch('/api/blocked-dates', { cache: 'no-store' });
+    if (!res.ok) return;
+    const data = await res.json();
+    const serverDates = Array.isArray(data?.blockedDates) ? data.blockedDates : [];
+    if (serverDates.length === 0) return;
+    const local = getBlockedDates();
+    const merged = [...new Set([...local, ...serverDates])];
+    saveBlockedDates(merged);
+    updateBlockedUI();
+  } catch (_) {}
 }
 function getDateStr(d) {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -1715,7 +1731,8 @@ function getRouteStopsForSidebar() {
 
 function updateRouteLocalUi() {
   const ds = getDateStr(currentDate);
-  const has = !!localStorage.getItem(routeSnapshotKey(ds));
+  let has = false;
+  try { has = !!localStorage.getItem(routeSnapshotKey(ds)); } catch (_) {}
   const hint = document.getElementById('routeLocalHint');
   const btn = document.getElementById('btnResetLocalRoute');
   if (hint) {
@@ -1731,7 +1748,7 @@ function updateRouteLocalUi() {
 }
 
 async function resetLocalRouteTimes() {
-  localStorage.removeItem(routeSnapshotKey(getDateStr(currentDate)));
+  try { localStorage.removeItem(routeSnapshotKey(getDateStr(currentDate))); } catch (_) {}
   updateRouteLocalUi();
   await loadAppointments(currentDate);
   showToast('Lokale tijden gewist — opnieuw uit GHL geladen', 'success');
@@ -2917,6 +2934,7 @@ if (isPlanningDemoMode()) {
 }
 document.getElementById('dateLabel').textContent = formatDate(currentDate);
 updateBlockedUI();
+syncServerBlockedDates();
 loadAppointments(currentDate);
 
 // LOGIN — wachtwoorden staan NIET meer in de browser-code.
