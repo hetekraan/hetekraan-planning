@@ -453,7 +453,11 @@
     function decodeToken(t) {
       try {
         const raw = decodeURIComponent(String(t).trim());
-        const b64 = raw.replace(/-/g, '+').replace(/_/g, '/');
+        // Token-formaat is nu "payload.hmac-handtekening" (HMAC-signing via lib/session.js).
+        // Client hoeft alleen de payload te lezen; verificatie doet de server.
+        // Strip alles ná de laatste punt zodat atob() niet faalt op het hex-gedeelte.
+        const payloadPart = raw.includes('.') ? raw.slice(0, raw.lastIndexOf('.')) : raw;
+        const b64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
         const pad = b64 + '=='.slice(0, (4 - b64.length % 4) % 4);
         const binary = atob(pad);
         const bytes = new Uint8Array(binary.length);
@@ -477,8 +481,12 @@
       }
 
       bookingData = decodeToken(token);
-      if (!bookingData || !bookingData.slots || bookingData.slots.length === 0) {
-        showError('Link verlopen', 'Er zijn helaas geen beschikbare tijdsloten meer op deze dag.');
+      if (!bookingData) {
+        showError('Ongeldige link', 'Deze boekingslink is niet geldig of verlopen. Vraag een nieuwe link aan via WhatsApp.');
+        return;
+      }
+      if (!bookingData.slots || bookingData.slots.length === 0) {
+        showError('Geen tijdsloten', 'Er zijn helaas geen beschikbare tijdsloten meer. Vraag een nieuwe uitnodiging aan.');
         return;
       }
 
