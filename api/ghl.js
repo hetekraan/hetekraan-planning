@@ -8,6 +8,7 @@ import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { sendErrorNotification } from '../lib/notify.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
+import { signSessionToken, parseUsers } from '../lib/session.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -188,10 +189,28 @@ async function putCalendarStartEnd(eventId, startIso, endIso) {
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-HK-Auth');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const { action } = req.query;
+
+  // ─── Login (verplaatst vanuit api/auth.js) ───────────────────────────────
+  if (action === 'auth') {
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+    const body = req.body || {};
+    const u = String(body.user || '').trim().toLowerCase();
+    const p = String(body.password || '');
+    await new Promise((r) => setTimeout(r, 300));
+    const users = parseUsers();
+    if (!u || !users[u] || users[u] !== p) {
+      return res.status(401).json({ error: 'Gebruikersnaam of wachtwoord onjuist' });
+    }
+    const day = formatYyyyMmDdInAmsterdam(new Date());
+    if (!day) return res.status(500).json({ error: 'Tijdzone-fout bij token aanmaken' });
+    const token = signSessionToken(u, day);
+    return res.status(200).json({ token, user: u, day });
+  }
+  // ────────────────────────────────────────────────────────────────────────
 
   try {
     switch (action) {

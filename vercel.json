@@ -48,9 +48,6 @@
   "functions": {
     "api/cron/daily-analysis.js": {
       "maxDuration": 300
-    },
-    "api/seed-test-appointments.js": {
-      "maxDuration": 60
     }
   }
 }

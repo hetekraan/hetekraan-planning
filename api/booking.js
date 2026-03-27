@@ -16,7 +16,7 @@ import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
-import { isServerDateBlocked } from '../lib/blocked-dates.js';
+import { isServerDateBlocked, getServerBlockedDates } from '../lib/blocked-dates.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -259,6 +259,13 @@ export default async function handler(req, res) {
 
   try {
     switch (action) {
+
+      // Geeft server-side geblokkeerde datums terug (verplaatst vanuit api/blocked-dates.js)
+      case 'getBlockedDates': {
+        res.setHeader('Cache-Control', 'no-store');
+        const dates = [...getServerBlockedDates()].sort();
+        return res.status(200).json({ blockedDates: dates });
+      }
 
       // Geeft beschikbare dagen terug (volgende 14 werkdagen)
       case 'getDays': {
