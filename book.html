@@ -637,8 +637,9 @@
         if (data.success) {
           const chosenSlot = bookingData.slots.find(s => s.id === selectedSlot);
           const tslot = esc(sanitizeTimeDisplay(chosenSlot?.time) || selectedSlot);
-          const d = esc(data.date);
           const addr = esc(bookingData.address || '—');
+          // Bij alreadyBooked heeft de server mogelijk geen date terug; gebruik dan slotlabel.
+          const d = data.date ? esc(data.date) : esc(chosenSlot?.label || selectedSlot);
           document.getElementById('successDetail').innerHTML = `
             <strong>Datum:</strong> ${d}<br>
             <strong>Tijdslot:</strong> ${tslot}<br>
@@ -647,6 +648,13 @@
           document.getElementById('successScreen').style.display = 'block';
           // Knop blijft disabled: boeking is gelukt, niet opnieuw proberen.
         } else {
+          // BOOKING_IN_PROGRESS: al in behandeling → toon rustige melding, niet een fout.
+          if (data.code === 'BOOKING_IN_PROGRESS') {
+            document.getElementById('loadingScreen').style.display = 'block';
+            // Probeer automatisch opnieuw na 3 seconden.
+            setTimeout(() => confirmBooking(), 3000);
+            return;
+          }
           let msg = data.error || 'Er is een fout opgetreden. Neem contact met ons op.';
           if (data.ghlSummary) msg += '\n\n' + String(data.ghlSummary);
           if (data.ghlStatus != null) msg += '\n(HTTP ' + String(data.ghlStatus) + ')';

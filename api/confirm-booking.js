@@ -81,6 +81,27 @@ function firstValidNlMobile(...candidates) {
   return '';
 }
 
+// ─── Race-condition beveiliging ───────────────────────────────────────────────
+// Laag 1: in-memory lock per contactId+datum+dagdeel. Beschermt wanneer twee
+//         requests op dezelfde serverless instantie tegelijk binnenkomen (dubbele klik,
+//         herlaad tijdens laden, enz.).
+// Laag 2: GHL-duplicate-check verderop in de handler — beschermt ook bij gelijktijdige
+//         requests op verschillende instanties (cold starts, load balancing).
+const _pendingBookings = new Map();
+function acquireBookingLock(key) {
+  const now = Date.now();
+  for (const [k, t] of _pendingBookings) {
+    if (now - t > 120_000) _pendingBookings.delete(k); // verlopen locks opschonen
+  }
+  if (_pendingBookings.has(key)) return false;
+  _pendingBookings.set(key, now);
+  return true;
+}
+function releaseBookingLock(key) {
+  _pendingBookings.delete(key);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -155,6 +176,15 @@ export default async function handler(req, res) {
     });
   }
 
+  // Laag 1: in-memory lock — voorkomt duplicaten bij gelijktijdige requests op dezelfde instantie.
+  const lockKey = `${contactId}:${date}:${block}`;
+  if (!acquireBookingLock(lockKey)) {
+    return res.status(409).json({
+      error: 'Je boeking wordt al verwerkt. Wacht even en ververs de pagina als er niets is veranderd.',
+      code: 'BOOKING_IN_PROGRESS',
+    });
+  }
+
   const type = normalizeWorkType(typeRaw || getCf(contactSnap, FIELD_IDS.type_onderhoud));
 
   const dayCap = maxCustomerAppointmentsPerDay();
@@ -165,6 +195,7 @@ export default async function handler(req, res) {
     apiKey: GHL_API_KEY,
   });
   if (dayCount !== null && dayCount >= dayCap) {
+    releaseBookingLock(lockKey);
     return res.status(409).json({
       error:
         `Er staan al ${dayCap} afspraken op deze dag via de agenda. Online boeken is niet meer mogelijk; neem contact op of kies een andere dag. Handmatig kun je in GHL nog een extra afspraak toevoegen.`,
@@ -190,10 +221,30 @@ export default async function handler(req, res) {
     if (!blockAllowsNewCustomerBooking(block, blockEvents, type)) {
       const maxB = customerMaxForBlock(block);
       const blokNaam = block === 'morning' ? 'ochtend (09:00–13:00)' : 'middag (13:00–17:00)';
+      releaseBookingLock(lockKey);
       return res.status(409).json({
         error: `Dit tijdslot past niet meer: in de ${blokNaam} zitten al ${maxB} klant-afspraken of er is onvoldoende geplande tijd over voor dit werk. Kies een andere optie of bel ons.`,
         code: 'BLOCK_FULL',
         maxPerBlock: maxB,
+      });
+    }
+
+    // Laag 2: GHL duplicate-check — beschermt bij concurrent requests op verschillende instances.
+    // Als dit contact al een afspraak heeft op deze dag, geef die terug als succes (idempotent).
+    const alreadyBooked = eventsForDay.find((e) => {
+      const cid = e.contactId || e.contact_id || e.contact?.id;
+      return cid && String(cid) === String(contactId);
+    });
+    if (alreadyBooked) {
+      releaseBookingLock(lockKey);
+      const existingId =
+        alreadyBooked.id || alreadyBooked.eventId || alreadyBooked.appointmentId || null;
+      console.log('[confirm-booking] Duplicate boeking onderschept via GHL-check:', contactId, date);
+      return res.status(200).json({
+        success: true,
+        appointmentId: existingId,
+        alreadyBooked: true,
+        message: 'Er staat al een afspraak voor je ingepland op deze dag.',
       });
     }
   }
@@ -242,6 +293,7 @@ export default async function handler(req, res) {
   if (!putRes.ok) {
     const errTxt = await putRes.text().catch(() => '');
     console.error('[confirm-booking] contact PUT:', putRes.status, errTxt);
+    releaseBookingLock(lockKey);
     return res.status(502).json({ error: 'Kon gegevens niet opslaan in GHL. Probeer het later opnieuw.' });
   }
 
@@ -405,6 +457,9 @@ export default async function handler(req, res) {
       }
     }
   }
+
+  // Lock vrijgeven: de afspraak is aangemaakt (of mislukt) — verdere stappen (tag, response) hebben het slot niet meer nodig.
+  releaseBookingLock(lockKey);
 
   if (!appointmentId) {
     console.error('[confirm-booking] Agenda-POST mislukt:', lastStatus, (lastError || '').slice(0, 800));
