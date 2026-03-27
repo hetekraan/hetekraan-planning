@@ -2746,10 +2746,17 @@ async function confirmDone(id) {
       const result = await resp.json();
       if (resp.status === 401) {
         showToast('⚠ Sessie verlopen — log opnieuw in om betaallink te sturen', 'info');
-      } else if (result.paymentUrl) {
-        showToast(`✓ Klaar!\n💳 Betaallink verstuurd via WhatsApp\n📄 Factuur ${result.invoiceNumber}`, 'success');
       } else if (result.mollieError) {
-        showToast(`✓ Klaar!\n⚠ Mollie-fout: ${result.mollieError.slice(0, 80)}`, 'info');
+        showToast(`✓ Klaar!\n⚠ Mollie kon geen betaallink aanmaken: ${result.mollieError.slice(0, 100)}`, 'info');
+      } else if (result.paymentUrl) {
+        const d = result.ghlDiag || {};
+        if (!d.tagSet) {
+          // GHL tag mislukt → WhatsApp wordt mogelijk niet automatisch verstuurd
+          // Toon betaallink direct in het dashboard zodat je hem handmatig kunt kopiëren
+          showPaymentLinkFallback(result.paymentUrl, result.invoiceNumber, result.totalInclBTW);
+        } else {
+          showToast(`✓ Klaar!\n💳 Betaallink verstuurd via WhatsApp\n📄 Factuur ${result.invoiceNumber}`, 'success');
+        }
       } else {
         showToast('✓ Klaar! (betaallink kon niet worden aangemaakt)', 'success');
       }
@@ -3227,6 +3234,55 @@ function showToast(msg, type='info') {
   t.className = `toast ${type} show`;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 4000);
+}
+
+/**
+ * Toont betaallink als kopieerbaar dialoogje als de GHL-workflow de WhatsApp
+ * niet automatisch heeft verstuurd (bijv. workflow niet ingesteld in GHL).
+ */
+function showPaymentLinkFallback(url, invoiceNumber, total) {
+  // Verwijder eventuele eerdere fallback
+  const old = document.getElementById('paymentLinkFallback');
+  if (old) old.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'paymentLinkFallback';
+  overlay.style.cssText = [
+    'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999',
+    'display:flex;align-items:center;justify-content:center;padding:24px',
+  ].join(';');
+
+  const totalStr = total != null ? `€${Number(total).toFixed(2).replace('.', ',')}` : '';
+  overlay.innerHTML = `
+    <div style="background:#1a1a1a;border:1px solid #333;border-radius:16px;padding:28px 24px;max-width:480px;width:100%;">
+      <div style="font-size:18px;font-weight:700;color:#fff;margin-bottom:6px;">✓ Klaar!</div>
+      <div style="font-size:14px;color:#f59e0b;margin-bottom:18px;">
+        ⚠ WhatsApp kon niet automatisch verstuurd worden via GHL.<br>
+        Kopieer de link hieronder en stuur hem handmatig.
+      </div>
+      <div style="font-size:13px;color:#9a9a9a;margin-bottom:4px;">📄 Factuur ${invoiceNumber || ''}${totalStr ? ' — ' + totalStr + ' incl. BTW' : ''}</div>
+      <div style="display:flex;gap:8px;margin-bottom:20px;">
+        <input id="payLinkInput" readonly value="${url}"
+          style="flex:1;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;min-width:0;" />
+        <button onclick="
+          navigator.clipboard.writeText('${url}').then(()=>{
+            this.textContent='✓';
+            setTimeout(()=>this.textContent='Kopieer',1500);
+          }).catch(()=>{
+            document.getElementById('payLinkInput').select();
+            document.execCommand('copy');
+          })
+        " style="background:#ffd000;color:#000;font-weight:700;border:none;border-radius:8px;padding:10px 16px;cursor:pointer;white-space:nowrap;">
+          Kopieer
+        </button>
+      </div>
+      <button onclick="document.getElementById('paymentLinkFallback').remove()"
+        style="width:100%;background:#272727;border:none;border-radius:8px;padding:11px;color:#f0f0f0;font-size:14px;cursor:pointer;">
+        Sluiten
+      </button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
 }
 
 // Init — vandaag; ?planning_demo=1 springt naar 13 apr 2026 en forceert testdata

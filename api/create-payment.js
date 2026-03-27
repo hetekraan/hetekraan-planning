@@ -109,11 +109,13 @@ export default async function handler(req, res) {
     }
 
     // ── 3. Betaallink opslaan op contact + tag zetten voor GHL workflow ────
+    const ghlDiag = { fieldsPut: false, noteAdded: false, tagSet: false, tagError: null };
+
     if (contactId && paymentUrl) {
-      // Sla betaallink + geformatteerde prijs op als custom fields voor het WhatsApp template
       const prijsFormatted = `€${totalInclBTW.toFixed(2).replace('.', ',')} (incl. BTW)`;
+
       try {
-        await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
+        const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
           method: 'PUT',
           headers: GHL_HEADERS,
           body: JSON.stringify({
@@ -123,17 +125,24 @@ export default async function handler(req, res) {
             ]
           })
         });
-      } catch {}
+        ghlDiag.fieldsPut = putRes.ok;
+        if (!putRes.ok) {
+          const t = await putRes.text().catch(() => '');
+          console.error('[create-payment] GHL custom fields PUT:', putRes.status, t.slice(0, 300));
+        }
+      } catch (err) {
+        console.error('[create-payment] GHL PUT fout:', err.message);
+      }
 
-      // Sla ook op als notitie (als backup)
       try {
-        await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}/notes`, {
+        const noteRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}/notes`, {
           method: 'POST',
           headers: GHL_HEADERS,
           body: JSON.stringify({
             body: `BETAALLINK: ${paymentUrl}\nFactuur: ${invNumber}\nBedrag: €${totalInclBTW.toFixed(2).replace('.', ',')}`,
           })
         });
+        ghlDiag.noteAdded = noteRes.ok;
       } catch {}
 
       // Verwijder tag eerst (zodat workflow opnieuw triggert bij herhaald gebruik)
@@ -144,17 +153,25 @@ export default async function handler(req, res) {
           body: JSON.stringify({ tags: ['stuur-betaallink'] })
         });
       } catch {}
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise(r => setTimeout(r, 1500));
 
-      // Zet tag zodat GHL-workflow het WhatsApp template stuurt
       try {
-        await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}/tags`, {
+        const tagRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}/tags`, {
           method: 'POST',
           headers: GHL_HEADERS,
           body: JSON.stringify({ tags: ['stuur-betaallink'] })
         });
-        console.log('[create-payment] Tag stuur-betaallink gezet');
+        ghlDiag.tagSet = tagRes.ok;
+        if (!tagRes.ok) {
+          const t = await tagRes.text().catch(() => '');
+          ghlDiag.tagError = `${tagRes.status}: ${t.slice(0, 200)}`;
+          console.error('[create-payment] Tag stuur-betaallink fout:', tagRes.status, t.slice(0, 300));
+          await sendErrorNotification('create-payment: GHL tag stuur-betaallink mislukt', ghlDiag.tagError);
+        } else {
+          console.log('[create-payment] Tag stuur-betaallink gezet ✓');
+        }
       } catch (err) {
+        ghlDiag.tagError = err.message;
         console.error('[create-payment] Tag fout:', err.message);
       }
     }
@@ -167,6 +184,7 @@ export default async function handler(req, res) {
       paymentUrl,
       totalInclBTW,
       mollieError: mollieError || undefined,
+      ghlDiag,
     });
 
   } catch (err) {
