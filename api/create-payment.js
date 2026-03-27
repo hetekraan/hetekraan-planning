@@ -115,12 +115,17 @@ export default async function handler(req, res) {
       const prijsFormatted = `€${totalInclBTW.toFixed(2).replace('.', ',')} (incl. BTW)`;
 
       try {
+        // GHL WhatsApp-template heeft vaste URL-basis "https://" + {{contact.betaallink}}.
+        // Sla daarom het URL-pad op ZONDER het scheme (https://) zodat de samenvoeging
+        // klopt: "https://" + "checkout.mollie.com/..." = geldige Mollie-betaallink.
+        const betaallinkPath = paymentUrl.replace(/^https?:\/\//, '');
+
         const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
           method: 'PUT',
           headers: GHL_HEADERS,
           body: JSON.stringify({
             customFields: [
-              { id: 'wtZj3NPqHc8bFMVUYJMk', field_value: paymentUrl },
+              { id: 'wtZj3NPqHc8bFMVUYJMk', field_value: betaallinkPath },
               { id: 'HGjlT6ofaBiMz3j2HsXL', field_value: prijsFormatted },
             ]
           })
