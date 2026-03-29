@@ -208,7 +208,43 @@
     position: relative;
   }
   .appt-card:hover { border-color: var(--surface3); transform: translateY(-1px); }
-  .appt-card.done { background: var(--klaar-bg); border-color: var(--klaar-border); opacity: 0.7; }
+  .appt-card.done {
+    background: var(--klaar-bg);
+    border-color: #22c55e;
+    border-left: 3px solid #22c55e;
+    opacity: 0.88;
+  }
+  .appt-card.done:hover { transform: none; border-color: #22c55e; }
+
+  /* Groen vinkje badge rechtsboven */
+  .appt-card.done::after {
+    content: '✓ Klaar';
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(34,197,94,0.12);
+    color: #22c55e;
+    border: 1px solid rgba(34,197,94,0.35);
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    letter-spacing: 0.05em;
+    pointer-events: none;
+  }
+
+  /* Groene vloed-animatie bij afronding */
+  @keyframes greenFlood {
+    0%   { background: var(--surface); box-shadow: inset 0 0 0 0 rgba(34,197,94,0); }
+    20%  { background: rgba(34,197,94,0.18); box-shadow: inset 0 0 0 2px rgba(34,197,94,0.5); }
+    60%  { background: rgba(34,197,94,0.10); box-shadow: inset 0 0 0 1px rgba(34,197,94,0.3); }
+    100% { background: var(--klaar-bg); box-shadow: none; }
+  }
+  .appt-card.just-done {
+    animation: greenFlood 1.4s ease-out forwards;
+    border-color: #22c55e !important;
+    border-left: 3px solid #22c55e !important;
+  }
   .appt-card.onderweg { border-color: var(--blue); }
 
   .appt-number {
@@ -236,6 +272,11 @@
     color: var(--yellow);
   }
   .appt-card.done .appt-time { color: var(--muted); }
+  .appt-card.done .btn-done,
+  .appt-card.done .btn-prijs,
+  .appt-card.done .btn-confirm,
+  .appt-card.done .btn-cancel,
+  .appt-card.done .complete-bar { display: none !important; }
 
   .time-window-badge {
     display: inline-block;
@@ -2769,7 +2810,17 @@ async function confirmDone(id) {
   }
 
   a.status = 'klaar';
+  a.priceVisible = false; // sluit de prijsbalk zodat de kaart netjes dichtgaat
   render();
+
+  // Groene vloed over de kaart
+  requestAnimationFrame(() => {
+    const card = document.getElementById(`card-${id}`);
+    if (card) {
+      card.classList.add('just-done');
+      card.addEventListener('animationend', () => card.classList.remove('just-done'), { once: true });
+    }
+  });
 }
 
 /**
