@@ -2249,8 +2249,7 @@ async function copyBlockedConfig() {
 async function loadAppointments(date) {
   const dateStr = getDateStr(date);
   try {
-    try {
-      showToast('⏳ Afspraken laden...', 'loading');
+    showToast('⏳ Afspraken laden...', 'loading');
       const res = await fetch(
         `/api/ghl?action=getAppointments&date=${encodeURIComponent(dateStr)}&_=${Date.now()}`,
         { cache: 'no-store', headers: { 'X-HK-Auth': hkAuthHeader() } }
@@ -2317,14 +2316,13 @@ async function loadAppointments(date) {
       } else {
         showToast(`✓ ${appointments.length} afspraken geladen`, 'success');
       }
-    } catch (err) {
-      console.warn('GHL niet bereikbaar', err);
-      appointments = [];
-      showToast('Kon afspraken niet laden', 'info');
-    }
-    applyRouteSnapshot(dateStr);
-    render();
+  } catch (err) {
+    console.warn('GHL niet bereikbaar', err);
+    appointments = [];
+    showToast('Kon afspraken niet laden', 'info');
   }
+  applyRouteSnapshot(dateStr);
+  render();
 }
 
 function formatDate(d) {
