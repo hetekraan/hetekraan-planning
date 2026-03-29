@@ -2514,7 +2514,7 @@ async function confirmDone(id) {
   // 1. GHL afronden (datum, tags, stage)
   if (a.contactId) {
     try {
-      await fetch('/api/ghl?action=completeAppointment', {
+      const ghlRes = await fetch('/api/ghl?action=completeAppointment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2527,7 +2527,14 @@ async function confirmDone(id) {
           extras:        lines,
         })
       });
-    } catch(e) { console.log('GHL niet bereikbaar', e); }
+      if (!ghlRes.ok) {
+        console.warn('GHL completeAppointment mislukt:', ghlRes.status);
+        showToast(`⚠ GHL kon niet worden bijgewerkt (${ghlRes.status}) — afspraak wel klaar gezet`, 'info');
+      }
+    } catch(e) {
+      console.warn('GHL niet bereikbaar', e);
+      showToast('⚠ GHL niet bereikbaar — afspraak wel klaar gezet', 'info');
+    }
   }
 
   // 2. Betaallink + factuur PDF versturen
@@ -2956,10 +2963,10 @@ async function sendBookingLink() {
   showToast('⏳ Boekingslink aanmaken...', 'loading');
 
   try {
-    const res = await fetch('/api/book', {
+    const res = await fetch('/api/send-booking-invite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, phone, address, date, type, desc })
+      body: JSON.stringify({ name, phone, address, type, workType: type, desc })
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.message || data.error || 'Fout');
@@ -3303,7 +3310,7 @@ checkLogin();
     </div>
     <div class="login-error" id="loginError">Gebruikersnaam of wachtwoord onjuist</div>
     <button class="btn-login" onclick="doLogin()">INLOGGEN</button>
-    <div class="login-hint">Je blijft vandaag ingelogd in deze browser (tot middernacht NL-tijd). Op <strong>ma 13 apr 2026</strong> verschijnen automatisch 7 testafspraken als GHL die dag leeg is. Problemen? Neem contact op met Daan.</div>
+    <div class="login-hint">Je blijft 24 uur ingelogd in deze browser. Problemen? Neem contact op met Daan.</div>
   </div>
 </div>
 
