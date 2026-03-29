@@ -760,6 +760,7 @@
   body.large-text .btn-add                   { font-size: 14px; padding: 10px 18px; }
   body.large-text .btn-blocked               { font-size: 14px; padding: 10px 15px; }
   body.large-text .btn-manage-blocked        { font-size: 17px; padding: 8px 11px; }
+  body.large-text .btn-dagopgave             { font-size: 17px; padding: 8px 11px; }
   body.large-text .appt-number              { font-size: 12px; }
   body.large-text .appt-time                { font-size: 18px; }
   body.large-text .slot-daypart-hint         { font-size: 16px; }
@@ -809,6 +810,112 @@
     transition: background 0.15s;
   }
   .btn-manage-blocked:hover { background: var(--surface3); color: var(--text); }
+
+  .btn-dagopgave {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 5px 8px;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-dagopgave:hover { background: var(--surface3); color: var(--text); }
+
+  /* Dagopgave modal */
+  .dagopgave-modal {
+    max-width: 600px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+  .dagopgave-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 20px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .dagopgave-row {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    background: var(--surface2);
+  }
+  .dagopgave-row-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6px;
+  }
+  .dagopgave-name {
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--text);
+  }
+  .dagopgave-total {
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--accent2);
+  }
+  .dagopgave-meta {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 8px;
+    line-height: 1.5;
+  }
+  .dagopgave-lines {
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+    margin-top: 6px;
+  }
+  .dagopgave-line {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--muted);
+    padding: 2px 0;
+  }
+  .dagopgave-line.basis { color: var(--text); }
+  .dagopgave-grand {
+    border-top: 2px solid var(--border);
+    margin-top: 14px;
+    padding-top: 12px;
+    display: flex;
+    justify-content: space-between;
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--text);
+  }
+  .dagopgave-empty {
+    text-align: center;
+    padding: 30px 0;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  /* Print-stijlen — alleen dagopgave zichtbaar bij afdrukken */
+  @media print {
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body > *:not(#dagopgavePrintArea) { display: none !important; }
+    #dagopgavePrintArea {
+      display: block !important;
+      font-family: 'DM Sans', Arial, sans-serif;
+      color: #111;
+      padding: 24px;
+    }
+    .po-header { margin-bottom: 20px; border-bottom: 2px solid #111; padding-bottom: 12px; }
+    .po-title { font-size: 20px; font-weight: 700; }
+    .po-subtitle { font-size: 12px; color: #555; margin-top: 3px; }
+    .po-row { border: 1px solid #ccc; border-radius: 6px; padding: 12px 14px; margin-bottom: 10px; page-break-inside: avoid; }
+    .po-row-header { display: flex; justify-content: space-between; font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+    .po-meta { font-size: 11px; color: #555; margin-bottom: 6px; line-height: 1.5; }
+    .po-line { display: flex; justify-content: space-between; font-size: 11px; color: #333; border-top: 1px solid #eee; padding: 3px 0; }
+    .po-grand { border-top: 2px solid #111; margin-top: 12px; padding-top: 10px; display: flex; justify-content: space-between; font-weight: 700; font-size: 14px; }
+  }
 
   /* Datumchips in de blocked-dates modal */
   .blocked-chip {
@@ -1139,6 +1246,7 @@
       <div class="section-title">⬛ Afspraken van de dag</div>
       <button class="btn-blocked" id="btnBlocked" onclick="toggleBlocked()"></button>
       <button class="btn-manage-blocked" id="btnManageBlocked" onclick="openBlockedDatesModal()" title="Beheer alle geblokkeerde dagen">📅</button>
+      <button class="btn-dagopgave" onclick="openDagopgave()" title="Dagopgave voor Tellow">📋</button>
       <button class="btn-add" onclick="openModal()">+ Afspraak</button>
     </div>
     <div class="blocked-banner" id="blockedBanner">🚫 Deze dag is geblokkeerd (vakantie / vrij)</div>
@@ -1208,6 +1316,23 @@
         <button class="btn-save" onclick="confirmReschedule()">↗ Verplaatsen</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- DAGOPGAVE MODAL -->
+<div class="modal-overlay" id="dagopgaveOverlay" onclick="if(event.target===this)closeDagopgave()">
+  <div class="modal dagopgave-modal">
+    <div class="dagopgave-header">
+      <div>
+        <div class="modal-title" style="margin:0" id="dagopgaveTitle">Dagopgave</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px" id="dagopgaveSubtitle"></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn-save" style="padding:8px 14px;font-size:12px" onclick="printDagopgave()">🖨 Print</button>
+        <button class="btn-cancel" style="padding:8px 12px" onclick="closeDagopgave()">✕</button>
+      </div>
+    </div>
+    <div id="dagopgaveBody"></div>
   </div>
 </div>
 
@@ -1803,6 +1928,130 @@ function toggleLargeText() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ─── Geblokkeerde dagen modal ────────────────────────────────────────────────
+
+function openDagopgave() {
+  const klaar = appointments.filter(a => a.status === 'klaar');
+  const datum = currentDate.toLocaleDateString('nl-NL', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    timeZone: 'Europe/Amsterdam',
+  });
+
+  document.getElementById('dagopgaveTitle').textContent = 'Dagopgave';
+  document.getElementById('dagopgaveSubtitle').textContent = datum + (klaar.length ? ` · ${klaar.length} klant${klaar.length !== 1 ? 'en' : ''}` : '');
+
+  let bodyHtml = '';
+  let grandTotal = 0;
+
+  if (klaar.length === 0) {
+    bodyHtml = '<div class="dagopgave-empty">Nog geen afgeronde afspraken vandaag.</div>';
+  } else {
+    for (const a of klaar) {
+      const total = calcTotalPrice(a);
+      grandTotal += total;
+      const hasLines = a.price > 0 || (a.extras || []).length > 0;
+
+      let linesHtml = '';
+      if (hasLines) {
+        linesHtml = '<div class="dagopgave-lines">';
+        if (a.price > 0 && (a.extras || []).length === 0) {
+          linesHtml += `<div class="dagopgave-line basis"><span>Werkzaamheden</span><span>€ ${a.price.toFixed(2).replace('.', ',')}</span></div>`;
+        } else if (a.price > 0) {
+          linesHtml += `<div class="dagopgave-line basis"><span>Basis</span><span>€ ${a.price.toFixed(2).replace('.', ',')}</span></div>`;
+        }
+        for (const ex of (a.extras || [])) {
+          linesHtml += `<div class="dagopgave-line"><span>${ex.desc || 'Extra'}</span><span>€ ${(ex.price || 0).toFixed(2).replace('.', ',')}</span></div>`;
+        }
+        linesHtml += '</div>';
+      }
+
+      bodyHtml += `
+        <div class="dagopgave-row">
+          <div class="dagopgave-row-header">
+            <span class="dagopgave-name">${a.name}</span>
+            <span class="dagopgave-total">${total > 0 ? '€ ' + total.toFixed(2).replace('.', ',') : '—'}</span>
+          </div>
+          <div class="dagopgave-meta">
+            ${a.address ? a.address + '<br>' : ''}
+            ${a.type ? a.type.charAt(0).toUpperCase() + a.type.slice(1) : ''}${a.desc ? ' — ' + a.desc : ''}
+            ${a.time ? '<br>Uitgevoerd om ' + a.time : ''}
+          </div>
+          ${linesHtml}
+        </div>`;
+    }
+
+    bodyHtml += `
+      <div class="dagopgave-grand">
+        <span>Totaal${klaar.length > 1 ? ' (' + klaar.length + ' klanten)' : ''}</span>
+        <span>€ ${grandTotal.toFixed(2).replace('.', ',')}</span>
+      </div>`;
+  }
+
+  document.getElementById('dagopgaveBody').innerHTML = bodyHtml;
+  document.getElementById('dagopgaveOverlay').classList.add('visible');
+}
+
+function closeDagopgave() {
+  document.getElementById('dagopgaveOverlay').classList.remove('visible');
+}
+
+function printDagopgave() {
+  const klaar = appointments.filter(a => a.status === 'klaar');
+  const datum = currentDate.toLocaleDateString('nl-NL', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    timeZone: 'Europe/Amsterdam',
+  });
+
+  let grandTotal = 0;
+  let rowsHtml = '';
+
+  for (const a of klaar) {
+    const total = calcTotalPrice(a);
+    grandTotal += total;
+
+    let linesHtml = '';
+    if (a.price > 0 && (a.extras || []).length === 0) {
+      linesHtml += `<div class="po-line"><span>Werkzaamheden</span><span>€ ${a.price.toFixed(2).replace('.', ',')}</span></div>`;
+    } else if (a.price > 0) {
+      linesHtml += `<div class="po-line"><span>Basis</span><span>€ ${a.price.toFixed(2).replace('.', ',')}</span></div>`;
+    }
+    for (const ex of (a.extras || [])) {
+      linesHtml += `<div class="po-line"><span>${ex.desc || 'Extra'}</span><span>€ ${(ex.price || 0).toFixed(2).replace('.', ',')}</span></div>`;
+    }
+
+    rowsHtml += `
+      <div class="po-row">
+        <div class="po-row-header">
+          <span>${a.name}</span>
+          <span>${total > 0 ? '€ ' + total.toFixed(2).replace('.', ',') : '—'}</span>
+        </div>
+        <div class="po-meta">
+          ${a.address || ''}${a.address && (a.type || a.desc) ? ' · ' : ''}${a.type ? a.type.charAt(0).toUpperCase() + a.type.slice(1) : ''}${a.desc ? ' — ' + a.desc : ''}
+          ${a.time ? ' · ' + a.time : ''}
+        </div>
+        ${linesHtml}
+      </div>`;
+  }
+
+  const printHtml = `
+    <div class="po-header">
+      <div class="po-title">Dagopgave Het Ekraan</div>
+      <div class="po-subtitle">${datum} · ${klaar.length} klant${klaar.length !== 1 ? 'en' : ''} · Voor invoer in Tellow</div>
+    </div>
+    ${klaar.length === 0 ? '<p style="color:#555;font-size:13px">Geen afgeronde afspraken.</p>' : rowsHtml}
+    ${klaar.length > 0 ? `<div class="po-grand"><span>Totaal</span><span>€ ${grandTotal.toFixed(2).replace('.', ',')}</span></div>` : ''}
+  `;
+
+  let area = document.getElementById('dagopgavePrintArea');
+  if (!area) {
+    area = document.createElement('div');
+    area.id = 'dagopgavePrintArea';
+    document.body.appendChild(area);
+  }
+  area.innerHTML = printHtml;
+  area.style.display = 'none'; // verborgen in normaal scherm, zichtbaar bij print
+
+  window.print();
+}
 
 function openBlockedDatesModal() {
   renderBlockedChipsModal();
