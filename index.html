@@ -1926,7 +1926,7 @@ async function loadAppointments(date) {
       showToast('⏳ Afspraken laden...', 'loading');
       const res = await fetch(
         `/api/ghl?action=getAppointments&date=${encodeURIComponent(dateStr)}&_=${Date.now()}`,
-        { cache: 'no-store' }
+        { cache: 'no-store', headers: { 'X-HK-Auth': hkAuthHeader() } }
       );
       const data = await res.json();
       const events = filterGhlEventsForDashboardDay(data?.events, dateStr);
@@ -2516,7 +2516,7 @@ async function confirmDone(id) {
     try {
       const ghlRes = await fetch('/api/ghl?action=completeAppointment', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
         body: JSON.stringify({
           contactId:     a.contactId,
           appointmentId: a.ghlId || undefined,
@@ -2604,7 +2604,7 @@ async function sendETA(appt) {
   try {
     const res = await fetch('/api/ghl?action=sendETA', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
       body: JSON.stringify({
         contactId: appt.contactId,
         eta: appt.time,
@@ -2636,7 +2636,7 @@ async function sendMorningMessages() {
   try {
     const res = await fetch('/api/ghl?action=sendMorningMessages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
       body: JSON.stringify({ appointments: appts }),
     });
     if (res.ok) {
@@ -2812,7 +2812,7 @@ async function saveDaanEditToGhl() {
   try {
     const res = await fetch('/api/ghl?action=updateContactDashboard', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
       body: JSON.stringify(body),
     });
     const data = await res.json();
@@ -2867,7 +2867,7 @@ async function confirmDeleteAppt() {
     try {
       const res = await fetch('/api/ghl?action=deleteAppointment', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
         body: JSON.stringify({ ghlAppointmentId: a.ghlId }),
       });
       if (res.ok) {
@@ -2921,7 +2921,7 @@ async function confirmRoute() {
   try {
     const res = await fetch('/api/ghl?action=saveRouteTimes', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
       body: JSON.stringify({ routeTimes: toSave })
     });
     const data = await res.json();
@@ -2971,7 +2971,7 @@ async function confirmReschedule() {
     try {
       const res = await fetch('/api/ghl?action=rescheduleAppointment', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
         body: JSON.stringify({
           ghlAppointmentId: a.ghlId,
           newDate: newDate || todayVal,
@@ -3079,7 +3079,7 @@ async function saveModal() {
   try {
     const res = await fetch('/api/ghl?action=createAppointment', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
       body: JSON.stringify({ name, phone, address, date, time, type, desc, contactId })
     });
     const data = await res.json();

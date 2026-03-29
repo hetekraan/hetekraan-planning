@@ -186,6 +186,16 @@ async function putCalendarStartEnd(eventId, startIso, endIso) {
   return { ok: false, err: lastErr || 'Kalender PUT mislukt' };
 }
 
+function requireAuth(req, res) {
+  const token = req.headers['x-hk-auth'];
+  const session = verifySessionToken(token);
+  if (!session) {
+    res.status(401).json({ error: 'Niet ingelogd of sessie verlopen' });
+    return false;
+  }
+  return true;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -212,6 +222,8 @@ export default async function handler(req, res) {
   }
   // ────────────────────────────────────────────────────────────────────────
 
+  if (!requireAuth(req, res)) return;
+
   try {
     switch (action) {
 
@@ -231,50 +243,55 @@ export default async function handler(req, res) {
         const data = await response.json();
         const events = data?.events || [];
 
-        const enriched = await Promise.all(events.map(async (e) => {
+        // Unieke contactIds ophalen (dedupliceren: dezelfde klant kan meerdere events hebben)
+        const uniqueCids = [...new Set(
+          events.map(e => e.contactId || e.contact_id).filter(Boolean)
+        )];
+
+        // Alle contacten parallel ophalen — één fetch per uniek contact
+        const contactMap = {};
+        await Promise.all(uniqueCids.map(async (cid) => {
+          try {
+            const cr = await fetchWithRetry(`${GHL_BASE}/contacts/${cid}`, {
+              headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
+            });
+            if (!cr.ok) return;
+            const cd = await cr.json();
+            contactMap[cid] = cd?.contact || cd;
+          } catch (_) {}
+        }));
+
+        function enrichEvent(e, contact) {
+          e.contact = contact;
+          if (contact?.id) e.contactId = contact.id;
+          const straat     = getField(contact, FIELD_IDS.straatnaam);
+          const huisnr     = getField(contact, FIELD_IDS.huisnummer);
+          const postcode   = getField(contact, FIELD_IDS.postcode);
+          const woonplaats = getField(contact, FIELD_IDS.woonplaats) || contact.city || '';
+          e.parsedAddress    = [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ');
+          e.parsedStraatnaam = straat;
+          e.parsedHuisnummer = huisnr;
+          e.parsedPostcode   = postcode;
+          e.parsedWoonplaats = woonplaats;
+          const werkzaamheden = getField(contact, FIELD_IDS.probleemomschrijving);
+          e.parsedWork       = werkzaamheden || e.title;
+          e.parsedPrice      = getField(contact, FIELD_IDS.prijs);
+          e.parsedNotes      = getField(contact, FIELD_IDS.opmerkingen);
+          e.parsedTimeWindow = getField(contact, FIELD_IDS.tijdafspraak) || null;
+          const prijsRegelsRaw = getField(contact, FIELD_IDS.prijs_regels);
+          if (prijsRegelsRaw) {
+            try { e.parsedExtras = JSON.parse(prijsRegelsRaw); } catch (_) {}
+          }
+        }
+
+        const enriched = events.map((e) => {
           const rawCid = e.contactId || e.contact_id;
           if (!rawCid) return e;
           e.contactId = rawCid;
-          try {
-            const cr = await fetchWithRetry(`${GHL_BASE}/contacts/${rawCid}`, {
-              headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
-            });
-            const cd = await cr.json();
-            const contact = cd?.contact || cd;
-            e.contact = contact;
-            if (contact?.id) e.contactId = contact.id;
-
-            // Adres opbouwen uit custom fields
-            const straat     = getField(contact, FIELD_IDS.straatnaam);
-            const huisnr     = getField(contact, FIELD_IDS.huisnummer);
-            const postcode   = getField(contact, FIELD_IDS.postcode);
-            const woonplaats = getField(contact, FIELD_IDS.woonplaats) || contact.city || '';
-            e.parsedAddress  = [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ');
-            e.parsedStraatnaam = straat;
-            e.parsedHuisnummer = huisnr;
-            e.parsedPostcode   = postcode;
-            e.parsedWoonplaats = woonplaats;
-
-            // Werkzaamheden
-            const werkzaamheden = getField(contact, FIELD_IDS.probleemomschrijving);
-            e.parsedWork = werkzaamheden || e.title;
-
-            // Prijs en opmerkingen
-            e.parsedPrice = getField(contact, FIELD_IDS.prijs);
-            e.parsedNotes = getField(contact, FIELD_IDS.opmerkingen);
-
-            // Tijdafspraak uit AI-analyse
-            e.parsedTimeWindow = getField(contact, FIELD_IDS.tijdafspraak) || null;
-
-            // Prijsopbouw uit AI-analyse
-            const prijsRegelsRaw = getField(contact, FIELD_IDS.prijs_regels);
-            if (prijsRegelsRaw) {
-              try { e.parsedExtras = JSON.parse(prijsRegelsRaw); } catch (_) {}
-            }
-
-          } catch(_) {}
+          const contact = contactMap[rawCid];
+          if (contact) enrichEvent(e, contact);
           return e;
-        }));
+        });
 
         /** Alleen events waarvan start op de gevraagde kalenderdag valt (Europe/Amsterdam). */
         const filtered = enriched.filter((e) => getEventStartDayAmsterdam(e) === date);
