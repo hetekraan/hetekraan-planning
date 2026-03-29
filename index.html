@@ -3359,18 +3359,21 @@ function getStoredSession() {
     const user  = localStorage.getItem(HK_USER_KEY);
     if (!token || !user) return null;
     // Decode payload (voor de punt) en controleer vervaltijd zonder geheim.
-    const b64 = token.split('.')[0];
-    if (!b64) return null;
-    const payload = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
+    const rawB64 = token.split('.')[0];
+    if (!rawB64) return null;
+    // base64url → standaard base64 + padding (Safari/iOS is strict hierover)
+    const std = rawB64.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = std + '=='.slice(0, (4 - std.length % 4) % 4);
+    const payload = atob(padded);
     const [tokenUser, second] = payload.split('|');
     if (tokenUser !== user) return null;
-    // Nieuw formaat: second = expiresAtMs
+    // Nieuw formaat: second = expiresAtMs timestamp
     const expiresAt = Number(second);
-    if (!isNaN(expiresAt)) {
+    if (!isNaN(expiresAt) && expiresAt > 0) {
       if (Date.now() > expiresAt) return null; // verlopen
       return { user, token };
     }
-    // Oud formaat (YYYY-MM-DD): eenmalig accepteren, wordt vervangen bij volgende login
+    // Oud formaat (YYYY-MM-DD): eenmalig accepteren, vervangen bij volgende login
     const today = getDateStr(new Date());
     if (second !== today) return null;
     return { user, token };

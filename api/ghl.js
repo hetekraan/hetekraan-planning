@@ -206,7 +206,9 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Gebruikersnaam of wachtwoord onjuist' });
     }
     const token = signSessionToken(u);
-    return res.status(200).json({ token, user: u });
+    // `day` meesturen voor backward-compat met gecachte clients die nog de dagcheck doen
+    const day = formatYyyyMmDdInAmsterdam(new Date()) || '';
+    return res.status(200).json({ token, user: u, day });
   }
   // ────────────────────────────────────────────────────────────────────────
 
