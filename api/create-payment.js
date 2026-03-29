@@ -29,9 +29,30 @@ function invoiceNumber() {
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-HK-Auth');
   if (req.method === 'OPTIONS') return res.status(200).end();
+
+  // ── GET /api/create-payment?id=tr_xxx  →  redirect naar Mollie checkout ──
+  // Wordt gebruikt als WhatsApp CTA-button URL zodat er een vaste domeinnaam
+  // (hetekraan-planning.vercel.app) als prefix gebruikt kan worden.
+  if (req.method === 'GET') {
+    const paymentId = req.query?.id;
+    if (!paymentId || typeof paymentId !== 'string') {
+      return res.status(400).send('Ontbrekend betaal-ID');
+    }
+    try {
+      const payment = await mollie.payments.get(paymentId);
+      const checkoutUrl = payment.getCheckoutUrl();
+      if (!checkoutUrl) return res.status(404).send('Betaallink niet beschikbaar');
+      res.setHeader('Cache-Control', 'no-store');
+      return res.redirect(302, checkoutUrl);
+    } catch (err) {
+      console.error('[create-payment] redirect fout:', err.message);
+      return res.status(404).send('Betaling niet gevonden of verlopen');
+    }
+  }
+
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   // Endpoint mag alleen worden aangeroepen vanuit het ingelogde dashboard.
@@ -117,18 +138,16 @@ export default async function handler(req, res) {
       const prijsFormatted = `€${totalInclBTW.toFixed(2).replace('.', ',')} (incl. BTW)`;
 
       try {
-        // Sla de VOLLEDIGE checkout-URL op (zoals Mollie hem teruggeeft).
-        // Mollie geeft /checkout/pay/ bij iDEAL maar /checkout/select-method/ als
-        // geen betaalmethode is ingesteld. Door de volledige URL op te slaan
-        // werkt de link altijd, ongeacht de methode.
-        // In het GHL WhatsApp-template: zet {{contact.betaallink}} gewoon in de
-        // berichttekst — WhatsApp maakt de URL automatisch klikbaar.
+        // Sla het Mollie transactie-ID op (tr_XXXXX).
+        // De WhatsApp CTA-button wijst naar /api/create-payment?id=tr_XXXXX op onze
+        // eigen Vercel-domeinnaam — die doet een live redirect naar de juiste Mollie URL.
+        // Zo werkt de button ook als Mollie het pad wijzigt (pay/ vs select-method/).
         const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
           method: 'PUT',
           headers: GHL_HEADERS,
           body: JSON.stringify({
             customFields: [
-              { id: 'wtZj3NPqHc8bFMVUYJMk', field_value: paymentUrl },
+              { id: 'wtZj3NPqHc8bFMVUYJMk', field_value: molliePaymentId },
               { id: 'HGjlT6ofaBiMz3j2HsXL', field_value: prijsFormatted },
             ]
           })
