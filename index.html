@@ -3501,7 +3501,6 @@ applyLargeTextPref();
 document.getElementById('dateLabel').textContent = formatDate(currentDate);
 updateBlockedUI();
 syncServerBlockedDates();
-loadAppointments(currentDate);
 
 // LOGIN — wachtwoorden staan NIET meer in de browser-code.
 // Credentials worden gevalideerd door /api/auth tegen env vars (HK_USERS).
@@ -3604,6 +3603,7 @@ function checkLogin() {
   if (session) {
     document.getElementById('loginOverlay').classList.add('hidden');
     render();
+    loadAppointments(currentDate);
   } else {
     clearLoginState();
   }
@@ -3623,7 +3623,8 @@ async function doLogin() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user, password: pass }),
     });
-    const data = await res.json();
+    let data = {};
+    try { data = await res.json(); } catch (_) {}
     if (res.ok && data.token) {
       try { localStorage.setItem(HK_USER_KEY, data.user);     } catch (_) {}
       try { localStorage.setItem(HK_SESSION_KEY, data.token); } catch (_) {}
@@ -3631,11 +3632,17 @@ async function doLogin() {
       setCookieVal(HK_SESSION_KEY, data.token);
       document.getElementById('loginOverlay').classList.add('hidden');
       render();
+      loadAppointments(currentDate);
     } else {
+      const msg = res.status >= 500
+        ? `Serverfout (${res.status}) — probeer opnieuw of neem contact op met Daan`
+        : (data.error || 'Gebruikersnaam of wachtwoord onjuist');
+      err.textContent = msg;
       err.classList.add('visible');
       document.getElementById('loginPass').value = '';
     }
-  } catch (_) {
+  } catch (e) {
+    err.textContent = 'Geen verbinding met de server — controleer je internet';
     err.classList.add('visible');
     document.getElementById('loginPass').value = '';
   } finally {
