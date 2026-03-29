@@ -3351,47 +3351,85 @@ loadAppointments(currentDate);
 // Na succesvolle login slaan we een HMAC-gesigneerd token op (geldig 24 uur).
 const HK_USER_KEY    = 'hk_user';
 const HK_SESSION_KEY = 'hk_session_token';
+const HK_COOKIE_MAX  = 86400; // 24 uur in seconden
+
+/** Cookie lezen */
+function getCookieVal(name) {
+  try {
+    const m = document.cookie.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'));
+    return m ? decodeURIComponent(m[1]) : null;
+  } catch { return null; }
+}
+
+/** Cookie schrijven (24 uur, SameSite=Strict) */
+function setCookieVal(name, value) {
+  try {
+    document.cookie = `${name}=${encodeURIComponent(value)}; max-age=${HK_COOKIE_MAX}; path=/; SameSite=Strict`;
+  } catch {}
+}
+
+/** Cookie wissen */
+function clearCookieVal(name) {
+  try { document.cookie = `${name}=; max-age=0; path=/`; } catch {}
+}
+
+/** Decodeer de token-payload en controleer vervaltijd (client-side, zonder geheim). */
+function decodeSessionPayload(token) {
+  try {
+    const rawB64 = token.split('.')[0];
+    if (!rawB64) return null;
+    // base64url → standaard base64 + padding (Safari is strict over ontbrekende =)
+    const std    = rawB64.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = std + '=='.slice(0, (4 - std.length % 4) % 4);
+    const parts  = atob(padded).split('|');
+    if (parts.length < 2) return null;
+    return { user: parts[0], second: parts[1] };
+  } catch { return null; }
+}
 
 /** Geef de opgeslagen sessie terug als die nog geldig is (< 24u oud), anders null. */
 function getStoredSession() {
-  try {
-    const token = localStorage.getItem(HK_SESSION_KEY);
-    const user  = localStorage.getItem(HK_USER_KEY);
-    if (!token || !user) return null;
-    // Decode payload (voor de punt) en controleer vervaltijd zonder geheim.
-    const rawB64 = token.split('.')[0];
-    if (!rawB64) return null;
-    // base64url → standaard base64 + padding (Safari/iOS is strict hierover)
-    const std = rawB64.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = std + '=='.slice(0, (4 - std.length % 4) % 4);
-    const payload = atob(padded);
-    const [tokenUser, second] = payload.split('|');
-    if (tokenUser !== user) return null;
-    // Nieuw formaat: second = expiresAtMs timestamp
-    const expiresAt = Number(second);
-    if (!isNaN(expiresAt) && expiresAt > 0) {
-      if (Date.now() > expiresAt) return null; // verlopen
-      return { user, token };
+  // Probeer localStorage; als leeg, herstel vanuit cookie (Safari wist soms localStorage)
+  let token = (() => { try { return localStorage.getItem(HK_SESSION_KEY); } catch { return null; } })();
+  let user  = (() => { try { return localStorage.getItem(HK_USER_KEY);    } catch { return null; } })();
+
+  if (!token || !user) {
+    token = getCookieVal(HK_SESSION_KEY);
+    user  = getCookieVal(HK_USER_KEY);
+    if (token && user) {
+      try { localStorage.setItem(HK_SESSION_KEY, token); } catch {}
+      try { localStorage.setItem(HK_USER_KEY, user);     } catch {}
     }
-    // Oud formaat (YYYY-MM-DD): eenmalig accepteren, vervangen bij volgende login
-    const today = getDateStr(new Date());
-    if (second !== today) return null;
+  }
+  if (!token || !user) return null;
+
+  const p = decodeSessionPayload(token);
+  if (!p || p.user !== user) return null;
+
+  // Nieuw formaat: second = expiresAtMs timestamp
+  const expiresAt = Number(p.second);
+  if (!isNaN(expiresAt) && expiresAt > 0) {
+    if (Date.now() > expiresAt) return null;
     return { user, token };
-  } catch (_) { return null; }
+  }
+  // Oud formaat (YYYY-MM-DD): eenmalig accepteren
+  const today = getDateStr(new Date());
+  if (p.second !== today) return null;
+  return { user, token };
 }
 
 /** Stuur de sessie-token mee als header bij beveiligde API-aanroepen. */
 function hkAuthHeader() {
-  try { return localStorage.getItem(HK_SESSION_KEY) || ''; } catch (_) { return ''; }
+  try { return localStorage.getItem(HK_SESSION_KEY) || getCookieVal(HK_SESSION_KEY) || ''; } catch { return ''; }
 }
 
 function clearLoginState() {
-  try {
-    localStorage.removeItem(HK_USER_KEY);
-    localStorage.removeItem(HK_SESSION_KEY);
-    localStorage.removeItem('hk_login_day_amsterdam'); // opschonen oud veld
-    sessionStorage.removeItem(HK_USER_KEY);
-  } catch (_) {}
+  try { localStorage.removeItem(HK_USER_KEY);  } catch {}
+  try { localStorage.removeItem(HK_SESSION_KEY); } catch {}
+  try { localStorage.removeItem('hk_login_day_amsterdam'); } catch {}
+  try { sessionStorage.removeItem(HK_USER_KEY); } catch {}
+  clearCookieVal(HK_SESSION_KEY);
+  clearCookieVal(HK_USER_KEY);
 }
 
 function logoutPlanning() {
@@ -3430,10 +3468,10 @@ async function doLogin() {
     });
     const data = await res.json();
     if (res.ok && data.token) {
-      try {
-        localStorage.setItem(HK_USER_KEY, data.user);
-        localStorage.setItem(HK_SESSION_KEY, data.token);
-      } catch (_) {}
+      try { localStorage.setItem(HK_USER_KEY, data.user);     } catch (_) {}
+      try { localStorage.setItem(HK_SESSION_KEY, data.token); } catch (_) {}
+      setCookieVal(HK_USER_KEY, data.user);
+      setCookieVal(HK_SESSION_KEY, data.token);
       document.getElementById('loginOverlay').classList.add('hidden');
       render();
     } else {
