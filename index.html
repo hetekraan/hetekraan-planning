@@ -2315,7 +2315,6 @@ function renderApptCard(a, i) {
             ${!isDone ? `<button class="btn-done ${isOnderweg?'active':''}" onclick="${isOnderweg ? `scrollToPrijs(${a.id})` : `askOnderweg(${a.id})`}">
               ${isOnderweg ? '💳 Afrekenen' : '→ Onderweg'}
             </button>` : ''}
-            ${isOnderweg ? `<button class="btn-afrekenen" onclick="scrollToPrijs(${a.id})">💳 Afrekenen</button>` : ''}
           </div>
         </div>
       </div>
