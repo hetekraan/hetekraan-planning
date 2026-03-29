@@ -117,17 +117,18 @@ export default async function handler(req, res) {
       const prijsFormatted = `€${totalInclBTW.toFixed(2).replace('.', ',')} (incl. BTW)`;
 
       try {
-        // GHL WhatsApp-template CTA-knop:
-        //   Vaste basis: "https://www.mollie.com/checkout/pay/"
-        //   Dynamisch:   {{contact.betaallink}} = alleen het transactie-ID (tr_XXXXX)
-        // Zo kent WhatsApp een echt domein als prefix, en kan het template goedgekeurd worden.
-        // molliePaymentId is bijv. "tr_XXXXXXXXXX" — ingesteld bovenaan bij mollie.payments.create().
+        // Sla de VOLLEDIGE checkout-URL op (zoals Mollie hem teruggeeft).
+        // Mollie geeft /checkout/pay/ bij iDEAL maar /checkout/select-method/ als
+        // geen betaalmethode is ingesteld. Door de volledige URL op te slaan
+        // werkt de link altijd, ongeacht de methode.
+        // In het GHL WhatsApp-template: zet {{contact.betaallink}} gewoon in de
+        // berichttekst — WhatsApp maakt de URL automatisch klikbaar.
         const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
           method: 'PUT',
           headers: GHL_HEADERS,
           body: JSON.stringify({
             customFields: [
-              { id: 'wtZj3NPqHc8bFMVUYJMk', field_value: molliePaymentId },
+              { id: 'wtZj3NPqHc8bFMVUYJMk', field_value: paymentUrl },
               { id: 'HGjlT6ofaBiMz3j2HsXL', field_value: prijsFormatted },
             ]
           })
