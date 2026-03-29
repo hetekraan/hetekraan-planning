@@ -2256,14 +2256,19 @@ function changeDay(dir) {
   loadAppointments(currentDate);
 }
 
+function fmtEuro(amount) {
+  return '€\u202F' + Number(amount).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function calcStats() {
-  const klaar = appointments.filter(a => a.status === 'klaar').length;
-  const omzetKlaar = appointments.reduce((s,a) => s + (a.status==='klaar' ? a.price : 0), 0);
-  const total = appointments.reduce((s,a) => s + a.price, 0);
+  const klaar   = appointments.filter(a => a.status === 'klaar').length;
+  // Gebruik calcTotalPrice zodat extras (onderdelen) ook worden meegeteld
+  const omzetKlaar = appointments.reduce((s, a) => s + (a.status === 'klaar' ? calcTotalPrice(a) : 0), 0);
+  const total      = appointments.reduce((s, a) => s + calcTotalPrice(a), 0);
   document.getElementById('totalAfspraken').textContent = appointments.length;
-  document.getElementById('totalKlaar').textContent = klaar;
-  document.getElementById('totalOmzet').textContent = '€' + omzetKlaar;
-  document.getElementById('totalBar').textContent = '€' + total;
+  document.getElementById('totalKlaar').textContent     = klaar;
+  document.getElementById('totalOmzet').textContent     = fmtEuro(omzetKlaar);
+  document.getElementById('totalBar').textContent       = fmtEuro(total);
 }
 
 function renderApptCard(a, i) {
