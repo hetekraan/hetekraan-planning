@@ -205,10 +205,8 @@ export default async function handler(req, res) {
     if (!u || !users[u] || users[u] !== p) {
       return res.status(401).json({ error: 'Gebruikersnaam of wachtwoord onjuist' });
     }
-    const day = formatYyyyMmDdInAmsterdam(new Date());
-    if (!day) return res.status(500).json({ error: 'Tijdzone-fout bij token aanmaken' });
-    const token = signSessionToken(u, day);
-    return res.status(200).json({ token, user: u, day });
+    const token = signSessionToken(u);
+    return res.status(200).json({ token, user: u });
   }
   // ────────────────────────────────────────────────────────────────────────
 

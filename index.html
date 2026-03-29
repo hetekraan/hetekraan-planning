@@ -3348,26 +3348,31 @@ loadAppointments(currentDate);
 
 // LOGIN — wachtwoorden staan NIET meer in de browser-code.
 // Credentials worden gevalideerd door /api/auth tegen env vars (HK_USERS).
-// Na succesvolle login slaan we een HMAC-gesigneerd token op (geldig t/m middernacht NL-tijd).
-const HK_USER_KEY      = 'hk_user';
-const HK_SESSION_KEY   = 'hk_session_token';
-const HK_LOGIN_DAY_KEY = 'hk_login_day_amsterdam';
+// Na succesvolle login slaan we een HMAC-gesigneerd token op (geldig 24 uur).
+const HK_USER_KEY    = 'hk_user';
+const HK_SESSION_KEY = 'hk_session_token';
 
-/** Geef de opgeslagen sessie terug als die vandaag nog geldig is, anders null. */
+/** Geef de opgeslagen sessie terug als die nog geldig is (< 24u oud), anders null. */
 function getStoredSession() {
   try {
     const token = localStorage.getItem(HK_SESSION_KEY);
     const user  = localStorage.getItem(HK_USER_KEY);
-    const day   = localStorage.getItem(HK_LOGIN_DAY_KEY);
-    if (!token || !user || !day) return null;
-    const today = getDateStr(new Date());
-    if (day !== today) return null;
-    // Decode token-payload (voor de punt) en controleer dag zonder geheim.
+    if (!token || !user) return null;
+    // Decode payload (voor de punt) en controleer vervaltijd zonder geheim.
     const b64 = token.split('.')[0];
     if (!b64) return null;
     const payload = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
-    const [tokenUser, tokenDay] = payload.split('|');
-    if (tokenUser !== user || tokenDay !== today) return null;
+    const [tokenUser, second] = payload.split('|');
+    if (tokenUser !== user) return null;
+    // Nieuw formaat: second = expiresAtMs
+    const expiresAt = Number(second);
+    if (!isNaN(expiresAt)) {
+      if (Date.now() > expiresAt) return null; // verlopen
+      return { user, token };
+    }
+    // Oud formaat (YYYY-MM-DD): eenmalig accepteren, wordt vervangen bij volgende login
+    const today = getDateStr(new Date());
+    if (second !== today) return null;
     return { user, token };
   } catch (_) { return null; }
 }
@@ -3381,7 +3386,7 @@ function clearLoginState() {
   try {
     localStorage.removeItem(HK_USER_KEY);
     localStorage.removeItem(HK_SESSION_KEY);
-    localStorage.removeItem(HK_LOGIN_DAY_KEY);
+    localStorage.removeItem('hk_login_day_amsterdam'); // opschonen oud veld
     sessionStorage.removeItem(HK_USER_KEY);
   } catch (_) {}
 }
@@ -3425,7 +3430,6 @@ async function doLogin() {
       try {
         localStorage.setItem(HK_USER_KEY, data.user);
         localStorage.setItem(HK_SESSION_KEY, data.token);
-        localStorage.setItem(HK_LOGIN_DAY_KEY, data.day);
       } catch (_) {}
       document.getElementById('loginOverlay').classList.add('hidden');
       render();
