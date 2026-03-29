@@ -3650,11 +3650,11 @@ async function doLogin() {
   }
 }
 
-document.getElementById('loginPass').addEventListener('keydown', e => {
-  if (e.key === 'Enter') doLogin();
+document.addEventListener('DOMContentLoaded', () => {
+  const lp = document.getElementById('loginPass');
+  if (lp) lp.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  checkLogin();
 });
-
-checkLogin();
 </script>
 
 <!-- GEBLOKKEERDE DAGEN BEHEER MODAL -->
