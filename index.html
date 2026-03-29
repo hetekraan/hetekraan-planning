@@ -1408,7 +1408,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const GHL_BASE_URL = 'https://app.gohighlevel.com/v2/location/KVD6wOE9g1g2V9z7Zxj7';
+const GHL_BASE_URL = 'https://app.gohighlevel.com/v2/location/KVD6wOE9g1g2V9z7Zxj7/contacts/detail';
 
 let currentDate = new Date();
 let nextId = 100;
@@ -2163,7 +2163,7 @@ async function loadAppointments(date) {
       const name = (firstName + ' ' + lastName).trim() || address.split(' ')[0] || 'Klant';
       const mapsUrl = address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : '';
       const cid = e.contactId || e.contact_id || contact.id || '';
-      const ghlUrl = cid ? `${GHL_BASE_URL}/contacts/${cid}` : '';
+      const ghlUrl = cid ? `${GHL_BASE_URL}/${cid}` : '';
 
       return {
         id: i + 1,
@@ -3246,7 +3246,7 @@ async function saveModal() {
     price, priceLabel: price ? `€${price}` : '',
     status: 'ingepland', review: false, priceVisible: false,
     contactId, extras: [],
-    ghlUrl: contactId ? `${GHL_BASE_URL}/contacts/${contactId}` : '',
+    ghlUrl: contactId ? `${GHL_BASE_URL}/${contactId}` : '',
     notes: '', datumInstallatie: '', datumOnderhoud: '',
   });
   closeModal();
@@ -3267,7 +3267,7 @@ async function saveModal() {
     const a = appointments.find(x => x.id === localId);
     if (a) {
       a.contactId = data.contactId;
-      a.ghlUrl    = `${GHL_BASE_URL}/contacts/${data.contactId}`;
+      a.ghlUrl    = `${GHL_BASE_URL}/${data.contactId}`;
     }
     render();
     showToast('✓ Afspraak opgeslagen in GHL', 'success');
