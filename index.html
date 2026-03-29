@@ -2,7 +2,7 @@
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Hetekraan — Planning</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
@@ -126,6 +126,11 @@
     justify-content: space-between;
     align-items: center;
     margin-bottom: 12px;
+  }
+  .appointments-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
 
   .section-title {
@@ -792,10 +797,11 @@
   body.large-text .total-label              { font-size: 13px; }
   body.large-text .total-amount             { font-size: 22px; }
   /* Route panel */
-  body.large-text .route-stop-name          { font-size: 14px; }
-  body.large-text .route-stop-addr          { font-size: 12px; }
-  body.large-text .route-stop-time          { font-size: 15px; }
+  body.large-text .route-name               { font-size: 14px; }
+  body.large-text .route-addr               { font-size: 12px; }
+  body.large-text .route-time               { font-size: 13px; }
   body.large-text .btn-optimize             { font-size: 14px; padding: 13px; }
+  body.large-text .mobile-tab               { font-size: 12px; padding: 14px 0; }
   /* ─────────────────────────────────────────────────────────────────────── */
 
   /* Geblokkeerde dagen beheer-knop */
@@ -1156,6 +1162,44 @@
   .login-hint { font-size: 11px; color: var(--muted); text-align: center; margin-top: 16px; }
 
   /* MOBILE */
+  /* Mobile tabs */
+  .mobile-tabs {
+    display: none;
+  }
+  @media (max-width: 768px) {
+    .mobile-tabs {
+      display: flex;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+    }
+    .mobile-tab {
+      flex: 1;
+      padding: 11px 0;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--muted);
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .mobile-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+    .layout {
+      display: block;
+    }
+    .appointments.tab-hidden,
+    .route-panel.tab-hidden {
+      display: none;
+    }
+  }
+
   @media (max-width: 768px) {
     header { padding: 0 10px; gap: 6px; }
     .logo { font-size: 14px; }
@@ -1240,14 +1284,22 @@
   </div>
 </header>
 
+<!-- MOBILE TABS (alleen zichtbaar op ≤768px) -->
+<div class="mobile-tabs" id="mobileTabs">
+  <button class="mobile-tab active" id="tabAfspraken" onclick="switchMobileTab('afspraken')">⬛ Afspraken</button>
+  <button class="mobile-tab" id="tabRoute" onclick="switchMobileTab('route')">⚡ Route</button>
+</div>
+
 <div class="layout">
-  <div class="appointments">
+  <div class="appointments" id="panelAfspraken">
     <div class="appointments-header">
       <div class="section-title">⬛ Afspraken van de dag</div>
-      <button class="btn-blocked" id="btnBlocked" onclick="toggleBlocked()"></button>
-      <button class="btn-manage-blocked" id="btnManageBlocked" onclick="openBlockedDatesModal()" title="Beheer alle geblokkeerde dagen">📅</button>
-      <button class="btn-dagopgave" onclick="openDagopgave()" title="Dagopgave voor Tellow">📋</button>
-      <button class="btn-add" onclick="openModal()">+ Afspraak</button>
+      <div class="appointments-header-actions">
+        <button class="btn-blocked" id="btnBlocked" onclick="toggleBlocked()"></button>
+        <button class="btn-manage-blocked" id="btnManageBlocked" onclick="openBlockedDatesModal()" title="Beheer alle geblokkeerde dagen">📅</button>
+        <button class="btn-dagopgave" onclick="openDagopgave()" title="Dagopgave voor Tellow">📋</button>
+        <button class="btn-add" onclick="openModal()">+ Afspraak</button>
+      </div>
     </div>
     <div class="blocked-banner" id="blockedBanner">🚫 Deze dag is geblokkeerd (vakantie / vrij)</div>
     <div id="apptList"></div>
@@ -1257,7 +1309,7 @@
     </div>
   </div>
 
-  <div class="route-panel">
+  <div class="route-panel" id="panelRoute">
     <div class="section-title">⚡ Routevolgorde</div>
     <div style="display:flex;gap:8px;margin-bottom:8px">
       <button class="btn-optimize" id="btnOptimize" style="flex:1" onclick="optimizeRoute()">⚡ OPTIMALISEER</button>
@@ -1310,7 +1362,14 @@
     </div>
 
     <div class="modal-actions" style="justify-content:space-between;margin-top:16px">
-      <button class="btn-delete-appt" onclick="confirmDeleteAppt()">🗑 Verwijderen</button>
+      <div id="deleteConfirmStep" style="display:flex;flex-direction:column;gap:6px;align-items:flex-start">
+        <button class="btn-delete-appt" id="btnDeleteFirst" onclick="showDeleteConfirm()" style="opacity:0.6">🗑 Verwijderen</button>
+        <div id="deleteConfirmRow" style="display:none;gap:6px;align-items:center">
+          <span style="font-size:11px;color:#ff6060">Zeker weten?</span>
+          <button class="btn-delete-appt" onclick="confirmDeleteAppt()" style="padding:5px 10px;font-size:11px">Ja, verwijder</button>
+          <button class="btn-cancel" onclick="hideDeleteConfirm()" style="padding:5px 10px;font-size:11px">Nee</button>
+        </div>
+      </div>
       <div style="display:flex;gap:8px">
         <button class="btn-cancel" onclick="closeRescheduleModal()">Annuleren</button>
         <button class="btn-save" onclick="confirmReschedule()">↗ Verplaatsen</button>
@@ -1906,6 +1965,25 @@ function updateBlockedUI() {
 
 // ─── Grote-tekst modus ───────────────────────────────────────────────────────
 const HK_LARGE_TEXT_KEY = 'hk_large_text';
+
+function switchMobileTab(tab) {
+  const afspraken = document.getElementById('panelAfspraken');
+  const route     = document.getElementById('panelRoute');
+  const tabA      = document.getElementById('tabAfspraken');
+  const tabR      = document.getElementById('tabRoute');
+  if (!afspraken || !route) return;
+  if (tab === 'afspraken') {
+    afspraken.classList.remove('tab-hidden');
+    route.classList.add('tab-hidden');
+    tabA.classList.add('active');
+    tabR.classList.remove('active');
+  } else {
+    route.classList.remove('tab-hidden');
+    afspraken.classList.add('tab-hidden');
+    tabR.classList.add('active');
+    tabA.classList.remove('active');
+  }
+}
 
 function applyLargeTextPref() {
   const on = localStorage.getItem(HK_LARGE_TEXT_KEY) === '1';
@@ -3102,6 +3180,19 @@ function deleteAppt(id) {
 function closeRescheduleModal() {
   document.getElementById('rescheduleOverlay').classList.remove('visible');
   _rescheduleId = null;
+  hideDeleteConfirm();
+}
+
+function showDeleteConfirm() {
+  document.getElementById('btnDeleteFirst').style.display = 'none';
+  document.getElementById('deleteConfirmRow').style.display = 'flex';
+}
+
+function hideDeleteConfirm() {
+  const btn = document.getElementById('btnDeleteFirst');
+  const row = document.getElementById('deleteConfirmRow');
+  if (btn) btn.style.display = '';
+  if (row) row.style.display = 'none';
 }
 
 async function confirmDeleteAppt() {
