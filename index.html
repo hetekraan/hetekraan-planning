@@ -80,22 +80,6 @@
   }
   .date-nav button:hover { color: var(--text); }
   .date-nav-wrap { display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap; }
-  .btn-demo-agenda {
-    background: var(--surface3);
-    border: 1px solid var(--border);
-    color: var(--muted);
-    padding: 7px 10px;
-    border-radius: 8px;
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: border-color 0.15s, color 0.15s;
-  }
-  .btn-demo-agenda:hover { border-color: var(--accent); color: var(--accent); }
-  .btn-demo-agenda.active { border-color: var(--accent2); color: var(--accent2); }
   .date-label {
     font-family: 'Syne', sans-serif;
     font-weight: 700;
@@ -552,20 +536,6 @@
   }
   .btn-prijs:hover, .btn-prijs.active { background: rgba(255,208,0,0.1); border-color: var(--yellow); color: var(--yellow); }
 
-  .btn-afrekenen {
-    background: rgba(255,208,0,0.12);
-    border: 1px solid var(--yellow);
-    color: var(--yellow);
-    padding: 6px 12px;
-    border-radius: 6px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background 0.15s;
-  }
-  .btn-afrekenen:hover { background: rgba(255,208,0,0.22); }
-
   /* ROUTE PANEL */
   .route-panel {
     padding: 16px;
@@ -642,40 +612,14 @@
     border-bottom: 1px solid var(--border);
   }
 
-  .demo-empty-hint {
+  .empty-hint {
     background: var(--surface2);
-    border: 1px dashed var(--accent);
+    border: 1px solid var(--border);
     border-radius: 10px;
     padding: 16px 18px;
     font-size: 13px;
-    line-height: 1.55;
-    color: var(--text);
-    max-width: 520px;
-  }
-  .demo-empty-hint strong { color: var(--accent); }
-  .demo-empty-hint .demo-link-row {
-    margin-top: 12px;
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    word-break: break-all;
     color: var(--muted);
-    background: var(--surface);
-    padding: 10px;
-    border-radius: 6px;
-    border: 1px solid var(--border);
   }
-  .demo-empty-hint button {
-    margin-top: 12px;
-    background: var(--accent);
-    color: #fff;
-    border: none;
-    padding: 10px 16px;
-    border-radius: 8px;
-    font-weight: 700;
-    font-size: 12px;
-    cursor: pointer;
-  }
-  .demo-empty-hint button:hover { opacity: 0.9; }
 
   .route-drag-handle {
     color: #888;
@@ -835,7 +779,6 @@
   body.large-text .btn-done                 { font-size: 14px; padding: 8px 14px; }
   body.large-text .btn-confirm              { font-size: 14px; padding: 9px 18px; }
   body.large-text .btn-prijs                { font-size: 14px; padding: 9px 14px; }
-  body.large-text .btn-afrekenen            { font-size: 14px; padding: 9px 16px; }
   body.large-text .icon-btn                 { width: 38px; height: 38px; font-size: 15px; border-radius: 8px; }
   body.large-text .icon-btn.daan-edit       { font-size: 12px; min-width: 60px; }
   body.large-text .complete-row             { font-size: 14px; }
@@ -1171,7 +1114,6 @@
       <div class="date-label" id="dateLabel"></div>
       <button onclick="changeDay(1)">›</button>
     </div>
-    <button type="button" class="btn-demo-agenda" id="btnDemoAgenda" onclick="togglePlanningDemo()" title="Overschrijf GHL met 7 testorders op 13 apr 2026 (alleen nodig als GHL die dag al afspraken heeft)">Testorders</button>
   </div>
   <div class="header-stats">
     <div class="stat">
@@ -1650,144 +1592,6 @@ function normalizeTimeStr(t) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-/**
- * Testagenda ma 13 apr 2026 — max 7 (4 ochtend + 3 middag).
- * In de echte app: automatisch zichtbaar op die dag zolang GHL 0 afspraken geeft (of GHL faalt).
- * ?planning_demo=1 of knop: altijd deze testdata, ook als GHL die dag al afspraken heeft.
- */
-const PLANNING_DEMO_DATE = '2026-04-13';
-const HK_PLANNING_DEMO_KEY = 'hk_planning_demo';
-
-function planningDemoInitFromUrl() {
-  try {
-    const p = new URLSearchParams(location.search).get('planning_demo');
-    if (p === '1') localStorage.setItem(HK_PLANNING_DEMO_KEY, '1');
-    if (p === '0') localStorage.removeItem(HK_PLANNING_DEMO_KEY);
-  } catch (_) {}
-}
-
-function isPlanningDemoMode() {
-  try {
-    if (new URLSearchParams(location.search).get('planning_demo') === '1') return true;
-    return localStorage.getItem(HK_PLANNING_DEMO_KEY) === '1';
-  } catch (_) {
-    return new URLSearchParams(location.search).get('planning_demo') === '1';
-  }
-}
-
-function updateDemoButtonUi() {
-  const b = document.getElementById('btnDemoAgenda');
-  if (!b) return;
-  const on = isPlanningDemoMode();
-  b.textContent = on ? 'Test uit' : 'Testorders';
-  b.classList.toggle('active', on);
-  b.title = on
-    ? 'Terug: GHL weer normaal laden (geen geforceerde testdata)'
-    : 'Forceer 7 testorders op 13 apr 2026 — alleen nodig als GHL die dag al echte afspraken toont';
-}
-
-/** Alleen naar testdatum — laadt GHL; bij 0 events krijg je automatisch de 7 testorders. */
-function goToPlanningTestDay() {
-  currentDate = new Date('2026-04-13T12:00:00+02:00');
-  const dl = document.getElementById('dateLabel');
-  if (dl) dl.textContent = formatDate(currentDate);
-  updateBlockedUI();
-  loadAppointments(currentDate);
-}
-
-/** Forceert testdata (slaat GHL over op die dag). */
-function enterPlanningDemo() {
-  try {
-    localStorage.setItem(HK_PLANNING_DEMO_KEY, '1');
-  } catch (_) {}
-  currentDate = new Date('2026-04-13T12:00:00+02:00');
-  const dl = document.getElementById('dateLabel');
-  if (dl) dl.textContent = formatDate(currentDate);
-  updateBlockedUI();
-  loadAppointments(currentDate);
-}
-
-function exitPlanningDemo() {
-  try {
-    localStorage.removeItem(HK_PLANNING_DEMO_KEY);
-  } catch (_) {}
-  currentDate = new Date();
-  const dl = document.getElementById('dateLabel');
-  if (dl) dl.textContent = formatDate(currentDate);
-  updateBlockedUI();
-  loadAppointments(currentDate);
-}
-
-function togglePlanningDemo() {
-  if (isPlanningDemoMode()) exitPlanningDemo();
-  else enterPlanningDemo();
-}
-
-function amsterdamWallMs(y, mon, day, hour, minute) {
-  const ds = `${y}-${String(mon).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  const ts = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
-  return new Date(`${ds}T${ts}+02:00`).getTime();
-}
-
-function buildPlanningDemoAppointments() {
-  const y = 2026;
-  const mon = 4;
-  const day = 13;
-  const rows = [
-    { h: 9, m: 15, type: 'onderhoud', name: 'Demo Jansen', work: 'Jaarlijks onderhoud ketel en rookgasafvoer', addr: 'Rijnstraat 45, 1078 PV Amsterdam', timeWindow: 'Ochtend tussen 09 en 13 uur', notes: 'Filter voor volgend jaar vervangen', price: 89 },
-    { h: 9, m: 45, type: 'reparatie', name: 'Demo de Vries', work: 'Lekkage mengkraan badkamer', addr: 'Van Woustraat 112, 1073 LC Amsterdam', timeWindow: null, notes: 'Klant heeft foto gestuurd', price: '' },
-    { h: 10, m: 30, type: 'installatie', name: 'Demo Bakker', work: 'Nieuwe douchethermostaat installeren', addr: 'Ceintuurbaan 200, 1074 CX Amsterdam', timeWindow: 'Rond 10:30', notes: 'Materiaal meenemen uit bus', price: 195 },
-    { h: 11, m: 30, type: 'onderhoud', name: 'Demo Visser', work: 'Cv-onderhoud en ontluchten', addr: 'Ferdinand Bolstraat 88, 1072 LM Amsterdam', timeWindow: null, notes: '', price: '' },
-    { h: 13, m: 0, type: 'reparatie', name: 'Demo Meijer', work: 'Storing warmwaterbereiding', addr: 'Albert Cuypstraat 55, 1072 CM Amsterdam', timeWindow: 'Middag tussen 13 en 17 uur', notes: 'Prio — oude boiler', price: 65 },
-    { h: 14, m: 15, type: 'installatie', name: 'Demo van Dijk', work: 'Cartridge FLEX vervangen', addr: 'Eerste van der Helststraat 42, 1072 NZ Amsterdam', timeWindow: null, notes: '', price: 125 },
-    { h: 15, m: 30, type: 'onderhoud', name: 'Demo Smit', work: 'Legionella-spoeling + controle', addr: 'Marie Heinekenplein 12, 1072 MH Amsterdam', timeWindow: 'Middag', notes: 'Toegang kelder — afrekenflow testen', price: 145 },
-  ];
-  return rows.map((s, i) => {
-    const startMs = amsterdamWallMs(y, mon, day, s.h, s.m);
-    const dayPart = hourInAmsterdamFromMs(startMs) < 13 ? 0 : 1;
-    const time = normalizeTimeStr(`${s.h}:${s.m}`);
-    const address = s.addr;
-    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
-    const num = String(12000000 + i * 111103).slice(-8);
-    const priceNum = typeof s.price === 'number' ? s.price : (parseFloat(String(s.price).replace(/[^0-9.]/g, '')) || 0);
-    const nameParts = s.name.trim().split(/\s+/);
-    const firstName = nameParts[0] || 'Demo';
-    const lastName = nameParts.slice(1).join(' ') || 'Klant';
-    return {
-      id: i + 1,
-      startMs,
-      dayPart,
-      ghlId: `demo-${PLANNING_DEMO_DATE}-${i + 1}`,
-      contactId: '',
-      ghlUrl: '',
-      time,
-      name: s.name,
-      firstName,
-      lastName,
-      address,
-      straatnaam: '',
-      huisnummer: '',
-      postcode: '',
-      woonplaats: 'Amsterdam',
-      mapsUrl,
-      phone: `06${num}`,
-      desc: s.work,
-      notes: s.notes || '',
-      type: s.type,
-      price: (s.price === '' || s.price == null) ? 0 : priceNum,
-      priceLabel: s.price !== '' && s.price != null && String(s.price) !== '' ? `€${s.price}` : '',
-      extras: [],
-      timeWindow: s.timeWindow || null,
-      datumInstallatie: '',
-      datumOnderhoud: '',
-      status: 'ingepland',
-      review: false,
-      priceVisible: false,
-      estimated: true,
-    };
-  });
-}
-
 /** Zet `appointments` in de opgeslagen volgorde (alleen bekende contactIds). */
 function applyAppointmentsOrder(contactIdsOrder) {
   if (!contactIdsOrder?.length) return;
@@ -2117,25 +1921,7 @@ async function copyBlockedConfig() {
 
 async function loadAppointments(date) {
   const dateStr = getDateStr(date);
-  planningDemoInitFromUrl();
   try {
-    if (isPlanningDemoMode() && dateStr === PLANNING_DEMO_DATE) {
-      try {
-        showToast('⏳ Demo-afspraken laden...', 'loading');
-      } catch (_) {}
-      appointments = buildPlanningDemoAppointments();
-      if (appointments.length === 0) {
-        showToast('Geen demo-data', 'info');
-      } else {
-        showToast(
-          `✓ ${appointments.length} testafspraken (GHL overgeslagen)\nGeen contactId — ETA-WhatsApp alleen met echte GHL-contacten`,
-          'success'
-        );
-      }
-      applyRouteSnapshot(dateStr);
-      render();
-      return;
-    }
     try {
       showToast('⏳ Afspraken laden...', 'loading');
       const res = await fetch(
@@ -2200,35 +1986,17 @@ async function loadAppointments(date) {
       });
 
       if (appointments.length === 0) {
-        if (dateStr === PLANNING_DEMO_DATE) {
-          appointments = buildPlanningDemoAppointments();
-          showToast(
-            `✓ ${appointments.length} testafspraken voor ma 13 apr 2026\n(GHL had deze dag geen afspraken — zelfde scherm als productie)`,
-            'success'
-          );
-        } else {
-          showToast('Geen afspraken voor deze dag', 'info');
-        }
+        showToast('Geen afspraken voor deze dag', 'info');
       } else {
         showToast(`✓ ${appointments.length} afspraken geladen`, 'success');
       }
     } catch (err) {
       console.warn('GHL niet bereikbaar', err);
       appointments = [];
-      if (dateStr === PLANNING_DEMO_DATE) {
-        appointments = buildPlanningDemoAppointments();
-        showToast(
-          `✓ ${appointments.length} testafspraken (GHL niet bereikbaar)`,
-          'info'
-        );
-      } else {
-        showToast('Kon afspraken niet laden', 'info');
-      }
+      showToast('Kon afspraken niet laden', 'info');
     }
     applyRouteSnapshot(dateStr);
     render();
-  } finally {
-    updateDemoButtonUi();
   }
 }
 
@@ -2392,18 +2160,9 @@ function render() {
       `<div class="planning-section"><div class="planning-section-title">Middag 13:00–17:00</div>${afternoonApts.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
     );
   }
-  const ds = getDateStr(currentDate);
-  const april13DemoYearMismatch = ds === '2025-04-13';
-  const showDemoEmptyHint = parts.length === 0 && !isPlanningDemoMode() && april13DemoYearMismatch;
   let listHtml = parts.join('');
-  if (showDemoEmptyHint) {
-    listHtml = `<div class="demo-empty-hint">
-      Je kijkt naar <strong>13 april 2025</strong>. De testdag met 7 automatische testafspraken is <strong>maandag 13 april 2026</strong> (GHL leeg = testorders).
-      <br><br>
-      <button type="button" onclick="goToPlanningTestDay()">Ga naar ma 13 apr 2026</button>
-    </div>`;
-  } else if (parts.length === 0) {
-    listHtml = '<div class="demo-empty-hint" style="border-style:solid;border-color:var(--border)">Geen afspraken voor deze dag.</div>';
+  if (parts.length === 0) {
+    listHtml = '<div class="empty-hint">Geen afspraken voor deze dag.</div>';
   }
   document.getElementById('apptList').innerHTML = listHtml;
 
@@ -3340,12 +3099,7 @@ function showPaymentLinkFallback(url, invoiceNumber, total) {
   document.body.appendChild(overlay);
 }
 
-// Init — vandaag; ?planning_demo=1 springt naar 13 apr 2026 en forceert testdata
-planningDemoInitFromUrl();
 applyLargeTextPref();
-if (isPlanningDemoMode()) {
-  currentDate = new Date('2026-04-13T12:00:00+02:00');
-}
 document.getElementById('dateLabel').textContent = formatDate(currentDate);
 updateBlockedUI();
 syncServerBlockedDates();
