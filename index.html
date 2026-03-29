@@ -2626,19 +2626,28 @@ async function sendETA(appt) {
 }
 
 async function sendMorningMessages() {
-  showToast('☀️ Ochtendmeldingen worden verstuurd...', 'info');
   const appts = appointments.filter(a => a.contactId && a.status === 'ingepland')
     .map(a => ({ contactId: a.contactId, timeFrom: a.time, timeTo: a.time }));
-  if (appts.length > 0) {
-    try {
-      await fetch('/api/ghl?action=sendMorningMessages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ appointments: appts })
-      });
-    } catch(e) {}
+  if (appts.length === 0) {
+    showToast('Geen ingeplande klanten om te melden', 'info');
+    return;
   }
-  showToast(`☀️ Verstuurd naar ${appts.length} klanten`, 'success');
+  showToast('☀️ Ochtendmeldingen worden verstuurd...', 'loading');
+  try {
+    const res = await fetch('/api/ghl?action=sendMorningMessages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appointments: appts }),
+    });
+    if (res.ok) {
+      showToast(`☀️ Verstuurd naar ${appts.length} klant${appts.length !== 1 ? 'en' : ''}`, 'success');
+    } else {
+      const d = await res.json().catch(() => ({}));
+      showToast(`⚠ Ochtendmeldingen mislukt: ${d.error || res.status}`, 'info');
+    }
+  } catch (e) {
+    showToast('⚠ Ochtendmeldingen niet verstuurd: geen verbinding', 'info');
+  }
 }
 
 function minsToTime(totalMins) {
@@ -2846,12 +2855,33 @@ function closeRescheduleModal() {
   _rescheduleId = null;
 }
 
-function confirmDeleteAppt() {
+async function confirmDeleteAppt() {
   if (_rescheduleId == null) return;
-  appointments = appointments.filter(x => x.id !== _rescheduleId);
+  const a = appointments.find(x => x.id === _rescheduleId);
   closeRescheduleModal();
+  appointments = appointments.filter(x => x.id !== _rescheduleId);
   render();
-  showToast('Afspraak verwijderd', 'info');
+  showToast('⏳ Afspraak verwijderen...', 'loading');
+
+  if (a?.ghlId) {
+    try {
+      const res = await fetch('/api/ghl?action=deleteAppointment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ghlAppointmentId: a.ghlId }),
+      });
+      if (res.ok) {
+        showToast('✓ Afspraak verwijderd uit GHL', 'success');
+      } else {
+        const d = await res.json().catch(() => ({}));
+        showToast(`⚠ Lokaal verwijderd, GHL mislukt: ${d.error || res.status}`, 'info');
+      }
+    } catch (e) {
+      showToast('⚠ Lokaal verwijderd, GHL niet bereikbaar', 'info');
+    }
+  } else {
+    showToast('Afspraak verwijderd (geen GHL-id)', 'info');
+  }
 }
 
 function timeToWindow(timeStr, isFirst) {
@@ -2916,30 +2946,51 @@ async function confirmRoute() {
   }
 }
 
-function confirmReschedule() {
+async function confirmReschedule() {
   const a = appointments.find(x => x.id === _rescheduleId);
   if (!a) return;
 
   const newDate       = document.getElementById('rDate').value;
   const newTime       = document.getElementById('rTime').value;
   const newTimeWindow = document.getElementById('rTimeWindow').value.trim() || null;
+  const todayVal      = getDateStr(currentDate);
 
-  const currentDate = document.getElementById('dateInput')?.value || '';
+  closeRescheduleModal();
 
-  if (newDate && newDate !== currentDate) {
-    // Andere dag → verwijder uit huidig overzicht
+  if (newDate && newDate !== todayVal) {
     appointments = appointments.filter(x => x.id !== _rescheduleId);
-    showToast(`${a.name} verplaatst naar ${newDate} ${newTime}`, 'success');
   } else {
-    // Zelfde dag → update tijd en tijdvenster
     a.time       = newTime;
     a.timeWindow = newTimeWindow;
     a.estimated  = false;
+  }
+  render();
+  showToast('⏳ Afspraak herplannen in GHL...', 'loading');
+
+  if (a.ghlId) {
+    try {
+      const res = await fetch('/api/ghl?action=rescheduleAppointment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ghlAppointmentId: a.ghlId,
+          newDate: newDate || todayVal,
+          newTime,
+          type: a.type,
+        }),
+      });
+      if (res.ok) {
+        showToast(`✓ ${a.name} verplaatst naar ${newDate !== todayVal ? newDate + ' ' : ''}${newTime} in GHL`, 'success');
+      } else {
+        const d = await res.json().catch(() => ({}));
+        showToast(`⚠ Lokaal bijgewerkt, GHL mislukt: ${d.error || res.status}`, 'info');
+      }
+    } catch (e) {
+      showToast('⚠ Lokaal bijgewerkt, GHL niet bereikbaar', 'info');
+    }
+  } else {
     showToast(`${a.name} verplaatst naar ${newTime}`, 'success');
   }
-
-  closeRescheduleModal();
-  render();
 }
 
 function openModal() {

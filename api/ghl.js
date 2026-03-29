@@ -654,6 +654,58 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, workflowTag: etaTag, tagPulseOk: true });
       }
 
+      case 'deleteAppointment': {
+        const { ghlAppointmentId: delId } = req.body;
+        if (!delId) return res.status(400).json({ error: 'ghlAppointmentId vereist' });
+
+        const delPaths = [
+          `${GHL_BASE}/calendars/events/appointments/${delId}`,
+          `${GHL_BASE}/calendars/events/${delId}`,
+        ];
+        let delOk = false;
+        let delErr = '';
+        for (const url of delPaths) {
+          for (const Version of ['2021-04-15', '2021-07-28']) {
+            const r = await fetchWithRetry(url, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version },
+            }, 0);
+            if (r.ok || r.status === 404) { delOk = true; break; }
+            const t = await r.text().catch(() => '');
+            delErr = `${r.status} ${t}`.slice(0, 300);
+          }
+          if (delOk) break;
+        }
+        if (!delOk) {
+          console.warn('[deleteAppointment] mislukt:', delErr);
+          return res.status(500).json({ error: 'GHL verwijderen mislukt', detail: delErr });
+        }
+        console.log('[deleteAppointment] verwijderd:', delId);
+        return res.status(200).json({ success: true });
+      }
+
+      case 'rescheduleAppointment': {
+        const { ghlAppointmentId: rescId, newDate, newTime, type: rescType } = req.body;
+        if (!rescId || !newDate || !newTime) {
+          return res.status(400).json({ error: 'ghlAppointmentId, newDate en newTime vereist' });
+        }
+        const parts = String(newTime).split(':');
+        const hNum = Math.min(23, Math.max(0, parseInt(parts[0], 10) || 0));
+        const mNum = Math.min(59, Math.max(0, parseInt(parts[1], 10) || 0));
+        const startD = amsterdamWallTimeToDate(newDate, hNum, mNum);
+        if (!startD) return res.status(400).json({ error: 'Ongeldige datum/tijd' });
+        const dur = ghlDurationMinutesForType(rescType) || 30;
+        const startIso = startD.toISOString();
+        const endIso = new Date(startD.getTime() + dur * 60 * 1000).toISOString();
+        const result = await putCalendarStartEnd(rescId, startIso, endIso);
+        if (!result.ok) {
+          console.warn('[rescheduleAppointment] mislukt:', result.err);
+          return res.status(500).json({ error: 'GHL herplannen mislukt', detail: result.err });
+        }
+        console.log('[rescheduleAppointment] bijgewerkt:', rescId, startIso);
+        return res.status(200).json({ success: true });
+      }
+
       case 'sendMorningMessages': {
         const { appointments } = req.body;
         for (const appt of appointments || []) {

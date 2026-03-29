@@ -259,6 +259,7 @@ export default async function handler(req, res) {
   const startAnchor = amsterdamWallTimeToDate(date, hours, minutes);
   const startMs = startAnchor ? startAnchor.getTime() : NaN;
   if (!Number.isFinite(startMs)) {
+    releaseBookingLock(lockKey);
     return res.status(400).json({ error: 'Ongeldige datum of tijd in het tijdslot.' });
   }
 
