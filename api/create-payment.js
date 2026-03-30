@@ -149,6 +149,7 @@ export default async function handler(req, res) {
             customFields: [
               { id: 'wtZj3NPqHc8bFMVUYJMk', field_value: molliePaymentId },
               { id: 'HGjlT6ofaBiMz3j2HsXL', field_value: prijsFormatted },
+              { id: 'GTM68UTLsdrWHrxOvcxR', field_value: String(totalInclBTW.toFixed(2)) },
             ]
           })
         });
