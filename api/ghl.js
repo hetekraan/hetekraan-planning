@@ -204,6 +204,18 @@ export default async function handler(req, res) {
 
   const { action } = req.query;
 
+  // ─── Custom fields opzoeken (tijdelijk publiek) ──────────────────────────
+  if (action === 'listCustomFields') {
+    const r = await fetch(
+      `${GHL_BASE}/locations/${GHL_LOCATION_ID}/customFields`,
+      { headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-07-28' } }
+    );
+    const d = await r.json();
+    const fields = (d?.customFields || []).map(f => ({ id: f.id, name: f.name, type: f.dataType }));
+    return res.status(200).json({ fields });
+  }
+  // ────────────────────────────────────────────────────────────────────────
+
   // ─── Diagnose (geen auth vereist) ─────────────────────────────────────────
   if (action === 'health') {
     const users = parseUsers();
@@ -242,16 +254,6 @@ export default async function handler(req, res) {
 
   try {
     switch (action) {
-
-      case 'listCustomFields': {
-        const r = await fetch(
-          `${GHL_BASE}/locations/${GHL_LOCATION_ID}/customFields`,
-          { headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-07-28' } }
-        );
-        const d = await r.json();
-        const fields = (d?.customFields || []).map(f => ({ id: f.id, name: f.name, type: f.dataType }));
-        return res.status(200).json({ fields });
-      }
 
       case 'getAppointments': {
         const dateRaw = req.query.date;
