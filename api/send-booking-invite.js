@@ -19,7 +19,8 @@ import { fetchWithRetry } from '../lib/retry.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
 import { signBookingToken } from '../lib/session.js';
-import { isServerDateBlocked } from '../lib/blocked-dates.js';
+import { isServerDateBlocked, normalizeBlockedDateList } from '../lib/blocked-dates.js';
+import { fetchPlanningBlockedDateSet } from '../lib/ghl-planning-blocked.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -79,8 +80,8 @@ async function geocodeEvents(events) {
   return coords;
 }
 
-async function getBestSlots(address, workType, clientBlockedDates = []) {
-  const clientBlockedSet = new Set(Array.isArray(clientBlockedDates) ? clientBlockedDates : []);
+async function getBestSlots(address, workType, mergedBlockedSet) {
+  const blockedSet = mergedBlockedSet instanceof Set ? mergedBlockedSet : new Set();
   const newCoord = address ? await geocode(address) : null;
   const candidates = [];
 
@@ -91,7 +92,7 @@ async function getBestSlots(address, workType, clientBlockedDates = []) {
 
   for (let step = 1; step <= DAYS_AHEAD + 3 && candidates.length < 6; step++) {
     const dow = amsterdamWeekdaySun0(dateStr);
-    if (dow === 0 || dow === 6 || isServerDateBlocked(dateStr) || clientBlockedSet.has(dateStr)) {
+    if (dow === 0 || dow === 6 || isServerDateBlocked(dateStr) || blockedSet.has(dateStr)) {
       dateStr = addAmsterdamCalendarDays(dateStr, 1);
       continue;
     }
@@ -184,6 +185,10 @@ export default async function handler(req, res) {
   const body = parseRequestBody(req);
   let { contactId, name: nameParam, phone: phoneParam, address: addressParam, type: typeParam, workType: workTypeParam, blockedDates: clientBlockedDates } = body;
 
+  const clientBlockedList = normalizeBlockedDateList(clientBlockedDates);
+  const ghlBlockedSet = await fetchPlanningBlockedDateSet();
+  const mergedBlocked = new Set([...clientBlockedList, ...ghlBlockedSet]);
+
   // Zoek contact op naam of telefoon als er geen contactId is
   if (!contactId) {
     const searchPhone = (phoneParam || '').replace(/\s/g, '');
@@ -270,7 +275,7 @@ export default async function handler(req, res) {
   const workType = normalizeWorkType(workTypeParam || typeParam || getField(contact, FIELD_IDS.type_onderhoud));
 
   // Bereken de 2 beste slots (rekening houdend met max 4/3 per blok + geplande minuten)
-  const slots = await getBestSlots(address, workType, clientBlockedDates);
+  const slots = await getBestSlots(address, workType, mergedBlocked);
   if (slots.length === 0) {
     return res.status(200).json({ success: false, message: 'Geen beschikbare slots in de komende 7 werkdagen.' });
   }

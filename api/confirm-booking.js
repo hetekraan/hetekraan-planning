@@ -19,6 +19,7 @@ import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
 import { isServerDateBlocked } from '../lib/blocked-dates.js';
+import { fetchPlanningBlockedDateSet } from '../lib/ghl-planning-blocked.js';
 import { verifyBookingToken } from '../lib/session.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
@@ -169,7 +170,8 @@ export default async function handler(req, res) {
 
   const date = chosenSlot.dateStr || legacyDate;
   if (!date) return res.status(400).json({ error: 'Geen datum in slot' });
-  if (isServerDateBlocked(date)) {
+  const ghlBlocked = await fetchPlanningBlockedDateSet();
+  if (isServerDateBlocked(date) || ghlBlocked.has(date)) {
     return res.status(409).json({
       error: 'Deze dag is helaas niet meer beschikbaar. Kies een andere dag of neem contact met ons op.',
       code: 'DATE_BLOCKED',

@@ -399,9 +399,13 @@
       const phone   = document.getElementById('inputPhone').value.trim();
       const address = document.getElementById('inputAddress').value.trim();
 
+      const blockedDates = (() => {
+        try { return JSON.parse(localStorage.getItem('blockedDates') || '[]'); } catch { return []; }
+      })();
+
       const body = resolvedContactId
-        ? { contactId: resolvedContactId }
-        : { name, phone, address };
+        ? { contactId: resolvedContactId, blockedDates }
+        : { name, phone, address, blockedDates };
 
       const ac = new AbortController();
       const to = setTimeout(() => ac.abort(), 120000);

@@ -17,6 +17,7 @@ import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
 import { isServerDateBlocked, getServerBlockedDates } from '../lib/blocked-dates.js';
+import { fetchPlanningBlockedDateSet } from '../lib/ghl-planning-blocked.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -263,7 +264,8 @@ export default async function handler(req, res) {
       // Geeft server-side geblokkeerde datums terug (verplaatst vanuit api/blocked-dates.js)
       case 'getBlockedDates': {
         res.setHeader('Cache-Control', 'no-store');
-        const dates = [...getServerBlockedDates()].sort();
+        const ghl = await fetchPlanningBlockedDateSet();
+        const dates = [...new Set([...getServerBlockedDates(), ...ghl])].sort();
         return res.status(200).json({ blockedDates: dates });
       }
 
@@ -274,13 +276,14 @@ export default async function handler(req, res) {
         let dateStr = addAmsterdamCalendarDays(formatYyyyMmDdInAmsterdam(new Date()), 1);
         if (!dateStr) return res.status(500).json({ error: 'Datumfout' });
 
+        const ghlBlocked = await fetchPlanningBlockedDateSet();
         const dayPromises = [];
         const dayMeta = [];
 
         for (let guard = 0; guard < 40 && dayMeta.length < 14; guard++) {
           const dow = amsterdamWeekdaySun0(dateStr);
           if (dow == null) break;
-          if (dow === 0 || dow === 6 || isServerDateBlocked(dateStr)) {
+          if (dow === 0 || dow === 6 || isServerDateBlocked(dateStr) || ghlBlocked.has(dateStr)) {
             dateStr = addAmsterdamCalendarDays(dateStr, 1);
             continue;
           }
@@ -324,7 +327,8 @@ export default async function handler(req, res) {
       case 'getSlots': {
         const { date, address, workType: wtParam } = params;
         if (!date) return res.status(400).json({ error: 'date vereist' });
-        if (isServerDateBlocked(date)) {
+        const ghlBlocked = await fetchPlanningBlockedDateSet();
+        if (isServerDateBlocked(date) || ghlBlocked.has(date)) {
           return res.status(409).json({ error: 'Deze dag is niet beschikbaar voor boekingen.', code: 'DATE_BLOCKED' });
         }
         const workType = normalizeWorkType(wtParam);
@@ -361,6 +365,11 @@ export default async function handler(req, res) {
 
         if (!firstName || !phone || !date || !time) {
           return res.status(400).json({ error: 'Verplichte velden ontbreken: naam, telefoon, datum, tijd' });
+        }
+
+        const ghlBlk = await fetchPlanningBlockedDateSet();
+        if (isServerDateBlocked(date) || ghlBlk.has(date)) {
+          return res.status(409).json({ error: 'Deze dag is niet beschikbaar voor boekingen.', code: 'DATE_BLOCKED' });
         }
 
         const workType = normalizeWorkType(wtRaw);

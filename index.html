@@ -1622,8 +1622,31 @@ function assignRouteStops() {
 function getBlockedDates() {
   try { return JSON.parse(localStorage.getItem('blockedDates') || '[]'); } catch { return []; }
 }
+let _planningBlockedGhlTimer = null;
 function saveBlockedDates(dates) {
   try { localStorage.setItem('blockedDates', JSON.stringify(dates)); } catch (_) {}
+  try {
+    if (_planningBlockedGhlTimer) clearTimeout(_planningBlockedGhlTimer);
+    const snapshot = dates.slice();
+    _planningBlockedGhlTimer = setTimeout(() => {
+      _planningBlockedGhlTimer = null;
+      void pushPlanningBlockedToGhl(snapshot);
+    }, 500);
+  } catch (_) {}
+}
+async function pushPlanningBlockedToGhl(dates) {
+  try {
+    const auth = hkAuthHeader();
+    if (!auth) return;
+    const res = await fetch('/api/ghl?action=setPlanningBlockedDates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': auth },
+      body: JSON.stringify({ dates }),
+    });
+    if (!res.ok) console.warn('[blocked] opslaan in GHL mislukt', res.status);
+  } catch (e) {
+    console.warn('[blocked] GHL-sync', e);
+  }
 }
 function isDateBlocked(dateStr) {
   return getBlockedDates().includes(dateStr);
@@ -1649,9 +1672,10 @@ async function syncServerBlockedDates() {
     }
     store.value = serverDates.join(',');
 
-    if (serverDates.length === 0) return;
     const local = getBlockedDates();
     const merged = [...new Set([...local, ...serverDates])];
+    const sk = (a) => [...a].sort().join(',');
+    if (sk(merged) === sk(local)) return;
     saveBlockedDates(merged);
     updateBlockedUI();
   } catch (_) {}

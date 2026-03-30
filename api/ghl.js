@@ -9,6 +9,7 @@ import { fetchWithRetry } from '../lib/retry.js';
 import { sendErrorNotification } from '../lib/notify.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
 import { signSessionToken, parseUsers, verifySessionToken } from '../lib/session.js';
+import { putPlanningBlockedDatesToGhl } from '../lib/ghl-planning-blocked.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -755,6 +756,25 @@ export default async function handler(req, res) {
           await pulseContactTag(appt.contactId, 'ochtend-melding', '[ghl sendMorningMessages]');
         }
         return res.status(200).json({ success: true, via: 'workflow-tag-ochtend-melding' });
+      }
+
+      case 'setPlanningBlockedDates': {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+        const raw = req.body?.dates;
+        const dates = Array.isArray(raw) ? raw : [];
+        const result = await putPlanningBlockedDatesToGhl(dates);
+        if (result.skipped) {
+          return res.status(200).json({
+            ok: true,
+            synced: false,
+            message:
+              'Geen GHL-opslag geconfigureerd. Zet GHL_PLANNING_META_CONTACT_ID en GHL_PLANNING_BLOCKED_DATES_FIELD_ID in Vercel, of gebruik BLOCKED_DATES.',
+          });
+        }
+        if (!result.ok) {
+          return res.status(502).json({ error: 'Geblokkeerde datums opslaan in GHL mislukt' });
+        }
+        return res.status(200).json({ ok: true, synced: true });
       }
 
       default:
