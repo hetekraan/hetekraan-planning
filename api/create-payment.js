@@ -139,8 +139,8 @@ export default async function handler(req, res) {
 
       try {
         // Sla het Mollie transactie-ID op (tr_XXXXX).
-        // De WhatsApp CTA-button wijst naar /api/create-payment?id=tr_XXXXX op onze
-        // eigen Vercel-domeinnaam — die doet een live redirect naar de juiste Mollie URL.
+        // De WhatsApp CTA-button wijst naar betalen.hetekraan.nl/api/create-payment?id=tr_XXXXX
+        // — die doet een live redirect naar de juiste Mollie URL.
         // Zo werkt de button ook als Mollie het pad wijzigt (pay/ vs select-method/).
         const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
           method: 'PUT',

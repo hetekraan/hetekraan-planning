@@ -27,13 +27,11 @@ const GHL_CALENDAR_ID = process.env.GHL_CALENDAR_ID;
 const MAPS_KEY        = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_KEY;
 const GHL_BASE        = 'https://services.leadconnectorhq.com';
 
-/** Publieke basis-URL voor boekingslinks (Vercel: zet BASE_URL of gebruik automatisch VERCEL_URL) */
+/** Publieke basis-URL voor boekingslinks */
 function publicBaseUrl() {
   const fromEnv = process.env.BASE_URL;
   if (fromEnv) return fromEnv.replace(/\/$/, '');
-  const vu = process.env.VERCEL_URL;
-  if (vu) return `https://${vu.replace(/^https?:\/\//, '')}`;
-  return 'https://hetekraan-planning.vercel.app';
+  return 'https://planning.hetekraan.nl';
 }
 const DAYS_AHEAD      = 7;
 
