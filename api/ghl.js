@@ -243,6 +243,16 @@ export default async function handler(req, res) {
   try {
     switch (action) {
 
+      case 'listCustomFields': {
+        const r = await fetch(
+          `${GHL_BASE}/locations/${GHL_LOCATION_ID}/customFields`,
+          { headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-07-28' } }
+        );
+        const d = await r.json();
+        const fields = (d?.customFields || []).map(f => ({ id: f.id, name: f.name, type: f.dataType }));
+        return res.status(200).json({ fields });
+      }
+
       case 'getAppointments': {
         const dateRaw = req.query.date;
         const date = normalizeYyyyMmDdInput(
