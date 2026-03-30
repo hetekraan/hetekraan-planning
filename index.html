@@ -158,34 +158,6 @@
   }
   .btn-add:hover { opacity: 0.85; }
 
-  .btn-blocked {
-    background: transparent;
-    border: 1px solid #333;
-    color: #888;
-    padding: 7px 12px;
-    border-radius: 6px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 12px;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .btn-blocked:hover { border-color: #ff6060; color: #ff6060; }
-  .btn-blocked.active { background: #2a1515; border-color: #ff6060; color: #ff6060; }
-
-  .blocked-banner {
-    display: none;
-    background: #2a1515;
-    border: 1px solid #ff6060;
-    color: #ff6060;
-    padding: 12px 16px;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 600;
-    text-align: center;
-    margin-bottom: 12px;
-  }
-  .blocked-banner.visible { display: block; }
-
   /* KAART */
   .appt-card {
     background: var(--surface);
@@ -763,8 +735,6 @@
   body.large-text .stat-label                { font-size: 10px; }
   body.large-text .section-title             { font-size: 13px; }
   body.large-text .btn-add                   { font-size: 14px; padding: 10px 18px; }
-  body.large-text .btn-blocked               { font-size: 14px; padding: 10px 15px; }
-  body.large-text .btn-manage-blocked        { font-size: 17px; padding: 8px 11px; }
   body.large-text .btn-dagopgave             { font-size: 17px; padding: 8px 11px; }
   body.large-text .appt-number              { font-size: 12px; }
   body.large-text .appt-time                { font-size: 18px; }
@@ -793,7 +763,6 @@
   body.large-text .review-toggle            { font-size: 14px; }
   body.large-text .appt-inner               { padding: 14px 16px 14px 44px; }
   body.large-text .appt-card                { margin-bottom: 12px; }
-  body.large-text .blocked-banner           { font-size: 16px; padding: 14px 20px; }
   body.large-text .total-label              { font-size: 13px; }
   body.large-text .total-amount             { font-size: 22px; }
   /* Route panel */
@@ -803,19 +772,6 @@
   body.large-text .btn-optimize             { font-size: 14px; padding: 13px; }
   body.large-text .mobile-tab               { font-size: 12px; padding: 14px 0; }
   /* ─────────────────────────────────────────────────────────────────────── */
-
-  /* Geblokkeerde dagen beheer-knop */
-  .btn-manage-blocked {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    color: var(--muted);
-    padding: 5px 8px;
-    border-radius: 6px;
-    font-size: 14px;
-    cursor: pointer;
-    transition: background 0.15s;
-  }
-  .btn-manage-blocked:hover { background: var(--surface3); color: var(--text); }
 
   .btn-dagopgave {
     background: var(--surface2);
@@ -922,70 +878,6 @@
     .po-line { display: flex; justify-content: space-between; font-size: 11px; color: #333; border-top: 1px solid #eee; padding: 3px 0; }
     .po-grand { border-top: 2px solid #111; margin-top: 12px; padding-top: 10px; display: flex; justify-content: space-between; font-weight: 700; font-size: 14px; }
   }
-
-  /* Datumchips in de blocked-dates modal */
-  .blocked-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: rgba(255,80,80,0.12);
-    border: 1px solid rgba(255,80,80,0.3);
-    color: #ff7070;
-    border-radius: 20px;
-    padding: 4px 10px;
-    font-size: 12px;
-    font-family: 'DM Sans', sans-serif;
-  }
-  .blocked-chip button {
-    background: none;
-    border: none;
-    color: inherit;
-    cursor: pointer;
-    padding: 0;
-    font-size: 13px;
-    line-height: 1;
-    opacity: 0.7;
-  }
-  .blocked-chip button:hover { opacity: 1; }
-  .blocked-chips-wrap { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; min-height: 30px; }
-  .blocked-empty-hint { font-size: 12px; color: var(--muted); font-style: italic; }
-
-  /* Server-config kopieerbox */
-  .server-config-box {
-    background: var(--surface3);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 12px;
-    margin-top: 12px;
-  }
-  .server-config-label {
-    font-size: 10px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: 6px;
-  }
-  .server-config-value {
-    font-family: monospace;
-    font-size: 11px;
-    color: var(--text);
-    word-break: break-all;
-    margin-bottom: 8px;
-    background: var(--surface2);
-    border-radius: 4px;
-    padding: 6px 8px;
-    border: 1px solid var(--border);
-    user-select: all;
-  }
-  .server-sync-badge {
-    display: inline-block;
-    font-size: 10px;
-    padding: 2px 8px;
-    border-radius: 10px;
-    margin-bottom: 8px;
-  }
-  .server-sync-badge.in-sync { background: rgba(80,200,120,0.15); color: #60c87a; }
-  .server-sync-badge.out-of-sync { background: rgba(255,165,0,0.15); color: #ffb347; }
 
   .form-row { margin-bottom: 8px; }
   .form-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; display: block; }
@@ -1295,13 +1187,10 @@
     <div class="appointments-header">
       <div class="section-title">⬛ Afspraken van de dag</div>
       <div class="appointments-header-actions">
-        <button class="btn-blocked" id="btnBlocked" onclick="toggleBlocked()"></button>
-        <button class="btn-manage-blocked" id="btnManageBlocked" onclick="openBlockedDatesModal()" title="Beheer alle geblokkeerde dagen">📅</button>
         <button class="btn-dagopgave" onclick="openDagopgave()" title="Dagopgave voor Tellow">📋</button>
         <button class="btn-add" onclick="openModal()">+ Afspraak</button>
       </div>
     </div>
-    <div class="blocked-banner" id="blockedBanner">🚫 Deze dag is geblokkeerd (vakantie / vrij)</div>
     <div id="apptList"></div>
     <div class="total-bar">
       <div class="total-label">Totaal dagomzet</div>
@@ -1618,68 +1507,6 @@ function assignRouteStops() {
   });
 }
 
-// Geblokkeerde datums — lokaal (localStorage) + server-side (env BLOCKED_DATES via /api/blocked-dates).
-function getBlockedDates() {
-  try { return JSON.parse(localStorage.getItem('blockedDates') || '[]'); } catch { return []; }
-}
-let _planningBlockedGhlTimer = null;
-function saveBlockedDates(dates) {
-  try { localStorage.setItem('blockedDates', JSON.stringify(dates)); } catch (_) {}
-  try {
-    if (_planningBlockedGhlTimer) clearTimeout(_planningBlockedGhlTimer);
-    const snapshot = dates.slice();
-    _planningBlockedGhlTimer = setTimeout(() => {
-      _planningBlockedGhlTimer = null;
-      void pushPlanningBlockedToGhl(snapshot);
-    }, 500);
-  } catch (_) {}
-}
-async function pushPlanningBlockedToGhl(dates) {
-  try {
-    const auth = hkAuthHeader();
-    if (!auth) return;
-    const res = await fetch('/api/ghl?action=setPlanningBlockedDates', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': auth },
-      body: JSON.stringify({ dates }),
-    });
-    if (!res.ok) console.warn('[blocked] opslaan in GHL mislukt', res.status);
-  } catch (e) {
-    console.warn('[blocked] GHL-sync', e);
-  }
-}
-function isDateBlocked(dateStr) {
-  return getBlockedDates().includes(dateStr);
-}
-
-/** Haal server-side geblokkeerde datums op en voeg ze samen met de lokale lijst.
- *  Sla ook de server-lijst op voor vergelijking in de beheer-modal.
- *  Stil falen: als het endpoint niet bereikbaar is, werkt de lokale lijst gewoon nog. */
-async function syncServerBlockedDates() {
-  try {
-    const res = await fetch('/api/booking?action=getBlockedDates', { cache: 'no-store' });
-    if (!res.ok) return;
-    const data = await res.json();
-    const serverDates = Array.isArray(data?.blockedDates) ? data.blockedDates : [];
-
-    // Sla server-lijst op voor vergelijking in de modal (verborgen input-element).
-    let store = document.getElementById('_serverBlockedDates');
-    if (!store) {
-      store = document.createElement('input');
-      store.type = 'hidden';
-      store.id = '_serverBlockedDates';
-      document.body.appendChild(store);
-    }
-    store.value = serverDates.join(',');
-
-    const local = getBlockedDates();
-    const merged = [...new Set([...local, ...serverDates])];
-    const sk = (a) => [...a].sort().join(',');
-    if (sk(merged) === sk(local)) return;
-    saveBlockedDates(merged);
-    updateBlockedUI();
-  } catch (_) {}
-}
 function getDateStr(d) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Amsterdam',
@@ -1959,33 +1786,6 @@ async function resetLocalRouteTimes() {
   await loadAppointments(currentDate);
   showToast('Lokale tijden gewist — opnieuw uit GHL geladen', 'success');
 }
-function toggleBlocked() {
-  const dateStr = getDateStr(currentDate);
-  let blocked = getBlockedDates();
-  if (blocked.includes(dateStr)) {
-    blocked = blocked.filter(d => d !== dateStr);
-    showToast('Dag weer beschikbaar', 'success');
-  } else {
-    blocked.push(dateStr);
-    showToast('Dag geblokkeerd — geen afspraken mogelijk', 'info');
-  }
-  saveBlockedDates(blocked);
-  updateBlockedUI();
-}
-function updateBlockedUI() {
-  const dateStr = getDateStr(currentDate);
-  const blocked = isDateBlocked(dateStr);
-  const btn = document.getElementById('btnBlocked');
-  const banner = document.getElementById('blockedBanner');
-  btn.textContent = blocked ? '✓ Vrij gezet' : '🚫 Blokkeer dag';
-  btn.classList.toggle('active', blocked);
-  banner.classList.toggle('visible', blocked);
-
-  // Toon badge op beheer-knop als er geblokkeerde datums zijn
-  const manageBtnEl = document.getElementById('btnManageBlocked');
-  const count = getBlockedDates().length;
-  if (manageBtnEl) manageBtnEl.title = count > 0 ? `${count} geblokkeerde dag${count !== 1 ? 'en' : ''} — klik om te beheren` : 'Beheer geblokkeerde dagen';
-}
 
 // ─── Grote-tekst modus ───────────────────────────────────────────────────────
 const HK_LARGE_TEXT_KEY = 'hk_large_text';
@@ -2028,8 +1828,6 @@ function toggleLargeText() {
   showToast(document.body.classList.contains('large-text') ? 'Grote tekst aan' : 'Grote tekst uit', 'info');
 }
 // ─────────────────────────────────────────────────────────────────────────────
-
-// ─── Geblokkeerde dagen modal ────────────────────────────────────────────────
 
 function openDagopgave() {
   const klaar = appointments.filter(a => a.status === 'klaar');
@@ -2155,121 +1953,6 @@ function printDagopgave() {
   window.print();
 }
 
-function openBlockedDatesModal() {
-  renderBlockedChipsModal();
-  document.getElementById('blockedDatesOverlay').classList.add('visible');
-  // Stel datumkiezer in op morgen als standaard
-  try {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    document.getElementById('blockedDatePicker').value = getDateStr(tomorrow);
-  } catch (_) {}
-}
-
-function closeBlockedDatesModal() {
-  document.getElementById('blockedDatesOverlay').classList.remove('visible');
-}
-
-function renderBlockedChipsModal() {
-  const wrap = document.getElementById('blockedChipsWrap');
-  if (!wrap) return;
-  const dates = getBlockedDates().slice().sort();
-
-  if (dates.length === 0) {
-    wrap.innerHTML = '<span class="blocked-empty-hint">Geen geblokkeerde dagen</span>';
-  } else {
-    wrap.innerHTML = dates.map(d => {
-      const label = formatBlockedDateLabel(d);
-      return `<span class="blocked-chip">${label}<button onclick="removeBlockedDateModal('${d}')" title="Vrijzetten">✕</button></span>`;
-    }).join('');
-  }
-
-  // Server-configuratie sectie bijwerken
-  updateServerConfigSection(dates);
-}
-
-function formatBlockedDateLabel(dateStr) {
-  try {
-    const d = new Date(`${dateStr}T12:00:00Z`);
-    return d.toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
-  } catch (_) {
-    return dateStr;
-  }
-}
-
-function removeBlockedDateModal(dateStr) {
-  const dates = getBlockedDates().filter(d => d !== dateStr);
-  saveBlockedDates(dates);
-  renderBlockedChipsModal();
-  updateBlockedUI();
-  showToast(`${formatBlockedDateLabel(dateStr)} vrijgezet`, 'success');
-}
-
-function addBlockedDateFromPicker() {
-  const picker = document.getElementById('blockedDatePicker');
-  const dateStr = picker?.value?.trim();
-  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    showToast('Kies een geldige datum', 'info');
-    return;
-  }
-  const dates = getBlockedDates();
-  if (dates.includes(dateStr)) {
-    showToast(`${formatBlockedDateLabel(dateStr)} is al geblokkeerd`, 'info');
-    return;
-  }
-  dates.push(dateStr);
-  saveBlockedDates(dates);
-  renderBlockedChipsModal();
-  updateBlockedUI();
-  showToast(`${formatBlockedDateLabel(dateStr)} geblokkeerd`, 'info');
-}
-
-function updateServerConfigSection(localDates) {
-  const configEl = document.getElementById('blockedConfigValue');
-  const badgeEl = document.getElementById('serverSyncBadge');
-  if (!configEl || !badgeEl) return;
-
-  const sorted = localDates.slice().sort();
-  const configValue = sorted.length > 0 ? `BLOCKED_DATES=${sorted.join(',')}` : 'BLOCKED_DATES=   (leeg laten of weghalen)';
-  configEl.textContent = configValue;
-
-  // Vergelijk met server-lijst (opgehaald bij opstarten via syncServerBlockedDates)
-  const serverStr = (document.getElementById('_serverBlockedDates')?.value || '').split(',').filter(Boolean).sort().join(',');
-  const localStr = sorted.join(',');
-  if (serverStr === '' && sorted.length === 0) {
-    badgeEl.textContent = '✓ Gesynchroniseerd met server';
-    badgeEl.className = 'server-sync-badge in-sync';
-  } else if (serverStr === localStr) {
-    badgeEl.textContent = '✓ Gesynchroniseerd met server';
-    badgeEl.className = 'server-sync-badge in-sync';
-  } else {
-    badgeEl.textContent = '⚠ Lokaal wijkt af van server — update BLOCKED_DATES in Vercel';
-    badgeEl.className = 'server-sync-badge out-of-sync';
-  }
-}
-
-async function copyBlockedConfig() {
-  const el = document.getElementById('blockedConfigValue');
-  const btn = document.getElementById('btnCopyConfig');
-  if (!el || !btn) return;
-  try {
-    await navigator.clipboard.writeText(el.textContent);
-    const orig = btn.textContent;
-    btn.textContent = '✓ Gekopieerd!';
-    setTimeout(() => { btn.textContent = orig; }, 2000);
-  } catch (_) {
-    // Fallback: selecteer de tekst
-    const range = document.createRange();
-    range.selectNodeContents(el);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-    showToast('Selecteer en kopieer de tekst handmatig', 'info');
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
 async function loadAppointments(date) {
   const dateStr = getDateStr(date);
   try {
@@ -2374,7 +2057,6 @@ function changeDay(dir) {
   const [y, m, d] = parts;
   currentDate = new Date(Date.UTC(y, m - 1, d + dir, 12, 0, 0));
   document.getElementById('dateLabel').textContent = formatDate(currentDate);
-  updateBlockedUI();
   loadAppointments(currentDate);
 }
 
@@ -3388,7 +3070,7 @@ async function sendBookingLink() {
     const res = await fetch('/api/send-booking-invite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, phone, address, type, workType: type, desc, blockedDates: getBlockedDates() })
+      body: JSON.stringify({ name, phone, address, type, workType: type, desc })
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.message || data.error || 'Fout');
@@ -3530,8 +3212,6 @@ function showPaymentLinkFallback(url, invoiceNumber, total) {
 
 applyLargeTextPref();
 document.getElementById('dateLabel').textContent = formatDate(currentDate);
-updateBlockedUI();
-syncServerBlockedDates();
 
 // LOGIN — wachtwoorden staan NIET meer in de browser-code.
 // Credentials worden gevalideerd door /api/auth tegen env vars (HK_USERS).
@@ -3708,42 +3388,6 @@ document.addEventListener('DOMContentLoaded', () => {
   checkLogin();
 });
 </script>
-
-<!-- GEBLOKKEERDE DAGEN BEHEER MODAL -->
-<div class="modal-overlay" id="blockedDatesOverlay" onclick="if(event.target===this)closeBlockedDatesModal()">
-  <div class="modal" style="max-width:440px">
-    <div class="modal-title">📅 Geblokkeerde dagen beheren</div>
-
-    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5">
-      Geblokkeerde dagen zijn niet beschikbaar voor klanten om te boeken. Ze worden opgeslagen op dit apparaat.
-    </div>
-
-    <label class="form-label">Geblokkeerde dagen</label>
-    <div class="blocked-chips-wrap" id="blockedChipsWrap"></div>
-
-    <div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:16px">
-      <div style="flex:1">
-        <label class="form-label">Dag toevoegen</label>
-        <input class="form-input" type="date" id="blockedDatePicker">
-      </div>
-      <button class="btn-save" onclick="addBlockedDateFromPicker()" style="white-space:nowrap;padding:7px 14px">+ Toevoegen</button>
-    </div>
-
-    <div class="server-config-box">
-      <div class="server-config-label">Server-configuratie (Vercel)</div>
-      <div id="serverSyncBadge" class="server-sync-badge"></div>
-      <div style="font-size:11px;color:var(--muted);margin-bottom:6px">
-        Kopieer deze waarde en plak hem als <strong>BLOCKED_DATES</strong> in Vercel → Settings → Environment Variables. Na opslaan deployt Vercel automatisch (~2 min).
-      </div>
-      <div class="server-config-value" id="blockedConfigValue">—</div>
-      <button class="btn-save" onclick="copyBlockedConfig()" style="font-size:11px;padding:5px 12px" id="btnCopyConfig">📋 Kopieer naar klembord</button>
-    </div>
-
-    <div class="modal-actions" style="margin-top:16px">
-      <button class="btn-cancel" onclick="closeBlockedDatesModal()">Sluiten</button>
-    </div>
-  </div>
-</div>
 
 <!-- LOGIN SCHERM -->
 <div class="login-overlay" id="loginOverlay">

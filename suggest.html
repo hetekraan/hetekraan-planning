@@ -316,9 +316,6 @@
     show('loadingCard');
 
     try {
-      // Geblokkeerde datums meesturen zodat de API ze overslaat
-      const blocked = (() => { try { return JSON.parse(localStorage.getItem('blockedDates') || '[]'); } catch { return []; } })();
-
       let url = '/api/suggest-slots?';
       if (resolvedContactId) {
         url += `contactId=${encodeURIComponent(resolvedContactId)}`;
@@ -329,7 +326,6 @@
         if (address) p.set('address', address);
         url += p.toString();
       }
-      if (blocked.length) url += `&blocked=${blocked.join(',')}`;
 
       const res  = await fetch(url);
       const data = await res.json();
@@ -399,13 +395,9 @@
       const phone   = document.getElementById('inputPhone').value.trim();
       const address = document.getElementById('inputAddress').value.trim();
 
-      const blockedDates = (() => {
-        try { return JSON.parse(localStorage.getItem('blockedDates') || '[]'); } catch { return []; }
-      })();
-
       const body = resolvedContactId
-        ? { contactId: resolvedContactId, blockedDates }
-        : { name, phone, address, blockedDates };
+        ? { contactId: resolvedContactId }
+        : { name, phone, address };
 
       const ac = new AbortController();
       const to = setTimeout(() => ac.abort(), 120000);

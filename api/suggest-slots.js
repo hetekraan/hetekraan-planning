@@ -8,8 +8,6 @@ import {
   customerMaxForBlock,
   normalizeWorkType,
 } from '../lib/booking-blocks.js';
-import { isServerDateBlocked, normalizeBlockedDateList } from '../lib/blocked-dates.js';
-import { fetchPlanningBlockedDateSet } from '../lib/ghl-planning-blocked.js';
 import {
   addAmsterdamCalendarDays,
   amsterdamCalendarDayBoundsMs,
@@ -188,15 +186,10 @@ export default async function handler(req, res) {
   let dateStr = addAmsterdamCalendarDays(formatYyyyMmDdInAmsterdam(new Date()), 1);
   if (!dateStr) return res.status(500).json({ error: 'Datumfout' });
 
-  const blockedParam = q.blocked || '';
-  const fromQuery = new Set(normalizeBlockedDateList(blockedParam));
-  const ghlBlocked = await fetchPlanningBlockedDateSet();
-  const mergedBlocked = new Set([...fromQuery, ...ghlBlocked]);
-
   for (let step = 0; step < DAYS_AHEAD + 10 && candidates.length < 12; step++) {
     const dow = amsterdamWeekdaySun0(dateStr);
     if (dow == null) break;
-    if (dow === 0 || dow === 6 || isServerDateBlocked(dateStr) || mergedBlocked.has(dateStr)) {
+    if (dow === 0 || dow === 6) {
       dateStr = addAmsterdamCalendarDays(dateStr, 1);
       continue;
     }
