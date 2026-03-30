@@ -2311,6 +2311,11 @@ async function loadAppointments(date) {
       };
       });
 
+      // Herstel klaar-status vanuit localStorage (blijft groen na datumwissel)
+      appointments.forEach(a => {
+        if (a.ghlId && isKlaarLocally(a.ghlId)) a.status = 'klaar';
+      });
+
       if (appointments.length === 0) {
         showToast('Geen afspraken voor deze dag', 'info');
       } else {
@@ -2908,7 +2913,8 @@ async function confirmDone(id) {
   }
 
   a.status = 'klaar';
-  a.priceVisible = false; // sluit de prijsbalk zodat de kaart netjes dichtgaat
+  a.priceVisible = false;
+  saveKlaarStatus(a.ghlId); // blijft groen na datumwissel
   render();
 
   // Groene vloed over de kaart
@@ -3507,6 +3513,27 @@ syncServerBlockedDates();
 // Credentials worden gevalideerd door /api/auth tegen env vars (HK_USERS).
 // Na succesvolle login slaan we een HMAC-gesigneerd token op (geldig 24 uur).
 const HK_USER_KEY    = 'hk_user';
+const HK_KLAAR_KEY   = 'hk_klaar_ids';
+
+function saveKlaarStatus(ghlId) {
+  if (!ghlId) return;
+  try {
+    const map = JSON.parse(localStorage.getItem(HK_KLAAR_KEY) || '{}');
+    map[ghlId] = Date.now();
+    // Verwijder items ouder dan 60 dagen om localStorage schoon te houden
+    const cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000;
+    for (const [k, v] of Object.entries(map)) { if (v < cutoff) delete map[k]; }
+    localStorage.setItem(HK_KLAAR_KEY, JSON.stringify(map));
+  } catch {}
+}
+
+function isKlaarLocally(ghlId) {
+  if (!ghlId) return false;
+  try {
+    const map = JSON.parse(localStorage.getItem(HK_KLAAR_KEY) || '{}');
+    return !!map[ghlId];
+  } catch { return false; }
+}
 const HK_SESSION_KEY = 'hk_session_token';
 const HK_COOKIE_MAX  = 86400; // 24 uur in seconden
 

@@ -424,7 +424,8 @@ export default async function handler(req, res) {
 
         const today = formatYyyyMmDdInAmsterdam(new Date()) || new Date().toISOString().split('T')[0];
         const customFields = [
-          { id: 'hiTe3Yi5TlxheJq4bLzy', field_value: today }, // datum_laatste_onderhoud
+          { id: 'hiTe3Yi5TlxheJq4bLzy', field_value: today },         // datum_laatste_onderhoud
+          { id: 'xAg0jUYsOL6IZZjdHuRq', field_value: 'Afgerond' },    // Betalingsstatus
         ];
         if (type === 'installatie') {
           customFields.push({ id: 'kYP2SCmhZ21Ig0aaLl5l', field_value: today }); // datum_installatie
