@@ -19,6 +19,7 @@ import { fetchWithRetry } from '../lib/retry.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
 import { signBookingToken } from '../lib/session.js';
+import { isServerDateBlocked } from '../lib/blocked-dates.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -91,7 +92,7 @@ async function getBestSlots(address, workType) {
 
   for (let step = 1; step <= DAYS_AHEAD + 3 && candidates.length < 6; step++) {
     const dow = amsterdamWeekdaySun0(dateStr);
-    if (dow === 0 || dow === 6) {
+    if (dow === 0 || dow === 6 || isServerDateBlocked(dateStr)) {
       dateStr = addAmsterdamCalendarDays(dateStr, 1);
       continue;
     }

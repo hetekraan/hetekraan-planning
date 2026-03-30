@@ -8,6 +8,7 @@ import {
   customerMaxForBlock,
   normalizeWorkType,
 } from '../lib/booking-blocks.js';
+import { isServerDateBlocked } from '../lib/blocked-dates.js';
 import {
   addAmsterdamCalendarDays,
   amsterdamCalendarDayBoundsMs,
@@ -192,11 +193,7 @@ export default async function handler(req, res) {
   for (let step = 0; step < DAYS_AHEAD + 10 && candidates.length < 12; step++) {
     const dow = amsterdamWeekdaySun0(dateStr);
     if (dow == null) break;
-    if (dow === 0 || dow === 6) {
-      dateStr = addAmsterdamCalendarDays(dateStr, 1);
-      continue;
-    }
-    if (blockedSet?.has(dateStr)) {
+    if (dow === 0 || dow === 6 || isServerDateBlocked(dateStr) || blockedSet?.has(dateStr)) {
       dateStr = addAmsterdamCalendarDays(dateStr, 1);
       continue;
     }
