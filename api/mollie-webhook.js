@@ -47,9 +47,7 @@ export default async function handler(req, res) {
 }
 
 async function updateBetalingsstatus(contactId, value) {
-  const FIELD_BETALINGSSTATUS = process.env.GHL_FIELD_BETALINGSSTATUS;
-  if (!FIELD_BETALINGSSTATUS || !GHL_KEY) return;
-
+  if (!GHL_KEY) return;
   try {
     await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
       method: 'PUT',
@@ -59,7 +57,7 @@ async function updateBetalingsstatus(contactId, value) {
         Version: '2021-04-15',
       },
       body: JSON.stringify({
-        customFields: [{ id: FIELD_BETALINGSSTATUS, field_value: value }],
+        customFields: [{ id: 'xAg0jUYsOL6IZZjdHuRq', field_value: value }], // Betalingsstatus
       }),
     });
   } catch (err) {

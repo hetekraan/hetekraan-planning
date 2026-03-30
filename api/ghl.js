@@ -204,18 +204,6 @@ export default async function handler(req, res) {
 
   const { action } = req.query;
 
-  // ─── Tijdelijk: maak Betalingsstatus custom field aan ─────────────────────
-  if (action === 'createBetalingField') {
-    const r = await fetch(`${GHL_BASE}/locations/${GHL_LOCATION_ID}/customFields`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', Version: '2021-07-28' },
-      body: JSON.stringify({ name: 'Betalingsstatus', dataType: 'TEXT', model: 'contact' }),
-    });
-    const d = await r.json();
-    return res.status(r.status).json(d);
-  }
-  // ────────────────────────────────────────────────────────────────────────
-
   // ─── Diagnose (geen auth vereist) ─────────────────────────────────────────
   if (action === 'health') {
     const users = parseUsers();
