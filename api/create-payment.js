@@ -102,6 +102,7 @@ export default async function handler(req, res) {
         },
         description: `Hetekraan — Factuur ${invNumber}`,
         redirectUrl: process.env.MOLLIE_REDIRECT_URL || 'https://hetekraan.nl',
+        webhookUrl: 'https://betalen.hetekraan.nl/api/mollie-webhook',
         metadata: { invoiceNumber: invNumber, contactId },
       });
       paymentUrl = payment.getCheckoutUrl();
