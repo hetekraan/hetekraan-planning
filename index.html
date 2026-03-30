@@ -2863,6 +2863,9 @@ async function confirmDone(id) {
   }
 
   // 2. Betaallink + factuur PDF versturen
+  if (a.contactId && total === 0) {
+    showToast('✓ Klant afgerond — geen betaallink (prijs is €0, vul eerst een prijs in via 💶 Prijs)', 'info');
+  }
   if (a.contactId && total > 0) {
     try {
       const resp = await fetch('/api/create-payment', {
@@ -2887,8 +2890,8 @@ async function confirmDone(id) {
       } else if (result.paymentUrl) {
         const d = result.ghlDiag || {};
         if (!d.tagSet) {
-          // GHL tag mislukt → WhatsApp wordt mogelijk niet automatisch verstuurd
-          // Toon betaallink direct in het dashboard zodat je hem handmatig kunt kopiëren
+          const tagErr = d.tagError ? ` (${d.tagError})` : '';
+          console.warn('[create-payment] tag mislukt' + tagErr, result.ghlDiag);
           showPaymentLinkFallback(result.paymentUrl, result.invoiceNumber, result.totalInclBTW);
         } else {
           showToast(`✓ Klaar!\n💳 Betaallink verstuurd via WhatsApp\n📄 Factuur ${result.invoiceNumber}`, 'success');

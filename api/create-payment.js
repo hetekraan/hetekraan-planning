@@ -10,6 +10,7 @@ import { generateInvoicePDF, calcInvoiceTotal } from '../lib/invoice.js';
 import { fetchWithRetry }     from '../lib/retry.js';
 import { sendErrorNotification } from '../lib/notify.js';
 import { verifySessionToken } from '../lib/session.js';
+import { pulseContactTag } from '../lib/ghl-tag.js';
 
 const GHL_API_KEY  = process.env.GHL_API_KEY;
 const GHL_BASE     = 'https://services.leadconnectorhq.com';
@@ -173,34 +174,15 @@ export default async function handler(req, res) {
         ghlDiag.noteAdded = noteRes.ok;
       } catch {}
 
-      // Verwijder tag eerst (zodat workflow opnieuw triggert bij herhaald gebruik)
-      try {
-        await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}/tags`, {
-          method: 'DELETE',
-          headers: GHL_HEADERS,
-          body: JSON.stringify({ tags: ['stuur-betaallink'] })
-        });
-      } catch {}
-      await new Promise(r => setTimeout(r, 1500));
-
-      try {
-        const tagRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}/tags`, {
-          method: 'POST',
-          headers: GHL_HEADERS,
-          body: JSON.stringify({ tags: ['stuur-betaallink'] })
-        });
-        ghlDiag.tagSet = tagRes.ok;
-        if (!tagRes.ok) {
-          const t = await tagRes.text().catch(() => '');
-          ghlDiag.tagError = `${tagRes.status}: ${t.slice(0, 200)}`;
-          console.error('[create-payment] Tag stuur-betaallink fout:', tagRes.status, t.slice(0, 300));
-          await sendErrorNotification('create-payment: GHL tag stuur-betaallink mislukt', ghlDiag.tagError);
-        } else {
-          console.log('[create-payment] Tag stuur-betaallink gezet ✓');
-        }
-      } catch (err) {
-        ghlDiag.tagError = err.message;
-        console.error('[create-payment] Tag fout:', err.message);
+      // Tag pulseren zodat GHL-workflow opnieuw triggert
+      const tagOk = await pulseContactTag(contactId, 'stuur-betaallink', '[create-payment]');
+      ghlDiag.tagSet = tagOk;
+      if (!tagOk) {
+        ghlDiag.tagError = 'pulseContactTag returned false — zie server logs';
+        console.error('[create-payment] Tag stuur-betaallink mislukt');
+        await sendErrorNotification('create-payment: GHL tag stuur-betaallink mislukt', 'pulseContactTag returned false');
+      } else {
+        console.log('[create-payment] Tag stuur-betaallink gezet ✓');
       }
     }
 
