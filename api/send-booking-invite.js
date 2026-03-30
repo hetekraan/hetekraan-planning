@@ -81,7 +81,8 @@ async function geocodeEvents(events) {
   return coords;
 }
 
-async function getBestSlots(address, workType) {
+async function getBestSlots(address, workType, clientBlockedDates = []) {
+  const clientBlockedSet = new Set(Array.isArray(clientBlockedDates) ? clientBlockedDates : []);
   const newCoord = address ? await geocode(address) : null;
   const candidates = [];
 
@@ -92,7 +93,7 @@ async function getBestSlots(address, workType) {
 
   for (let step = 1; step <= DAYS_AHEAD + 3 && candidates.length < 6; step++) {
     const dow = amsterdamWeekdaySun0(dateStr);
-    if (dow === 0 || dow === 6 || isServerDateBlocked(dateStr)) {
+    if (dow === 0 || dow === 6 || isServerDateBlocked(dateStr) || clientBlockedSet.has(dateStr)) {
       dateStr = addAmsterdamCalendarDays(dateStr, 1);
       continue;
     }
@@ -183,7 +184,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const body = parseRequestBody(req);
-  let { contactId, name: nameParam, phone: phoneParam, address: addressParam, type: typeParam, workType: workTypeParam } = body;
+  let { contactId, name: nameParam, phone: phoneParam, address: addressParam, type: typeParam, workType: workTypeParam, blockedDates: clientBlockedDates } = body;
 
   // Zoek contact op naam of telefoon als er geen contactId is
   if (!contactId) {
@@ -271,7 +272,7 @@ export default async function handler(req, res) {
   const workType = normalizeWorkType(workTypeParam || typeParam || getField(contact, FIELD_IDS.type_onderhoud));
 
   // Bereken de 2 beste slots (rekening houdend met max 4/3 per blok + geplande minuten)
-  const slots = await getBestSlots(address, workType);
+  const slots = await getBestSlots(address, workType, clientBlockedDates);
   if (slots.length === 0) {
     return res.status(200).json({ success: false, message: 'Geen beschikbare slots in de komende 7 werkdagen.' });
   }

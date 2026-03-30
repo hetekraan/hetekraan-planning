@@ -3355,7 +3355,7 @@ async function sendBookingLink() {
     const res = await fetch('/api/send-booking-invite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, phone, address, type, workType: type, desc })
+      body: JSON.stringify({ name, phone, address, type, workType: type, desc, blockedDates: getBlockedDates() })
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.message || data.error || 'Fout');
