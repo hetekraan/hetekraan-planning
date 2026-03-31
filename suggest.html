@@ -381,13 +381,15 @@
         list.appendChild(div);
       });
 
-      // Bericht preview
-      const s1 = data.suggestions[0];
-      const s2 = data.suggestions[1];
-      const firstName = displayName.split(' ')[0];
-      let msg = `We hebben nog een gaatje op een van de volgende twee tijdslots:\n\n`;
-      msg += `*Optie 1:* ${capitalize(s1.dateLabel)} tussen ${s1.timeLabel}\n`;
-      if (s2) msg += `*Optie 2:* ${capitalize(s2.dateLabel)} tussen ${s2.timeLabel}\n`;
+      // Bericht preview (zelfde opties als de lijst erboven)
+      const sugg = data.suggestions || [];
+      const n = sugg.length;
+      const slotPhrase =
+        n <= 1 ? 'dit tijdslot' : n === 2 ? 'een van de volgende twee tijdslots' : `een van de volgende ${n} tijdslots`;
+      let msg = `We hebben nog een gaatje op ${slotPhrase}:\n\n`;
+      sugg.forEach((s, i) => {
+        msg += `*Optie ${i + 1}:* ${capitalize(s.dateLabel)} tussen ${s.timeLabel}\n`;
+      });
       msg += `\nKlik op de link om jouw voorkeur door te geven, dan plannen we het gelijk in:\n[boekingslink]`;
       document.getElementById('previewText').textContent = msg;
       show('messageCard');

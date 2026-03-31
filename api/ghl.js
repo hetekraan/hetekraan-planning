@@ -9,7 +9,7 @@ import { fetchWithRetry } from '../lib/retry.js';
 import { sendErrorNotification } from '../lib/notify.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
 import { signSessionToken, parseUsers, verifySessionToken } from '../lib/session.js';
-import { fetchBlockedSlotsAsEvents, postFullDayBlockSlot } from '../lib/ghl-calendar-blocks.js';
+import { fetchBlockedSlotsAsEvents, markBlockLikeOnCalendarEvents, postFullDayBlockSlot } from '../lib/ghl-calendar-blocks.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -300,26 +300,7 @@ export default async function handler(req, res) {
         const data = await response.json();
         let events = data?.events || [];
 
-        /** Bloktijd staat soms alleen in de events-feed; GHL kan wél een user/contact koppelen aan blokslots. */
-        const blockTitleRe =
-          /geblokkeerd|dag\s*geblok|blokslot|blocked\s*time|block\s*slot|niet\s*beschikbaar|afwezig|gesloten|unavailable|\bbusy\b|\bhold\b/i;
-        for (const e of events) {
-          if (!e || typeof e !== 'object' || e._hkGhlBlockSlot) continue;
-          const ce = e.calendarEvent || {};
-          if (ce.isBlocked === true || e.isBlocked === true) {
-            e._hkGhlBlockSlot = true;
-            continue;
-          }
-          const title = String(e.title || ce.title || '').trim();
-          if (title && blockTitleRe.test(title)) {
-            e._hkGhlBlockSlot = true;
-            continue;
-          }
-          const noContact = !(e.contactId || e.contact_id);
-          if (noContact && !title && (ce.appointmentStatus === 'blocked' || e.appointmentStatus === 'blocked')) {
-            e._hkGhlBlockSlot = true;
-          }
-        }
+        markBlockLikeOnCalendarEvents(events);
 
         const blockedAsEvents = await fetchBlockedSlotsAsEvents(GHL_BASE, {
           locationId: GHL_LOCATION_ID,
