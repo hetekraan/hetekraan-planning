@@ -737,6 +737,7 @@
   body.large-text .btn-add                   { font-size: 14px; padding: 10px 18px; }
   body.large-text .btn-dagopgave             { font-size: 17px; padding: 8px 11px; }
   body.large-text .btn-block-cal             { font-size: 17px; padding: 8px 11px; }
+  body.large-text .day-blocked-banner       { font-size: 15px; padding: 12px 14px; }
   body.large-text .appt-number              { font-size: 12px; }
   body.large-text .appt-time                { font-size: 18px; }
   body.large-text .slot-daypart-hint         { font-size: 16px; }
@@ -803,6 +804,24 @@
     background: rgba(255, 140, 0, 0.06);
   }
   .appt-card.cal-block .appt-number { color: #ffb347; }
+
+  .day-blocked-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 140, 0, 0.45);
+    background: rgba(255, 140, 0, 0.12);
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .day-blocked-banner strong { color: #ffb347; }
+  .planning-section--blocks .planning-section-title {
+    color: #ffb347;
+  }
 
   /* Dagopgave modal */
   .dagopgave-modal {
@@ -1211,6 +1230,7 @@
         <button class="btn-add" onclick="openModal()">+ Afspraak</button>
       </div>
     </div>
+    <div id="dayBlockedBanner" class="day-blocked-banner" style="display:none" role="status"></div>
     <div id="apptList"></div>
     <div class="total-bar">
       <div class="total-label">Totaal dagomzet</div>
@@ -2007,10 +2027,22 @@ async function loadAppointments(date) {
       const events = filterGhlEventsForDashboardDay(data?.events, dateStr);
 
       appointments = events.map((e, i) => {
-      const startMs = ghlEventStartMs(e);
-      const start = new Date(startMs);
-      const dayPart = hourInAmsterdamFromMs(startMs) < 13 ? 0 : 1;
-      const time = normalizeTimeStr(start.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }));
+      const isCalBlock = !!e._hkGhlBlockSlot;
+      let startMs = ghlEventStartMs(e);
+      if (isCalBlock && Number.isNaN(startMs)) startMs = 0;
+      const start = new Date(Number.isNaN(startMs) ? Date.now() : startMs);
+      const dayPart =
+        isCalBlock ? 0 : hourInAmsterdamFromMs(startMs) < 13 ? 0 : 1;
+      const time =
+        isCalBlock && startMs === 0
+          ? '—'
+          : normalizeTimeStr(
+              start.toLocaleTimeString('nl-NL', {
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: 'Europe/Amsterdam',
+              })
+            );
       const work = e.title || 'Werkzaamheden';
       let type = 'onderhoud';
       if (/instal|plaatsen|nieuw|monter/i.test(work)) type = 'installatie';
@@ -2021,7 +2053,6 @@ async function loadAppointments(date) {
       const contact = e.contact || {};
       const firstName = contact.firstName || '';
       const lastName = contact.lastName || '';
-      const isCalBlock = !!e._hkGhlBlockSlot;
       const name = isCalBlock
         ? (work || 'Agenda geblokkeerd')
         : ((firstName + ' ' + lastName).trim() || address.split(' ')[0] || 'Klant');
@@ -2081,10 +2112,15 @@ async function loadAppointments(date) {
         if (a.ghlId && isKlaarLocally(a.ghlId)) a.status = 'klaar';
       });
 
+      const nBlk = appointments.filter((a) => a.isCalBlock).length;
+      const nCli = appointments.length - nBlk;
       if (appointments.length === 0) {
         showToast('Geen afspraken voor deze dag', 'info');
       } else {
-        showToast(`✓ ${appointments.length} afspraken geladen`, 'success');
+        const parts = [];
+        if (nCli) parts.push(`${nCli} afspraak${nCli === 1 ? '' : 'en'}`);
+        if (nBlk) parts.push(`${nBlk} blokslot${nBlk === 1 ? '' : 'ten'}`);
+        showToast(`✓ ${parts.join(', ')} geladen`, 'success');
       }
   } catch (err) {
     console.warn('GHL niet bereikbaar', err);
@@ -2123,11 +2159,12 @@ function fmtEuro(amount) {
 }
 
 function calcStats() {
-  const klaar   = appointments.filter(a => a.status === 'klaar').length;
+  const clients = appointments.filter((a) => !a.isCalBlock);
+  const klaar   = clients.filter(a => a.status === 'klaar').length;
   // Gebruik calcTotalPrice zodat extras (onderdelen) ook worden meegeteld
-  const omzetKlaar = appointments.reduce((s, a) => s + (a.status === 'klaar' ? calcTotalPrice(a) : 0), 0);
-  const total      = appointments.reduce((s, a) => s + calcTotalPrice(a), 0);
-  document.getElementById('totalAfspraken').textContent = appointments.length;
+  const omzetKlaar = clients.reduce((s, a) => s + (a.status === 'klaar' ? calcTotalPrice(a) : 0), 0);
+  const total      = clients.reduce((s, a) => s + calcTotalPrice(a), 0);
+  document.getElementById('totalAfspraken').textContent = clients.length;
   document.getElementById('totalKlaar').textContent     = klaar;
   document.getElementById('totalOmzet').textContent     = fmtEuro(omzetKlaar);
   document.getElementById('totalBar').textContent       = fmtEuro(total);
@@ -2260,9 +2297,29 @@ function renderApptCard(a, i) {
 function render() {
   assignRouteStops();
   const sorted = [...appointments].sort((a, b) => (a.routeStop || 99) - (b.routeStop || 99));
-  const morningApts = sorted.filter((x) => x.dayPart === 0);
-  const afternoonApts = sorted.filter((x) => x.dayPart !== 0);
+  const blocks = sorted.filter((x) => x.isCalBlock).sort((a, b) => (a.startMs || 0) - (b.startMs || 0));
+  const clients = sorted.filter((x) => !x.isCalBlock);
+  const morningApts = clients.filter((x) => x.dayPart === 0);
+  const afternoonApts = clients.filter((x) => x.dayPart !== 0);
+
+  const bannerEl = document.getElementById('dayBlockedBanner');
+  if (bannerEl) {
+    if (blocks.length) {
+      bannerEl.style.display = 'flex';
+      bannerEl.innerHTML =
+        '<span aria-hidden="true">🚫</span><span><strong>Deze dag is geblokkeerd in GHL</strong> — er staat officiële bloktijd op de agenda (geen klantafspraak in die uren). Online boeken slaat geblokkeerde werktijd over. Details staan hieronder.</span>';
+    } else {
+      bannerEl.style.display = 'none';
+      bannerEl.innerHTML = '';
+    }
+  }
+
   const parts = [];
+  if (blocks.length) {
+    parts.push(
+      `<div class="planning-section planning-section--blocks"><div class="planning-section-title">🚫 Geblokkeerd in GHL</div>${blocks.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
+    );
+  }
   if (morningApts.length) {
     parts.push(
       `<div class="planning-section"><div class="planning-section-title">Ochtend 09:00–13:00</div>${morningApts.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
