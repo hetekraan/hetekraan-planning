@@ -300,6 +300,21 @@ export default async function handler(req, res) {
         const data = await response.json();
         let events = data?.events || [];
 
+        /** Bloktijd staat soms alleen in de events-feed (zonder contact), niet in GET blocked-slots. */
+        for (const e of events) {
+          if (!e || typeof e !== 'object' || e._hkGhlBlockSlot) continue;
+          const ce = e.calendarEvent || {};
+          if (ce.isBlocked === true || e.isBlocked === true) {
+            e._hkGhlBlockSlot = true;
+            continue;
+          }
+          const title = String(e.title || ce.title || '').trim();
+          const noContact = !(e.contactId || e.contact_id);
+          if (noContact && title && /geblokkeerd|dag\s*geblok|blocked\s*time|block\s*slot/i.test(title)) {
+            e._hkGhlBlockSlot = true;
+          }
+        }
+
         const blockedAsEvents = await fetchBlockedSlotsAsEvents(GHL_BASE, {
           locationId: GHL_LOCATION_ID,
           calendarId: GHL_CALENDAR_ID,
