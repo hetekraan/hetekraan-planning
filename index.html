@@ -1556,18 +1556,14 @@ function canonicalGhlEventIdClient(e) {
 }
 
 /**
- * Filter + dedupe GHL-events voor het dashboard (browser-side spiegellogica van api/ghl.js).
+ * Dedupe GHL-events voor het dashboard (server filtert al op overlappende dag).
  * Pass 1: uniek op canoniek event-id.
  * Pass 2: per contactId → vroegste event houden; events binnen 60 min van het eerste
  *         event voor dit contact worden als retry-duplicaat beschouwd en weggefilterd.
  *         Twee echte afspraken (ochtend + middag) hebben >60 min verschil en blijven zichtbaar.
  */
-function filterGhlEventsForDashboardDay(events, dateStr) {
-  const onDay = (events || []).filter((e) => {
-    const ms = ghlEventStartMs(e);
-    if (Number.isNaN(ms)) return false;
-    return getDateStr(new Date(ms)) === dateStr;
-  });
+function filterGhlEventsForDashboardDay(events, _dateStr) {
+  const onDay = events || [];
 
   const byId = new Set();
   const pass1 = [];

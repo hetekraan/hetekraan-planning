@@ -68,6 +68,43 @@ function getEventStartDayAmsterdam(e) {
   return formatYyyyMmDdInAmsterdam(new Date(ms));
 }
 
+function eventEndMsGhl(e) {
+  const candidates = [
+    e?.endTime,
+    e?.end_time,
+    e?.end,
+    e?.appointmentEndTime,
+    e?.appointment?.endTime,
+    e?.calendarEvent?.endTime,
+  ];
+  for (const c of candidates) {
+    if (c == null) continue;
+    if (typeof c === 'number') {
+      const ms = c < 1e12 ? Math.round(c * 1000) : c;
+      if (!Number.isNaN(ms)) return ms;
+    }
+    if (typeof c === 'string') {
+      const t = Date.parse(c);
+      if (!Number.isNaN(t)) return t;
+    }
+  }
+  return NaN;
+}
+
+/** True als het event deze Amsterdam-kalenderdag raakt (o.a. meerdere-dagen vakantie). */
+function eventOverlapsAmsterdamDay(e, dateStr) {
+  const bounds = amsterdamCalendarDayBoundsMs(dateStr);
+  if (!bounds) return false;
+  const startMs = eventStartMsGhl(e);
+  if (Number.isNaN(startMs)) return false;
+  let endMs = eventEndMsGhl(e);
+  if (Number.isNaN(endMs)) {
+    return getEventStartDayAmsterdam(e) === dateStr;
+  }
+  const { startMs: dayStart, endMs: dayEnd } = bounds;
+  return startMs <= dayEnd && endMs >= dayStart;
+}
+
 /**
  * Dedupe GHL-events voor het dashboard.
  * Pass 1: uniek op canoniek event-id (voorkomt zelfde id als number + string).
@@ -309,8 +346,8 @@ export default async function handler(req, res) {
           return e;
         });
 
-        /** Alleen events waarvan start op de gevraagde kalenderdag valt (Europe/Amsterdam). */
-        const filtered = enriched.filter((e) => getEventStartDayAmsterdam(e) === date);
+        /** Events die deze Amsterdam-dag raken (ook langlopende blokken / vakantie). */
+        const filtered = enriched.filter((e) => eventOverlapsAmsterdamDay(e, date));
         const unique = dedupeGhlEventsForDashboard(filtered);
 
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
