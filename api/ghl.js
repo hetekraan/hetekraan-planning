@@ -97,7 +97,10 @@ function eventOverlapsAmsterdamDay(e, dateStr) {
   const bounds = amsterdamCalendarDayBoundsMs(dateStr);
   if (!bounds) return false;
   const startMs = eventStartMsGhl(e);
-  if (Number.isNaN(startMs)) return false;
+  if (Number.isNaN(startMs)) {
+    if (e?._hkGhlBlockSlot) return true;
+    return false;
+  }
   let endMs = eventEndMsGhl(e);
   if (Number.isNaN(endMs)) {
     return getEventStartDayAmsterdam(e) === dateStr;
