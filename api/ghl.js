@@ -810,22 +810,50 @@ export default async function handler(req, res) {
         if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
         const date = normalizeYyyyMmDdInput(String(req.body?.date || ''));
         if (!date) return res.status(400).json({ error: 'date vereist (YYYY-MM-DD)' });
+        if (!GHL_CALENDAR_ID || !String(GHL_CALENDAR_ID).trim()) {
+          return res.status(500).json({
+            error: 'GHL_CALENDAR_ID ontbreekt in de serverconfig (Vercel Environment Variables).',
+          });
+        }
         const titleRaw = req.body?.title;
         const title = titleRaw != null && String(titleRaw).trim() ? String(titleRaw).trim().slice(0, 120) : 'Dag geblokkeerd';
-        const assignedUserId = process.env.GHL_BLOCK_SLOT_USER_ID || undefined;
         const r = await postFullDayBlockSlot(GHL_BASE, {
           locationId: GHL_LOCATION_ID,
           calendarId: GHL_CALENDAR_ID,
           dateStr: date,
           title,
           apiKey: GHL_API_KEY,
-          assignedUserId,
+          blockSlotUserId: process.env.GHL_BLOCK_SLOT_USER_ID,
+          appointmentUserId: process.env.GHL_APPOINTMENT_ASSIGNED_USER_ID,
         });
+        if (r.error && !r.status) {
+          return res.status(400).json({ error: r.error });
+        }
         if (!r.ok) {
-          console.warn('[blockCalendarDay] GHL:', r.status, r.detail);
+          const ghlDetail =
+            typeof r.detail === 'string'
+              ? r.detail
+              : JSON.stringify(r.detail || r.data || {}).slice(0, 600);
+          console.warn(
+            '[blockCalendarDay] GHL:',
+            r.status,
+            r.versionTried,
+            r.timeFormatTried,
+            ghlDetail
+          );
+          const tip =
+            'Tip: Private Integration → scope calendars/events.write; zo nodig GHL_BLOCK_SLOT_USER_ID (zelfde user als boekingen).';
+          const detailTrim = String(ghlDetail || '').trim();
+          const error =
+            detailTrim.length > 0
+              ? `${detailTrim.slice(0, 400)}${detailTrim.length > 400 ? '…' : ''} — ${tip}`
+              : `GHL kon deze dag niet blokkeren (HTTP ${r.status}). ${tip}`;
           return res.status(502).json({
-            error: 'GHL kon deze dag niet blokkeren. Controleer API-rechten (calendars) en of block-slots voor deze kalender is toegestaan.',
-            detail: r.detail || r.data,
+            error,
+            ghlStatus: r.status,
+            ghlDetail: detailTrim || undefined,
+            hint:
+              'HighLevel → Settings → Private Integrations → jouw app → Scopes: calendars/events.write. Soms is een nieuwe API key nodig na scope-wijziging.',
           });
         }
         return res.status(200).json({ success: true, ...r.data });
