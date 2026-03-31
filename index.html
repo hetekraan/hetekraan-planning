@@ -3143,8 +3143,12 @@ async function blockCurrentDayInGhl() {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const msg = data.error || data.detail?.message || `Fout ${res.status}`;
-      throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+      let msg = data.error || data.detail?.message || `Fout ${res.status}`;
+      if (typeof msg !== 'string') msg = JSON.stringify(msg);
+      const ghl = data.ghlDetail != null && String(data.ghlDetail).trim() ? String(data.ghlDetail).trim() : '';
+      if (ghl) msg += '\n\nGHL: ' + ghl;
+      if (data.hint) msg += '\n\n' + String(data.hint);
+      throw new Error(msg);
     }
     showToast('✓ Dag geblokkeerd in GHL', 'success');
     await loadAppointments(currentDate);
