@@ -838,7 +838,14 @@ export default async function handler(req, res) {
             typeof r.detail === 'string'
               ? r.detail
               : JSON.stringify(r.detail || r.data || {}).slice(0, 600);
-          console.warn('[blockCalendarDay] GHL:', r.status, r.versionTried, ghlDetail);
+          console.warn(
+            '[blockCalendarDay] GHL:',
+            r.status,
+            r.versionTried,
+            r.timeFormatTried,
+            r.calendarIdOmitted ? 'no-calendarId' : 'with-calendarId',
+            ghlDetail
+          );
           const tip =
             'Controleer scopes (calendars/events.write) en Vercel: GHL_APPOINTMENT_ASSIGNED_USER_ID of GHL_BLOCK_SLOT_USER_ID.';
           const detailTrim = String(ghlDetail || '').trim();
