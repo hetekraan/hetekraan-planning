@@ -798,6 +798,12 @@
     transition: background 0.15s;
   }
   .btn-block-cal:hover { background: rgba(255, 140, 0, 0.12); color: #ffb347; border-color: rgba(255, 140, 0, 0.35); }
+  .btn-block-cal.is-day-blocked {
+    background: rgba(255, 140, 0, 0.18);
+    color: #ffb347;
+    border-color: rgba(255, 140, 0, 0.45);
+    cursor: default;
+  }
 
   .appt-card.cal-block {
     border-color: rgba(255, 140, 0, 0.45);
@@ -819,6 +825,17 @@
     line-height: 1.45;
   }
   .day-blocked-banner strong { color: #ffb347; }
+  .day-blocked-dismiss {
+    margin-left: 10px;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 140, 0, 0.45);
+    background: rgba(255, 140, 0, 0.12);
+    color: #ffb347;
+    cursor: pointer;
+  }
+  .day-blocked-dismiss:hover { background: rgba(255, 140, 0, 0.22); }
   .planning-section--blocks .planning-section-title {
     color: #ffb347;
   }
@@ -1226,7 +1243,7 @@
       <div class="section-title">⬛ Afspraken van de dag</div>
       <div class="appointments-header-actions">
         <button class="btn-dagopgave" onclick="openDagopgave()" title="Dagopgave voor Tellow">📋</button>
-        <button class="btn-block-cal" type="button" onclick="blockCurrentDayInGhl()" title="Zet in GHL een officiële blokslot over deze hele dag (geen klantafspraak)">🚫 Blokkeer dag</button>
+        <button class="btn-block-cal" id="btnBlockDayGhl" type="button" onclick="blockCurrentDayInGhl()" title="Zet in GHL een officiële blokslot over deze hele dag (geen klantafspraak)">🚫 Blokkeer dag</button>
         <button class="btn-add" onclick="openModal()">+ Afspraak</button>
       </div>
     </div>
@@ -1679,6 +1696,46 @@ function routeSnapshotKey(dateStr) {
   return `hk_route_times_${dateStr}`;
 }
 
+const HK_DASH_BLOCKED_DATES_KEY = 'hk_dash_blocked_dates';
+
+function readDashBlockedDates() {
+  try {
+    const raw = localStorage.getItem(HK_DASH_BLOCKED_DATES_KEY);
+    const o = raw ? JSON.parse(raw) : {};
+    return typeof o === 'object' && o && !Array.isArray(o) ? o : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function writeDashBlockedDates(o) {
+  try {
+    localStorage.setItem(HK_DASH_BLOCKED_DATES_KEY, JSON.stringify(o));
+  } catch (_) {}
+}
+
+function markDashBlockedDate(dateStr) {
+  const o = readDashBlockedDates();
+  o[dateStr] = Date.now();
+  writeDashBlockedDates(o);
+}
+
+function clearDashBlockedDate(dateStr) {
+  const o = readDashBlockedDates();
+  if (o[dateStr] == null) return;
+  delete o[dateStr];
+  writeDashBlockedDates(o);
+}
+
+function isDashBlockedPending(dateStr) {
+  return readDashBlockedDates()[dateStr] != null;
+}
+
+function dismissDashBlockedBanner() {
+  clearDashBlockedDate(getDateStr(currentDate));
+  render();
+}
+
 /** HH:mm voor sorteren en API (nl-NL kan "9:30" geven) */
 function normalizeTimeStr(t) {
   if (t == null || t === '') return '';
@@ -2114,6 +2171,8 @@ async function loadAppointments(date) {
 
       const nBlk = appointments.filter((a) => a.isCalBlock).length;
       const nCli = appointments.length - nBlk;
+      if (nBlk > 0) clearDashBlockedDate(dateStr);
+
       if (appointments.length === 0) {
         showToast('Geen afspraken voor deze dag', 'info');
       } else {
@@ -2301,6 +2360,8 @@ function render() {
   const clients = sorted.filter((x) => !x.isCalBlock);
   const morningApts = clients.filter((x) => x.dayPart === 0);
   const afternoonApts = clients.filter((x) => x.dayPart !== 0);
+  const dateStrUi = getDateStr(currentDate);
+  const dashBlockedPending = isDashBlockedPending(dateStrUi) && blocks.length === 0;
 
   const bannerEl = document.getElementById('dayBlockedBanner');
   if (bannerEl) {
@@ -2308,16 +2369,46 @@ function render() {
       bannerEl.style.display = 'flex';
       bannerEl.innerHTML =
         '<span aria-hidden="true">🚫</span><span><strong>Deze dag is geblokkeerd in GHL</strong> — er staat officiële bloktijd op de agenda (geen klantafspraak in die uren). Online boeken slaat geblokkeerde werktijd over. Details staan hieronder.</span>';
+    } else if (dashBlockedPending) {
+      bannerEl.style.display = 'flex';
+      bannerEl.innerHTML =
+        '<span aria-hidden="true">🚫</span><span><strong>Deze dag is geblokkeerd</strong> — zojuist via dit dashboard gezet. GHL toont het blokslot soms pas na een paar seconden; ververs de dag of controleer de GHL-agenda. <button type="button" class="day-blocked-dismiss" onclick="dismissDashBlockedBanner()">Melding verbergen</button></span>';
     } else {
       bannerEl.style.display = 'none';
       bannerEl.innerHTML = '';
     }
   }
 
+  const blockBtn = document.getElementById('btnBlockDayGhl');
+  if (blockBtn) {
+    const dayIsBlocked = blocks.length > 0 || dashBlockedPending;
+    blockBtn.classList.toggle('is-day-blocked', dayIsBlocked);
+    blockBtn.textContent = dayIsBlocked ? '✓ Dag geblokkeerd' : '🚫 Blokkeer dag';
+    blockBtn.disabled = dayIsBlocked;
+  }
+
   const parts = [];
   if (blocks.length) {
     parts.push(
       `<div class="planning-section planning-section--blocks"><div class="planning-section-title">🚫 Geblokkeerd in GHL</div>${blocks.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
+    );
+  } else if (dashBlockedPending) {
+    parts.push(
+      `<div class="planning-section planning-section--blocks"><div class="planning-section-title">🚫 Geblokkeerd in GHL</div>
+      <div class="appt-card cal-block">
+        <div class="appt-number">—</div>
+        <div class="appt-inner">
+          <div class="appt-top">
+            <div class="appt-time">
+              <span class="time-window-badge" style="background:rgba(255,140,0,0.2);color:#ffb347;border:1px solid rgba(255,140,0,0.35)">Blokslot</span>
+              <span class="ghl-cal-time-hint">—</span>
+            </div>
+            <div class="appt-actions"></div>
+          </div>
+          <div class="appt-name">DAG GEBLOKKEERD (DASHBOARD)</div>
+          <div class="appt-desc" style="color:var(--muted);font-size:12px;line-height:1.45">Het blokslot staat in GHL; deze kaart verschijnt tot de agenda-sync het zichtbaar maakt. <button type="button" class="day-blocked-dismiss" style="margin-top:8px" onclick="dismissDashBlockedBanner()">Melding wissen</button></div>
+        </div>
+      </div></div>`
     );
   }
   if (morningApts.length) {
@@ -3209,6 +3300,7 @@ async function blockCurrentDayInGhl() {
       throw new Error(msg);
     }
     showToast('✓ Dag geblokkeerd in GHL', 'success');
+    markDashBlockedDate(dateStr);
     await loadAppointments(currentDate);
   } catch (e) {
     showToast(String(e.message || e), 'info');

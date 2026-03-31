@@ -300,7 +300,9 @@ export default async function handler(req, res) {
         const data = await response.json();
         let events = data?.events || [];
 
-        /** Bloktijd staat soms alleen in de events-feed (zonder contact), niet in GET blocked-slots. */
+        /** Bloktijd staat soms alleen in de events-feed; GHL kan wél een user/contact koppelen aan blokslots. */
+        const blockTitleRe =
+          /geblokkeerd|dag\s*geblok|blokslot|blocked\s*time|block\s*slot|niet\s*beschikbaar|afwezig|gesloten|unavailable|\bbusy\b|\bhold\b/i;
         for (const e of events) {
           if (!e || typeof e !== 'object' || e._hkGhlBlockSlot) continue;
           const ce = e.calendarEvent || {};
@@ -309,8 +311,12 @@ export default async function handler(req, res) {
             continue;
           }
           const title = String(e.title || ce.title || '').trim();
+          if (title && blockTitleRe.test(title)) {
+            e._hkGhlBlockSlot = true;
+            continue;
+          }
           const noContact = !(e.contactId || e.contact_id);
-          if (noContact && title && /geblokkeerd|dag\s*geblok|blocked\s*time|block\s*slot/i.test(title)) {
+          if (noContact && !title && (ce.appointmentStatus === 'blocked' || e.appointmentStatus === 'blocked')) {
             e._hkGhlBlockSlot = true;
           }
         }
