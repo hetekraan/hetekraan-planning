@@ -19,6 +19,7 @@ import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
 import { verifyBookingToken } from '../lib/session.js';
+import { dayHasBlockedSlotsOverlappingWorkHours } from '../lib/ghl-calendar-blocks.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -168,6 +169,19 @@ export default async function handler(req, res) {
 
   const date = chosenSlot.dateStr || legacyDate;
   if (!date) return res.status(400).json({ error: 'Geen datum in slot' });
+
+  if (
+    await dayHasBlockedSlotsOverlappingWorkHours(GHL_BASE, {
+      locationId: GHL_LOCATION_ID,
+      calendarId: GHL_CALENDAR_ID,
+      apiKey: GHL_API_KEY,
+    }, date)
+  ) {
+    return res.status(409).json({
+      error: 'Deze dag is niet beschikbaar voor online boeken (agenda geblokkeerd). Kies een andere dag of neem contact op.',
+      code: 'DAY_BLOCKED',
+    });
+  }
 
   // Laag 1: in-memory lock — voorkomt duplicaten bij gelijktijdige requests op dezelfde instantie.
   const lockKey = `${contactId}:${date}:${block}`;

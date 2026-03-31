@@ -736,6 +736,7 @@
   body.large-text .section-title             { font-size: 13px; }
   body.large-text .btn-add                   { font-size: 14px; padding: 10px 18px; }
   body.large-text .btn-dagopgave             { font-size: 17px; padding: 8px 11px; }
+  body.large-text .btn-block-cal             { font-size: 17px; padding: 8px 11px; }
   body.large-text .appt-number              { font-size: 12px; }
   body.large-text .appt-time                { font-size: 18px; }
   body.large-text .slot-daypart-hint         { font-size: 16px; }
@@ -784,6 +785,24 @@
     transition: background 0.15s;
   }
   .btn-dagopgave:hover { background: var(--surface3); color: var(--text); }
+
+  .btn-block-cal {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 5px 8px;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .btn-block-cal:hover { background: rgba(255, 140, 0, 0.12); color: #ffb347; border-color: rgba(255, 140, 0, 0.35); }
+
+  .appt-card.cal-block {
+    border-color: rgba(255, 140, 0, 0.45);
+    background: rgba(255, 140, 0, 0.06);
+  }
+  .appt-card.cal-block .appt-number { color: #ffb347; }
 
   /* Dagopgave modal */
   .dagopgave-modal {
@@ -1188,6 +1207,7 @@
       <div class="section-title">⬛ Afspraken van de dag</div>
       <div class="appointments-header-actions">
         <button class="btn-dagopgave" onclick="openDagopgave()" title="Dagopgave voor Tellow">📋</button>
+        <button class="btn-block-cal" type="button" onclick="blockCurrentDayInGhl()" title="Zet in GHL een officiële blokslot over deze hele dag (geen klantafspraak)">🚫 Blokkeer dag</button>
         <button class="btn-add" onclick="openModal()">+ Afspraak</button>
       </div>
     </div>
@@ -1483,14 +1503,17 @@ function activeRouteContactIdsMorningFirst() {
 /** Routevolgorde #1–7: eerst alle ochtend (sidebar + rest op starttijd), daarna alle middag — middag nooit #1 als er ochtend is. */
 function assignRouteStops() {
   if (!appointments.length) return;
+  appointments.forEach((a) => {
+    if (a.isCalBlock) a.routeStop = null;
+  });
   const main = getRouteStopsForSidebar();
   const { morning: mainM, afternoon: mainA } = splitSidebarByDayPart(main);
   const seen = new Set([...mainM, ...mainA].map((a) => a.id));
   const restM = appointments
-    .filter((a) => !seen.has(a.id) && a.dayPart === 0)
+    .filter((a) => !a.isCalBlock && !seen.has(a.id) && a.dayPart === 0)
     .sort((a, b) => (a.startMs ?? 0) - (b.startMs ?? 0));
   const restA = appointments
-    .filter((a) => !seen.has(a.id) && a.dayPart !== 0)
+    .filter((a) => !a.isCalBlock && !seen.has(a.id) && a.dayPart !== 0)
     .sort((a, b) => (a.startMs ?? 0) - (b.startMs ?? 0));
   let n = 1;
   mainM.forEach((a) => {
@@ -1529,6 +1552,29 @@ function ghlEventStartMs(e) {
     e.appointmentStartTime,
     e.appointment?.startTime,
     e.calendarEvent?.startTime,
+  ];
+  for (const c of candidates) {
+    if (c == null) continue;
+    if (typeof c === 'number') {
+      const ms = c < 1e12 ? Math.round(c * 1000) : c;
+      if (!Number.isNaN(ms)) return ms;
+    }
+    if (typeof c === 'string') {
+      const t = Date.parse(c);
+      if (!Number.isNaN(t)) return t;
+    }
+  }
+  return NaN;
+}
+
+function ghlEventEndMs(e) {
+  const candidates = [
+    e.endTime,
+    e.end_time,
+    e.end,
+    e.appointmentEndTime,
+    e.appointment?.endTime,
+    e.calendarEvent?.endTime,
   ];
   for (const c of candidates) {
     if (c == null) continue;
@@ -1975,15 +2021,31 @@ async function loadAppointments(date) {
       const contact = e.contact || {};
       const firstName = contact.firstName || '';
       const lastName = contact.lastName || '';
-      const name = (firstName + ' ' + lastName).trim() || address.split(' ')[0] || 'Klant';
+      const isCalBlock = !!e._hkGhlBlockSlot;
+      const name = isCalBlock
+        ? (work || 'Agenda geblokkeerd')
+        : ((firstName + ' ' + lastName).trim() || address.split(' ')[0] || 'Klant');
       const mapsUrl = address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : '';
       const cid = e.contactId || e.contact_id || contact.id || '';
       const ghlUrl = cid ? `${GHL_BASE_URL}/${cid}` : '';
+      const endMsRaw = ghlEventEndMs(e);
+      let blockEndLabel = '';
+      if (isCalBlock && !Number.isNaN(endMsRaw)) {
+        blockEndLabel = normalizeTimeStr(
+          new Date(endMsRaw).toLocaleTimeString('nl-NL', {
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: 'Europe/Amsterdam',
+          })
+        );
+      }
 
       return {
         id: i + 1,
         startMs,
         dayPart,
+        isCalBlock,
+        blockEndLabel,
         // Kalender-event id (DELETE /calendars/events/:id); server probeert ook …/appointments/:id
         ghlId: canonicalGhlEventIdClient(e),
         contactId: cid,
@@ -2072,6 +2134,25 @@ function calcStats() {
 }
 
 function renderApptCard(a, i) {
+    if (a.isCalBlock) {
+      const endPart = a.blockEndLabel ? ` – ${a.blockEndLabel}` : '';
+      return `
+    <div class="appt-card cal-block" id="card-${a.id}">
+      <div class="appt-number">—</div>
+      <div class="appt-inner">
+        <div class="appt-top">
+          <div class="appt-time">
+            <span class="time-window-badge" style="background:rgba(255,140,0,0.2);color:#ffb347;border:1px solid rgba(255,140,0,0.35)">GHL blokslot</span>
+            <span class="ghl-cal-time-hint" title="Officiële bloktijd in GHL">${a.time || '—'}${endPart}</span>
+          </div>
+          <div class="appt-actions"></div>
+        </div>
+        <div class="appt-name">${a.name.toUpperCase()}</div>
+        <div class="appt-desc" style="color:var(--muted);font-size:12px;line-height:1.45">Geen klantafspraak. Verwijderen of aanpassen doe je in de GHL-agenda (bloktijd).</div>
+      </div>
+    </div>`;
+    }
+
     const isDone = a.status === 'klaar';
     const isOnderweg = a.status === 'onderweg';
     const isViolation = !!a.violation;
@@ -3048,6 +3129,29 @@ function openModal() {
   document.getElementById('modalOverlay').classList.add('visible');
 }
 function closeModal() { document.getElementById('modalOverlay').classList.remove('visible'); }
+
+async function blockCurrentDayInGhl() {
+  const dateStr = getDateStr(currentDate);
+  const label = formatDate(currentDate);
+  if (!confirm(`Hele dag blokkeren in GHL voor ${label}?\n\nEr wordt een officiële “blokslot” gezet (geen klantafspraak). Online boeken slaat deze dag dan over.`)) return;
+  showToast('⏳ Blokslot aanmaken in GHL...', 'loading');
+  try {
+    const res = await fetch('/api/ghl?action=blockCalendarDay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
+      body: JSON.stringify({ date: dateStr, title: 'Dag geblokkeerd' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data.error || data.detail?.message || `Fout ${res.status}`;
+      throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    }
+    showToast('✓ Dag geblokkeerd in GHL', 'success');
+    await loadAppointments(currentDate);
+  } catch (e) {
+    showToast(String(e.message || e), 'info');
+  }
+}
 
 async function sendBookingLink() {
   const name    = document.getElementById('mName').value.trim();

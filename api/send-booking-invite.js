@@ -19,12 +19,19 @@ import { fetchWithRetry } from '../lib/retry.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
 import { signBookingToken } from '../lib/session.js';
+import { dayHasBlockedSlotsOverlappingWorkHours } from '../lib/ghl-calendar-blocks.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_CALENDAR_ID = process.env.GHL_CALENDAR_ID;
 const MAPS_KEY        = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_KEY;
 const GHL_BASE        = 'https://services.leadconnectorhq.com';
+
+const blockSlotCtx = () => ({
+  locationId: GHL_LOCATION_ID,
+  calendarId: GHL_CALENDAR_ID,
+  apiKey: GHL_API_KEY,
+});
 
 /** Publieke basis-URL voor boekingslinks */
 function publicBaseUrl() {
@@ -90,6 +97,11 @@ async function getBestSlots(address, workType) {
   for (let step = 1; step <= DAYS_AHEAD + 3 && candidates.length < 6; step++) {
     const dow = amsterdamWeekdaySun0(dateStr);
     if (dow === 0 || dow === 6) {
+      dateStr = addAmsterdamCalendarDays(dateStr, 1);
+      continue;
+    }
+
+    if (await dayHasBlockedSlotsOverlappingWorkHours(GHL_BASE, blockSlotCtx(), dateStr)) {
       dateStr = addAmsterdamCalendarDays(dateStr, 1);
       continue;
     }

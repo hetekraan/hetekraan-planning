@@ -9,6 +9,7 @@ import { fetchWithRetry } from '../lib/retry.js';
 import { sendErrorNotification } from '../lib/notify.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
 import { signSessionToken, parseUsers, verifySessionToken } from '../lib/session.js';
+import { fetchBlockedSlotsAsEvents, postFullDayBlockSlot } from '../lib/ghl-calendar-blocks.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -294,7 +295,18 @@ export default async function handler(req, res) {
           headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
         });
         const data = await response.json();
-        const events = data?.events || [];
+        let events = data?.events || [];
+
+        const blockedAsEvents = await fetchBlockedSlotsAsEvents(GHL_BASE, {
+          locationId: GHL_LOCATION_ID,
+          calendarId: GHL_CALENDAR_ID,
+          startMs: bounds.startMs,
+          endMs: bounds.endMs,
+          apiKey: GHL_API_KEY,
+        });
+        if (blockedAsEvents.length) {
+          events = [...events, ...blockedAsEvents];
+        }
 
         // Unieke contactIds ophalen (dedupliceren: dezelfde klant kan meerdere events hebben)
         const uniqueCids = [...new Set(
@@ -792,6 +804,31 @@ export default async function handler(req, res) {
           await pulseContactTag(appt.contactId, 'ochtend-melding', '[ghl sendMorningMessages]');
         }
         return res.status(200).json({ success: true, via: 'workflow-tag-ochtend-melding' });
+      }
+
+      case 'blockCalendarDay': {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+        const date = normalizeYyyyMmDdInput(String(req.body?.date || ''));
+        if (!date) return res.status(400).json({ error: 'date vereist (YYYY-MM-DD)' });
+        const titleRaw = req.body?.title;
+        const title = titleRaw != null && String(titleRaw).trim() ? String(titleRaw).trim().slice(0, 120) : 'Dag geblokkeerd';
+        const assignedUserId = process.env.GHL_BLOCK_SLOT_USER_ID || undefined;
+        const r = await postFullDayBlockSlot(GHL_BASE, {
+          locationId: GHL_LOCATION_ID,
+          calendarId: GHL_CALENDAR_ID,
+          dateStr: date,
+          title,
+          apiKey: GHL_API_KEY,
+          assignedUserId,
+        });
+        if (!r.ok) {
+          console.warn('[blockCalendarDay] GHL:', r.status, r.detail);
+          return res.status(502).json({
+            error: 'GHL kon deze dag niet blokkeren. Controleer API-rechten (calendars) en of block-slots voor deze kalender is toegestaan.',
+            detail: r.detail || r.data,
+          });
+        }
+        return res.status(200).json({ success: true, ...r.data });
       }
 
       default:

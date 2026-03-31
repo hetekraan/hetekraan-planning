@@ -666,6 +666,15 @@
             }, 3000);
             return;
           }
+          if (data.code === 'DAY_BLOCKED') {
+            _bookingInProgress = false;
+            if (confirmBtn) confirmBtn.disabled = !selectedSlot;
+            showError(
+              'Niet beschikbaar',
+              data.error || 'Deze dag is niet meer beschikbaar. Vraag een nieuwe boekingslink aan of kies een andere dag.'
+            );
+            return;
+          }
           let msg = data.error || 'Er is een fout opgetreden. Neem contact met ons op.';
           if (data.ghlSummary) msg += '\n\n' + String(data.ghlSummary);
           if (data.ghlStatus != null) msg += '\n(HTTP ' + String(data.ghlStatus) + ')';

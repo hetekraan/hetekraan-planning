@@ -15,6 +15,7 @@ import {
   formatYyyyMmDdInAmsterdam,
   hourInAmsterdam,
 } from '../lib/amsterdam-calendar-day.js';
+import { dayHasBlockedSlotsOverlappingWorkHours } from '../lib/ghl-calendar-blocks.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -190,6 +191,11 @@ export default async function handler(req, res) {
     const dow = amsterdamWeekdaySun0(dateStr);
     if (dow == null) break;
     if (dow === 0 || dow === 6) {
+      dateStr = addAmsterdamCalendarDays(dateStr, 1);
+      continue;
+    }
+
+    if (await dayHasBlockedSlotsOverlappingWorkHours(GHL_BASE, blockSlotCtx(), dateStr)) {
       dateStr = addAmsterdamCalendarDays(dateStr, 1);
       continue;
     }
