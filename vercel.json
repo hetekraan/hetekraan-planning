@@ -47,7 +47,7 @@
   ],
   "functions": {
     "api/cron/daily-analysis.js": {
-      "maxDuration": 300
+      "maxDuration": 60
     }
   }
 }
