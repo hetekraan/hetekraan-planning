@@ -327,10 +327,27 @@
         url += p.toString();
       }
 
-      const res  = await fetch(url);
-      const data = await res.json();
+      const res = await fetch(url);
+      const raw = await res.text();
+      let data;
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        hide('loadingCard');
+        showError(
+          'Verbindingsfout',
+          `HTTP ${res.status}: de server gaf geen geldige JSON (controleer /api/suggest-slots). ${String(raw).replace(/\s+/g, ' ').slice(0, 180)}`,
+        );
+        return;
+      }
 
       hide('loadingCard');
+
+      if (!res.ok) {
+        const errMsg = data.error || data.message || String(raw).slice(0, 200);
+        showError('Kon tijdsloten niet laden', `HTTP ${res.status}: ${errMsg}`);
+        return;
+      }
 
       if (!data.success || !data.suggestions?.length) {
         showError('Geen tijdsloten beschikbaar', 'Er zijn geen vrije tijdsloten in de komende 7 werkdagen. Controleer de agenda.');

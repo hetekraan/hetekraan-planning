@@ -38,6 +38,14 @@ function getField(contact, fieldId) {
   return f?.value || '';
 }
 
+function blockSlotCtx() {
+  return {
+    locationId: GHL_LOCATION_ID,
+    calendarId: GHL_CALENDAR_ID,
+    apiKey: GHL_API_KEY,
+  };
+}
+
 // Bereken geografische afstand (km) via Haversine – snelle proxy voor reistijd
 function haversine(lat1, lon1, lat2, lon2) {
   const R = 6371;
@@ -77,6 +85,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
+  try {
   const q = req.method === 'POST' ? req.body : req.query;
   const { contactId, address: addressParam, name: nameParam, phone: phoneParam, type: typeQ, workType: workTypeQ } = q;
 
@@ -295,4 +304,11 @@ export default async function handler(req, res) {
     address,
     suggestions,
   });
+  } catch (err) {
+    console.error('[suggest-slots]', err?.message || err);
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Serverfout bij tijdsloten',
+    });
+  }
 }
