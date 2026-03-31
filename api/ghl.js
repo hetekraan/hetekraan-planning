@@ -839,11 +839,12 @@ export default async function handler(req, res) {
             r.status,
             r.versionTried,
             r.timeFormatTried,
+            r.calendarIdOmitted ? 'no-calendarId' : 'with-calendarId',
             ghlDetail
           );
           const tip =
             r.status === 422
-              ? '422 = GHL wijst het verzoek af (meestal tijden/kalender/user). Zet GHL_BLOCK_SLOT_USER_ID (zelfde als boekingen); controleer GHL_CALENDAR_ID. De server probeert nu ook Amsterdam-tijd (+offset) en “tot middernacht volgende dag”.'
+              ? '422 = validatie GHL (tijden/user). Zet GHL_BLOCK_SLOT_USER_ID. Er is ook een 2e ronde zonder calendarId (uitzetten: GHL_BLOCK_SLOT_SKIP_NO_CALENDAR_ID=true). ms/sec tijden gaan als string mee.'
               : 'Tip: Private Integration → scope calendars/events.write; zo nodig GHL_BLOCK_SLOT_USER_ID (zelfde user als boekingen).';
           const detailTrim = String(ghlDetail || '').trim();
           const error =
