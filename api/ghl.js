@@ -847,16 +847,22 @@ export default async function handler(req, res) {
             ghlDetail
           );
           const tip =
-            'Controleer scopes (calendars/events.write) en Vercel: GHL_APPOINTMENT_ASSIGNED_USER_ID of GHL_BLOCK_SLOT_USER_ID.';
+            r.status === 422
+              ? '422 = GHL-validatie (geen scope- of user-id-probleem). Lees de GHL-regel hierboven; de server probeert meerdere tijdformaten en met/zonder calendarId.'
+              : 'Controleer scopes (calendars/events.write). Bij teamkalenders: GHL_APPOINTMENT_ASSIGNED_USER_ID of GHL_BLOCK_SLOT_USER_ID in Vercel.';
           const detailTrim = String(ghlDetail || '').trim();
           const error =
             detailTrim.length > 0
-              ? `${detailTrim.slice(0, 400)}${detailTrim.length > 400 ? '…' : ''} — ${tip}`
+              ? `${detailTrim.slice(0, 500)}${detailTrim.length > 500 ? '…' : ''} — ${tip}`
               : `GHL kon deze dag niet blokkeren (HTTP ${r.status}). ${tip}`;
           return res.status(502).json({
             error,
             ghlStatus: r.status,
             ghlDetail: detailTrim || undefined,
+            ghlRaw:
+              r.status === 422 && r.data && typeof r.data === 'object'
+                ? JSON.stringify(r.data).slice(0, 900)
+                : undefined,
           });
         }
         return res.status(200).json({ success: true, ...r.data });

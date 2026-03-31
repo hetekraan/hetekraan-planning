@@ -3147,6 +3147,8 @@ async function blockCurrentDayInGhl() {
       if (typeof msg !== 'string') msg = JSON.stringify(msg);
       const ghl = data.ghlDetail != null && String(data.ghlDetail).trim() ? String(data.ghlDetail).trim() : '';
       if (ghl) msg += '\n\nGHL: ' + ghl;
+      const raw = data.ghlRaw != null && String(data.ghlRaw).trim() ? String(data.ghlRaw).trim() : '';
+      if (raw) msg += '\n\n' + raw;
       throw new Error(msg);
     }
     showToast('✓ Dag geblokkeerd in GHL', 'success');
