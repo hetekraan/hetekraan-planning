@@ -853,8 +853,8 @@ export default async function handler(req, res) {
           );
           const tip =
             r.status === 422
-              ? '422 = GHL-validatie (geen scope- of user-id-probleem). Lees de GHL-regel hierboven; de server probeert meerdere tijdformaten en met/zonder calendarId.'
-              : 'Controleer scopes (calendars/events.write). Bij teamkalenders: GHL_APPOINTMENT_ASSIGNED_USER_ID of GHL_BLOCK_SLOT_USER_ID in Vercel.';
+              ? '422 = GHL-validatie. Lees de GHL-regel hierboven; blokken gaan altijd met calendarId (Planning Jerry). Bij persistente 422: GHL_CALENDAR_ID, assigned user en API-versie controleren.'
+              : 'Controleer scopes (calendars/events.write). Zet GHL_APPOINTMENT_ASSIGNED_USER_ID of GHL_BLOCK_SLOT_USER_ID (zelfde user als op die kalender in GHL).';
           const detailTrim = String(ghlDetail || '').trim();
           const error =
             detailTrim.length > 0
