@@ -1243,7 +1243,7 @@
       <div class="section-title">⬛ Afspraken van de dag</div>
       <div class="appointments-header-actions">
         <button class="btn-dagopgave" onclick="openDagopgave()" title="Dagopgave voor Tellow">📋</button>
-        <button class="btn-block-cal" id="btnBlockDayGhl" type="button" onclick="blockCurrentDayInGhl()" title="Zet in GHL een officiële blokslot over deze hele dag (geen klantafspraak)">🚫 Blokkeer dag</button>
+        <button class="btn-block-cal" id="btnBlockDayGhl" type="button" onclick="onBlockDayButtonClick()" title="Dag blokkeren of blokkade in GHL opheffen">🚫 Blokkeer dag</button>
         <button class="btn-add" onclick="openModal()">+ Afspraak</button>
       </div>
     </div>
@@ -2244,7 +2244,7 @@ function renderApptCard(a, i) {
           <div class="appt-actions"></div>
         </div>
         <div class="appt-name">${a.name.toUpperCase()}</div>
-        <div class="appt-desc" style="color:var(--muted);font-size:12px;line-height:1.45">Geen klantafspraak. Verwijderen of aanpassen doe je in de GHL-agenda (bloktijd).</div>
+        <div class="appt-desc" style="color:var(--muted);font-size:12px;line-height:1.45">Geen klantafspraak. Gebruik <strong>Blokkade opheffen</strong> bovenaan om dit uit GHL te halen, of pas het aan in de GHL-agenda.</div>
       </div>
     </div>`;
     }
@@ -2383,8 +2383,11 @@ function render() {
   if (blockBtn) {
     const dayIsBlocked = blocks.length > 0 || dashBlockedPending;
     blockBtn.classList.toggle('is-day-blocked', dayIsBlocked);
-    blockBtn.textContent = dayIsBlocked ? '✓ Dag geblokkeerd' : '🚫 Blokkeer dag';
-    blockBtn.disabled = dayIsBlocked;
+    blockBtn.textContent = dayIsBlocked ? '🔓 Blokkade opheffen' : '🚫 Blokkeer dag';
+    blockBtn.disabled = false;
+    blockBtn.title = dayIsBlocked
+      ? 'Heft de GHL-blokkade voor deze dag op (na bevestiging)'
+      : 'Zet in GHL een officiële blokslot over deze hele dag (geen klantafspraak)';
   }
 
   const parts = [];
@@ -3277,6 +3280,65 @@ function openModal() {
   document.getElementById('modalOverlay').classList.add('visible');
 }
 function closeModal() { document.getElementById('modalOverlay').classList.remove('visible'); }
+
+function onBlockDayButtonClick() {
+  const dateStr = getDateStr(currentDate);
+  const blocks = appointments.filter((x) => x.isCalBlock);
+  const dashPending = isDashBlockedPending(dateStr) && blocks.length === 0;
+  const dayIsBlocked = blocks.length > 0 || dashPending;
+  if (dayIsBlocked) unblockCurrentDayInGhl();
+  else blockCurrentDayInGhl();
+}
+
+async function unblockCurrentDayInGhl() {
+  const dateStr = getDateStr(currentDate);
+  const label = formatDate(currentDate);
+  const blocks = appointments.filter((a) => a.isCalBlock);
+  const ids = [...new Set(blocks.map((a) => a.ghlId).filter(Boolean))];
+  const onlyPending = blocks.length === 0 && isDashBlockedPending(dateStr);
+
+  if (
+    !confirm(
+      `Weet je het zeker dat je de blokkade wil opheffen en de dag weer wil vrijgeven?\n\n${label}`
+    )
+  ) {
+    return;
+  }
+
+  if (onlyPending) {
+    clearDashBlockedDate(dateStr);
+    showToast('✓ Melding gewist. Er stond nog geen zichtbaar blokslot in het dashboard — controleer zo nodig GHL.', 'success');
+    await loadAppointments(currentDate);
+    return;
+  }
+
+  showToast('⏳ Blokkade opheffen in GHL...', 'loading');
+  try {
+    const res = await fetch('/api/ghl?action=unblockCalendarDay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
+      body: JSON.stringify({ date: dateStr, ghlBlockEventIds: ids }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      let msg = data.error || `Fout ${res.status}`;
+      if (typeof msg !== 'string') msg = JSON.stringify(msg);
+      throw new Error(msg);
+    }
+    if (data.partial) {
+      showToast(
+        `⚠ Deels opgeheven (${data.deleted || 0} verwijderd). Controleer de GHL-agenda.`,
+        'info'
+      );
+    } else {
+      showToast('✓ Blokkade opgeheven — dag weer vrijgegeven in GHL', 'success');
+    }
+    clearDashBlockedDate(dateStr);
+    await loadAppointments(currentDate);
+  } catch (e) {
+    showToast(String(e.message || e), 'info');
+  }
+}
 
 async function blockCurrentDayInGhl() {
   const dateStr = getDateStr(currentDate);

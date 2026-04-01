@@ -9,7 +9,12 @@ import { fetchWithRetry } from '../lib/retry.js';
 import { sendErrorNotification } from '../lib/notify.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
 import { signSessionToken, parseUsers, verifySessionToken } from '../lib/session.js';
-import { fetchBlockedSlotsAsEvents, markBlockLikeOnCalendarEvents, postFullDayBlockSlot } from '../lib/ghl-calendar-blocks.js';
+import {
+  deleteGhlCalendarBlock,
+  fetchBlockedSlotsAsEvents,
+  markBlockLikeOnCalendarEvents,
+  postFullDayBlockSlot,
+} from '../lib/ghl-calendar-blocks.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -873,6 +878,70 @@ export default async function handler(req, res) {
           });
         }
         return res.status(200).json({ success: true, ...r.data });
+      }
+
+      case 'unblockCalendarDay': {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+        const date = normalizeYyyyMmDdInput(String(req.body?.date || ''));
+        if (!date) return res.status(400).json({ error: 'date vereist (YYYY-MM-DD)' });
+        if (!GHL_API_KEY || !GHL_LOCATION_ID) {
+          return res.status(500).json({ error: 'GHL-config ontbreekt op de server' });
+        }
+
+        const rawIds = Array.isArray(req.body?.ghlBlockEventIds) ? req.body.ghlBlockEventIds : [];
+        let ids = [
+          ...new Set(
+            rawIds
+              .map((x) => String(x || '').trim())
+              .filter(Boolean)
+              .filter((id) => !id.startsWith('hk_block_'))
+          ),
+        ];
+
+        if (!ids.length) {
+          const bounds = amsterdamCalendarDayBoundsMs(date);
+          if (bounds && GHL_CALENDAR_ID && String(GHL_CALENDAR_ID).trim()) {
+            const blockedEv = await fetchBlockedSlotsAsEvents(GHL_BASE, {
+              locationId: String(GHL_LOCATION_ID || '').trim().replace(/^["']|["']$/g, ''),
+              calendarId: String(GHL_CALENDAR_ID || '').trim().replace(/^["']|["']$/g, ''),
+              startMs: bounds.startMs,
+              endMs: bounds.endMs,
+              apiKey: GHL_API_KEY,
+            });
+            for (const ev of blockedEv) {
+              const bid = String(ev.id || '').trim();
+              if (bid && !bid.startsWith('hk_block_')) ids.push(bid);
+            }
+            ids = [...new Set(ids)];
+          }
+        }
+
+        if (!ids.length) {
+          return res.status(404).json({
+            error:
+              'Geen blokslot gevonden om te verwijderen. Ververs de dag of verwijder de blokkade handmatig in GHL.',
+          });
+        }
+
+        const results = [];
+        for (const bid of ids) {
+          const r = await deleteGhlCalendarBlock(GHL_BASE, GHL_API_KEY, bid);
+          results.push({ id: bid, ok: r.ok, error: r.error });
+        }
+        const anyOk = results.some((x) => x.ok);
+        if (!anyOk) {
+          return res.status(502).json({
+            error: results.map((x) => `${x.id}: ${x.error || 'mislukt'}`).join('; ').slice(0, 600),
+            results,
+          });
+        }
+        const partial = results.some((x) => !x.ok);
+        return res.status(200).json({
+          success: true,
+          deleted: results.filter((x) => x.ok).length,
+          partial,
+          results,
+        });
       }
 
       default:
