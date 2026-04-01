@@ -13,7 +13,8 @@ import { signSessionToken, parseUsers, verifySessionToken } from '../lib/session
 import {
   deleteGhlCalendarBlock,
   fetchBlockedSlotsAsEvents,
-  listBlockedSlotIdsForRange,
+  listDeletableBlockIdsForAmsterdamDay,
+  listDeletableBlockIdsForMsRange,
   markBlockLikeOnCalendarEvents,
   postFullDayBlockSlot,
 } from '../lib/ghl-calendar-blocks.js';
@@ -29,6 +30,14 @@ function stripGhlEnvId(v) {
     .replace(/^\uFEFF/, '')
     .trim()
     .replace(/^["']|["']$/g, '');
+}
+
+/** Planning Jerry (GHL URL-segment); gebruikt als GHL_CALENDAR_ID in Vercel leeg/fout is. */
+const HK_PLANNING_JERRY_CALENDAR_ID = 'vdZlb1g9Ii8tldCwwXDx';
+
+function effectiveCalendarId() {
+  const e = stripGhlEnvId(GHL_CALENDAR_ID);
+  return e || HK_PLANNING_JERRY_CALENDAR_ID;
 }
 
 /**
@@ -248,8 +257,8 @@ async function putCalendarStartEnd(eventId, startIso, endIso) {
   if (!eventId) return { ok: false, err: 'Geen kalender-id' };
 
   const body = JSON.stringify({
-    calendarId: GHL_CALENDAR_ID,
-    locationId: GHL_LOCATION_ID,
+    calendarId: effectiveCalendarId(),
+    locationId: stripGhlEnvId(GHL_LOCATION_ID),
     startTime: startIso,
     endTime: endIso,
     ignoreLimits: true,
@@ -354,7 +363,9 @@ export default async function handler(req, res) {
         const bounds = amsterdamCalendarDayBoundsMs(date);
         if (!bounds) return res.status(400).json({ error: 'Ongeldige datum' });
         const { startMs, endMs } = bounds;
-        const url = `${GHL_BASE}/calendars/events?locationId=${GHL_LOCATION_ID}&calendarId=${GHL_CALENDAR_ID}&startTime=${startMs}&endTime=${endMs}`;
+        const locId = stripGhlEnvId(GHL_LOCATION_ID);
+        const calId = effectiveCalendarId();
+        const url = `${GHL_BASE}/calendars/events?locationId=${encodeURIComponent(locId)}&calendarId=${encodeURIComponent(calId)}&startTime=${startMs}&endTime=${endMs}`;
         const response = await fetchWithRetry(url, {
           headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
         });
@@ -364,8 +375,8 @@ export default async function handler(req, res) {
         markBlockLikeOnCalendarEvents(events);
 
         const blockedAsEvents = await fetchBlockedSlotsAsEvents(GHL_BASE, {
-          locationId: GHL_LOCATION_ID,
-          calendarId: GHL_CALENDAR_ID,
+          locationId: locId,
+          calendarId: calId,
           startMs: bounds.startMs,
           endMs: bounds.endMs,
           apiKey: GHL_API_KEY,
@@ -734,8 +745,8 @@ export default async function handler(req, res) {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-07-28' },
             body: JSON.stringify({
-              calendarId: GHL_CALENDAR_ID,
-              locationId: GHL_LOCATION_ID,
+              calendarId: effectiveCalendarId(),
+              locationId: stripGhlEnvId(GHL_LOCATION_ID),
               contactId,
               startTime: startTime.toISOString(),
               endTime: endTime.toISOString(),
@@ -877,17 +888,18 @@ export default async function handler(req, res) {
         const date = normalizeYyyyMmDdInput(String(req.body?.date || ''));
         if (!date) return res.status(400).json({ error: 'date vereist (YYYY-MM-DD)' });
         const locationId = stripGhlEnvId(GHL_LOCATION_ID);
-        const calendarId = stripGhlEnvId(GHL_CALENDAR_ID);
+        const calendarId = effectiveCalendarId();
         if (!locationId) {
           return res.status(500).json({
             error:
               'GHL_LOCATION_ID ontbreekt of is leeg in Vercel. Zonder locationId wijst GHL blokslots soms af met “calendarId or assignedUserId”.',
           });
         }
-        if (!calendarId) {
-          return res.status(500).json({
-            error: 'GHL_CALENDAR_ID ontbreekt in de serverconfig (Vercel Environment Variables).',
-          });
+        if (!stripGhlEnvId(GHL_CALENDAR_ID)) {
+          console.warn(
+            '[blockCalendarDay] GHL_CALENDAR_ID leeg — gebruik fallback Planning Jerry:',
+            HK_PLANNING_JERRY_CALENDAR_ID
+          );
         }
         const titleRaw = req.body?.title;
         const title = titleRaw != null && String(titleRaw).trim() ? String(titleRaw).trim().slice(0, 120) : 'Dag geblokkeerd';
@@ -963,7 +975,9 @@ export default async function handler(req, res) {
         if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
         const date = normalizeYyyyMmDdInput(String(req.body?.date || ''));
         if (!date) return res.status(400).json({ error: 'date vereist (YYYY-MM-DD)' });
-        if (!GHL_API_KEY || !GHL_LOCATION_ID) {
+        const loc = stripGhlEnvId(GHL_LOCATION_ID);
+        const cal = effectiveCalendarId();
+        if (!GHL_API_KEY || !loc) {
           return res.status(500).json({ error: 'GHL-config ontbreekt op de server' });
         }
 
@@ -978,21 +992,11 @@ export default async function handler(req, res) {
         ];
 
         if (!ids.length) {
-          const bounds = amsterdamCalendarDayBoundsMs(date);
-          if (bounds && GHL_CALENDAR_ID && String(GHL_CALENDAR_ID).trim()) {
-            const blockedEv = await fetchBlockedSlotsAsEvents(GHL_BASE, {
-              locationId: String(GHL_LOCATION_ID || '').trim().replace(/^["']|["']$/g, ''),
-              calendarId: String(GHL_CALENDAR_ID || '').trim().replace(/^["']|["']$/g, ''),
-              startMs: bounds.startMs,
-              endMs: bounds.endMs,
-              apiKey: GHL_API_KEY,
-            });
-            for (const ev of blockedEv) {
-              const bid = String(ev.id || '').trim();
-              if (bid && !bid.startsWith('hk_block_')) ids.push(bid);
-            }
-            ids = [...new Set(ids)];
-          }
+          ids = await listDeletableBlockIdsForAmsterdamDay(
+            GHL_BASE,
+            { locationId: loc, calendarId: cal, apiKey: GHL_API_KEY },
+            date
+          );
         }
 
         if (!ids.length) {
@@ -1046,15 +1050,16 @@ export default async function handler(req, res) {
         if (!loc || !GHL_API_KEY) {
           return res.status(500).json({ error: 'GHL_LOCATION_ID of GHL_API_KEY ontbreekt' });
         }
-        const cal = stripGhlEnvId(GHL_CALENDAR_ID);
+        const cal = effectiveCalendarId();
 
         let startDate = normalizeYyyyMmDdInput(String(req.body?.startDate || ''));
         let endDate = normalizeYyyyMmDdInput(String(req.body?.endDate || ''));
         if (!startDate || !endDate) {
           const today = formatYyyyMmDdInAmsterdam(new Date());
           if (!today) return res.status(500).json({ error: 'Kon datum niet bepalen' });
-          startDate = addAmsterdamCalendarDays(today, -150) || today;
-          endDate = addAmsterdamCalendarDays(today, 450) || today;
+          /** Standaard: ~3 weken terug + 12 weken vooruit (dubbele blokken opruimen). */
+          startDate = addAmsterdamCalendarDays(today, -21) || today;
+          endDate = addAmsterdamCalendarDays(today, 84) || today;
         }
         const sb = amsterdamCalendarDayBoundsMs(startDate);
         const eb = amsterdamCalendarDayBoundsMs(endDate);
@@ -1069,14 +1074,14 @@ export default async function handler(req, res) {
           });
         }
 
-        const allIds = await listBlockedSlotIdsForRange(GHL_BASE, {
+        const allIds = await listDeletableBlockIdsForMsRange(GHL_BASE, {
           locationId: loc,
-          calendarId: cal || undefined,
+          calendarId: cal,
           apiKey: GHL_API_KEY,
           startMs,
           endMs,
         });
-        const MAX_PER_RUN = 200;
+        const MAX_PER_RUN = 300;
         const truncated = allIds.length > MAX_PER_RUN;
         const ids = truncated ? allIds.slice(0, MAX_PER_RUN) : allIds;
 

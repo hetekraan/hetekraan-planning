@@ -3315,7 +3315,7 @@ async function bulkDeleteAllGhlBlockedSlots() {
   }
   if (
     !confirm(
-      'ALLE blokslots in GHL verwijderen die de API in een breed datumbereik vindt (ca. 5 maanden terug t/m 15 maanden vooruit)?\n\nDit is bedoeld om dubbele “Dag geblokkeerd”-rommel op te ruimen. Doorgaan?'
+      'ALLE blokslots verwijderen die de API vindt (standaard ca. 3 weken terug t/m 12 weken vooruit; breder kan via API met startDate/endDate)?\n\nOok agenda-events die als blok gelden + blocked-slots. Doorgaan?'
     )
   ) {
     return;
