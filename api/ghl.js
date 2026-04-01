@@ -21,6 +21,60 @@ const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_CALENDAR_ID = process.env.GHL_CALENDAR_ID;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 
+/** BOM / spaties / per ongeluk gequote Vercel-waarden. */
+function stripGhlEnvId(v) {
+  return String(v ?? '')
+    .replace(/^\uFEFF/, '')
+    .trim()
+    .replace(/^["']|["']$/g, '');
+}
+
+/**
+ * User-id voor blokslots: GHL_BLOCK_SLOT_USER_ID of GHL_APPOINTMENT_ASSIGNED_USER_ID,
+ * anders eerste gekoppelde user van de kalender (zelfde logica als confirm-booking).
+ */
+async function resolveGhlCalendarAssignedUserIdForBlock(base, apiKey, locationId, calendarId) {
+  for (const key of ['GHL_BLOCK_SLOT_USER_ID', 'GHL_APPOINTMENT_ASSIGNED_USER_ID']) {
+    const s = stripGhlEnvId(process.env[key]);
+    if (s) return s;
+  }
+  const loc = stripGhlEnvId(locationId);
+  const cal = stripGhlEnvId(calendarId);
+  if (!apiKey || !loc || !cal) return '';
+  const urls = [
+    `${base}/calendars/${encodeURIComponent(cal)}?locationId=${encodeURIComponent(loc)}`,
+    `${base}/locations/${encodeURIComponent(loc)}/calendars/${encodeURIComponent(cal)}`,
+  ];
+  for (const url of urls) {
+    for (const Version of ['2021-04-15', '2021-07-28']) {
+      try {
+        const r = await fetchWithRetry(
+          url,
+          {
+            headers: { Authorization: `Bearer ${apiKey}`, Version },
+          },
+          0
+        );
+        if (!r.ok) continue;
+        const j = await r.json().catch(() => ({}));
+        const c = j?.calendar || j?.data || j;
+        const uid =
+          c?.userId ??
+          c?.primaryUserId ??
+          c?.assignedUserId ??
+          c?.teamMembers?.[0]?.userId ??
+          c?.teamMembers?.[0]?.id ??
+          (Array.isArray(c?.calendarUserIds) ? c.calendarUserIds[0] : null) ??
+          (Array.isArray(c?.memberIds) ? c.memberIds[0] : null);
+        if (uid != null && String(uid).trim()) return String(uid).trim();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return '';
+}
+
 /** YYYY-M-DD → YYYY-MM-DD (match met formatYyyyMmDdInAmsterdam) */
 function normalizeYyyyMmDdInput(str) {
   if (!str || typeof str !== 'string') return null;
@@ -820,23 +874,36 @@ export default async function handler(req, res) {
         if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
         const date = normalizeYyyyMmDdInput(String(req.body?.date || ''));
         if (!date) return res.status(400).json({ error: 'date vereist (YYYY-MM-DD)' });
-        if (!GHL_CALENDAR_ID || !String(GHL_CALENDAR_ID).trim()) {
+        const locationId = stripGhlEnvId(GHL_LOCATION_ID);
+        const calendarId = stripGhlEnvId(GHL_CALENDAR_ID);
+        if (!locationId) {
+          return res.status(500).json({
+            error:
+              'GHL_LOCATION_ID ontbreekt of is leeg in Vercel. Zonder locationId wijst GHL blokslots soms af met “calendarId or assignedUserId”.',
+          });
+        }
+        if (!calendarId) {
           return res.status(500).json({
             error: 'GHL_CALENDAR_ID ontbreekt in de serverconfig (Vercel Environment Variables).',
           });
         }
         const titleRaw = req.body?.title;
         const title = titleRaw != null && String(titleRaw).trim() ? String(titleRaw).trim().slice(0, 120) : 'Dag geblokkeerd';
-        const assignedUserId = String(
-          process.env.GHL_BLOCK_SLOT_USER_ID ||
-            process.env.GHL_APPOINTMENT_ASSIGNED_USER_ID ||
-            ''
-        )
-          .trim()
-          .replace(/^["']|["']$/g, '');
+        const assignedUserId = await resolveGhlCalendarAssignedUserIdForBlock(
+          GHL_BASE,
+          GHL_API_KEY,
+          locationId,
+          calendarId
+        );
+        if (!assignedUserId) {
+          return res.status(500).json({
+            error:
+              'Geen GHL-gebruiker voor blokslots: zet GHL_BLOCK_SLOT_USER_ID of GHL_APPOINTMENT_ASSIGNED_USER_ID in Vercel (UUID van iemand op kalender “Planning Jerry”), of koppel in GHL minstens één user aan die kalender.',
+          });
+        }
         const r = await postFullDayBlockSlot(GHL_BASE, {
-          locationId: String(GHL_LOCATION_ID || '').trim().replace(/^["']|["']$/g, ''),
-          calendarId: String(GHL_CALENDAR_ID || '').trim().replace(/^["']|["']$/g, ''),
+          locationId,
+          calendarId,
           dateStr: date,
           title,
           apiKey: GHL_API_KEY,
