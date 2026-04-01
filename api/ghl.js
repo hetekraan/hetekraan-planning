@@ -822,14 +822,16 @@ export default async function handler(req, res) {
         }
         const titleRaw = req.body?.title;
         const title = titleRaw != null && String(titleRaw).trim() ? String(titleRaw).trim().slice(0, 120) : 'Dag geblokkeerd';
-        const assignedUserId = (
+        const assignedUserId = String(
           process.env.GHL_BLOCK_SLOT_USER_ID ||
-          process.env.GHL_APPOINTMENT_ASSIGNED_USER_ID ||
-          ''
-        ).trim();
+            process.env.GHL_APPOINTMENT_ASSIGNED_USER_ID ||
+            ''
+        )
+          .trim()
+          .replace(/^["']|["']$/g, '');
         const r = await postFullDayBlockSlot(GHL_BASE, {
-          locationId: GHL_LOCATION_ID,
-          calendarId: GHL_CALENDAR_ID,
+          locationId: String(GHL_LOCATION_ID || '').trim().replace(/^["']|["']$/g, ''),
+          calendarId: String(GHL_CALENDAR_ID || '').trim().replace(/^["']|["']$/g, ''),
           dateStr: date,
           title,
           apiKey: GHL_API_KEY,
