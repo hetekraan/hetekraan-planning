@@ -737,6 +737,7 @@
   body.large-text .btn-add                   { font-size: 14px; padding: 10px 18px; }
   body.large-text .btn-dagopgave             { font-size: 17px; padding: 8px 11px; }
   body.large-text .btn-block-cal             { font-size: 17px; padding: 8px 11px; }
+  body.large-text .btn-bulk-clear-blocks     { font-size: 16px; padding: 8px 11px; }
   body.large-text .day-blocked-banner       { font-size: 15px; padding: 12px 14px; }
   body.large-text .appt-number              { font-size: 12px; }
   body.large-text .appt-time                { font-size: 18px; }
@@ -804,6 +805,16 @@
     border-color: rgba(255, 140, 0, 0.45);
     cursor: default;
   }
+  .btn-bulk-clear-blocks {
+    background: rgba(180, 40, 40, 0.12);
+    border: 1px solid rgba(220, 80, 80, 0.45);
+    color: #e07070;
+    padding: 5px 8px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .btn-bulk-clear-blocks:hover { background: rgba(220, 80, 80, 0.2); color: #ff9090; }
 
   .appt-card.cal-block {
     border-color: rgba(255, 140, 0, 0.45);
@@ -1244,6 +1255,7 @@
       <div class="appointments-header-actions">
         <button class="btn-dagopgave" onclick="openDagopgave()" title="Dagopgave voor Tellow">📋</button>
         <button class="btn-block-cal" id="btnBlockDayGhl" type="button" onclick="onBlockDayButtonClick()" title="Dag blokkeren of blokkade in GHL opheffen">🚫 Blokkeer dag</button>
+        <button class="btn-bulk-clear-blocks" id="btnBulkClearGhlBlocks" type="button" onclick="bulkDeleteAllGhlBlockedSlots()" title="Alleen daan: verwijder alle blokslots in GHL in een breed datumbereik via de API" style="display:none">⚠ Opruimen blokslots</button>
         <button class="btn-add" onclick="openModal()">+ Afspraak</button>
       </div>
     </div>
@@ -2435,6 +2447,8 @@ function render() {
   updateRouteLocalUi();
   const badge = document.getElementById('daanEditBadge');
   if (badge) badge.style.display = isDaanEditor() ? 'inline-flex' : 'none';
+  const bulkClear = document.getElementById('btnBulkClearGhlBlocks');
+  if (bulkClear) bulkClear.style.display = isDaanEditor() ? 'inline-block' : 'none';
 }
 
 function renderRouteItemHtml(a) {
@@ -3288,6 +3302,54 @@ function onBlockDayButtonClick() {
   const dayIsBlocked = blocks.length > 0 || dashPending;
   if (dayIsBlocked) unblockCurrentDayInGhl();
   else blockCurrentDayInGhl();
+}
+
+/**
+ * Bulk: GHL blocked-slots in breed bereik verwijderen (alleen daan + API confirm).
+ * Werkt alleen als GHL de slots via de API teruggeeft; read-only/sync kan alsnog in UI blijven.
+ */
+async function bulkDeleteAllGhlBlockedSlots() {
+  if (!isDaanEditor()) {
+    showToast('Alleen beschikbaar voor gebruiker daan.', 'info');
+    return;
+  }
+  if (
+    !confirm(
+      'ALLE blokslots in GHL verwijderen die de API in een breed datumbereik vindt (ca. 5 maanden terug t/m 15 maanden vooruit)?\n\nDit is bedoeld om dubbele “Dag geblokkeerd”-rommel op te ruimen. Doorgaan?'
+    )
+  ) {
+    return;
+  }
+  const typed = prompt(
+    'Typ exact (hoofdletters, onderstreping):\nVERWIJDER_ALLE_BLOKJES'
+  );
+  if (typed !== 'VERWIJDER_ALLE_BLOKJES') {
+    showToast('Geannuleerd — tekst kwam niet overeen.', 'info');
+    return;
+  }
+  showToast('⏳ GHL-blokslots ophalen en verwijderen...', 'loading');
+  try {
+    const res = await fetch('/api/ghl?action=bulkDeleteBlockedSlots', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
+      body: JSON.stringify({ confirm: 'VERWIJDER_ALLE_BLOKJES' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || `Fout ${res.status}`);
+    }
+    let msg = `Klaar: ${data.deleted ?? 0} verwijderd van ${data.attempted ?? 0} geprobeerd.`;
+    if (data.totalFound != null && data.truncated) {
+      msg += ` (nog ${data.totalFound - data.attempted} over — nog een keer uitvoeren)`;
+    }
+    if ((data.failed || []).length) {
+      msg += `\n${data.failed.length} mislukt (zie console/network).`;
+    }
+    showToast(msg, data.deleted > 0 ? 'success' : 'info');
+    await loadAppointments(currentDate);
+  } catch (e) {
+    showToast(String(e.message || e), 'info');
+  }
 }
 
 async function unblockCurrentDayInGhl() {

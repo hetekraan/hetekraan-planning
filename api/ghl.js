@@ -1,5 +1,6 @@
 // api/ghl.js — met custom field IDs
 import {
+  addAmsterdamCalendarDays,
   amsterdamCalendarDayBoundsMs,
   formatYyyyMmDdInAmsterdam,
 } from '../lib/amsterdam-calendar-day.js';
@@ -12,6 +13,7 @@ import { signSessionToken, parseUsers, verifySessionToken } from '../lib/session
 import {
   deleteGhlCalendarBlock,
   fetchBlockedSlotsAsEvents,
+  listBlockedSlotIdsForRange,
   markBlockLikeOnCalendarEvents,
   postFullDayBlockSlot,
 } from '../lib/ghl-calendar-blocks.js';
@@ -1018,6 +1020,102 @@ export default async function handler(req, res) {
           deleted: results.filter((x) => x.ok).length,
           partial,
           results,
+        });
+      }
+
+      /**
+       * Bulk: alle blokslots in een datumbereik verwijderen (blocked-slots API → DELETE).
+       * Alleen user `daan` + exacte confirm-string. Geen toegang tot GHL vanuit Cursor — jij triggert dit na deploy.
+       */
+      case 'bulkDeleteBlockedSlots': {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+        const token = req.headers['x-hk-auth'];
+        const sess = verifySessionToken(token);
+        if (!sess || String(sess.user || '').toLowerCase() !== 'daan') {
+          return res.status(403).json({
+            error: 'Alleen ingelogd als **daan** kun je bulk blokslots verwijderen.',
+          });
+        }
+        if (String(req.body?.confirm || '').trim() !== 'VERWIJDER_ALLE_BLOKJES') {
+          return res.status(400).json({
+            error:
+              'Zet JSON body.confirm exact op: VERWIJDER_ALLE_BLOKJES (veiligheid tegen per ongeluk aanroepen).',
+          });
+        }
+        const loc = stripGhlEnvId(GHL_LOCATION_ID);
+        if (!loc || !GHL_API_KEY) {
+          return res.status(500).json({ error: 'GHL_LOCATION_ID of GHL_API_KEY ontbreekt' });
+        }
+        const cal = stripGhlEnvId(GHL_CALENDAR_ID);
+
+        let startDate = normalizeYyyyMmDdInput(String(req.body?.startDate || ''));
+        let endDate = normalizeYyyyMmDdInput(String(req.body?.endDate || ''));
+        if (!startDate || !endDate) {
+          const today = formatYyyyMmDdInAmsterdam(new Date());
+          if (!today) return res.status(500).json({ error: 'Kon datum niet bepalen' });
+          startDate = addAmsterdamCalendarDays(today, -150) || today;
+          endDate = addAmsterdamCalendarDays(today, 450) || today;
+        }
+        const sb = amsterdamCalendarDayBoundsMs(startDate);
+        const eb = amsterdamCalendarDayBoundsMs(endDate);
+        if (!sb || !eb) return res.status(400).json({ error: 'Ongeldige startDate of endDate' });
+        const startMs = sb.startMs;
+        const endMs = eb.endMs;
+        const maxSpanMs = 600 * 24 * 60 * 60 * 1000;
+        if (endMs - startMs > maxSpanMs) {
+          return res.status(400).json({
+            error:
+              'Datumbereik te groot (max 600 dagen per keer). Geef kortere startDate/endDate of voer meerdere keren uit.',
+          });
+        }
+
+        const allIds = await listBlockedSlotIdsForRange(GHL_BASE, {
+          locationId: loc,
+          calendarId: cal || undefined,
+          apiKey: GHL_API_KEY,
+          startMs,
+          endMs,
+        });
+        const MAX_PER_RUN = 200;
+        const truncated = allIds.length > MAX_PER_RUN;
+        const ids = truncated ? allIds.slice(0, MAX_PER_RUN) : allIds;
+
+        if (!ids.length) {
+          return res.status(200).json({
+            success: true,
+            deleted: 0,
+            attempted: 0,
+            message:
+              'Geen blokslots in blocked-slots voor dit bereik. (Staat het in GHL als sync/read-only, dan ziet de API ze soms niet — GHL support of bronagenda.)',
+            range: { startDate, endDate },
+          });
+        }
+
+        const results = [];
+        for (const bid of ids) {
+          const dr = await deleteGhlCalendarBlock(GHL_BASE, GHL_API_KEY, bid);
+          results.push({ id: bid, ok: dr.ok, error: dr.error });
+          await new Promise((r) => setTimeout(r, 75));
+        }
+        const deleted = results.filter((x) => x.ok).length;
+        const failed = results.filter((x) => !x.ok).map((x) => ({ id: x.id, error: x.error }));
+        console.warn(
+          '[bulkDeleteBlockedSlots]',
+          sess.user,
+          { startDate, endDate },
+          'deleted',
+          deleted,
+          'failed',
+          failed.length
+        );
+        return res.status(200).json({
+          success: true,
+          deleted,
+          attempted: ids.length,
+          totalFound: allIds.length,
+          truncated,
+          failed: failed.slice(0, 40),
+          range: { startDate, endDate },
         });
       }
 
