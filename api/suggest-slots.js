@@ -13,9 +13,14 @@ import {
   amsterdamCalendarDayBoundsMs,
   amsterdamWeekdaySun0,
   formatYyyyMmDdInAmsterdam,
-  hourInAmsterdam,
 } from '../lib/amsterdam-calendar-day.js';
-import { dayHasCustomerBlockingOverlap } from '../lib/ghl-calendar-blocks.js';
+import {
+  dayHasCustomerBlockingOverlap,
+  fetchBlockedSlotsAsEvents,
+  markBlockLikeOnCalendarEvents,
+  suggestEventInAfternoonHalf,
+  suggestEventInMorningHalf,
+} from '../lib/ghl-calendar-blocks.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -224,12 +229,22 @@ export default async function handler(req, res) {
       );
       if (er.ok) {
         const ed = await er.json();
-        events = ed?.events || [];
+        events = [...(ed?.events || [])];
       }
     } catch {}
 
-    const morningEvents   = events.filter((e) => hourInAmsterdam(e.startTime) < 13);
-    const afternoonEvents = events.filter((e) => hourInAmsterdam(e.startTime) >= 13);
+    const blockedFromApi = await fetchBlockedSlotsAsEvents(GHL_BASE, {
+      locationId: GHL_LOCATION_ID,
+      calendarId: GHL_CALENDAR_ID,
+      startMs,
+      endMs,
+      apiKey: GHL_API_KEY,
+    });
+    events = events.concat(blockedFromApi);
+    markBlockLikeOnCalendarEvents(events);
+    const customerEvents = events.filter((e) => !e._hkGhlBlockSlot);
+    const morningEvents   = customerEvents.filter(suggestEventInMorningHalf);
+    const afternoonEvents = customerEvents.filter(suggestEventInAfternoonHalf);
 
     // Geocodeer bestaande adressen voor route-fit berekening
     const geocodeEvents = async (evList) => {
