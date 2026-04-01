@@ -9,17 +9,13 @@ import {
   ghlDurationMinutesForType,
   normalizeWorkType,
 } from '../lib/booking-blocks.js';
-import {
-  fetchCalendarEventCountForDay,
-  fetchCalendarEventsForDay,
-  maxCustomerAppointmentsPerDay,
-} from '../lib/calendar-customer-cap.js';
+import { fetchCalendarEventsForDay, maxCustomerAppointmentsPerDay } from '../lib/calendar-customer-cap.js';
 import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
 import { verifyBookingToken } from '../lib/session.js';
-import { dayHasBlockedSlotsOverlappingWorkHours } from '../lib/ghl-calendar-blocks.js';
+import { dayHasCustomerBlockingOverlap, markBlockLikeOnCalendarEvents } from '../lib/ghl-calendar-blocks.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -79,6 +75,18 @@ function firstValidNlMobile(...candidates) {
     if (/^\+31[1-9]\d{8}$/.test(n)) return n;
   }
   return '';
+}
+
+/** Zelfde startvelden als suggest-slots / GHL-dashboard — niet alleen `e.startTime`. */
+function eventStartRawForBooking(e) {
+  return (
+    e?.startTime ??
+    e?.start_time ??
+    e?.start ??
+    e?.appointmentStartTime ??
+    e?.appointment?.startTime ??
+    e?.calendarEvent?.startTime
+  );
 }
 
 // ─── Race-condition beveiliging ───────────────────────────────────────────────
@@ -171,7 +179,7 @@ export default async function handler(req, res) {
   if (!date) return res.status(400).json({ error: 'Geen datum in slot' });
 
   if (
-    await dayHasBlockedSlotsOverlappingWorkHours(GHL_BASE, {
+    await dayHasCustomerBlockingOverlap(GHL_BASE, {
       locationId: GHL_LOCATION_ID,
       calendarId: GHL_CALENDAR_ID,
       apiKey: GHL_API_KEY,
@@ -194,66 +202,75 @@ export default async function handler(req, res) {
 
   const type = normalizeWorkType(typeRaw || getCf(contactSnap, FIELD_IDS.type_onderhoud));
 
-  const dayCap = maxCustomerAppointmentsPerDay();
-  const dayCount = await fetchCalendarEventCountForDay(date, {
-    base: GHL_BASE,
-    locationId: GHL_LOCATION_ID,
-    calendarId: GHL_CALENDAR_ID,
-    apiKey: GHL_API_KEY,
-  });
-  if (dayCount !== null && dayCount >= dayCap) {
-    releaseBookingLock(lockKey);
-    return res.status(409).json({
-      error:
-        `Er staan al ${dayCap} afspraken op deze dag via de agenda. Online boeken is niet meer mogelijk; neem contact op of kies een andere dag. Handmatig kun je in GHL nog een extra afspraak toevoegen.`,
-      code: 'DAY_CAP_REACHED',
-      dayCount,
-      maxPerDay: dayCap,
-    });
-  }
-  if (dayCount === null) {
-    console.warn('[confirm-booking] dag-event count niet opgehaald; bevestigen gaat door');
-  }
-
   const eventsForDay = await fetchCalendarEventsForDay(date, {
     base: GHL_BASE,
     locationId: GHL_LOCATION_ID,
     calendarId: GHL_CALENDAR_ID,
     apiKey: GHL_API_KEY,
   });
-  if (eventsForDay) {
-    const blockEvents = eventsForDay.filter((e) =>
-      block === 'morning' ? hourInAmsterdam(e.startTime) < 13 : hourInAmsterdam(e.startTime) >= 13
-    );
-    if (!blockAllowsNewCustomerBooking(block, blockEvents, type)) {
-      const maxB = customerMaxForBlock(block);
-      const blokNaam = block === 'morning' ? 'ochtend (09:00–13:00)' : 'middag (13:00–17:00)';
-      releaseBookingLock(lockKey);
-      return res.status(409).json({
-        error: `Dit tijdslot past niet meer: in de ${blokNaam} zitten al ${maxB} klant-afspraken of er is onvoldoende geplande tijd over voor dit werk. Kies een andere optie of bel ons.`,
-        code: 'BLOCK_FULL',
-        maxPerBlock: maxB,
-      });
-    }
-
-    // Laag 2: GHL duplicate-check — beschermt bij concurrent requests op verschillende instances.
-    // Als dit contact al een afspraak heeft op deze dag, geef die terug als succes (idempotent).
-    const alreadyBooked = eventsForDay.find((e) => {
-      const cid = e.contactId || e.contact_id || e.contact?.id;
-      return cid && String(cid) === String(contactId);
+  if (!eventsForDay) {
+    releaseBookingLock(lockKey);
+    return res.status(503).json({
+      error:
+        'We konden de agenda nu niet uitlezen in GHL. Probeer het over een paar minuten opnieuw of neem contact op.',
+      code: 'AGENDA_CHECK_FAILED',
     });
-    if (alreadyBooked) {
-      releaseBookingLock(lockKey);
-      const existingId =
-        alreadyBooked.id || alreadyBooked.eventId || alreadyBooked.appointmentId || null;
-      console.log('[confirm-booking] Duplicate boeking onderschept via GHL-check:', contactId, date);
-      return res.status(200).json({
-        success: true,
-        appointmentId: existingId,
-        alreadyBooked: true,
-        message: 'Er staat al een afspraak voor je ingepland op deze dag.',
-      });
-    }
+  }
+
+  markBlockLikeOnCalendarEvents(eventsForDay);
+  const customerEvents = eventsForDay.filter((e) => !e._hkGhlBlockSlot);
+
+  const dayCap = maxCustomerAppointmentsPerDay();
+  const dayCount = customerEvents.length;
+  if (dayCount >= dayCap) {
+    releaseBookingLock(lockKey);
+    return res.status(409).json({
+      error:
+        `Er staan al ${dayCap} klant-afspraken op deze dag in de agenda. Online boeken is niet meer mogelijk; neem contact op of kies een andere dag. Handmatig kun je in GHL nog een extra afspraak toevoegen.`,
+      code: 'DAY_CAP_REACHED',
+      dayCount,
+      maxPerDay: dayCap,
+    });
+  }
+
+  const inMorning = (e) => {
+    const raw = eventStartRawForBooking(e);
+    if (raw == null) return false;
+    return hourInAmsterdam(raw) < 13;
+  };
+  const inAfternoon = (e) => {
+    const raw = eventStartRawForBooking(e);
+    if (raw == null) return false;
+    return hourInAmsterdam(raw) >= 13;
+  };
+  const blockEvents = customerEvents.filter((e) => (block === 'morning' ? inMorning(e) : inAfternoon(e)));
+  if (!blockAllowsNewCustomerBooking(block, blockEvents, type)) {
+    const maxB = customerMaxForBlock(block);
+    const blokNaam = block === 'morning' ? 'ochtend (09:00–13:00)' : 'middag (13:00–17:00)';
+    releaseBookingLock(lockKey);
+    return res.status(409).json({
+      error: `Dit tijdslot past niet meer: in de ${blokNaam} zitten al ${maxB} klant-afspraken of er is onvoldoende geplande tijd over voor dit werk. Kies een andere optie of bel ons.`,
+      code: 'BLOCK_FULL',
+      maxPerBlock: maxB,
+    });
+  }
+
+  // Laag 2: GHL duplicate-check — beschermt bij concurrent requests op verschillende instances.
+  const alreadyBooked = customerEvents.find((e) => {
+    const cid = e.contactId || e.contact_id || e.contact?.id;
+    return cid && String(cid) === String(contactId);
+  });
+  if (alreadyBooked) {
+    releaseBookingLock(lockKey);
+    const existingId =
+      alreadyBooked.id || alreadyBooked.eventId || alreadyBooked.appointmentId || null;
+    console.log('[confirm-booking] Duplicate boeking onderschept via GHL-check:', contactId, date);
+    return res.status(200).json({
+      success: true,
+      appointmentId: existingId,
+      alreadyBooked: true,
+      message: 'Er staat al een afspraak voor je ingepland op deze dag.',
+    });
   }
 
   const timeMap = { morning: '09:00', afternoon: '13:00' };
@@ -286,7 +303,7 @@ export default async function handler(req, res) {
     ];
   }
 
-  const routeStopDay = eventsForDay ? Math.min(eventsForDay.length + 1, 7) : null;
+  const routeStopDay = Math.min(customerEvents.length + 1, 7);
   const bevestigingTemplate1 = formatGeboektTijdslotField(date, block, routeStopDay);
   if (!putPayload.customFields) putPayload.customFields = [];
   putPayload.customFields = putPayload.customFields.filter((f) => f.id !== FIELD_IDS.tijdafspraak);

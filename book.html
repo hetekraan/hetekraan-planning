@@ -675,6 +675,15 @@
             );
             return;
           }
+          if (data.code === 'AGENDA_CHECK_FAILED') {
+            _bookingInProgress = false;
+            if (confirmBtn) confirmBtn.disabled = !selectedSlot;
+            showError(
+              'Agenda tijdelijk niet bereikbaar',
+              data.error || 'Probeer het zo opnieuw of neem contact op.'
+            );
+            return;
+          }
           let msg = data.error || 'Er is een fout opgetreden. Neem contact met ons op.';
           if (data.ghlSummary) msg += '\n\n' + String(data.ghlSummary);
           if (data.ghlStatus != null) msg += '\n(HTTP ' + String(data.ghlStatus) + ')';
