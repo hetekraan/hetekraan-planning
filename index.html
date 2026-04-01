@@ -3340,10 +3340,16 @@ async function unblockCurrentDayInGhl() {
   }
 }
 
+let hkGhlBlockDayInFlight = false;
+
 async function blockCurrentDayInGhl() {
   const dateStr = getDateStr(currentDate);
   const label = formatDate(currentDate);
-  if (!confirm(`Hele dag blokkeren in GHL voor ${label}?\n\nEr wordt een officiële “blokslot” gezet (geen klantafspraak). Online boeken slaat deze dag dan over.`)) return;
+  if (!confirm(`Hele dag blokkeren in GHL voor ${label}?\n\nEr wordt een officiële “blokslot” gezet op kalender Planning Jerry (geen klantafspraak). Online boeken slaat deze dag dan over.`)) return;
+  if (hkGhlBlockDayInFlight) return;
+  hkGhlBlockDayInFlight = true;
+  const blockBtn = document.getElementById('btnBlockDayGhl');
+  if (blockBtn) blockBtn.disabled = true;
   showToast('⏳ Blokslot aanmaken in GHL...', 'loading');
   try {
     const res = await fetch('/api/ghl?action=blockCalendarDay', {
@@ -3361,11 +3367,18 @@ async function blockCurrentDayInGhl() {
       if (raw) msg += '\n\n' + raw;
       throw new Error(msg);
     }
-    showToast('✓ Dag geblokkeerd in GHL', 'success');
-    markDashBlockedDate(dateStr);
+    if (data.alreadyBlocked) {
+      showToast(data.message || 'Deze kalender had al bloktijd — geen extra blokslot geplaatst.', 'info');
+    } else {
+      showToast('✓ Dag geblokkeerd op Planning Jerry in GHL', 'success');
+      markDashBlockedDate(dateStr);
+    }
     await loadAppointments(currentDate);
   } catch (e) {
     showToast(String(e.message || e), 'info');
+  } finally {
+    hkGhlBlockDayInFlight = false;
+    render();
   }
 }
 

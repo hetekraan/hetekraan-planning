@@ -912,6 +912,16 @@ export default async function handler(req, res) {
         if (r.error && !r.status) {
           return res.status(400).json({ error: r.error });
         }
+        if (r.skipped) {
+          return res.status(200).json({
+            success: true,
+            alreadyBlocked: true,
+            message:
+              typeof r.detail === 'string'
+                ? r.detail
+                : 'Kalender had al bloktijd op deze dag — geen nieuw blokslot geplaatst.',
+          });
+        }
         if (!r.ok) {
           const ghlDetail =
             typeof r.detail === 'string'
@@ -922,12 +932,12 @@ export default async function handler(req, res) {
             r.status,
             r.versionTried,
             r.timeFormatTried,
-            r.calendarIdOmitted ? 'no-calendarId' : 'with-calendarId',
+            'calendarId+assignedUserId',
             ghlDetail
           );
           const tip =
             r.status === 422
-              ? '422 = GHL-validatie. Lees de GHL-regel hierboven; blokken gaan altijd met calendarId (Planning Jerry). Bij persistente 422: GHL_CALENDAR_ID, assigned user en API-versie controleren.'
+              ? '422 = GHL-validatie. Controleer GHL_LOCATION_ID, GHL_CALENDAR_ID en een user (GHL_APPOINTMENT_ASSIGNED_USER_ID / GHL_BLOCK_SLOT_USER_ID of user gekoppeld aan de kalender in GHL).'
               : 'Controleer scopes (calendars/events.write). Zet GHL_APPOINTMENT_ASSIGNED_USER_ID of GHL_BLOCK_SLOT_USER_ID (zelfde user als op die kalender in GHL).';
           const detailTrim = String(ghlDetail || '').trim();
           const error =
