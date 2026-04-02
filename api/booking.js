@@ -16,6 +16,13 @@ import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
+import {
+  DAYPART_SPLIT_HOUR,
+  SLOT_LABEL_AFTERNOON_NL,
+  SLOT_LABEL_MORNING_NL,
+  WORK_DAY_END_HOUR,
+  WORK_DAY_START_HOUR,
+} from '../lib/planning-work-hours.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -31,17 +38,19 @@ function slotLabel(h) {
   return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
 }
 
-/** Starttijden (uur als decimaal) binnen 09–13 / 13–17; afhankelijk van GHL-duur (60 of 90 min). */
+/** Starttijden (uur als decimaal) binnen ochtend/middag-werktijden; afhankelijk van GHL-duur (60 of 90 min). */
 function candidateStartHoursForBlock(block, durationMin) {
   const starts = [];
   const stepMin = 30;
+  const mornEnd = DAYPART_SPLIT_HOUR * 60;
+  const aftEnd = WORK_DAY_END_HOUR * 60;
   if (block === 'morning') {
-    for (let m = 9 * 60; m < 13 * 60; m += stepMin) {
-      if (m + durationMin <= 13 * 60) starts.push(m / 60);
+    for (let m = WORK_DAY_START_HOUR * 60; m < mornEnd; m += stepMin) {
+      if (m + durationMin <= mornEnd) starts.push(m / 60);
     }
   } else {
-    for (let m = 13 * 60; m < 17 * 60; m += stepMin) {
-      if (m + durationMin <= 17 * 60) starts.push(m / 60);
+    for (let m = DAYPART_SPLIT_HOUR * 60; m < aftEnd; m += stepMin) {
+      if (m + durationMin <= aftEnd) starts.push(m / 60);
     }
   }
   return starts;
@@ -59,7 +68,7 @@ function splitEventsByBlock(events) {
   const afternoon = [];
   for (const e of events) {
     const h = hourInAmsterdam(e.startTime);
-    if (h < 13) morning.push(e);
+    if (h < DAYPART_SPLIT_HOUR) morning.push(e);
     else afternoon.push(e);
   }
   return { morning, afternoon };
@@ -91,7 +100,7 @@ function bookingIntervalFitsCalendar(dateStr, startHourDec, durationMin, events)
 
 function slotAvailableForWorkType(dateStr, events, workType, startHourDec) {
   const durationMin = ghlDurationMinutesForType(workType);
-  const block = startHourDec < 13 ? 'morning' : 'afternoon';
+  const block = startHourDec < DAYPART_SPLIT_HOUR ? 'morning' : 'afternoon';
   const { morning, afternoon } = splitEventsByBlock(events);
   const blockEvents = block === 'morning' ? morning : afternoon;
   if (!blockAllowsNewCustomerBooking(block, blockEvents, workType)) return false;
@@ -106,7 +115,7 @@ function computeSlotsForDay(dateStr, events, workType) {
   const afternoonOk = blockAllowsNewCustomerBooking('afternoon', afternoon, workType);
 
   return hours.map((h) => {
-    const block = h < 13 ? 'morning' : 'afternoon';
+    const block = h < DAYPART_SPLIT_HOUR ? 'morning' : 'afternoon';
     const blockOk = block === 'morning' ? morningOk : afternoonOk;
     const interval = blockOk ? bookingIntervalFitsCalendar(dateStr, h, durationMin, events) : null;
     const available = Boolean(interval);
@@ -434,10 +443,12 @@ export default async function handler(req, res) {
           return res.status(502).json({ error: 'Kalender boeken mislukt', detail: String(errTxt).slice(0, 300) });
         }
 
-        const blockPart = startHourDec < 13 ? 'morning' : 'afternoon';
+        const blockPart = startHourDec < DAYPART_SPLIT_HOUR ? 'morning' : 'afternoon';
         const routeStopDay = Math.min(events.length + 1, 7);
         const slotTxt =
-          blockPart === 'morning' ? 'ochtend 09:00–13:00' : 'middag 13:00–17:00';
+          blockPart === 'morning'
+            ? `ochtend ${SLOT_LABEL_MORNING_NL}`
+            : `middag ${SLOT_LABEL_AFTERNOON_NL}`;
         const tijdafspraakVal = `${formatDateLongNlForBooking(date)}. Geboekt tijdslot: ${slotTxt}. Klant verwacht bezoek binnen dit venster. Routevolgorde deze dag: ${routeStopDay}.`;
         await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
           method: 'PUT',

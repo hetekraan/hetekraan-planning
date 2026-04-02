@@ -19,6 +19,7 @@ import {
   markBlockLikeOnCalendarEvents,
   postFullDayBlockSlot,
 } from '../lib/ghl-calendar-blocks.js';
+import { DEFAULT_BOOK_START_MORNING } from '../lib/planning-work-hours.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -733,7 +734,7 @@ export default async function handler(req, res) {
         }
 
         // Stap 3: agenda-afspraak aanmaken (met retry bij slot-conflict)
-        const [hours, minutes] = (time || '09:00').split(':').map(Number);
+        const [hours, minutes] = (time || DEFAULT_BOOK_START_MORNING).split(':').map(Number);
         const durationMin = ghlDurationMinutesForType(normalizeWorkType(apptType));
 
         // Basisstarttijd via DST-bewuste helper (niet hardgecodeerd +01:00; anders dag-overschrijding in CEST).
@@ -881,7 +882,7 @@ export default async function handler(req, res) {
         const { appointments } = req.body;
         for (const appt of appointments || []) {
           if (!appt.contactId) continue;
-          const planned = String(appt.timeFrom || appt.timeTo || '09:00').trim();
+          const planned = String(appt.timeFrom || appt.timeTo || DEFAULT_BOOK_START_MORNING).trim();
           await fetchWithRetry(`${GHL_BASE}/contacts/${appt.contactId}`, {
             method: 'PUT',
             headers: { Authorization: `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', Version: '2021-04-15' },

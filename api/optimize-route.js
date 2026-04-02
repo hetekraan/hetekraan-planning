@@ -3,13 +3,13 @@
 // Valt terug op Directions API (optimize:true) als Distance Matrix niet beschikbaar is.
 
 const DEPOT      = 'Cornelis Dopperkade, Amsterdam';
-const START_TIME = 9 * 60; // 09:00 in minuten
+const START_TIME = 8 * 60; // eerste stop: 08:00 (werkdag-start, gelijk met GHL)
 
 function parseTimeWindow(str) {
   if (!str || str === 'null') return null;
   const s = str.toLowerCase().trim();
-  if (s.includes('ochtend')) return { start: 8 * 60, end: 12 * 60 };
-  if (s.includes('middag'))  return { start: 12 * 60, end: 17 * 60 };
+  if (s.includes('ochtend')) return { start: 8 * 60, end: 13 * 60 };
+  if (s.includes('middag'))  return { start: 12 * 60, end: 18 * 60 };
   if (s.includes('avond'))   return { start: 17 * 60, end: 20 * 60 };
 
   const rondMatch = s.match(/rond\s+(\d{1,2})[:.h](\d{2})/);

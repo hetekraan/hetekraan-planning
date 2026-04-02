@@ -1316,7 +1316,7 @@
     </div>
     <div class="form-row" style="margin-bottom:4px">
       <label class="form-label">Tijdsvenster afgesproken (optioneel)</label>
-      <input class="form-input" type="text" id="rTimeWindow" placeholder="bijv. 09:00-11:00 of ochtend">
+      <input class="form-input" type="text" id="rTimeWindow" placeholder="bijv. 08:00-11:00 of ochtend">
     </div>
 
     <div class="modal-actions" style="justify-content:space-between;margin-top:16px">
@@ -1405,7 +1405,7 @@
     </div>
     <div class="form-row">
       <label class="form-label">Tijdsvenster (klantafspraak)</label>
-      <input class="form-input" type="text" id="deTimeWindow" placeholder="bijv. ochtend of 09:00-11:00">
+      <input class="form-input" type="text" id="deTimeWindow" placeholder="bijv. ochtend of 08:00-11:00">
     </div>
     <div class="form-row">
       <label class="form-label">Opmerkingen</label>
@@ -1444,7 +1444,7 @@
       </div>
       <div>
         <label class="form-label">Tijd</label>
-        <input class="form-input" type="time" id="mTime" value="09:00">
+        <input class="form-input" type="time" id="mTime" value="08:00">
       </div>
     </div>
     <div class="form-row">
@@ -2428,12 +2428,12 @@ function render() {
   }
   if (morningApts.length) {
     parts.push(
-      `<div class="planning-section"><div class="planning-section-title">Ochtend 09:00–13:00</div>${morningApts.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
+      `<div class="planning-section"><div class="planning-section-title">Ochtend 08:00–13:00</div>${morningApts.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
     );
   }
   if (afternoonApts.length) {
     parts.push(
-      `<div class="planning-section"><div class="planning-section-title">Middag 13:00–17:00</div>${afternoonApts.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
+      `<div class="planning-section"><div class="planning-section-title">Middag 13:00–18:00</div>${afternoonApts.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
     );
   }
   let listHtml = parts.join('');
@@ -2478,10 +2478,10 @@ function renderRoute(routeStops) {
       <div class="route-info"><div class="route-name">Depot / Start</div><div class="route-addr">Vaste startlocatie</div></div>
     </div>`;
   if (morning.length) {
-    body += `<div class="route-section-head">Ochtend 09:00–13:00</div>` + morning.map((a) => renderRouteItemHtml(a)).join('');
+    body += `<div class="route-section-head">Ochtend 08:00–13:00</div>` + morning.map((a) => renderRouteItemHtml(a)).join('');
   }
   if (afternoon.length) {
-    body += `<div class="route-section-head route-section-head--pm">Middag 13:00–17:00</div>` + afternoon.map((a) => renderRouteItemHtml(a)).join('');
+    body += `<div class="route-section-head route-section-head--pm">Middag 13:00–18:00</div>` + afternoon.map((a) => renderRouteItemHtml(a)).join('');
   }
   list.innerHTML = body;
 
@@ -2599,7 +2599,7 @@ function initRouteDrag(list) {
           console.error(err);
           let mins = 9 * 60;
           active.forEach((a, i) => {
-            a.time      = i === 0 ? '09:00' : minsToTime(mins);
+            a.time      = i === 0 ? '08:00' : minsToTime(mins);
             a.estimated = true;
             const jobMins    = JOB_DURATION[a.type] || 30;
             const travelMins = 15;
@@ -3048,8 +3048,8 @@ function openDaanEditModal(apptId) {
   document.getElementById('deNotes').value = a.notes || '';
   const prijsTxt = a.priceLabel ? a.priceLabel.replace(/^€\s*/, '').trim() : (a.price ? String(a.price) : '');
   document.getElementById('dePrijs').value = prijsTxt;
-  const tm = normalizeTimeStr(a.time || '09:00');
-  document.getElementById('deApptTime').value = tm.length >= 5 ? tm : '09:00';
+  const tm = normalizeTimeStr(a.time || '08:00');
+  document.getElementById('deApptTime').value = tm.length >= 5 ? tm : '08:00';
   document.getElementById('deDuration').value = String(JOB_DURATION[a.type] || 30);
   document.getElementById('daanEditOverlay').classList.add('visible');
 }
@@ -3126,7 +3126,7 @@ function deleteAppt(id) {
   // Vul huidige datum en tijd in als startpunt
   const todayVal = document.getElementById('dateInput')?.value || new Date().toISOString().split('T')[0];
   document.getElementById('rDate').value       = todayVal;
-  document.getElementById('rTime').value       = a.time || '09:00';
+  document.getElementById('rTime').value       = a.time || '08:00';
   document.getElementById('rTimeWindow').value = a.timeWindow || '';
 
   document.getElementById('rescheduleOverlay').classList.add('visible');
@@ -3180,7 +3180,7 @@ async function confirmDeleteAppt() {
 }
 
 function timeToWindow(timeStr, isFirst) {
-  if (isFirst || timeStr === '09:00') return timeStr; // eerste afspraak: exact tijdstip
+  if (isFirst || timeStr === '08:00' || timeStr === '09:00') return timeStr; // eerste afspraak / oude placeholder: exact tijdstip
   const [h, m] = timeStr.split(':').map(Number);
   const totalMin = h * 60 + m;
   const fmt = min => {

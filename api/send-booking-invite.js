@@ -20,6 +20,13 @@ import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
 import { signBookingToken } from '../lib/session.js';
 import { dayHasBlockedSlotsOverlappingWorkHours } from '../lib/ghl-calendar-blocks.js';
+import {
+  DAYPART_SPLIT_HOUR,
+  DEFAULT_BOOK_START_AFTERNOON,
+  DEFAULT_BOOK_START_MORNING,
+  SLOT_LABEL_AFTERNOON_SPACE,
+  SLOT_LABEL_MORNING_SPACE,
+} from '../lib/planning-work-hours.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -125,8 +132,8 @@ async function getBestSlots(address, workType) {
       continue;
     }
 
-    const morningEvents = events.filter((e) => hourInAmsterdam(e.startTime) < 13);
-    const afternoonEvents = events.filter((e) => hourInAmsterdam(e.startTime) >= 13);
+    const morningEvents = events.filter((e) => hourInAmsterdam(e.startTime) < DAYPART_SPLIT_HOUR);
+    const afternoonEvents = events.filter((e) => hourInAmsterdam(e.startTime) >= DAYPART_SPLIT_HOUR);
 
     const noon = amsterdamWallTimeToDate(dateStr, 12, 0);
     const dateLabel = noon
@@ -157,9 +164,9 @@ async function getBestSlots(address, workType) {
         block,
         existingCount: blockEvents.length,
         slotsLeft: maxB - blockEvents.length,
-        timeLabel: block === 'morning' ? '09:00 - 13:00' : '13:00 - 17:00',
+        timeLabel: block === 'morning' ? SLOT_LABEL_MORNING_SPACE : SLOT_LABEL_AFTERNOON_SPACE,
         blockLabel: block === 'morning' ? 'ochtend' : 'middag',
-        suggestedTime: block === 'morning' ? '09:00' : '13:00',
+        suggestedTime: block === 'morning' ? DEFAULT_BOOK_START_MORNING : DEFAULT_BOOK_START_AFTERNOON,
         dateLabel,
         score,
       });

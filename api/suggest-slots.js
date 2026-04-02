@@ -14,6 +14,11 @@ import {
   formatYyyyMmDdInAmsterdam,
   hourInAmsterdam,
 } from '../lib/amsterdam-calendar-day.js';
+import {
+  DAYPART_SPLIT_HOUR,
+  SLOT_LABEL_AFTERNOON_SPACE,
+  SLOT_LABEL_MORNING_SPACE,
+} from '../lib/planning-work-hours.js';
 import { fetchWithRetry } from '../lib/retry.js';
 
 const GHL_API_KEY = process.env.GHL_API_KEY;
@@ -118,7 +123,7 @@ function aggregateFreeSlotsByAmsterdamDay(slotsObj) {
       if (!dateStr) continue;
       const part = out.get(dateStr) || { morning: 0, afternoon: 0 };
       const h = hourInAmsterdam(ms);
-      if (h < 13) part.morning += 1;
+      if (h < DAYPART_SPLIT_HOUR) part.morning += 1;
       else part.afternoon += 1;
       out.set(dateStr, part);
     }
@@ -399,7 +404,7 @@ export default async function handler(req, res) {
               const ms = typeof raw === 'number' ? (raw < 1e12 ? raw * 1000 : raw) : Date.parse(String(raw));
               if (Number.isNaN(ms)) return false;
               const h = hourInAmsterdam(ms);
-              return block === 'morning' ? h < 13 : h >= 13;
+              return block === 'morning' ? h < DAYPART_SPLIT_HOUR : h >= DAYPART_SPLIT_HOUR;
             });
             const existingCoords = await geocodeEvents(blockEvents);
             const fitScore = routeFitScore(newCoord, existingCoords);
@@ -412,7 +417,7 @@ export default async function handler(req, res) {
             block,
             existingCount,
             score,
-            timeLabel: block === 'morning' ? '09:00 - 13:00' : '13:00 - 17:00',
+            timeLabel: block === 'morning' ? SLOT_LABEL_MORNING_SPACE : SLOT_LABEL_AFTERNOON_SPACE,
             blockLabel: block === 'morning' ? 'ochtend' : 'middag',
             slotsLeft,
           });

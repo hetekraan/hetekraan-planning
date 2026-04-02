@@ -2,6 +2,7 @@
 // Draait volgens vercel.json (bijv. 06:00 UTC).
 
 import { amsterdamCalendarDayBoundsMs, formatYyyyMmDdInAmsterdam } from '../../lib/amsterdam-calendar-day.js';
+import { DEFAULT_BOOK_START_MORNING } from '../../lib/planning-work-hours.js';
 import { fetchWithRetry } from '../../lib/retry.js';
 import { sendErrorNotification } from '../../lib/notify.js';
 
@@ -17,6 +18,9 @@ const GHL_HEADERS = {
 };
 
 const GEPLANDE_AANKOMSTTIJD_FIELD = 'XELcOSdWq3tqRtpLE5x8';
+
+/** Agenda-start die alleen placeholder is (geen ±60 venster). Oud: 09:00. */
+const PLACEHOLDER_START_TIMES = new Set([DEFAULT_BOOK_START_MORNING, '09:00']);
 
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
@@ -92,7 +96,7 @@ export default async function handler(req, res) {
         }
 
         if (plannedTime) plannedTime = plannedTime.trim();
-        if (plannedTime && /^\d{1,2}:\d{2}$/.test(plannedTime) && plannedTime !== '09:00') {
+        if (plannedTime && /^\d{1,2}:\d{2}$/.test(plannedTime) && !PLACEHOLDER_START_TIMES.has(plannedTime)) {
           const [h, m] = plannedTime.split(':').map(Number);
           const total = h * 60 + m;
           const fmt = min => `${String(Math.floor(Math.max(0, min) / 60)).padStart(2,'0')}:${String(Math.max(0, min) % 60).padStart(2,'0')}`;
@@ -103,7 +107,7 @@ export default async function handler(req, res) {
           const rawTime = new Date(event.startTime).toLocaleTimeString('nl-NL', {
             hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam'
           });
-          if (rawTime === '09:00') {
+          if (PLACEHOLDER_START_TIMES.has(rawTime)) {
             plannedTime = rawTime;
           } else {
             const [h, m] = rawTime.split(':').map(Number);

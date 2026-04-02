@@ -20,6 +20,14 @@ import {
   HK_DEFAULT_BLOCK_SLOT_USER_ID,
   markBlockLikeOnCalendarEvents,
 } from '../lib/ghl-calendar-blocks.js';
+import {
+  DAYPART_SPLIT_HOUR,
+  DEFAULT_BOOK_START_AFTERNOON,
+  DEFAULT_BOOK_START_MORNING,
+  SLOT_LABEL_AFTERNOON_NL,
+  SLOT_LABEL_MORNING_NL,
+  WORK_DAY_START_HOUR,
+} from '../lib/planning-work-hours.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -57,15 +65,15 @@ function formatDateLongNl(dateStr) {
 }
 
 /**
- * Custom field "Tijdafspraak": het **geboekte dagdeel** (09–13 / 13–17), niet de GHL starttijd.
+ * Custom field "Tijdafspraak": het **geboekte dagdeel** (ochtend/middag-venster), niet de GHL starttijd.
  * Zo weet de monteur welk venster de klant verwacht; route-optimalisatie gebruikt de dagnummers op het dashboard.
  */
 function formatGeboektTijdslotField(dateStr, block, routeStopDay) {
   const dateLong = formatDateLongNl(dateStr);
   const slot =
     block === 'morning'
-      ? 'ochtend 09:00–13:00'
-      : 'middag 13:00–17:00';
+      ? `ochtend ${SLOT_LABEL_MORNING_NL}`
+      : `middag ${SLOT_LABEL_AFTERNOON_NL}`;
   let s = `${dateLong}. Geboekt tijdslot: ${slot}. Klant verwacht bezoek binnen dit venster.`;
   if (routeStopDay != null && routeStopDay >= 1) {
     s += ` Routevolgorde deze dag: ${routeStopDay}.`;
@@ -245,17 +253,20 @@ export default async function handler(req, res) {
   const inMorning = (e) => {
     const raw = eventStartRawForBooking(e);
     if (raw == null) return false;
-    return hourInAmsterdam(raw) < 13;
+    return hourInAmsterdam(raw) < DAYPART_SPLIT_HOUR;
   };
   const inAfternoon = (e) => {
     const raw = eventStartRawForBooking(e);
     if (raw == null) return false;
-    return hourInAmsterdam(raw) >= 13;
+    return hourInAmsterdam(raw) >= DAYPART_SPLIT_HOUR;
   };
   const blockEvents = customerEvents.filter((e) => (block === 'morning' ? inMorning(e) : inAfternoon(e)));
   if (!blockAllowsNewCustomerBooking(block, blockEvents, type)) {
     const maxB = customerMaxForBlock(block);
-    const blokNaam = block === 'morning' ? 'ochtend (09:00–13:00)' : 'middag (13:00–17:00)';
+    const blokNaam =
+      block === 'morning'
+        ? `ochtend (${SLOT_LABEL_MORNING_NL})`
+        : `middag (${SLOT_LABEL_AFTERNOON_NL})`;
     releaseBookingLock(lockKey);
     return res.status(409).json({
       error: `Dit tijdslot past niet meer: in de ${blokNaam} zitten al ${maxB} klant-afspraken of er is onvoldoende geplande tijd over voor dit werk. Kies een andere optie of bel ons.`,
@@ -282,10 +293,10 @@ export default async function handler(req, res) {
     });
   }
 
-  const timeMap = { morning: '09:00', afternoon: '13:00' };
-  const startTimeStr = chosenSlot.suggestedTime || timeMap[block] || '09:00';
+  const timeMap = { morning: DEFAULT_BOOK_START_MORNING, afternoon: DEFAULT_BOOK_START_AFTERNOON };
+  const startTimeStr = chosenSlot.suggestedTime || timeMap[block] || DEFAULT_BOOK_START_MORNING;
   const timeParts = startTimeStr.split(':').map(Number);
-  const hours = timeParts[0] ?? 9;
+  const hours = timeParts[0] ?? WORK_DAY_START_HOUR;
   const minutes = Number.isFinite(timeParts[1]) ? timeParts[1] : 0;
   const durationMin = ghlDurationMinutesForType(type);
 
