@@ -390,6 +390,7 @@ export default async function handler(req, res) {
           startMs: bounds.startMs,
           endMs: bounds.endMs,
           apiKey: GHL_API_KEY,
+          assignedUserId: effectiveBlockSlotAssignedUserId(),
         });
         if (blockedAsEvents.length) {
           events = [...events, ...blockedAsEvents];
@@ -1009,16 +1010,18 @@ export default async function handler(req, res) {
           ),
         ];
 
+        const idsFromClient = ids.length > 0;
+        const blockUserId = effectiveBlockSlotAssignedUserId() || HK_DEFAULT_BLOCK_SLOT_USER_ID;
+
         if (!ids.length) {
-          /** Personal block-slots zonder event-calendar: blocked-slots API op assignedUserId (Jerry + evt. env-user). */
-          const blockUserId = effectiveBlockSlotAssignedUserId();
+          /** Personal block-slots: GET blocked-slots met userId + merged calendar-queries. */
           ids = await listDeletableBlockIdsForAmsterdamDay(
             GHL_BASE,
             {
               locationId: loc,
               calendarId: cal,
               apiKey: GHL_API_KEY,
-              assignedUserId: blockUserId || HK_DEFAULT_BLOCK_SLOT_USER_ID,
+              assignedUserId: blockUserId,
             },
             date
           );
@@ -1031,12 +1034,35 @@ export default async function handler(req, res) {
           });
         }
 
-        const results = [];
-        for (const bid of ids) {
-          const r = await deleteGhlCalendarBlock(GHL_BASE, GHL_API_KEY, bid);
-          results.push({ id: bid, ok: r.ok, error: r.error });
+        const runDeletes = async (idList) => {
+          const out = [];
+          for (const bid of idList) {
+            const r = await deleteGhlCalendarBlock(GHL_BASE, GHL_API_KEY, bid, loc);
+            out.push({ id: bid, ok: r.ok, error: r.error });
+          }
+          return out;
+        };
+
+        let results = await runDeletes(ids);
+        let anyOk = results.some((x) => x.ok);
+
+        if (!anyOk && idsFromClient) {
+          const discovered = await listDeletableBlockIdsForAmsterdamDay(
+            GHL_BASE,
+            {
+              locationId: loc,
+              calendarId: cal,
+              apiKey: GHL_API_KEY,
+              assignedUserId: blockUserId,
+            },
+            date
+          );
+          if (discovered.length) {
+            ids = discovered;
+            results = await runDeletes(ids);
+            anyOk = results.some((x) => x.ok);
+          }
         }
-        const anyOk = results.some((x) => x.ok);
         if (!anyOk) {
           return res.status(502).json({
             error: results.map((x) => `${x.id}: ${x.error || 'mislukt'}`).join('; ').slice(0, 600),
@@ -1124,7 +1150,7 @@ export default async function handler(req, res) {
 
         const results = [];
         for (const bid of ids) {
-          const dr = await deleteGhlCalendarBlock(GHL_BASE, GHL_API_KEY, bid);
+          const dr = await deleteGhlCalendarBlock(GHL_BASE, GHL_API_KEY, bid, loc);
           results.push({ id: bid, ok: dr.ok, error: dr.error });
           await new Promise((r) => setTimeout(r, 75));
         }
