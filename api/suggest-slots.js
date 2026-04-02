@@ -26,7 +26,7 @@ const GHL_BASE = 'https://services.leadconnectorhq.com';
 const FREE_SLOTS_DAYS = 42;
 
 /** Fallbacks als env leeg (productie: zet GHL_CALENDAR_ID / GHL_LOCATION_ID). */
-const SUGGEST_CALENDAR_FALLBACK = 'vdZlb1g9Ii8tldCwwXDx';
+const SUGGEST_CALENDAR_FALLBACK = 'vdZlb1g9Ii8tIdCwwXDx';
 const SUGGEST_LOCATION_FALLBACK = 'KVD6wOE9g1g2V9z7Zxj7';
 
 const FIELD_IDS = {
@@ -127,22 +127,32 @@ function aggregateFreeSlotsByAmsterdamDay(slotsObj) {
 }
 
 /**
- * GET /calendars/:id/free-slots of /calendars/free-slots?calendarId=…
+ * GET /calendars/:id/free-slots — GHL gebruikt querynamen startDate/endDate maar met **Unix-ms**
+ * (niet YYYY-MM-DD), zie marketplace / curl-voorbeelden.
  */
-async function fetchGhlFreeSlots({ calendarId, locationId, startDate, endDate, apiKey }) {
-  const common = new URLSearchParams({
-    startDate,
-    endDate,
+async function fetchGhlFreeSlots({ calendarId, locationId, startMs, endMs, apiKey }) {
+  const baseQs = new URLSearchParams({
+    startDate: String(startMs),
+    endDate: String(endMs),
     timezone: 'Europe/Amsterdam',
-    locationId,
   });
-  const urls = [
-    `${GHL_BASE}/calendars/${encodeURIComponent(calendarId)}/free-slots?${common}`,
-    `${GHL_BASE}/calendars/free-slots?${common}&calendarId=${encodeURIComponent(calendarId)}`,
+  const withLoc = new URLSearchParams(baseQs);
+  if (locationId) withLoc.set('locationId', locationId);
+
+  const encCal = encodeURIComponent(calendarId);
+  /** Zonder locationId eerst (match met werkende curl); daarna mét locatie + alt. route. */
+  const urlAttempts = [
+    `${GHL_BASE}/calendars/${encCal}/free-slots?${baseQs}`,
+    `${GHL_BASE}/calendars/${encCal}/free-slots?${withLoc}`,
+    `${GHL_BASE}/calendars/free-slots?${baseQs}&calendarId=${encCal}`,
+    `${GHL_BASE}/calendars/free-slots?${withLoc}&calendarId=${encCal}`,
   ];
   const versions = ['2021-04-15', '2021-07-28'];
   let lastErr = '';
-  for (const url of urls) {
+  const seen = new Set();
+  for (const url of urlAttempts) {
+    if (seen.has(url)) continue;
+    seen.add(url);
     for (const Version of versions) {
       const r = await fetchWithRetry(
         url,
@@ -305,11 +315,17 @@ export default async function handler(req, res) {
     const endDate = addAmsterdamCalendarDays(startDate, FREE_SLOTS_DAYS - 1);
     if (!endDate) return res.status(500).json({ error: 'Datumfout eind' });
 
+    const startBounds = amsterdamCalendarDayBoundsMs(startDate);
+    const endBounds = amsterdamCalendarDayBoundsMs(endDate);
+    if (!startBounds || !endBounds) {
+      return res.status(500).json({ error: 'Kon ms-bereik voor free-slots niet bepalen' });
+    }
+
     const free = await fetchGhlFreeSlots({
       calendarId: calId,
       locationId: locId,
-      startDate,
-      endDate,
+      startMs: startBounds.startMs,
+      endMs: endBounds.endMs,
       apiKey: GHL_API_KEY,
     });
 
@@ -430,6 +446,7 @@ export default async function handler(req, res) {
         source: 'ghl-free-slots',
         startDate,
         endDate,
+        freeSlotsRangeMs: { startMs: startBounds.startMs, endMs: endBounds.endMs },
         calendarId: calId,
       },
     });
