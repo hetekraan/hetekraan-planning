@@ -143,12 +143,23 @@ async function fetchGhlFreeSlots({ calendarId, locationId, startMs, endMs, apiKe
   if (locationId) withLoc.set('locationId', locationId);
 
   const encCal = encodeURIComponent(calendarId);
-  /** Zonder locationId eerst (match met werkende curl); daarna mét locatie + alt. route. */
+  /**
+   * Alleen GET /calendars/:calendarId/free-slots (marketplace).
+   * Nooit GET /calendars/free-slots?calendarId=… — GHL routeert dat als :calendarId = "free-slots"
+   * → 400 "Calendar not found for id: free-slots".
+   */
+  const userIdOpt = stripGhlEnvId(
+    process.env.GHL_FREE_SLOTS_USER_ID ||
+      process.env.GHL_APPOINTMENT_ASSIGNED_USER_ID ||
+      process.env.GHL_BLOCK_SLOT_USER_ID
+  );
+  const withLocUser = new URLSearchParams(withLoc);
+  if (userIdOpt) withLocUser.set('userId', userIdOpt);
+
   const urlAttempts = [
-    `${GHL_BASE}/calendars/${encCal}/free-slots?${baseQs}`,
     `${GHL_BASE}/calendars/${encCal}/free-slots?${withLoc}`,
-    `${GHL_BASE}/calendars/free-slots?${baseQs}&calendarId=${encCal}`,
-    `${GHL_BASE}/calendars/free-slots?${withLoc}&calendarId=${encCal}`,
+    ...(userIdOpt ? [`${GHL_BASE}/calendars/${encCal}/free-slots?${withLocUser}`] : []),
+    `${GHL_BASE}/calendars/${encCal}/free-slots?${baseQs}`,
   ];
   const versions = ['2021-04-15', '2021-07-28'];
   let lastErr = '';
