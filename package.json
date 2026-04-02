@@ -6,7 +6,7 @@
     "build": "node scripts/vercel-build-public.js"
   },
   "dependencies": {
-    "@mollie/api-client": "^3.7.0",
+    "@mollie/api-client": "^4.5.0",
     "pdfkit": "^0.15.0",
     "resend": "^4.0.0"
   }
