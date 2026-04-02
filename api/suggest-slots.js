@@ -106,19 +106,88 @@ function routeFitScore(newCoord, existingCoords) {
   return Math.min(...existingCoords.map((c) => haversine(newCoord.lat, newCoord.lng, c.lat, c.lng)));
 }
 
+/** Velden die GHL soms naast datum-keys op root zet (niet als slot-dagen tellen). */
+const GHL_FREE_SLOTS_META_KEYS = new Set([
+  'traceId',
+  'success',
+  'message',
+  'error',
+  'statusCode',
+  'meta',
+  'version',
+  'warnings',
+]);
+
+/**
+ * Platte map { "YYYY-MM-DD": Slot[] } zoals in marketplace-docs beschreven.
+ */
+function filterAsDateKeyedSlotMap(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (GHL_FREE_SLOTS_META_KEYS.has(k)) continue;
+    if (!dateRe.test(k)) continue;
+    let arr = null;
+    if (Array.isArray(v)) arr = v;
+    else if (v && typeof v === 'object') {
+      if (Array.isArray(v.slots)) arr = v.slots;
+      else if (Array.isArray(v.freeSlots)) arr = v.freeSlots;
+      else if (Array.isArray(v.availableSlots)) arr = v.availableSlots;
+    }
+    if (arr) out[k] = arr;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 /** GHL free-slots payload → object met datum-keys (of één array onder _all). */
 function extractSlotsObject(data) {
   if (!data || typeof data !== 'object') return null;
   if (Array.isArray(data.slots)) return { _all: data.slots };
   const inner =
     data.slots ?? data.data?.slots ?? data.result ?? data.freeSlots ?? data.availability ?? data.data?.result;
-  if (inner && typeof inner === 'object' && !Array.isArray(inner)) return inner;
+  if (inner != null && typeof inner === 'object') {
+    if (Array.isArray(inner)) return { _all: inner };
+    const byDateInner = filterAsDateKeyedSlotMap(inner);
+    if (byDateInner) return byDateInner;
+    if (inner.data && typeof inner.data === 'object') {
+      const nested = filterAsDateKeyedSlotMap(inner.data);
+      if (nested) return nested;
+    }
+    /** Oud gedrag: geneste object zonder datum-keys (bijv. leeg { slots: {} }) */
+    if (!Array.isArray(inner) && Object.keys(inner).length > 0) {
+      const onlyMeta = Object.keys(inner).every((k) => GHL_FREE_SLOTS_META_KEYS.has(k));
+      if (!onlyMeta) return inner;
+    }
+  }
+  const rootMap = filterAsDateKeyedSlotMap(data);
+  if (rootMap) return rootMap;
+  if (data.data && typeof data.data === 'object') {
+    const inData = filterAsDateKeyedSlotMap(data.data);
+    if (inData) return inData;
+  }
   return null;
+}
+
+/** Expliciet lege slots van GHL (200) — geen 502. */
+function isEmptyFreeSlotsSuccess(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+  if (data.error || (typeof data.statusCode === 'number' && data.statusCode >= 400)) return false;
+  const s = data.slots;
+  if (s && typeof s === 'object' && !Array.isArray(s) && Object.keys(s).length === 0) return true;
+  return false;
 }
 
 function slotStartMs(slot) {
   if (!slot || typeof slot !== 'object') return NaN;
-  const raw = slot.startTime ?? slot.start ?? slot.from ?? slot.slotTime ?? slot.dateTime;
+  const raw =
+    slot.startTime ??
+    slot.start ??
+    slot.from ??
+    slot.slotTime ??
+    slot.dateTime ??
+    slot.time ??
+    slot.startDateTime;
   if (raw == null) return NaN;
   if (typeof raw === 'number') return raw < 1e12 ? Math.round(raw * 1000) : raw;
   const t = Date.parse(String(raw));
@@ -205,7 +274,11 @@ async function fetchGhlFreeSlots({ calendarId, locationId, startMs, endMs, apiKe
       }
       const slotsObj = extractSlotsObject(data);
       if (slotsObj) return { ok: true, data, slotsObj };
-      lastErr = 'Geen slots-object in response';
+      if (isEmptyFreeSlotsSuccess(data)) {
+        return { ok: true, data, slotsObj: {} };
+      }
+      const keys = Object.keys(data).slice(0, 14).join(', ');
+      lastErr = `Geen slots-object in response (top keys: ${keys || '—'})`;
     }
   }
   return { ok: false, error: lastErr || 'free-slots mislukt' };
