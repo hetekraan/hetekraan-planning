@@ -15,7 +15,11 @@ import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
 import { verifyBookingToken } from '../lib/session.js';
-import { dayHasCustomerBlockingOverlap, markBlockLikeOnCalendarEvents } from '../lib/ghl-calendar-blocks.js';
+import {
+  dayHasCustomerBlockingOverlap,
+  HK_DEFAULT_BLOCK_SLOT_USER_ID,
+  markBlockLikeOnCalendarEvents,
+} from '../lib/ghl-calendar-blocks.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -179,11 +183,16 @@ export default async function handler(req, res) {
   if (!date) return res.status(400).json({ error: 'Geen datum in slot' });
 
   if (
-    await dayHasCustomerBlockingOverlap(GHL_BASE, {
-      locationId: GHL_LOCATION_ID,
-      calendarId: GHL_CALENDAR_ID,
-      apiKey: GHL_API_KEY,
-    }, date)
+    await dayHasCustomerBlockingOverlap(
+      GHL_BASE,
+      {
+        locationId: GHL_LOCATION_ID,
+        calendarId: GHL_CALENDAR_ID,
+        apiKey: GHL_API_KEY,
+        assignedUserId: effectiveBlockSlotUserId(),
+      },
+      date
+    )
   ) {
     return res.status(409).json({
       error: 'Deze dag is niet beschikbaar voor online boeken (agenda geblokkeerd). Kies een andere dag of neem contact op.',

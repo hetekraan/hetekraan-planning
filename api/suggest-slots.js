@@ -17,6 +17,7 @@ import {
 import {
   dayHasCustomerBlockingOverlap,
   fetchBlockedSlotsAsEvents,
+  HK_DEFAULT_BLOCK_SLOT_USER_ID,
   markBlockLikeOnCalendarEvents,
   suggestEventInAfternoonHalf,
   suggestEventInMorningHalf,
@@ -43,11 +44,28 @@ function getField(contact, fieldId) {
   return f?.value || '';
 }
 
+/** Zelfde als api/ghl effectiveBlockSlotAssignedUserId — personal block-slots staan op deze user. */
+function stripGhlEnvId(v) {
+  return String(v ?? '')
+    .replace(/^\uFEFF/, '')
+    .trim()
+    .replace(/^["']|["']$/g, '');
+}
+
+function effectiveBlockSlotUserIdForSuggest() {
+  return (
+    stripGhlEnvId(process.env.GHL_BLOCK_SLOT_USER_ID) ||
+    stripGhlEnvId(process.env.GHL_APPOINTMENT_ASSIGNED_USER_ID) ||
+    HK_DEFAULT_BLOCK_SLOT_USER_ID
+  );
+}
+
 function blockSlotCtx() {
   return {
     locationId: GHL_LOCATION_ID,
     calendarId: GHL_CALENDAR_ID,
     apiKey: GHL_API_KEY,
+    assignedUserId: effectiveBlockSlotUserIdForSuggest(),
   };
 }
 
@@ -239,6 +257,7 @@ export default async function handler(req, res) {
       startMs,
       endMs,
       apiKey: GHL_API_KEY,
+      assignedUserId: effectiveBlockSlotUserIdForSuggest(),
     });
     events = events.concat(blockedFromApi);
     markBlockLikeOnCalendarEvents(events);
