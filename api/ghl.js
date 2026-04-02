@@ -13,6 +13,7 @@ import { signSessionToken, parseUsers, verifySessionToken } from '../lib/session
 import {
   deleteGhlCalendarBlock,
   fetchBlockedSlotsAsEvents,
+  HK_DEFAULT_BLOCK_SLOT_USER_ID,
   listDeletableBlockIdsForAmsterdamDay,
   listDeletableBlockIdsForMsRange,
   markBlockLikeOnCalendarEvents,
@@ -38,6 +39,15 @@ const HK_PLANNING_JERRY_CALENDAR_ID = 'vdZlb1g9Ii8tldCwwXDx';
 function effectiveCalendarId() {
   const e = stripGhlEnvId(GHL_CALENDAR_ID);
   return e || HK_PLANNING_JERRY_CALENDAR_ID;
+}
+
+/** Block-slots aangemaakt met assignedUserId (geen event calendar) — zelfde user als in Vercel of vaste fallback. */
+function effectiveBlockSlotAssignedUserId() {
+  return (
+    stripGhlEnvId(process.env.GHL_BLOCK_SLOT_USER_ID) ||
+    stripGhlEnvId(process.env.GHL_APPOINTMENT_ASSIGNED_USER_ID) ||
+    HK_DEFAULT_BLOCK_SLOT_USER_ID
+  );
 }
 
 /**
@@ -1000,9 +1010,16 @@ export default async function handler(req, res) {
         ];
 
         if (!ids.length) {
+          /** Personal block-slots zonder event-calendar: blocked-slots API op assignedUserId (Jerry + evt. env-user). */
+          const blockUserId = effectiveBlockSlotAssignedUserId();
           ids = await listDeletableBlockIdsForAmsterdamDay(
             GHL_BASE,
-            { locationId: loc, calendarId: cal, apiKey: GHL_API_KEY },
+            {
+              locationId: loc,
+              calendarId: cal,
+              apiKey: GHL_API_KEY,
+              assignedUserId: blockUserId || HK_DEFAULT_BLOCK_SLOT_USER_ID,
+            },
             date
           );
         }
@@ -1088,6 +1105,7 @@ export default async function handler(req, res) {
           apiKey: GHL_API_KEY,
           startMs,
           endMs,
+          assignedUserId: effectiveBlockSlotAssignedUserId(),
         });
         const MAX_PER_RUN = 300;
         const truncated = allIds.length > MAX_PER_RUN;
