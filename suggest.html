@@ -350,7 +350,10 @@
       }
 
       if (!data.success || !data.suggestions?.length) {
-        showError('Geen tijdsloten beschikbaar', 'Er zijn geen vrije tijdsloten in de komende 7 werkdagen. Controleer de agenda.');
+        showError(
+          'Geen tijdsloten beschikbaar',
+          'Er zijn geen vrije tijdsloten (volgens GHL) in de komende weken op werkdagen. Controleer de agenda of probeer later opnieuw.'
+        );
         return;
       }
 

@@ -1,7 +1,6 @@
 // api/suggest-slots.js
-// Berekent de beste beschikbare tijdsloten voor een nieuwe klant,
-// rekening houdend met de bestaande routes voor komende werkdagen.
-// Wordt geopend vanuit GHL als Custom Menu Link.
+// Tijdsloten via officieel GHL GET …/free-slots (blokken + afspraken + werktijden in GHL).
+// Route-fit (geocode) blijft optioneel voor sortering.
 
 import {
   blockAllowsNewCustomerBooking,
@@ -13,38 +12,36 @@ import {
   amsterdamCalendarDayBoundsMs,
   amsterdamWeekdaySun0,
   formatYyyyMmDdInAmsterdam,
+  hourInAmsterdam,
 } from '../lib/amsterdam-calendar-day.js';
-import {
-  dayHasCustomerBlockingOverlap,
-  fetchBlockedSlotsAsEvents,
-  HK_DEFAULT_BLOCK_SLOT_USER_ID,
-  markBlockLikeOnCalendarEvents,
-  suggestEventInAfternoonHalf,
-  suggestEventInMorningHalf,
-} from '../lib/ghl-calendar-blocks.js';
+import { fetchWithRetry } from '../lib/retry.js';
 
-const GHL_API_KEY     = process.env.GHL_API_KEY;
+const GHL_API_KEY = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_CALENDAR_ID = process.env.GHL_CALENDAR_ID;
-const MAPS_KEY        = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_KEY;
-const GHL_BASE        = 'https://services.leadconnectorhq.com';
-const DEPOT           = 'Cornelis Dopperkade, Amsterdam';
-const DAYS_AHEAD      = 7; // kijk zoveel dagen vooruit
+const MAPS_KEY = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_KEY;
+const GHL_BASE = 'https://services.leadconnectorhq.com';
+
+/** ~6 weken vooruit (42 dagen), conform gewenst venster. */
+const FREE_SLOTS_DAYS = 42;
+
+/** Fallbacks als env leeg (productie: zet GHL_CALENDAR_ID / GHL_LOCATION_ID). */
+const SUGGEST_CALENDAR_FALLBACK = 'vdZlb1g9Ii8tldCwwXDx';
+const SUGGEST_LOCATION_FALLBACK = 'KVD6wOE9g1g2V9z7Zxj7';
 
 const FIELD_IDS = {
-  straatnaam:     'ZwIMY4VPelG5rKROb5NR',
-  huisnummer:     'co5Mr16rF6S6ay5hJOSJ',
-  postcode:       '3bCi5hL0rR9XGG33x2Gv',
-  woonplaats:     'mFRQjlUppycMfyjENKF9',
+  straatnaam: 'ZwIMY4VPelG5rKROb5NR',
+  huisnummer: 'co5Mr16rF6S6ay5hJOSJ',
+  postcode: '3bCi5hL0rR9XGG33x2Gv',
+  woonplaats: 'mFRQjlUppycMfyjENKF9',
   type_onderhoud: 'EXSQmlt7BqkXJMs8F3Qk',
 };
 
 function getField(contact, fieldId) {
-  const f = contact?.customFields?.find(f => f.id === fieldId);
+  const f = contact?.customFields?.find((f) => f.id === fieldId);
   return f?.value || '';
 }
 
-/** Zelfde als api/ghl effectiveBlockSlotAssignedUserId — personal block-slots staan op deze user. */
 function stripGhlEnvId(v) {
   return String(v ?? '')
     .replace(/^\uFEFF/, '')
@@ -52,33 +49,24 @@ function stripGhlEnvId(v) {
     .replace(/^["']|["']$/g, '');
 }
 
-function effectiveBlockSlotUserIdForSuggest() {
-  return (
-    stripGhlEnvId(process.env.GHL_BLOCK_SLOT_USER_ID) ||
-    stripGhlEnvId(process.env.GHL_APPOINTMENT_ASSIGNED_USER_ID) ||
-    HK_DEFAULT_BLOCK_SLOT_USER_ID
-  );
+function effectiveSuggestCalendarId() {
+  return stripGhlEnvId(GHL_CALENDAR_ID) || SUGGEST_CALENDAR_FALLBACK;
 }
 
-function blockSlotCtx() {
-  return {
-    locationId: GHL_LOCATION_ID,
-    calendarId: GHL_CALENDAR_ID,
-    apiKey: GHL_API_KEY,
-    assignedUserId: effectiveBlockSlotUserIdForSuggest(),
-  };
+function effectiveSuggestLocationId() {
+  return stripGhlEnvId(GHL_LOCATION_ID) || SUGGEST_LOCATION_FALLBACK;
 }
 
-// Bereken geografische afstand (km) via Haversine – snelle proxy voor reistijd
 function haversine(lat1, lon1, lat2, lon2) {
   const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Geocodeer een adres via Google Maps
 async function geocode(address) {
   try {
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${MAPS_KEY}`;
@@ -92,14 +80,93 @@ async function geocode(address) {
   return null;
 }
 
-// Score hoe goed een nieuw adres in een bestaande routeset past (lager = beter)
-// We berekenen de extra reisafstand als we dit adres aan de route toevoegen
 function routeFitScore(newCoord, existingCoords) {
-  if (existingCoords.length === 0) return 0; // lege dag = perfecte fit
+  if (existingCoords.length === 0) return 0;
+  return Math.min(...existingCoords.map((c) => haversine(newCoord.lat, newCoord.lng, c.lat, c.lng)));
+}
 
-  // Vind het dichtstbijzijnde bestaande punt → proxy voor hoeveel omrijden
-  const minDist = Math.min(...existingCoords.map(c => haversine(newCoord.lat, newCoord.lng, c.lat, c.lng)));
-  return minDist; // in km — lager is beter
+/** GHL free-slots payload → object met datum-keys (of één array onder _all). */
+function extractSlotsObject(data) {
+  if (!data || typeof data !== 'object') return null;
+  if (Array.isArray(data.slots)) return { _all: data.slots };
+  const inner =
+    data.slots ?? data.data?.slots ?? data.result ?? data.freeSlots ?? data.availability ?? data.data?.result;
+  if (inner && typeof inner === 'object' && !Array.isArray(inner)) return inner;
+  return null;
+}
+
+function slotStartMs(slot) {
+  if (!slot || typeof slot !== 'object') return NaN;
+  const raw = slot.startTime ?? slot.start ?? slot.from ?? slot.slotTime ?? slot.dateTime;
+  if (raw == null) return NaN;
+  if (typeof raw === 'number') return raw < 1e12 ? Math.round(raw * 1000) : raw;
+  const t = Date.parse(String(raw));
+  return Number.isNaN(t) ? NaN : t;
+}
+
+/**
+ * Tel vrije slots per Amsterdam-kalenderdag en ochtend (<13) / middag (≥13).
+ */
+function aggregateFreeSlotsByAmsterdamDay(slotsObj) {
+  const out = new Map();
+  for (const slots of Object.values(slotsObj)) {
+    const arr = Array.isArray(slots) ? slots : [];
+    for (const slot of arr) {
+      const ms = slotStartMs(slot);
+      if (Number.isNaN(ms)) continue;
+      const dateStr = formatYyyyMmDdInAmsterdam(new Date(ms));
+      if (!dateStr) continue;
+      const part = out.get(dateStr) || { morning: 0, afternoon: 0 };
+      const h = hourInAmsterdam(ms);
+      if (h < 13) part.morning += 1;
+      else part.afternoon += 1;
+      out.set(dateStr, part);
+    }
+  }
+  return out;
+}
+
+/**
+ * GET /calendars/:id/free-slots of /calendars/free-slots?calendarId=…
+ */
+async function fetchGhlFreeSlots({ calendarId, locationId, startDate, endDate, apiKey }) {
+  const common = new URLSearchParams({
+    startDate,
+    endDate,
+    timezone: 'Europe/Amsterdam',
+    locationId,
+  });
+  const urls = [
+    `${GHL_BASE}/calendars/${encodeURIComponent(calendarId)}/free-slots?${common}`,
+    `${GHL_BASE}/calendars/free-slots?${common}&calendarId=${encodeURIComponent(calendarId)}`,
+  ];
+  const versions = ['2021-04-15', '2021-07-28'];
+  let lastErr = '';
+  for (const url of urls) {
+    for (const Version of versions) {
+      const r = await fetchWithRetry(
+        url,
+        { headers: { Authorization: `Bearer ${apiKey}`, Version } },
+        0
+      );
+      const txt = await r.text().catch(() => '');
+      if (!r.ok) {
+        lastErr = `${r.status} ${txt.slice(0, 200)}`;
+        continue;
+      }
+      let data;
+      try {
+        data = txt ? JSON.parse(txt) : {};
+      } catch {
+        lastErr = 'JSON parse';
+        continue;
+      }
+      const slotsObj = extractSlotsObject(data);
+      if (slotsObj) return { ok: true, data, slotsObj };
+      lastErr = 'Geen slots-object in response';
+    }
+  }
+  return { ok: false, error: lastErr || 'free-slots mislukt' };
 }
 
 export default async function handler(req, res) {
@@ -109,235 +176,263 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-  const q = req.method === 'POST' ? req.body : req.query;
-  const { contactId, address: addressParam, name: nameParam, phone: phoneParam, type: typeQ, workType: workTypeQ } = q;
+    const q = req.method === 'POST' ? req.body : req.query;
+    const {
+      contactId,
+      address: addressParam,
+      name: nameParam,
+      phone: phoneParam,
+      type: typeQ,
+      workType: workTypeQ,
+    } = q;
 
-  if (!contactId && !addressParam && !nameParam && !phoneParam) {
-    return res.status(400).json({ error: 'contactId, address, name of phone vereist' });
-  }
+    if (!contactId && !addressParam && !nameParam && !phoneParam) {
+      return res.status(400).json({ error: 'contactId, address, name of phone vereist' });
+    }
 
-  // Haal contactgegevens op uit GHL
-  let resolvedContactId = contactId || null;
-  let contactName  = nameParam || '';
-  let contactPhone = phoneParam || '';
-  let address      = addressParam || '';
+    if (!GHL_API_KEY) {
+      return res.status(500).json({ success: false, error: 'GHL API key ontbreekt' });
+    }
 
-  if (resolvedContactId) {
-    // Ophalen op ID
-    try {
-      const cr = await fetch(`${GHL_BASE}/contacts/${resolvedContactId}`, {
-        headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
-      });
-      if (cr.ok) {
-        const cd = await fetch(`${GHL_BASE}/contacts/${resolvedContactId}`, {
-          headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
-        }).then(r => r.json());
-        const contact = cd?.contact || cd;
-        contactName  = contact.firstName ? `${contact.firstName} ${contact.lastName || ''}`.trim() : (contact.name || contactName);
-        contactPhone = contact.phone || contactPhone;
-        if (!address) {
-          const straat     = getField(contact, FIELD_IDS.straatnaam);
-          const huisnr     = getField(contact, FIELD_IDS.huisnummer);
-          const postcode   = getField(contact, FIELD_IDS.postcode);
-          const woonplaats = getField(contact, FIELD_IDS.woonplaats) || contact.city || '';
-          address = [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ') || contact.address1 || '';
-        }
-      }
-    } catch {}
-  } else {
-    // Zoek contact op telefoon of naam
-    const searchPhone = (phoneParam || '').replace(/\s/g, '');
-    if (searchPhone) {
+    const locId = effectiveSuggestLocationId();
+    const calId = effectiveSuggestCalendarId();
+
+    let resolvedContactId = contactId || null;
+    let contactName = nameParam || '';
+    let contactPhone = phoneParam || '';
+    let address = addressParam || '';
+
+    if (resolvedContactId) {
       try {
-        const sr = await fetch(
-          `${GHL_BASE}/contacts/search/duplicate?locationId=${GHL_LOCATION_ID}&number=${encodeURIComponent(searchPhone)}`,
-          { headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-07-28' } }
-        );
-        if (sr.ok) {
-          const sd = await sr.json();
-          const c  = sd?.contact;
-          if (c?.id) {
-            resolvedContactId = c.id;
-            contactName  = c.firstName ? `${c.firstName} ${c.lastName || ''}`.trim() : (c.name || contactName);
-            contactPhone = c.phone || contactPhone;
-            if (!address) {
-              const straat     = getField(c, FIELD_IDS.straatnaam);
-              const huisnr     = getField(c, FIELD_IDS.huisnummer);
-              const postcode   = getField(c, FIELD_IDS.postcode);
-              const woonplaats = getField(c, FIELD_IDS.woonplaats) || c.city || '';
-              address = [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ') || c.address1 || '';
-            }
+        const cr = await fetch(`${GHL_BASE}/contacts/${resolvedContactId}`, {
+          headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' },
+        });
+        if (cr.ok) {
+          const cd = await fetch(`${GHL_BASE}/contacts/${resolvedContactId}`, {
+            headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' },
+          }).then((r) => r.json());
+          const contact = cd?.contact || cd;
+          contactName = contact.firstName
+            ? `${contact.firstName} ${contact.lastName || ''}`.trim()
+            : contact.name || contactName;
+          contactPhone = contact.phone || contactPhone;
+          if (!address) {
+            const straat = getField(contact, FIELD_IDS.straatnaam);
+            const huisnr = getField(contact, FIELD_IDS.huisnummer);
+            const postcode = getField(contact, FIELD_IDS.postcode);
+            const woonplaats = getField(contact, FIELD_IDS.woonplaats) || contact.city || '';
+            address =
+              [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ') || contact.address1 || '';
           }
         }
       } catch {}
-    }
-    if (!resolvedContactId && nameParam) {
-      try {
-        const nr = await fetch(
-          `${GHL_BASE}/contacts/?locationId=${GHL_LOCATION_ID}&query=${encodeURIComponent(nameParam)}&limit=1`,
-          { headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-07-28' } }
-        );
-        if (nr.ok) {
-          const nd = await nr.json();
-          const c  = nd?.contacts?.[0];
-          if (c?.id) {
-            resolvedContactId = c.id;
-            contactName  = c.firstName ? `${c.firstName} ${c.lastName || ''}`.trim() : (c.name || contactName);
-            contactPhone = c.phone || contactPhone;
-            if (!address) {
-              const straat     = getField(c, FIELD_IDS.straatnaam);
-              const huisnr     = getField(c, FIELD_IDS.huisnummer);
-              const postcode   = getField(c, FIELD_IDS.postcode);
-              const woonplaats = getField(c, FIELD_IDS.woonplaats) || c.city || '';
-              address = [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ') || c.address1 || '';
+    } else {
+      const searchPhone = (phoneParam || '').replace(/\s/g, '');
+      if (searchPhone) {
+        try {
+          const sr = await fetch(
+            `${GHL_BASE}/contacts/search/duplicate?locationId=${locId}&number=${encodeURIComponent(searchPhone)}`,
+            { headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-07-28' } }
+          );
+          if (sr.ok) {
+            const sd = await sr.json();
+            const c = sd?.contact;
+            if (c?.id) {
+              resolvedContactId = c.id;
+              contactName = c.firstName
+                ? `${c.firstName} ${c.lastName || ''}`.trim()
+                : c.name || contactName;
+              contactPhone = c.phone || contactPhone;
+              if (!address) {
+                const straat = getField(c, FIELD_IDS.straatnaam);
+                const huisnr = getField(c, FIELD_IDS.huisnummer);
+                const postcode = getField(c, FIELD_IDS.postcode);
+                const woonplaats = getField(c, FIELD_IDS.woonplaats) || c.city || '';
+                address =
+                  [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ') || c.address1 || '';
+              }
             }
           }
+        } catch {}
+      }
+      if (!resolvedContactId && nameParam) {
+        try {
+          const nr = await fetch(
+            `${GHL_BASE}/contacts/?locationId=${locId}&query=${encodeURIComponent(nameParam)}&limit=1`,
+            { headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-07-28' } }
+          );
+          if (nr.ok) {
+            const nd = await nr.json();
+            const c = nd?.contacts?.[0];
+            if (c?.id) {
+              resolvedContactId = c.id;
+              contactName = c.firstName
+                ? `${c.firstName} ${c.lastName || ''}`.trim()
+                : c.name || contactName;
+              contactPhone = c.phone || contactPhone;
+              if (!address) {
+                const straat = getField(c, FIELD_IDS.straatnaam);
+                const huisnr = getField(c, FIELD_IDS.huisnummer);
+                const postcode = getField(c, FIELD_IDS.postcode);
+                const woonplaats = getField(c, FIELD_IDS.woonplaats) || c.city || '';
+                address =
+                  [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ') || c.address1 || '';
+              }
+            }
+          }
+        } catch {}
+      }
+    }
+
+    let workType = normalizeWorkType(workTypeQ || typeQ || '');
+    if (!workTypeQ && !typeQ && resolvedContactId) {
+      try {
+        const cr = await fetch(`${GHL_BASE}/contacts/${resolvedContactId}`, {
+          headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' },
+        });
+        if (cr.ok) {
+          const cd = await cr.json();
+          const c = cd?.contact || cd;
+          workType = normalizeWorkType(getField(c, FIELD_IDS.type_onderhoud));
         }
       } catch {}
     }
-  }
 
-  let workType = normalizeWorkType(workTypeQ || typeQ || '');
-  if (!workTypeQ && !typeQ && resolvedContactId) {
-    try {
-      const cr = await fetch(`${GHL_BASE}/contacts/${resolvedContactId}`, {
-        headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' },
-      });
-      if (cr.ok) {
-        const cd = await cr.json();
-        const c = cd?.contact || cd;
-        workType = normalizeWorkType(getField(c, FIELD_IDS.type_onderhoud));
-      }
-    } catch {}
-  }
+    const newCoord = address ? await geocode(address) : null;
 
-  // Geocodeer het adres van de nieuwe klant
-  const newCoord = address ? await geocode(address) : null;
+    const startDate = addAmsterdamCalendarDays(formatYyyyMmDdInAmsterdam(new Date()), 1);
+    if (!startDate) return res.status(500).json({ error: 'Datumfout' });
+    const endDate = addAmsterdamCalendarDays(startDate, FREE_SLOTS_DAYS - 1);
+    if (!endDate) return res.status(500).json({ error: 'Datumfout eind' });
 
-  const candidates = []; // { dateStr, dateLabel, block, label, score, existingCount }
-
-  let dateStr = addAmsterdamCalendarDays(formatYyyyMmDdInAmsterdam(new Date()), 1);
-  if (!dateStr) return res.status(500).json({ error: 'Datumfout' });
-
-  for (let step = 0; step < DAYS_AHEAD + 10 && candidates.length < 12; step++) {
-    const dow = amsterdamWeekdaySun0(dateStr);
-    if (dow == null) break;
-    if (dow === 0 || dow === 6) {
-      dateStr = addAmsterdamCalendarDays(dateStr, 1);
-      continue;
-    }
-
-    if (await dayHasCustomerBlockingOverlap(GHL_BASE, blockSlotCtx(), dateStr)) {
-      dateStr = addAmsterdamCalendarDays(dateStr, 1);
-      continue;
-    }
-
-    const bounds = amsterdamCalendarDayBoundsMs(dateStr);
-    if (!bounds) {
-      dateStr = addAmsterdamCalendarDays(dateStr, 1);
-      continue;
-    }
-    const { startMs, endMs } = bounds;
-
-    let events = [];
-    try {
-      const er = await fetch(
-        `${GHL_BASE}/calendars/events?locationId=${GHL_LOCATION_ID}&calendarId=${GHL_CALENDAR_ID}&startTime=${startMs}&endTime=${endMs}`,
-        { headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' } }
-      );
-      if (er.ok) {
-        const ed = await er.json();
-        events = [...(ed?.events || [])];
-      }
-    } catch {}
-
-    const blockedFromApi = await fetchBlockedSlotsAsEvents(GHL_BASE, {
-      locationId: GHL_LOCATION_ID,
-      calendarId: GHL_CALENDAR_ID,
-      startMs,
-      endMs,
+    const free = await fetchGhlFreeSlots({
+      calendarId: calId,
+      locationId: locId,
+      startDate,
+      endDate,
       apiKey: GHL_API_KEY,
-      assignedUserId: effectiveBlockSlotUserIdForSuggest(),
     });
-    events = events.concat(blockedFromApi);
-    markBlockLikeOnCalendarEvents(events);
-    const customerEvents = events.filter((e) => !e._hkGhlBlockSlot);
-    const morningEvents   = customerEvents.filter(suggestEventInMorningHalf);
-    const afternoonEvents = customerEvents.filter(suggestEventInAfternoonHalf);
 
-    // Geocodeer bestaande adressen voor route-fit berekening
-    const geocodeEvents = async (evList) => {
-      const coords = [];
-      for (const e of evList) {
-        if (e.address) {
-          const c = await geocode(e.address);
-          if (c) coords.push(c);
-        }
-      }
-      return coords;
-    };
-
-    // Voeg beschikbare blokken toe als kandidaten
-    for (const block of ['morning', 'afternoon']) {
-      const blockEvents = block === 'morning' ? morningEvents : afternoonEvents;
-      const count = blockEvents.length;
-      if (!blockAllowsNewCustomerBooking(block, blockEvents, workType)) continue;
-
-      const maxB = customerMaxForBlock(block);
-      let score = count; // basis score: minder afspraken = beter
-
-      // Route-fit score als we het adres hebben
-      if (newCoord) {
-        const existingCoords = await geocodeEvents(blockEvents);
-        const fitScore = routeFitScore(newCoord, existingCoords);
-        score = fitScore * (1 + count / maxB);
-      }
-
-      const noon = new Date(bounds.startMs + 12 * 3600000);
-      const dateLabel = noon.toLocaleDateString('nl-NL', {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-        timeZone: 'Europe/Amsterdam',
-      });
-      candidates.push({
-        dateStr,
-        dateLabel,
-        block,
-        existingCount: count,
-        score,
-        timeLabel: block === 'morning' ? '09:00 - 13:00' : '13:00 - 17:00',
-        blockLabel: block === 'morning' ? 'ochtend' : 'middag',
+    if (!free.ok) {
+      console.error('[suggest-slots] free-slots:', free.error);
+      return res.status(502).json({
+        success: false,
+        error: `GHL free-slots: ${free.error || 'onbekend'}`,
       });
     }
 
-    dateStr = addAmsterdamCalendarDays(dateStr, 1);
-    if (candidates.length >= 6) break;
-  }
+    const byDay = aggregateFreeSlotsByAmsterdamDay(free.slotsObj);
 
-  // Sorteer op score (laagste = beste route-fit)
-  candidates.sort((a, b) => a.score - b.score);
+    const candidates = [];
 
-  // Geef de beste 2-3 opties terug
-  const suggestions = candidates.slice(0, 3).map(c => ({
-    dateStr:   c.dateStr,
-    dateLabel: c.dateLabel,
-    block:     c.block,
-    blockLabel: c.blockLabel,
-    timeLabel: c.timeLabel,
-    existingCount: c.existingCount,
-    slotsLeft: customerMaxForBlock(c.block) - c.existingCount,
-    score:     Math.round(c.score * 10) / 10,
-  }));
+    let cursor = startDate;
+    for (let i = 0; i < FREE_SLOTS_DAYS; i++) {
+      if (!cursor) break;
+      const dow = amsterdamWeekdaySun0(cursor);
+      if (dow !== 0 && dow !== 6) {
+        const counts = byDay.get(cursor) || { morning: 0, afternoon: 0 };
+        const dayBounds = amsterdamCalendarDayBoundsMs(cursor);
+        const dateLabel = dayBounds
+          ? new Date(dayBounds.startMs + 12 * 3600000).toLocaleDateString('nl-NL', {
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long',
+              timeZone: 'Europe/Amsterdam',
+            })
+          : cursor;
 
-  return res.status(200).json({
-    success: true,
-    contactId: resolvedContactId,
-    contactName,
-    contactPhone,
-    address,
-    suggestions,
-  });
+        const geocodeEvents = async (evList) => {
+          const coords = [];
+          for (const e of evList) {
+            if (e.address) {
+              const c = await geocode(e.address);
+              if (c) coords.push(c);
+            }
+          }
+          return coords;
+        };
+
+        for (const block of ['morning', 'afternoon']) {
+          const freeCount = block === 'morning' ? counts.morning : counts.afternoon;
+          if (freeCount < 1) continue;
+          if (!blockAllowsNewCustomerBooking(block, [], workType)) continue;
+
+          const maxB = customerMaxForBlock(block);
+          const slotsLeft = Math.min(freeCount, maxB);
+          const existingCount = maxB - slotsLeft;
+
+          let score = i * 10 + (block === 'morning' ? 0 : 1);
+          if (newCoord) {
+            let events = [];
+            try {
+              const b = amsterdamCalendarDayBoundsMs(cursor);
+              if (b) {
+                const er = await fetch(
+                  `${GHL_BASE}/calendars/events?locationId=${encodeURIComponent(locId)}&calendarId=${encodeURIComponent(calId)}&startTime=${b.startMs}&endTime=${b.endMs}`,
+                  { headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' } }
+                );
+                if (er.ok) {
+                  const ed = await er.json();
+                  events = [...(ed?.events || [])].filter((e) => e.contactId || e.contact_id);
+                }
+              }
+            } catch {}
+            const blockEvents = events.filter((e) => {
+              const raw = e.startTime ?? e.start;
+              if (raw == null) return false;
+              const ms = typeof raw === 'number' ? (raw < 1e12 ? raw * 1000 : raw) : Date.parse(String(raw));
+              if (Number.isNaN(ms)) return false;
+              const h = hourInAmsterdam(ms);
+              return block === 'morning' ? h < 13 : h >= 13;
+            });
+            const existingCoords = await geocodeEvents(blockEvents);
+            const fitScore = routeFitScore(newCoord, existingCoords);
+            score = fitScore * (1 + blockEvents.length / maxB) + i * 0.01;
+          }
+
+          candidates.push({
+            dateStr: cursor,
+            dateLabel,
+            block,
+            existingCount,
+            score,
+            timeLabel: block === 'morning' ? '09:00 - 13:00' : '13:00 - 17:00',
+            blockLabel: block === 'morning' ? 'ochtend' : 'middag',
+            slotsLeft,
+          });
+        }
+      }
+      cursor = addAmsterdamCalendarDays(cursor, 1);
+      if (candidates.length >= 18) break;
+    }
+
+    candidates.sort((a, b) => a.score - b.score);
+
+    const suggestions = candidates.slice(0, 3).map((c) => ({
+      dateStr: c.dateStr,
+      dateLabel: c.dateLabel,
+      block: c.block,
+      blockLabel: c.blockLabel,
+      timeLabel: c.timeLabel,
+      existingCount: c.existingCount,
+      slotsLeft: c.slotsLeft,
+      score: Math.round(c.score * 10) / 10,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      contactId: resolvedContactId,
+      contactName,
+      contactPhone,
+      address,
+      suggestions,
+      meta: {
+        source: 'ghl-free-slots',
+        startDate,
+        endDate,
+        calendarId: calId,
+      },
+    });
   } catch (err) {
     console.error('[suggest-slots]', err?.message || err);
     return res.status(500).json({
