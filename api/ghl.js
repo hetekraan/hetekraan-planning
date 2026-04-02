@@ -915,6 +915,14 @@ export default async function handler(req, res) {
               'Geen GHL-gebruiker voor blokslots: zet GHL_BLOCK_SLOT_USER_ID of GHL_APPOINTMENT_ASSIGNED_USER_ID in Vercel (UUID van iemand op kalender “Planning Jerry”), of koppel in GHL minstens één user aan die kalender.',
           });
         }
+        console.log(
+          '[blockCalendarDay] DEBUG env GHL_CALENDAR_ID:',
+          process.env.GHL_CALENDAR_ID,
+          'typeof:',
+          typeof process.env.GHL_CALENDAR_ID,
+          '| effectiveCalendarId:',
+          calendarId
+        );
         const r = await postFullDayBlockSlot(GHL_BASE, {
           locationId,
           calendarId,
