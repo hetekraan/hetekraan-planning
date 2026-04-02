@@ -3621,7 +3621,7 @@ applyLargeTextPref();
 document.getElementById('dateLabel').textContent = formatDate(currentDate);
 
 // LOGIN — wachtwoorden staan NIET meer in de browser-code.
-// Credentials worden gevalideerd door /api/auth tegen env vars (HK_USERS).
+// Credentials worden gevalideerd door /api/ghl?action=auth tegen env vars (HK_USERS).
 // Na succesvolle login slaan we een HMAC-gesigneerd token op (geldig 24 uur).
 const HK_USER_KEY    = 'hk_user';
 const HK_KLAAR_KEY   = 'hk_klaar_ids';

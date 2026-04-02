@@ -322,11 +322,12 @@ export default async function handler(req, res) {
   // ─── Diagnose (geen auth vereist) ─────────────────────────────────────────
   if (action === 'health') {
     const users = parseUsers();
+    const sha = process.env.VERCEL_GIT_COMMIT_SHA || '';
+    const build = sha ? sha.slice(0, 7) : undefined;
     return res.status(200).json({
       ok: true,
-      build: 'ae94f39',
+      ...(build ? { build } : {}),
       hasUsers: Object.keys(users).length > 0,
-      userCount: Object.keys(users).length,
       hasSecret: !!process.env.SESSION_SECRET,
       hasGhlApiKey: !!GHL_API_KEY,
       hasGhlLocationId: Boolean(ghlLocationIdFromEnv()),
@@ -344,10 +345,7 @@ export default async function handler(req, res) {
     await new Promise((r) => setTimeout(r, 300));
     const users = parseUsers();
     if (!u || !users[u] || users[u] !== p) {
-      return res.status(401).json({
-        error: 'Gebruikersnaam of wachtwoord onjuist',
-        debug: { known: Object.keys(users), hasUsers: Object.keys(users).length > 0 },
-      });
+      return res.status(401).json({ error: 'Gebruikersnaam of wachtwoord onjuist' });
     }
     const token = signSessionToken(u);
     // `day` meesturen voor backward-compat met gecachte clients die nog de dagcheck doen

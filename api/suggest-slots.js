@@ -447,7 +447,7 @@ export default async function handler(req, res) {
 
     const byDay = aggregateFreeSlotsByAmsterdamDay(free.slotsObj);
 
-    let blockedDates = new Set();
+    let blockedDates;
     try {
       blockedDates = await blockedCustomerDatesInAmsterdamRange(
         GHL_BASE,
@@ -462,6 +462,10 @@ export default async function handler(req, res) {
       );
     } catch (e) {
       console.error('[suggest-slots] blocked-date prefetch:', e?.message || e);
+      return res.status(503).json({
+        success: false,
+        error: 'Agenda-blokkades tijdelijk niet beschikbaar. Probeer het later opnieuw.',
+      });
     }
 
     const candidates = [];
