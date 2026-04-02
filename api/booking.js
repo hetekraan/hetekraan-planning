@@ -23,10 +23,10 @@ import {
   WORK_DAY_END_HOUR,
   WORK_DAY_START_HOUR,
 } from '../lib/planning-work-hours.js';
+import { ghlCalendarIdFromEnv } from '../lib/ghl-env-ids.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
-const GHL_CALENDAR_ID = process.env.GHL_CALENDAR_ID;
 const GHL_BASE        = 'https://services.leadconnectorhq.com';
 const GOOGLE_API_KEY  = process.env.GOOGLE_MAPS_API_KEY;
 
@@ -160,7 +160,7 @@ async function getAppointmentsForDay(dateStr) {
   const bounds = amsterdamCalendarDayBoundsMs(dateStr);
   if (!bounds) return [];
   const { startMs, endMs } = bounds;
-  const url = `${GHL_BASE}/calendars/events?locationId=${GHL_LOCATION_ID}&calendarId=${GHL_CALENDAR_ID}&startTime=${startMs}&endTime=${endMs}`;
+  const url = `${GHL_BASE}/calendars/events?locationId=${encodeURIComponent(GHL_LOCATION_ID)}&calendarId=${encodeURIComponent(ghlCalendarIdFromEnv())}&startTime=${startMs}&endTime=${endMs}`;
   try {
     const res = await fetch(url, {
       headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
@@ -371,7 +371,7 @@ export default async function handler(req, res) {
         const dayCount = await fetchCalendarEventCountForDay(date, {
           base: GHL_BASE,
           locationId: GHL_LOCATION_ID,
-          calendarId: GHL_CALENDAR_ID,
+          calendarId: ghlCalendarIdFromEnv(),
           apiKey: GHL_API_KEY,
         });
         if (dayCount !== null && dayCount >= dayCap) {
@@ -405,7 +405,7 @@ export default async function handler(req, res) {
             'Version': '2021-07-28',
           },
           body: JSON.stringify({
-            calendarId: GHL_CALENDAR_ID,
+            calendarId: ghlCalendarIdFromEnv(),
             locationId: GHL_LOCATION_ID,
             contactId,
             startTime: startTime.toISOString(),
@@ -426,7 +426,7 @@ export default async function handler(req, res) {
               'Version': '2021-04-15',
             },
             body: JSON.stringify({
-              calendarId: GHL_CALENDAR_ID,
+              calendarId: ghlCalendarIdFromEnv(),
               locationId: GHL_LOCATION_ID,
               contactId,
               startTime: startTime.toISOString(),

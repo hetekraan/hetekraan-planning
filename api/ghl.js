@@ -29,7 +29,6 @@ import {
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
-const GHL_CALENDAR_ID = process.env.GHL_CALENDAR_ID;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 
 function effectiveCalendarId() {

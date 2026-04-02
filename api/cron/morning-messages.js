@@ -2,13 +2,13 @@
 // Draait volgens vercel.json (bijv. 06:00 UTC).
 
 import { amsterdamCalendarDayBoundsMs, formatYyyyMmDdInAmsterdam } from '../../lib/amsterdam-calendar-day.js';
+import { ghlCalendarIdFromEnv } from '../../lib/ghl-env-ids.js';
 import { DEFAULT_BOOK_START_MORNING } from '../../lib/planning-work-hours.js';
 import { fetchWithRetry } from '../../lib/retry.js';
 import { sendErrorNotification } from '../../lib/notify.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
-const GHL_CALENDAR_ID = process.env.GHL_CALENDAR_ID;
 const GHL_BASE        = 'https://services.leadconnectorhq.com';
 
 const GHL_HEADERS = {
@@ -63,7 +63,7 @@ export default async function handler(req, res) {
 
   try {
     const calRes = await fetchWithRetry(
-      `${GHL_BASE}/calendars/events?locationId=${GHL_LOCATION_ID}&calendarId=${GHL_CALENDAR_ID}&startTime=${startMs}&endTime=${endMs}`,
+      `${GHL_BASE}/calendars/events?locationId=${encodeURIComponent(GHL_LOCATION_ID)}&calendarId=${encodeURIComponent(ghlCalendarIdFromEnv())}&startTime=${startMs}&endTime=${endMs}`,
       { headers: GHL_HEADERS }
     );
     const calData = await calRes.json();

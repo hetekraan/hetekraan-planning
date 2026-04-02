@@ -28,11 +28,10 @@ import {
   SLOT_LABEL_MORNING_NL,
   WORK_DAY_START_HOUR,
 } from '../lib/planning-work-hours.js';
-import { stripGhlEnvId } from '../lib/ghl-env-ids.js';
+import { ghlCalendarIdFromEnv, stripGhlEnvId } from '../lib/ghl-env-ids.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
-const GHL_CALENDAR_ID = process.env.GHL_CALENDAR_ID;
 const GHL_BASE        = 'https://services.leadconnectorhq.com';
 
 const FIELD_IDS = {
@@ -204,7 +203,7 @@ export default async function handler(req, res) {
       GHL_BASE,
       {
         locationId: GHL_LOCATION_ID,
-        calendarId: GHL_CALENDAR_ID,
+        calendarId: ghlCalendarIdFromEnv(),
         apiKey: GHL_API_KEY,
         assignedUserId: effectiveBlockSlotUserId(),
       },
@@ -231,7 +230,7 @@ export default async function handler(req, res) {
   const eventsForDay = await fetchCalendarEventsForDay(date, {
     base: GHL_BASE,
     locationId: GHL_LOCATION_ID,
-    calendarId: GHL_CALENDAR_ID,
+    calendarId: ghlCalendarIdFromEnv(),
     apiKey: GHL_API_KEY,
   });
   if (!eventsForDay) {
@@ -373,8 +372,8 @@ export default async function handler(req, res) {
     const envId = (process.env.GHL_APPOINTMENT_ASSIGNED_USER_ID || '').trim();
     if (envId) return envId;
     const urls = [
-      `${GHL_BASE}/calendars/${GHL_CALENDAR_ID}?locationId=${GHL_LOCATION_ID}`,
-      `${GHL_BASE}/locations/${GHL_LOCATION_ID}/calendars/${GHL_CALENDAR_ID}`,
+      `${GHL_BASE}/calendars/${encodeURIComponent(ghlCalendarIdFromEnv())}?locationId=${encodeURIComponent(GHL_LOCATION_ID)}`,
+      `${GHL_BASE}/locations/${encodeURIComponent(GHL_LOCATION_ID)}/calendars/${encodeURIComponent(ghlCalendarIdFromEnv())}`,
     ];
     for (const url of urls) {
       try {
@@ -430,7 +429,7 @@ export default async function handler(req, res) {
   /** includeAssignedUser: false = geen assignedUserId (sommige kalenders falen op auto/user-id). */
   function buildApptBody(tryStart, tryEnd, extra, includeAssignedUser) {
     const body = {
-      calendarId: GHL_CALENDAR_ID,
+      calendarId: ghlCalendarIdFromEnv(),
       locationId: GHL_LOCATION_ID,
       contactId,
       startTime: tryStart.toISOString(),

@@ -27,16 +27,16 @@ import {
   SLOT_LABEL_AFTERNOON_SPACE,
   SLOT_LABEL_MORNING_SPACE,
 } from '../lib/planning-work-hours.js';
+import { ghlCalendarIdFromEnv } from '../lib/ghl-env-ids.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
-const GHL_CALENDAR_ID = process.env.GHL_CALENDAR_ID;
 const MAPS_KEY        = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_KEY;
 const GHL_BASE        = 'https://services.leadconnectorhq.com';
 
 const blockSlotCtx = () => ({
   locationId: GHL_LOCATION_ID,
-  calendarId: GHL_CALENDAR_ID,
+  calendarId: ghlCalendarIdFromEnv(),
   apiKey: GHL_API_KEY,
 });
 
@@ -120,7 +120,7 @@ async function getBestSlots(address, workType) {
     let events = [];
     try {
       const er = await fetch(
-        `${GHL_BASE}/calendars/events?locationId=${GHL_LOCATION_ID}&calendarId=${GHL_CALENDAR_ID}&startTime=${startMs}&endTime=${endMs}`,
+        `${GHL_BASE}/calendars/events?locationId=${encodeURIComponent(GHL_LOCATION_ID)}&calendarId=${encodeURIComponent(ghlCalendarIdFromEnv())}&startTime=${startMs}&endTime=${endMs}`,
         { headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' } }
       );
       if (er.ok) events = (await er.json())?.events || [];
