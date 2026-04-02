@@ -53,8 +53,8 @@ async function ghlFetchWith429Backoff(url, headers, max429Attempts = 6) {
 const MAPS_KEY = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_KEY;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 
-/** ~6 weken vooruit (42 dagen), conform gewenst venster. */
-const FREE_SLOTS_DAYS = 42;
+/** 1 week vooruit (7 dagen). */
+const FREE_SLOTS_DAYS = 7;
 
 const FIELD_IDS = {
   straatnaam: 'ZwIMY4VPelG5rKROb5NR',
