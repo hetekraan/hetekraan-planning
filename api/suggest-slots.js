@@ -20,7 +20,7 @@ import {
   SLOT_LABEL_MORNING_SPACE,
 } from '../lib/planning-work-hours.js';
 import {
-  dayHasCustomerBlockingOverlap,
+  blockedCustomerDatesInAmsterdamRange,
   HK_DEFAULT_BLOCK_SLOT_USER_ID,
 } from '../lib/ghl-calendar-blocks.js';
 import {
@@ -29,9 +29,27 @@ import {
   ghlLocationIdFromEnv,
   stripGhlEnvId,
 } from '../lib/ghl-env-ids.js';
-import { fetchWithRetry } from '../lib/retry.js';
-
 const GHL_API_KEY = process.env.GHL_API_KEY;
+
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** GHL rate-limits (429); wacht Retry-After of exponentieel. */
+async function ghlFetchWith429Backoff(url, headers, max429Attempts = 6) {
+  for (let a = 0; a < max429Attempts; a++) {
+    const r = await fetch(url, { headers });
+    if (r.status !== 429) return r;
+    if (a === max429Attempts - 1) return r;
+    const ra = r.headers.get('retry-after');
+    let waitMs = ra ? parseInt(ra, 10) * 1000 : 1000 * Math.pow(2, a);
+    if (!Number.isFinite(waitMs) || waitMs < 0) waitMs = 1000 * Math.pow(2, a);
+    waitMs = Math.min(waitMs, 60_000);
+    console.warn(`[suggest-slots] free-slots 429 — wacht ${waitMs}ms (${a + 1}/${max429Attempts})`);
+    await sleepMs(waitMs);
+  }
+  return fetch(url, { headers });
+}
 const MAPS_KEY = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_KEY;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 
@@ -161,6 +179,7 @@ async function fetchGhlFreeSlots({ calendarId, locationId, startMs, endMs, apiKe
     ...(userIdOpt ? [`${GHL_BASE}/calendars/${encCal}/free-slots?${withLocUser}`] : []),
     `${GHL_BASE}/calendars/${encCal}/free-slots?${baseQs}`,
   ];
+  /** Eerst één API-versie; tweede alleen bij mislukking (minder 429-risico). */
   const versions = ['2021-04-15', '2021-07-28'];
   let lastErr = '';
   const seen = new Set();
@@ -168,11 +187,10 @@ async function fetchGhlFreeSlots({ calendarId, locationId, startMs, endMs, apiKe
     if (seen.has(url)) continue;
     seen.add(url);
     for (const Version of versions) {
-      const r = await fetchWithRetry(
-        url,
-        { headers: { Authorization: `Bearer ${apiKey}`, Version } },
-        0
-      );
+      const r = await ghlFetchWith429Backoff(url, {
+        Authorization: `Bearer ${apiKey}`,
+        Version,
+      });
       const txt = await r.text().catch(() => '');
       if (!r.ok) {
         lastErr = `${r.status} ${txt.slice(0, 200)}`;
@@ -356,6 +374,23 @@ export default async function handler(req, res) {
 
     const byDay = aggregateFreeSlotsByAmsterdamDay(free.slotsObj);
 
+    let blockedDates = new Set();
+    try {
+      blockedDates = await blockedCustomerDatesInAmsterdamRange(
+        GHL_BASE,
+        {
+          locationId: locId,
+          calendarId: calId,
+          apiKey: GHL_API_KEY,
+          assignedUserId: effectiveBlockSlotUserId(),
+        },
+        startDate,
+        endDate
+      );
+    } catch (e) {
+      console.error('[suggest-slots] blocked-date prefetch:', e?.message || e);
+    }
+
     const candidates = [];
 
     let cursor = startDate;
@@ -363,18 +398,7 @@ export default async function handler(req, res) {
       if (!cursor) break;
       const dow = amsterdamWeekdaySun0(cursor);
       if (dow !== 0 && dow !== 6) {
-        if (
-          await dayHasCustomerBlockingOverlap(
-            GHL_BASE,
-            {
-              locationId: locId,
-              calendarId: calId,
-              apiKey: GHL_API_KEY,
-              assignedUserId: effectiveBlockSlotUserId(),
-            },
-            cursor
-          )
-        ) {
+        if (blockedDates.has(cursor)) {
           cursor = addAmsterdamCalendarDays(cursor, 1);
           continue;
         }
@@ -401,6 +425,24 @@ export default async function handler(req, res) {
           return coords;
         };
 
+        /** Eén events-fetch per dag (was 2× bij ochtend+middag) — minder GHL 429. */
+        let dayEventsForRoute = null;
+        if (newCoord) {
+          try {
+            const b = amsterdamCalendarDayBoundsMs(cursor);
+            if (b) {
+              const er = await ghlFetchWith429Backoff(
+                `${GHL_BASE}/calendars/events?locationId=${encodeURIComponent(locId)}&calendarId=${encodeURIComponent(calId)}&startTime=${b.startMs}&endTime=${b.endMs}`,
+                { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' }
+              );
+              if (er.ok) {
+                const ed = await er.json();
+                dayEventsForRoute = [...(ed?.events || [])].filter((e) => e.contactId || e.contact_id);
+              }
+            }
+          } catch {}
+        }
+
         for (const block of ['morning', 'afternoon']) {
           const freeCount = block === 'morning' ? counts.morning : counts.afternoon;
           if (freeCount < 1) continue;
@@ -412,20 +454,7 @@ export default async function handler(req, res) {
 
           let score = i * 10 + (block === 'morning' ? 0 : 1);
           if (newCoord) {
-            let events = [];
-            try {
-              const b = amsterdamCalendarDayBoundsMs(cursor);
-              if (b) {
-                const er = await fetch(
-                  `${GHL_BASE}/calendars/events?locationId=${encodeURIComponent(locId)}&calendarId=${encodeURIComponent(calId)}&startTime=${b.startMs}&endTime=${b.endMs}`,
-                  { headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' } }
-                );
-                if (er.ok) {
-                  const ed = await er.json();
-                  events = [...(ed?.events || [])].filter((e) => e.contactId || e.contact_id);
-                }
-              }
-            } catch {}
+            const events = dayEventsForRoute ?? [];
             const blockEvents = events.filter((e) => {
               const raw = e.startTime ?? e.start;
               if (raw == null) return false;
