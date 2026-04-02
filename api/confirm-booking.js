@@ -47,6 +47,21 @@ function getCf(contact, fieldId) {
   return contact?.customFields?.find((f) => f.id === fieldId)?.value || '';
 }
 
+function stripGhlEnvId(v) {
+  return String(v ?? '')
+    .replace(/^\uFEFF/, '')
+    .trim()
+    .replace(/^["']|["']$/g, '');
+}
+
+function effectiveBlockSlotUserId() {
+  return (
+    stripGhlEnvId(process.env.GHL_BLOCK_SLOT_USER_ID) ||
+    stripGhlEnvId(process.env.GHL_APPOINTMENT_ASSIGNED_USER_ID) ||
+    HK_DEFAULT_BLOCK_SLOT_USER_ID
+  );
+}
+
 /** NL datum (kalenderdag Amsterdam) voor custom fields. */
 function formatDateLongNl(dateStr) {
   const parts = String(dateStr || '').split('-').map(Number);

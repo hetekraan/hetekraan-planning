@@ -19,6 +19,10 @@ import {
   SLOT_LABEL_AFTERNOON_SPACE,
   SLOT_LABEL_MORNING_SPACE,
 } from '../lib/planning-work-hours.js';
+import {
+  dayHasCustomerBlockingOverlap,
+  HK_DEFAULT_BLOCK_SLOT_USER_ID,
+} from '../lib/ghl-calendar-blocks.js';
 import { fetchWithRetry } from '../lib/retry.js';
 
 const GHL_API_KEY = process.env.GHL_API_KEY;
@@ -60,6 +64,15 @@ function effectiveSuggestCalendarId() {
 
 function effectiveSuggestLocationId() {
   return stripGhlEnvId(GHL_LOCATION_ID) || SUGGEST_LOCATION_FALLBACK;
+}
+
+/** Zelfde user als confirm-booking / GHL blok-slots (personal blocks zonder event-calendar). */
+function effectiveBlockSlotUserId() {
+  return (
+    stripGhlEnvId(process.env.GHL_BLOCK_SLOT_USER_ID) ||
+    stripGhlEnvId(process.env.GHL_APPOINTMENT_ASSIGNED_USER_ID) ||
+    HK_DEFAULT_BLOCK_SLOT_USER_ID
+  );
 }
 
 function haversine(lat1, lon1, lat2, lon2) {
@@ -110,7 +123,7 @@ function slotStartMs(slot) {
 }
 
 /**
- * Tel vrije slots per Amsterdam-kalenderdag en ochtend (<13) / middag (≥13).
+ * Tel vrije slots per Amsterdam-kalenderdag en ochtend / middag (split op DAYPART_SPLIT_HOUR).
  */
 function aggregateFreeSlotsByAmsterdamDay(slotsObj) {
   const out = new Map();
@@ -351,6 +364,22 @@ export default async function handler(req, res) {
       if (!cursor) break;
       const dow = amsterdamWeekdaySun0(cursor);
       if (dow !== 0 && dow !== 6) {
+        if (
+          await dayHasCustomerBlockingOverlap(
+            GHL_BASE,
+            {
+              locationId: locId,
+              calendarId: calId,
+              apiKey: GHL_API_KEY,
+              assignedUserId: effectiveBlockSlotUserId(),
+            },
+            cursor
+          )
+        ) {
+          cursor = addAmsterdamCalendarDays(cursor, 1);
+          continue;
+        }
+
         const counts = byDay.get(cursor) || { morning: 0, afternoon: 0 };
         const dayBounds = amsterdamCalendarDayBoundsMs(cursor);
         const dateLabel = dayBounds
