@@ -1492,7 +1492,20 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const GHL_BASE_URL = 'https://app.gohighlevel.com/v2/location/KVD6wOE9g1g2V9z7Zxj7/contacts/detail';
+/** Wordt gevuld vanuit /api/planning-config (GHL_LOCATION_ID in Vercel). */
+let GHL_BASE_URL = '';
+
+async function refreshGhlContactBaseUrl() {
+  if (GHL_BASE_URL) return;
+  try {
+    const r = await fetch('/api/planning-config?_=' + Date.now(), { cache: 'no-store' });
+    const d = await r.json();
+    if (d.ghlLocationId) {
+      GHL_BASE_URL =
+        'https://app.gohighlevel.com/v2/location/' + encodeURIComponent(d.ghlLocationId) + '/contacts/detail';
+    }
+  } catch (_) {}
+}
 
 let currentDate = new Date();
 let nextId = 100;
@@ -2087,6 +2100,7 @@ function printDagopgave() {
 async function loadAppointments(date) {
   const dateStr = getDateStr(date);
   try {
+    await refreshGhlContactBaseUrl();
     showToast('⏳ Afspraken laden...', 'loading');
       const res = await fetch(
         `/api/ghl?action=getAppointments&date=${encodeURIComponent(dateStr)}&_=${Date.now()}`,
@@ -3495,6 +3509,8 @@ async function saveModal() {
   const name    = document.getElementById('mName').value.trim();
   const address = document.getElementById('mAddress').value.trim();
   if (!name || !address) { showToast('Vul naam en adres in', 'info'); return; }
+
+  await refreshGhlContactBaseUrl();
 
   const time    = document.getElementById('mTime').value;
   const type    = document.getElementById('mType').value.toLowerCase();

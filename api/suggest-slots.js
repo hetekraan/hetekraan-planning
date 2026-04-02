@@ -23,20 +23,20 @@ import {
   dayHasCustomerBlockingOverlap,
   HK_DEFAULT_BLOCK_SLOT_USER_ID,
 } from '../lib/ghl-calendar-blocks.js';
+import {
+  GHL_CONFIG_MISSING_MSG,
+  ghlCalendarIdFromEnv,
+  ghlLocationIdFromEnv,
+  stripGhlEnvId,
+} from '../lib/ghl-env-ids.js';
 import { fetchWithRetry } from '../lib/retry.js';
 
 const GHL_API_KEY = process.env.GHL_API_KEY;
-const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
-const GHL_CALENDAR_ID = process.env.GHL_CALENDAR_ID;
 const MAPS_KEY = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_KEY;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 
 /** ~6 weken vooruit (42 dagen), conform gewenst venster. */
 const FREE_SLOTS_DAYS = 42;
-
-/** Fallbacks als env leeg (productie: zet GHL_CALENDAR_ID / GHL_LOCATION_ID). */
-const SUGGEST_CALENDAR_FALLBACK = 'vdZlb1g9Ii8tIdCwwXDx';
-const SUGGEST_LOCATION_FALLBACK = 'KVD6wOE9g1g2V9z7Zxj7';
 
 const FIELD_IDS = {
   straatnaam: 'ZwIMY4VPelG5rKROb5NR',
@@ -49,21 +49,6 @@ const FIELD_IDS = {
 function getField(contact, fieldId) {
   const f = contact?.customFields?.find((f) => f.id === fieldId);
   return f?.value || '';
-}
-
-function stripGhlEnvId(v) {
-  return String(v ?? '')
-    .replace(/^\uFEFF/, '')
-    .trim()
-    .replace(/^["']|["']$/g, '');
-}
-
-function effectiveSuggestCalendarId() {
-  return stripGhlEnvId(GHL_CALENDAR_ID) || SUGGEST_CALENDAR_FALLBACK;
-}
-
-function effectiveSuggestLocationId() {
-  return stripGhlEnvId(GHL_LOCATION_ID) || SUGGEST_LOCATION_FALLBACK;
 }
 
 /** Zelfde user als confirm-booking / GHL blok-slots (personal blocks zonder event-calendar). */
@@ -222,8 +207,11 @@ export default async function handler(req, res) {
       return res.status(500).json({ success: false, error: 'GHL API key ontbreekt' });
     }
 
-    const locId = effectiveSuggestLocationId();
-    const calId = effectiveSuggestCalendarId();
+    const locId = ghlLocationIdFromEnv();
+    const calId = ghlCalendarIdFromEnv();
+    if (!locId || !calId) {
+      return res.status(503).json({ success: false, error: GHL_CONFIG_MISSING_MSG });
+    }
 
     let resolvedContactId = contactId || null;
     let contactName = nameParam || '';

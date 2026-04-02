@@ -28,6 +28,7 @@ import {
   SLOT_LABEL_MORNING_NL,
   WORK_DAY_START_HOUR,
 } from '../lib/planning-work-hours.js';
+import { stripGhlEnvId } from '../lib/ghl-env-ids.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -45,13 +46,6 @@ const FIELD_IDS = {
 
 function getCf(contact, fieldId) {
   return contact?.customFields?.find((f) => f.id === fieldId)?.value || '';
-}
-
-function stripGhlEnvId(v) {
-  return String(v ?? '')
-    .replace(/^\uFEFF/, '')
-    .trim()
-    .replace(/^["']|["']$/g, '');
 }
 
 function effectiveBlockSlotUserId() {
