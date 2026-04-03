@@ -9,33 +9,26 @@ import {
   formatYyyyMmDdInAmsterdam,
   hourInAmsterdam,
 } from '../lib/amsterdam-calendar-day.js';
-import {
-  blockAllowsNewCustomerBooking,
-  customerMaxForBlock,
-  normalizeWorkType,
-} from '../lib/booking-blocks.js';
-import { maxCustomerAppointmentsPerDay } from '../lib/calendar-customer-cap.js';
+import { blockAllowsNewCustomerBooking, normalizeWorkType } from '../lib/booking-blocks.js';
+import { fetchCalendarEventsForDay, maxCustomerAppointmentsPerDay } from '../lib/calendar-customer-cap.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
-import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
 import { signBookingToken } from '../lib/session.js';
 import { availabilityDebugEnabled, logAvailability } from '../lib/availability-debug.js';
 import {
+  fetchBlockedSlotsAsEvents,
+  ghlCalendarEventEndMs,
+  ghlCalendarEventStartMs,
   isCustomerBookingBlockedOnAmsterdamDate,
+  markBlockLikeOnCalendarEvents,
   resolveAssignedUserIdForBlockedSlotQueries,
 } from '../lib/ghl-calendar-blocks.js';
-import {
-  DAYPART_SPLIT_HOUR,
-  DEFAULT_BOOK_START_AFTERNOON,
-  DEFAULT_BOOK_START_MORNING,
-  SLOT_LABEL_AFTERNOON_SPACE,
-  SLOT_LABEL_MORNING_SPACE,
-} from '../lib/planning-work-hours.js';
-import { ghlCalendarIdFromEnv } from '../lib/ghl-env-ids.js';
+import { DAYPART_SPLIT_HOUR } from '../lib/planning-work-hours.js';
+import { ghlCalendarIdFromEnv, ghlLocationIdFromEnv } from '../lib/ghl-env-ids.js';
+import { fetchGhlFreeSlotsObject, slotsObjectToConcreteList } from '../lib/ghl-free-slots-pipeline.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
-const MAPS_KEY        = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_KEY;
 const GHL_BASE        = 'https://services.leadconnectorhq.com';
 
 /** Zelfde availability-context als confirm-booking / suggest-slots (Europe/Amsterdam-dag via GHL). */
@@ -69,150 +62,199 @@ function getField(contact, fieldId) {
   return f?.value || '';
 }
 
-function haversine(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+/** Zelfde overlap-logica als blockedSlotEventOverlapsMs (half-open vriendelijk: b0 < a1 && b1 > a0). */
+function intervalOverlapsMs(a0, a1, b0, b1) {
+  return b0 < a1 && b1 > a0;
 }
 
-async function geocode(address) {
-  try {
-    const r = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${MAPS_KEY}`);
-    const d = await r.json();
-    if (d.status === 'OK' && d.results[0]) {
-      const loc = d.results[0].geometry.location;
-      return { lat: loc.lat, lng: loc.lng };
-    }
-  } catch {}
-  return null;
-}
-
-async function geocodeEvents(events) {
-  const coords = [];
-  for (const e of events) {
-    if (e.address) {
-      const c = await geocode(e.address);
-      if (c) coords.push(c);
-    }
+/**
+ * True als [slotStartMs, slotEndMs) een block-like of blocked-slots-interval raakt (merged `events`).
+ * Ongeldige block-start (NaN) → conservatief true (gelijk aan dag-blok logica).
+ */
+function concreteSlotOverlapsAnyBlockLike(slotStartMs, slotEndMs, dayBounds, events) {
+  if (
+    !dayBounds ||
+    !Number.isFinite(slotStartMs) ||
+    !Number.isFinite(slotEndMs) ||
+    slotEndMs <= slotStartMs ||
+    !Array.isArray(events)
+  ) {
+    return false;
   }
-  return coords;
+  for (const e of events) {
+    if (!e || !e._hkGhlBlockSlot) continue;
+    const bs = ghlCalendarEventStartMs(e);
+    let be = ghlCalendarEventEndMs(e);
+    if (Number.isNaN(bs)) return true;
+    if (Number.isNaN(be)) be = dayBounds.endMs;
+    if (intervalOverlapsMs(slotStartMs, slotEndMs, bs, be)) return true;
+  }
+  return false;
 }
 
-async function getBestSlots(address, workType) {
-  const newCoord = address ? await geocode(address) : null;
-  const candidates = [];
-  const dbg = availabilityDebugEnabled();
-  const trace = dbg ? { flow: 'send-booking-invite', timeZone: 'Europe/Amsterdam', dayDecisions: [] } : null;
+/**
+ * Twee concrete GHL free-slots (startMs/endMs), gefilterd op blok-capaciteit zoals confirm-booking.
+ * Route-sorting uitgesteld — volgorde = vroegste beschikbare sloten.
+ */
+async function pickConcreteInviteSlots(workType) {
+  if (!GHL_API_KEY) return [];
+  const calId = ghlCalendarIdFromEnv();
+  const locId = ghlLocationIdFromEnv();
+  if (!calId || !locId) return [];
 
   const todayAmsterdam = formatYyyyMmDdInAmsterdam(new Date());
   if (!todayAmsterdam) return [];
-  let dateStr = addAmsterdamCalendarDays(todayAmsterdam, 1);
-  if (!dateStr) return [];
+  const startDate = addAmsterdamCalendarDays(todayAmsterdam, 1);
+  if (!startDate) return [];
+  const endDate = addAmsterdamCalendarDays(startDate, DAYS_AHEAD - 1);
+  if (!endDate) return [];
+  const startBounds = amsterdamCalendarDayBoundsMs(startDate);
+  const endBounds = amsterdamCalendarDayBoundsMs(endDate);
+  if (!startBounds || !endBounds) return [];
 
-  for (let step = 1; step <= DAYS_AHEAD + 3 && candidates.length < 6; step++) {
-    const dow = amsterdamWeekdaySun0(dateStr);
+  const free = await fetchGhlFreeSlotsObject({
+    calendarId: calId,
+    locationId: locId,
+    startMs: startBounds.startMs,
+    endMs: endBounds.endMs,
+    apiKey: GHL_API_KEY,
+  });
+  if (!free.ok || !free.slotsObj) return [];
+
+  const concrete = slotsObjectToConcreteList(free.slotsObj, { calendarId: calId, workType });
+  if (concrete.length === 0) return [];
+
+  const dbg = availabilityDebugEnabled();
+  const trace = dbg ? { flow: 'send-booking-invite', timeZone: 'Europe/Amsterdam', dayDecisions: [] } : null;
+
+  const eventCache = new Map();
+  /** Kalender-events + blocked-slots API, daarna markBlockLike — zelfde basis als dayHasCustomerBlockingOverlap. */
+  async function loadDay(dateStr) {
+    if (eventCache.has(dateStr)) return eventCache.get(dateStr);
+    const dayBounds = amsterdamCalendarDayBoundsMs(dateStr);
+    if (!dayBounds) {
+      const empty = { events: [], dayBounds: null };
+      eventCache.set(dateStr, empty);
+      return empty;
+    }
+    const raw = await fetchCalendarEventsForDay(dateStr, {
+      base: GHL_BASE,
+      locationId: GHL_LOCATION_ID,
+      calendarId: calId,
+      apiKey: GHL_API_KEY,
+    });
+    const calEv = Array.isArray(raw) ? raw : [];
+    const blockedMerged = await fetchBlockedSlotsAsEvents(GHL_BASE, {
+      locationId: GHL_LOCATION_ID,
+      calendarId: calId,
+      startMs: dayBounds.startMs,
+      endMs: dayBounds.endMs,
+      apiKey: GHL_API_KEY,
+      assignedUserId: resolveAssignedUserIdForBlockedSlotQueries(),
+    });
+    const merged = calEv.concat(Array.isArray(blockedMerged) ? blockedMerged : []);
+    markBlockLikeOnCalendarEvents(merged);
+    const payload = { events: merged, dayBounds };
+    eventCache.set(dateStr, payload);
+    return payload;
+  }
+
+  const inMorning = (e) => {
+    const raw = e?.startTime ?? e?.start;
+    if (raw == null) return false;
+    return hourInAmsterdam(raw) < DAYPART_SPLIT_HOUR;
+  };
+  const inAfternoon = (e) => {
+    const raw = e?.startTime ?? e?.start;
+    if (raw == null) return false;
+    return hourInAmsterdam(raw) >= DAYPART_SPLIT_HOUR;
+  };
+
+  const picked = [];
+  for (const slot of concrete) {
+    const dow = amsterdamWeekdaySun0(slot.dateStr);
     if (dow === 0 || dow === 6) {
-      if (trace) trace.dayDecisions.push({ dateStr, outcome: 'excluded', why: 'weekend' });
-      dateStr = addAmsterdamCalendarDays(dateStr, 1);
+      if (trace) trace.dayDecisions.push({ dateStr: slot.dateStr, outcome: 'excluded', why: 'weekend' });
       continue;
     }
 
-    if (await isCustomerBookingBlockedOnAmsterdamDate(GHL_BASE, customerAvailabilityCtx(), dateStr)) {
-      dateStr = addAmsterdamCalendarDays(dateStr, 1);
+    if (await isCustomerBookingBlockedOnAmsterdamDate(GHL_BASE, customerAvailabilityCtx(), slot.dateStr)) {
       continue;
     }
 
-    const bounds = amsterdamCalendarDayBoundsMs(dateStr);
-    if (!bounds) break;
-    const { startMs, endMs } = bounds;
-
-    let events = [];
-    try {
-      const er = await fetch(
-        `${GHL_BASE}/calendars/events?locationId=${encodeURIComponent(GHL_LOCATION_ID)}&calendarId=${encodeURIComponent(ghlCalendarIdFromEnv())}&startTime=${startMs}&endTime=${endMs}`,
-        { headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' } }
-      );
-      if (er.ok) events = (await er.json())?.events || [];
-    } catch {}
-
+    const dayPack = await loadDay(slot.dateStr);
+    const { events, dayBounds } = dayPack;
+    if (!dayBounds) continue;
+    const customerEvents = events.filter((e) => !e._hkGhlBlockSlot);
     const dayCap = maxCustomerAppointmentsPerDay();
-    if (events.length >= dayCap) {
+    const syntheticDay = picked.filter((p) => p.dateStr === slot.dateStr).length;
+    if (customerEvents.length + syntheticDay >= dayCap) {
       if (trace) {
         trace.dayDecisions.push({
-          dateStr,
+          dateStr: slot.dateStr,
           outcome: 'excluded',
-          why: 'day_cap_reached',
-          ghlFromApi: { calendarEventsThatDay: events.length, dayCap },
+          why: 'day_cap_would_exceed',
+          slotStartMs: slot.startMs,
         });
       }
-      dateStr = addAmsterdamCalendarDays(dateStr, 1);
       continue;
     }
 
-    const morningEvents = events.filter((e) => hourInAmsterdam(e.startTime) < DAYPART_SPLIT_HOUR);
-    const afternoonEvents = events.filter((e) => hourInAmsterdam(e.startTime) >= DAYPART_SPLIT_HOUR);
-
-    const noon = amsterdamWallTimeToDate(dateStr, 12, 0);
-    const dateLabel = noon
-      ? noon.toLocaleDateString('nl-NL', {
-          weekday: 'long',
-          day: 'numeric',
-          month: 'long',
-          timeZone: 'Europe/Amsterdam',
-        })
-      : dateStr;
-
-    for (const block of ['morning', 'afternoon']) {
-      const blockEvents = block === 'morning' ? morningEvents : afternoonEvents;
-      if (!blockAllowsNewCustomerBooking(block, blockEvents, workType)) {
-        if (trace) {
-          trace.dayDecisions.push({
-            dateStr,
-            outcome: 'excluded',
-            why: 'booking_rules_disallow_part',
-            part: block,
-            workType,
-            ghlFromApi: { eventsThatDay: events.length },
-          });
-        }
-        continue;
-      }
-
-      const maxB = customerMaxForBlock(block);
-      let score = blockEvents.length;
-      if (newCoord) {
-        const coords = await geocodeEvents(blockEvents);
-        const minDist = coords.length
-          ? Math.min(...coords.map((c) => haversine(newCoord.lat, newCoord.lng, c.lat, c.lng)))
-          : 0;
-        score = minDist * (1 + blockEvents.length / maxB);
-      }
-
-      candidates.push({
-        dateStr,
-        block,
-        existingCount: blockEvents.length,
-        slotsLeft: maxB - blockEvents.length,
-        timeLabel: block === 'morning' ? SLOT_LABEL_MORNING_SPACE : SLOT_LABEL_AFTERNOON_SPACE,
-        blockLabel: block === 'morning' ? 'ochtend' : 'middag',
-        suggestedTime: block === 'morning' ? DEFAULT_BOOK_START_MORNING : DEFAULT_BOOK_START_AFTERNOON,
-        dateLabel,
-        score,
+    let blockEvents = customerEvents.filter((e) =>
+      slot.block === 'morning' ? inMorning(e) : inAfternoon(e)
+    );
+    for (const p of picked) {
+      if (p.dateStr !== slot.dateStr || p.block !== slot.block) continue;
+      blockEvents.push({
+        startTime: p.startMs,
+        endTime: p.endMs,
+        title: '__picked_invite__',
       });
     }
 
-    dateStr = addAmsterdamCalendarDays(dateStr, 1);
+    if (!blockAllowsNewCustomerBooking(slot.block, blockEvents, workType)) {
+      if (trace) {
+        trace.dayDecisions.push({
+          dateStr: slot.dateStr,
+          outcome: 'excluded',
+          why: 'booking_rules_disallow_concrete_slot',
+          part: slot.block,
+          slotStartMs: slot.startMs,
+        });
+      }
+      continue;
+    }
+
+    if (concreteSlotOverlapsAnyBlockLike(slot.startMs, slot.endMs, dayBounds, events)) {
+      if (availabilityDebugEnabled()) {
+        logAvailability('invite_concrete_slot_excluded_block_overlap', {
+          dateStr: slot.dateStr,
+          slotStartMs: slot.startMs,
+          slotEndMs: slot.endMs,
+          reason: 'interval_overlaps_block_like_or_blocked_slot_row',
+        });
+      }
+      if (trace) {
+        trace.dayDecisions.push({
+          dateStr: slot.dateStr,
+          outcome: 'excluded',
+          why: 'concrete_overlaps_block_interval',
+          slotStartMs: slot.startMs,
+          slotEndMs: slot.endMs,
+        });
+      }
+      continue;
+    }
+
+    picked.push(slot);
+    if (picked.length >= 2) break;
   }
 
-  candidates.sort((a, b) => a.score - b.score);
-  const picked = candidates.slice(0, 2);
   if (trace) {
     logAvailability('invite_booking_flow_summary', {
       ...trace,
-      offeredToClient: picked.map((c) => ({ dateStr: c.dateStr, block: c.block })),
-      source: 'calendar_events_count_not_free_slots_api',
+      offeredToClient: picked.map((c) => ({ dateStr: c.dateStr, block: c.block, startMs: c.startMs })),
+      source: 'ghl_free_slots_pipeline',
     });
   }
   return picked;
@@ -325,8 +367,8 @@ export default async function handler(req, res) {
 
   const workType = normalizeWorkType(workTypeParam || typeParam || getField(contact, FIELD_IDS.type_onderhoud));
 
-  // Bereken de 2 beste slots (rekening houdend met max 4/3 per blok + geplande minuten)
-  const slots = await getBestSlots(address, workType);
+  // Twee concrete slots uit GHL free-slots +zelfde blok-regels als confirm-booking
+  const slots = await pickConcreteInviteSlots(workType);
   if (slots.length === 0) {
     return res.status(200).json({ success: false, message: 'Geen beschikbare slots in de komende 7 werkdagen.' });
   }
@@ -346,13 +388,14 @@ export default async function handler(req, res) {
     address,
     type: workType,
     inviteIssuedAt: Date.now(),
-    slots: slots.map(s => ({
-      id:            `${s.dateStr}_${s.block}`,
-      dateStr:       s.dateStr,
-      block:         s.block,
-      label:         `${capitalize(s.dateLabel)} ${s.blockLabel}`,
-      time:          s.timeLabel,
-      suggestedTime: s.suggestedTime,
+    slots: slots.map((s) => ({
+      id: s.id,
+      dateStr: s.dateStr,
+      block: s.block,
+      label: `${capitalize(s.dateLabel)} ${s.blockLabel}`,
+      time: s.timeLabel,
+      startMs: s.startMs,
+      endMs: s.endMs,
     })),
   };
   const token = signBookingToken(bookingData);
