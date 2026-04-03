@@ -302,8 +302,15 @@ export default async function handler(req, res) {
   const isV2 = Number(bookingData.tokenSchemaVersion) === 2;
   const phoneForPut = firstValidNlMobile(phoneRaw, phone, contactSnap?.phone);
 
+  // TEMP DEBUG — verwijder na productie-verificatie (welke confirm-branch draait er?)
+  console.log('[confirm-booking DEBUG] tokenSchemaVersion=', bookingData.tokenSchemaVersion ?? '(missing)');
+  console.log('[confirm-booking DEBUG] slotId=', slotId);
+  console.log('[confirm-booking DEBUG] chosenSlot=', JSON.stringify(chosenSlot));
+  console.log('[confirm-booking DEBUG] isV2_B1=', isV2);
+
   // ─── Model B1 (tokenSchemaVersion 2): block-capacity check + contact only; geen GHL appointment ──
   if (isV2) {
+    console.log('[confirm-booking DEBUG] path=v2_B1_entered');
     if (await hasConfirmedForContactDate(contactId, date)) {
       releaseBookingLock(lockKey);
       console.log('[confirm-booking] Duplicate (B1 reservering):', contactId, date);
@@ -536,6 +543,7 @@ export default async function handler(req, res) {
   }
 
   // ─── Legacy (v1): zelfde checks op ruwe dag-events + timed GHL appointment ─────────────────────
+  console.log('[confirm-booking DEBUG] path=legacy_v1_timed_appointment_entered');
 
   const eventsForDay = await fetchCalendarEventsForDay(date, {
     base: GHL_BASE,
@@ -785,6 +793,8 @@ export default async function handler(req, res) {
   ];
 
   const userPasses = assignedUserId ? [true, false] : [false];
+
+  console.log('[confirm-booking DEBUG] agenda_POST_attempt_begin → POST …/calendars/events/appointments');
 
   outer: for (const includeAssignedUser of userPasses) {
     for (const { version, extra } of attempts) {
