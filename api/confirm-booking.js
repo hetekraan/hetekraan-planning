@@ -2,6 +2,7 @@
 // Verwerkt de klantenkeuze uit de boekingspagina.
 // Maakt de GHL-afspraak aan; WhatsApp alleen via GHL-workflow (tag-puls).
 
+import { logAvailability } from '../lib/availability-debug.js';
 import { hourInAmsterdam } from '../lib/amsterdam-calendar-day.js';
 import {
   blockAllowsNewCustomerBooking,
@@ -16,9 +17,9 @@ import { fetchWithRetry } from '../lib/retry.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
 import { verifyBookingToken } from '../lib/session.js';
 import {
-  dayHasCustomerBlockingOverlap,
-  HK_DEFAULT_BLOCK_SLOT_USER_ID,
+  isCustomerBookingBlockedOnAmsterdamDate,
   markBlockLikeOnCalendarEvents,
+  resolveAssignedUserIdForBlockedSlotQueries,
 } from '../lib/ghl-calendar-blocks.js';
 import {
   DAYPART_SPLIT_HOUR,
@@ -28,7 +29,7 @@ import {
   SLOT_LABEL_MORNING_NL,
   WORK_DAY_START_HOUR,
 } from '../lib/planning-work-hours.js';
-import { ghlCalendarIdFromEnv, stripGhlEnvId } from '../lib/ghl-env-ids.js';
+import { ghlCalendarIdFromEnv } from '../lib/ghl-env-ids.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -45,14 +46,6 @@ const FIELD_IDS = {
 
 function getCf(contact, fieldId) {
   return contact?.customFields?.find((f) => f.id === fieldId)?.value || '';
-}
-
-function effectiveBlockSlotUserId() {
-  return (
-    stripGhlEnvId(process.env.GHL_BLOCK_SLOT_USER_ID) ||
-    stripGhlEnvId(process.env.GHL_APPOINTMENT_ASSIGNED_USER_ID) ||
-    HK_DEFAULT_BLOCK_SLOT_USER_ID
-  );
 }
 
 /** NL datum (kalenderdag Amsterdam) voor custom fields. */
@@ -199,17 +192,25 @@ export default async function handler(req, res) {
   if (!date) return res.status(400).json({ error: 'Geen datum in slot' });
 
   if (
-    await dayHasCustomerBlockingOverlap(
+    await isCustomerBookingBlockedOnAmsterdamDate(
       GHL_BASE,
       {
         locationId: GHL_LOCATION_ID,
         calendarId: ghlCalendarIdFromEnv(),
         apiKey: GHL_API_KEY,
-        assignedUserId: effectiveBlockSlotUserId(),
+        assignedUserId: resolveAssignedUserIdForBlockedSlotQueries(),
       },
       date
     )
   ) {
+    logAvailability('confirm_booking_rejected', {
+      flow: 'confirm-booking',
+      outcome: 'excluded',
+      why: 'customer_day_blocked',
+      dateStr: date,
+      timeZone: 'Europe/Amsterdam',
+      hasContactId: !!contactId,
+    });
     return res.status(409).json({
       error: 'Deze dag is niet beschikbaar voor online boeken (agenda geblokkeerd). Kies een andere dag of neem contact op.',
       code: 'DAY_BLOCKED',

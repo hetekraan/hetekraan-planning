@@ -19,15 +19,15 @@ import {
   SLOT_LABEL_AFTERNOON_SPACE,
   SLOT_LABEL_MORNING_SPACE,
 } from '../lib/planning-work-hours.js';
+import { availabilityDebugEnabled, logAvailability } from '../lib/availability-debug.js';
 import {
-  blockedCustomerDatesInAmsterdamRange,
-  HK_DEFAULT_BLOCK_SLOT_USER_ID,
+  isCustomerBookingBlockedOnAmsterdamDate,
+  resolveAssignedUserIdForBlockedSlotQueries,
 } from '../lib/ghl-calendar-blocks.js';
 import {
   GHL_CONFIG_MISSING_MSG,
   ghlCalendarIdFromEnv,
   ghlLocationIdFromEnv,
-  stripGhlEnvId,
 } from '../lib/ghl-env-ids.js';
 const GHL_API_KEY = process.env.GHL_API_KEY;
 
@@ -67,15 +67,6 @@ const FIELD_IDS = {
 function getField(contact, fieldId) {
   const f = contact?.customFields?.find((f) => f.id === fieldId);
   return f?.value || '';
-}
-
-/** Zelfde user als confirm-booking / GHL blok-slots (personal blocks zonder event-calendar). */
-function effectiveBlockSlotUserId() {
-  return (
-    stripGhlEnvId(process.env.GHL_BLOCK_SLOT_USER_ID) ||
-    stripGhlEnvId(process.env.GHL_APPOINTMENT_ASSIGNED_USER_ID) ||
-    HK_DEFAULT_BLOCK_SLOT_USER_ID
-  );
 }
 
 function haversine(lat1, lon1, lat2, lon2) {
@@ -447,37 +438,40 @@ export default async function handler(req, res) {
 
     const byDay = aggregateFreeSlotsByAmsterdamDay(free.slotsObj);
 
-    let blockedDates;
-    try {
-      blockedDates = await blockedCustomerDatesInAmsterdamRange(
-        GHL_BASE,
-        {
-          locationId: locId,
-          calendarId: calId,
-          apiKey: GHL_API_KEY,
-          assignedUserId: effectiveBlockSlotUserId(),
-        },
-        startDate,
-        endDate
-      );
-    } catch (e) {
-      console.error('[suggest-slots] blocked-date prefetch:', e?.message || e);
-      return res.status(503).json({
-        success: false,
-        error: 'Agenda-blokkades tijdelijk niet beschikbaar. Probeer het later opnieuw.',
-      });
-    }
+    const availabilityCtx = {
+      locationId: locId,
+      calendarId: calId,
+      apiKey: GHL_API_KEY,
+      assignedUserId: resolveAssignedUserIdForBlockedSlotQueries(),
+    };
 
     const candidates = [];
+    const dbg = availabilityDebugEnabled();
+    const suggestTrace = dbg
+      ? { flow: 'suggest-slots', window: [startDate, endDate], timeZone: 'Europe/Amsterdam', days: [] }
+      : null;
 
     let cursor = startDate;
     for (let i = 0; i < FREE_SLOTS_DAYS; i++) {
       if (!cursor) break;
       const dow = amsterdamWeekdaySun0(cursor);
-      if (dow !== 0 && dow !== 6) {
-        if (blockedDates.has(cursor)) {
-          cursor = addAmsterdamCalendarDays(cursor, 1);
-          continue;
+      if (dow === 0 || dow === 6) {
+        if (suggestTrace) suggestTrace.days.push({ dateStr: cursor, outcome: 'excluded', why: 'weekend' });
+        cursor = addAmsterdamCalendarDays(cursor, 1);
+        continue;
+      }
+      {
+        try {
+          if (await isCustomerBookingBlockedOnAmsterdamDate(GHL_BASE, availabilityCtx, cursor)) {
+            cursor = addAmsterdamCalendarDays(cursor, 1);
+            continue;
+          }
+        } catch (e) {
+          console.error('[suggest-slots] availability check:', e?.message || e);
+          return res.status(503).json({
+            success: false,
+            error: 'Agenda-blokkades tijdelijk niet beschikbaar. Probeer het later opnieuw.',
+          });
         }
 
         const counts = byDay.get(cursor) || { morning: 0, afternoon: 0 };
@@ -520,10 +514,33 @@ export default async function handler(req, res) {
           } catch {}
         }
 
+        let addedForDay = 0;
         for (const block of ['morning', 'afternoon']) {
           const freeCount = block === 'morning' ? counts.morning : counts.afternoon;
-          if (freeCount < 1) continue;
-          if (!blockAllowsNewCustomerBooking(block, [], workType)) continue;
+          if (freeCount < 1) {
+            if (suggestTrace) {
+              suggestTrace.days.push({
+                dateStr: cursor,
+                outcome: 'excluded',
+                why: 'ghl_free_slots_zero_for_part',
+                part: block,
+                freeSlotsByPart: { morning: counts.morning, afternoon: counts.afternoon },
+              });
+            }
+            continue;
+          }
+          if (!blockAllowsNewCustomerBooking(block, [], workType)) {
+            if (suggestTrace) {
+              suggestTrace.days.push({
+                dateStr: cursor,
+                outcome: 'excluded',
+                why: 'booking_rules_disallow_part',
+                part: block,
+                workType,
+              });
+            }
+            continue;
+          }
 
           const maxB = customerMaxForBlock(block);
           const slotsLeft = Math.min(freeCount, maxB);
@@ -555,6 +572,15 @@ export default async function handler(req, res) {
             blockLabel: block === 'morning' ? 'ochtend' : 'middag',
             slotsLeft,
           });
+          addedForDay++;
+        }
+        if (suggestTrace && addedForDay === 0 && counts.morning + counts.afternoon > 0) {
+          suggestTrace.days.push({
+            dateStr: cursor,
+            outcome: 'excluded',
+            why: 'no_part_passed_after_rules',
+            freeSlotsByPart: { morning: counts.morning, afternoon: counts.afternoon },
+          });
         }
       }
       cursor = addAmsterdamCalendarDays(cursor, 1);
@@ -573,6 +599,17 @@ export default async function handler(req, res) {
       slotsLeft: c.slotsLeft,
       score: Math.round(c.score * 10) / 10,
     }));
+
+    if (suggestTrace) {
+      logAvailability('suggest_booking_flow_summary', {
+        flow: 'suggest-slots',
+        windowAmsterdam: [startDate, endDate],
+        timeZone: 'Europe/Amsterdam',
+        dayDecisions: suggestTrace.days,
+        offeredToClient: suggestions.map((s) => ({ dateStr: s.dateStr, block: s.block })),
+        ghlFreeSlotsSource: 'calendars/{id}/free-slots',
+      });
+    }
 
     return res.status(200).json({
       success: true,

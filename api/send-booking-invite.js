@@ -19,7 +19,11 @@ import { fetchWithRetry } from '../lib/retry.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
 import { signBookingToken } from '../lib/session.js';
-import { dayHasBlockedSlotsOverlappingWorkHours } from '../lib/ghl-calendar-blocks.js';
+import { availabilityDebugEnabled, logAvailability } from '../lib/availability-debug.js';
+import {
+  isCustomerBookingBlockedOnAmsterdamDate,
+  resolveAssignedUserIdForBlockedSlotQueries,
+} from '../lib/ghl-calendar-blocks.js';
 import {
   DAYPART_SPLIT_HOUR,
   DEFAULT_BOOK_START_AFTERNOON,
@@ -34,11 +38,15 @@ const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const MAPS_KEY        = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_KEY;
 const GHL_BASE        = 'https://services.leadconnectorhq.com';
 
-const blockSlotCtx = () => ({
-  locationId: GHL_LOCATION_ID,
-  calendarId: ghlCalendarIdFromEnv(),
-  apiKey: GHL_API_KEY,
-});
+/** Zelfde availability-context als confirm-booking / suggest-slots (Europe/Amsterdam-dag via GHL). */
+function customerAvailabilityCtx() {
+  return {
+    locationId: GHL_LOCATION_ID,
+    calendarId: ghlCalendarIdFromEnv(),
+    apiKey: GHL_API_KEY,
+    assignedUserId: resolveAssignedUserIdForBlockedSlotQueries(),
+  };
+}
 
 /** Publieke basis-URL voor boekingslinks */
 function publicBaseUrl() {
@@ -95,6 +103,8 @@ async function geocodeEvents(events) {
 async function getBestSlots(address, workType) {
   const newCoord = address ? await geocode(address) : null;
   const candidates = [];
+  const dbg = availabilityDebugEnabled();
+  const trace = dbg ? { flow: 'send-booking-invite', timeZone: 'Europe/Amsterdam', dayDecisions: [] } : null;
 
   const todayAmsterdam = formatYyyyMmDdInAmsterdam(new Date());
   if (!todayAmsterdam) return [];
@@ -104,11 +114,12 @@ async function getBestSlots(address, workType) {
   for (let step = 1; step <= DAYS_AHEAD + 3 && candidates.length < 6; step++) {
     const dow = amsterdamWeekdaySun0(dateStr);
     if (dow === 0 || dow === 6) {
+      if (trace) trace.dayDecisions.push({ dateStr, outcome: 'excluded', why: 'weekend' });
       dateStr = addAmsterdamCalendarDays(dateStr, 1);
       continue;
     }
 
-    if (await dayHasBlockedSlotsOverlappingWorkHours(GHL_BASE, blockSlotCtx(), dateStr)) {
+    if (await isCustomerBookingBlockedOnAmsterdamDate(GHL_BASE, customerAvailabilityCtx(), dateStr)) {
       dateStr = addAmsterdamCalendarDays(dateStr, 1);
       continue;
     }
@@ -128,6 +139,14 @@ async function getBestSlots(address, workType) {
 
     const dayCap = maxCustomerAppointmentsPerDay();
     if (events.length >= dayCap) {
+      if (trace) {
+        trace.dayDecisions.push({
+          dateStr,
+          outcome: 'excluded',
+          why: 'day_cap_reached',
+          ghlFromApi: { calendarEventsThatDay: events.length, dayCap },
+        });
+      }
       dateStr = addAmsterdamCalendarDays(dateStr, 1);
       continue;
     }
@@ -147,7 +166,19 @@ async function getBestSlots(address, workType) {
 
     for (const block of ['morning', 'afternoon']) {
       const blockEvents = block === 'morning' ? morningEvents : afternoonEvents;
-      if (!blockAllowsNewCustomerBooking(block, blockEvents, workType)) continue;
+      if (!blockAllowsNewCustomerBooking(block, blockEvents, workType)) {
+        if (trace) {
+          trace.dayDecisions.push({
+            dateStr,
+            outcome: 'excluded',
+            why: 'booking_rules_disallow_part',
+            part: block,
+            workType,
+            ghlFromApi: { eventsThatDay: events.length },
+          });
+        }
+        continue;
+      }
 
       const maxB = customerMaxForBlock(block);
       let score = blockEvents.length;
@@ -176,7 +207,15 @@ async function getBestSlots(address, workType) {
   }
 
   candidates.sort((a, b) => a.score - b.score);
-  return candidates.slice(0, 2);
+  const picked = candidates.slice(0, 2);
+  if (trace) {
+    logAvailability('invite_booking_flow_summary', {
+      ...trace,
+      offeredToClient: picked.map((c) => ({ dateStr: c.dateStr, block: c.block })),
+      source: 'calendar_events_count_not_free_slots_api',
+    });
+  }
+  return picked;
 }
 
 function parseRequestBody(req) {

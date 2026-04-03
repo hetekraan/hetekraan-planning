@@ -26,6 +26,13 @@ import {
   ghlLocationIdFromEnv,
   stripGhlEnvId,
 } from '../lib/ghl-env-ids.js';
+import {
+  canonicalGhlEventId,
+  eventEndMsGhl,
+  eventStartMsGhl,
+  getEventStartDayAmsterdam,
+} from '../lib/planning/ghl-event-core.js';
+import { mapEnrichedGhlEventToAppointment } from '../lib/planning/appointment.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -98,72 +105,6 @@ function normalizeYyyyMmDdInput(str) {
   const [y, mo, d] = p;
   if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
   return `${String(y).padStart(4, '0')}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-}
-
-/** Zelfde id kan als number of string binnenkomen — dedupe faalde dan op duplicaten. */
-function canonicalGhlEventId(e) {
-  const raw =
-    e?.id ??
-    e?.eventId ??
-    e?.appointmentId ??
-    e?.appointment?.id ??
-    e?.calendarEvent?.id;
-  if (raw == null || raw === '') return '';
-  return String(raw);
-}
-
-/** Starttijd in ms (alle gangbare GHL-velden), voor filter + contact-slot-dedupe. */
-function eventStartMsGhl(e) {
-  const candidates = [
-    e?.startTime,
-    e?.start_time,
-    e?.start,
-    e?.appointmentStartTime,
-    e?.appointment?.startTime,
-    e?.calendarEvent?.startTime,
-  ];
-  for (const c of candidates) {
-    if (c == null) continue;
-    if (typeof c === 'number') {
-      const ms = c < 1e12 ? Math.round(c * 1000) : c;
-      if (!Number.isNaN(ms)) return ms;
-    }
-    if (typeof c === 'string') {
-      const t = Date.parse(c);
-      if (!Number.isNaN(t)) return t;
-    }
-  }
-  return NaN;
-}
-
-/** GHL kalender-event → YYYY-MM-DD startdag in Europe/Amsterdam (of null). */
-function getEventStartDayAmsterdam(e) {
-  const ms = eventStartMsGhl(e);
-  if (Number.isNaN(ms)) return null;
-  return formatYyyyMmDdInAmsterdam(new Date(ms));
-}
-
-function eventEndMsGhl(e) {
-  const candidates = [
-    e?.endTime,
-    e?.end_time,
-    e?.end,
-    e?.appointmentEndTime,
-    e?.appointment?.endTime,
-    e?.calendarEvent?.endTime,
-  ];
-  for (const c of candidates) {
-    if (c == null) continue;
-    if (typeof c === 'number') {
-      const ms = c < 1e12 ? Math.round(c * 1000) : c;
-      if (!Number.isNaN(ms)) return ms;
-    }
-    if (typeof c === 'string') {
-      const t = Date.parse(c);
-      if (!Number.isNaN(t)) return t;
-    }
-  }
-  return NaN;
 }
 
 /** True als het event deze Amsterdam-kalenderdag raakt (o.a. meerdere-dagen vakantie). */
@@ -454,7 +395,8 @@ export default async function handler(req, res) {
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('X-HK-GetAppointments-Filter', 'v4-amsterdam-day+id+contact-slot');
-        return res.status(200).json({ events: unique });
+        const appointments = unique.map((ev, i) => mapEnrichedGhlEventToAppointment(ev, i));
+        return res.status(200).json({ appointments });
       }
 
       case 'updateContactDashboard': {

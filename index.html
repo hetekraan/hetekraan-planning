@@ -1508,17 +1508,18 @@ async function refreshGhlContactBaseUrl() {
 }
 
 let currentDate = new Date();
-let nextId = 100;
 let appointments = [];
 
 /** Minuten per type werkzaamheid (ook gebruikt bij route / GHL) */
 const JOB_DURATION = { onderhoud: 45, reparatie: 60, installatie: 90 };
 
-function hourInAmsterdamFromMs(ms) {
-  return parseInt(
-    new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Amsterdam', hour: 'numeric', hour12: false }).format(new Date(ms)),
-    10
-  );
+/** HTML id / dataset-veilig (Appointment.id kan uit GHL komen). */
+function appointmentDomSafeId(id) {
+  return String(id ?? '').replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+function newLocalAppointmentId() {
+  return `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
 /** Zelfde als slotlabels: alleen expliciet `dayPart === 0` is ochtend; anders middag. */
@@ -1556,7 +1557,7 @@ function applyRouteOrderFromStops(stopsOrdered) {
 
 /** Actieve route-contactIds voor snapshot: ochtend eerst, dan middag. */
 function activeRouteContactIdsMorningFirst() {
-  const active = appointments.filter((a) => a.address && a.status !== 'klaar');
+  const active = appointments.filter((a) => a.fullAddressLine && a.status !== 'klaar');
   return orderRouteMorningFirst(active)
     .map((a) => a.contactId)
     .filter(Boolean);
@@ -1603,108 +1604,6 @@ function getDateStr(d) {
   const m = parts.find((p) => p.type === 'month')?.value;
   const day = parts.find((p) => p.type === 'day')?.value;
   return y && m && day ? `${y}-${m}-${day}` : '';
-}
-
-/** ms van GHL startveld — zelfde velden als api/ghl.js (browser-side back-up filter). */
-function ghlEventStartMs(e) {
-  const candidates = [
-    e.startTime,
-    e.start_time,
-    e.start,
-    e.appointmentStartTime,
-    e.appointment?.startTime,
-    e.calendarEvent?.startTime,
-  ];
-  for (const c of candidates) {
-    if (c == null) continue;
-    if (typeof c === 'number') {
-      const ms = c < 1e12 ? Math.round(c * 1000) : c;
-      if (!Number.isNaN(ms)) return ms;
-    }
-    if (typeof c === 'string') {
-      const t = Date.parse(c);
-      if (!Number.isNaN(t)) return t;
-    }
-  }
-  return NaN;
-}
-
-function ghlEventEndMs(e) {
-  const candidates = [
-    e.endTime,
-    e.end_time,
-    e.end,
-    e.appointmentEndTime,
-    e.appointment?.endTime,
-    e.calendarEvent?.endTime,
-  ];
-  for (const c of candidates) {
-    if (c == null) continue;
-    if (typeof c === 'number') {
-      const ms = c < 1e12 ? Math.round(c * 1000) : c;
-      if (!Number.isNaN(ms)) return ms;
-    }
-    if (typeof c === 'string') {
-      const t = Date.parse(c);
-      if (!Number.isNaN(t)) return t;
-    }
-  }
-  return NaN;
-}
-
-function canonicalGhlEventIdClient(e) {
-  const raw =
-    e?.id ??
-    e?.eventId ??
-    e?.appointmentId ??
-    e?.appointment?.id ??
-    e?.calendarEvent?.id;
-  if (raw == null || raw === '') return '';
-  return String(raw);
-}
-
-/**
- * Dedupe GHL-events voor het dashboard (server filtert al op overlappende dag).
- * Pass 1: uniek op canoniek event-id.
- * Pass 2: per contactId → vroegste event houden; events binnen 60 min van het eerste
- *         event voor dit contact worden als retry-duplicaat beschouwd en weggefilterd.
- *         Twee echte afspraken (ochtend + middag) hebben >60 min verschil en blijven zichtbaar.
- */
-function filterGhlEventsForDashboardDay(events, _dateStr) {
-  const onDay = events || [];
-
-  const byId = new Set();
-  const pass1 = [];
-  for (const e of onDay) {
-    const id = canonicalGhlEventIdClient(e);
-    if (id) {
-      if (byId.has(id)) continue;
-      byId.add(id);
-    }
-    pass1.push(e);
-  }
-
-  pass1.sort((a, b) => (ghlEventStartMs(a) || 0) - (ghlEventStartMs(b) || 0));
-
-  const firstSeenMs = new Map();
-  const out = [];
-  for (const e of pass1) {
-    const rawCid = e.contactId || e.contact_id || e.contact?.id;
-    const cid = rawCid != null && String(rawCid).trim() !== '' ? String(rawCid).trim() : '';
-    const ms = ghlEventStartMs(e);
-    if (cid && !Number.isNaN(ms)) {
-      const first = firstSeenMs.get(cid);
-      if (first === undefined) {
-        firstSeenMs.set(cid, ms);
-      } else if (ms - first < 60 * 60 * 1000) {
-        continue;
-      } else {
-        firstSeenMs.set(cid, ms);
-      }
-    }
-    out.push(e);
-  }
-  return out;
 }
 
 /** Alleen gebruiker *daan* (juiste dag-login) ziet bewerk-dashboard voor GHL */
@@ -1807,8 +1706,8 @@ function mergeRouteOrderIntoSnapshot(dateStr) {
   } catch (_) {}
   const byContactId = { ...(prev.byContactId || {}) };
   appointments.forEach(a => {
-    if (!a.contactId || !a.time) return;
-    byContactId[a.contactId] = { time: normalizeTimeStr(a.time), estimated: !!a.estimated };
+    if (!a.contactId || !a.timeSlot) return;
+    byContactId[a.contactId] = { timeSlot: normalizeTimeStr(a.timeSlot), estimated: !!a.estimated };
   });
   try {
     localStorage.setItem(
@@ -1822,8 +1721,8 @@ function saveRouteSnapshot(dateStr) {
   const contactIdsOrder = activeRouteContactIdsMorningFirst();
   const byContactId = {};
   appointments.forEach(a => {
-    if (!a.contactId || !a.time) return;
-    byContactId[a.contactId] = { time: normalizeTimeStr(a.time), estimated: !!a.estimated };
+    if (!a.contactId || !a.timeSlot) return;
+    byContactId[a.contactId] = { timeSlot: normalizeTimeStr(a.timeSlot), estimated: !!a.estimated };
   });
   try {
     let order = contactIdsOrder;
@@ -1852,8 +1751,9 @@ function applyRouteSnapshot(dateStr) {
     if (snap.byContactId && typeof snap.byContactId === 'object') {
       appointments.forEach(a => {
         const o = snap.byContactId[a.contactId];
-        if (o?.time && a.contactId) {
-          a.time = normalizeTimeStr(o.time);
+        const slot = o?.timeSlot ?? o?.time;
+        if (slot && a.contactId) {
+          a.timeSlot = normalizeTimeStr(slot);
           a.estimated = !!o.estimated;
           n++;
         }
@@ -1870,7 +1770,7 @@ function applyRouteSnapshot(dateStr) {
 
 /** Routestops in dezelfde volgorde als je handmatig hebt gezet (of anders op tijd). */
 function getRouteStopsForSidebar() {
-  const active = appointments.filter(a => a.address && a.status !== 'klaar');
+  const active = appointments.filter(a => a.fullAddressLine && a.status !== 'klaar');
   const ds = getDateStr(currentDate);
   let orderIds = [];
   try {
@@ -1885,7 +1785,7 @@ function getRouteStopsForSidebar() {
       (a, b) =>
         (a.dayPart ?? 0) - (b.dayPart ?? 0) ||
         (a.startMs ?? 0) - (b.startMs ?? 0) ||
-        a.time.localeCompare(b.time)
+        String(a.timeSlot || '').localeCompare(String(b.timeSlot || ''))
     );
   }
   const byC = Object.fromEntries(active.filter(a => a.contactId).map(a => [a.contactId, a]));
@@ -2015,9 +1915,9 @@ function openDagopgave() {
             <span class="dagopgave-total">${total > 0 ? '€ ' + total.toFixed(2).replace('.', ',') : '—'}</span>
           </div>
           <div class="dagopgave-meta">
-            ${a.address ? a.address + '<br>' : ''}
-            ${a.type ? a.type.charAt(0).toUpperCase() + a.type.slice(1) : ''}${a.desc ? ' — ' + a.desc : ''}
-            ${a.time ? '<br>Uitgevoerd om ' + a.time : ''}
+            ${a.fullAddressLine ? a.fullAddressLine + '<br>' : ''}
+            ${a.jobType ? a.jobType.charAt(0).toUpperCase() + a.jobType.slice(1) : ''}${a.jobDescription ? ' — ' + a.jobDescription : ''}
+            ${a.timeSlot ? '<br>Uitgevoerd om ' + a.timeSlot : ''}
           </div>
           ${linesHtml}
         </div>`;
@@ -2069,8 +1969,8 @@ function printDagopgave() {
           <span>${total > 0 ? '€ ' + total.toFixed(2).replace('.', ',') : '—'}</span>
         </div>
         <div class="po-meta">
-          ${a.address || ''}${a.address && (a.type || a.desc) ? ' · ' : ''}${a.type ? a.type.charAt(0).toUpperCase() + a.type.slice(1) : ''}${a.desc ? ' — ' + a.desc : ''}
-          ${a.time ? ' · ' + a.time : ''}
+          ${a.fullAddressLine || ''}${a.fullAddressLine && (a.jobType || a.jobDescription) ? ' · ' : ''}${a.jobType ? a.jobType.charAt(0).toUpperCase() + a.jobType.slice(1) : ''}${a.jobDescription ? ' — ' + a.jobDescription : ''}
+          ${a.timeSlot ? ' · ' + a.timeSlot : ''}
         </div>
         ${linesHtml}
       </div>`;
@@ -2106,93 +2006,25 @@ async function loadAppointments(date) {
         `/api/ghl?action=getAppointments&date=${encodeURIComponent(dateStr)}&_=${Date.now()}`,
         { cache: 'no-store', headers: { 'X-HK-Auth': hkAuthHeader() } }
       );
-      const data = await res.json();
-      const events = filterGhlEventsForDashboardDay(data?.events, dateStr);
-
-      appointments = events.map((e, i) => {
-      const isCalBlock = !!e._hkGhlBlockSlot;
-      let startMs = ghlEventStartMs(e);
-      if (isCalBlock && Number.isNaN(startMs)) startMs = 0;
-      const start = new Date(Number.isNaN(startMs) ? Date.now() : startMs);
-      const dayPart =
-        isCalBlock ? 0 : hourInAmsterdamFromMs(startMs) < 13 ? 0 : 1;
-      const time =
-        isCalBlock && startMs === 0
-          ? '—'
-          : normalizeTimeStr(
-              start.toLocaleTimeString('nl-NL', {
-                hour: '2-digit',
-                minute: '2-digit',
-                timeZone: 'Europe/Amsterdam',
-              })
-            );
-      const work = e.title || 'Werkzaamheden';
-      let type = 'onderhoud';
-      if (/instal|plaatsen|nieuw|monter/i.test(work)) type = 'installatie';
-      if (/repar|lek|storing|kijken|nazorg|vervang/i.test(work)) type = 'reparatie';
-
-      const address = e.parsedAddress || '';
-      const price = e.parsedPrice || '';
-      const contact = e.contact || {};
-      const firstName = contact.firstName || '';
-      const lastName = contact.lastName || '';
-      const name = isCalBlock
-        ? (work || 'Agenda geblokkeerd')
-        : ((firstName + ' ' + lastName).trim() || address.split(' ')[0] || 'Klant');
-      const mapsUrl = address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : '';
-      const cid = e.contactId || e.contact_id || contact.id || '';
-      const ghlUrl = cid ? `${GHL_BASE_URL}/${cid}` : '';
-      const endMsRaw = ghlEventEndMs(e);
-      let blockEndLabel = '';
-      if (isCalBlock && !Number.isNaN(endMsRaw)) {
-        blockEndLabel = normalizeTimeStr(
-          new Date(endMsRaw).toLocaleTimeString('nl-NL', {
-            hour: '2-digit',
-            minute: '2-digit',
-            timeZone: 'Europe/Amsterdam',
-          })
-        );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        appointments = [];
+        showToast(data?.error ? String(data.error) : `Afspraken laden mislukt (${res.status})`, 'info');
+        applyRouteSnapshot(dateStr);
+        render();
+        return;
       }
+      const rows = Array.isArray(data?.appointments) ? data.appointments : [];
 
-      return {
-        id: i + 1,
-        startMs,
-        dayPart,
-        isCalBlock,
-        blockEndLabel,
-        // Kalender-event id (DELETE /calendars/events/:id); server probeert ook …/appointments/:id
-        ghlId: canonicalGhlEventIdClient(e),
-        contactId: cid,
-        ghlUrl,
-        time,
-        name,
-        firstName: contact.firstName || '',
-        lastName: contact.lastName || '',
-        address,
-        straatnaam: e.parsedStraatnaam || '',
-        huisnummer: e.parsedHuisnummer || '',
-        postcode: e.parsedPostcode || '',
-        woonplaats: e.parsedWoonplaats || '',
-        mapsUrl,
-        phone: contact.phone || '',
-        desc: e.parsedWork || work,
-        notes: e.parsedNotes || '',
-        type,
-        price: (e.parsedExtras?.length > 0) ? 0 : (parseFloat(String(price).replace(/[^0-9.]/g, '')) || 0),
-        priceLabel: price ? `€${price}` : '',
-        extras: Array.isArray(e.parsedExtras) ? e.parsedExtras.map(r => ({ desc: r.desc, price: Number(r.price) || 0 })) : [],
-        timeWindow: e.parsedTimeWindow || null,
-        datumInstallatie: contact.customFields?.find(f => f.id === 'kYP2SCmhZ21Ig0aaLl5l')?.value || '',
-        datumOnderhoud: contact.customFields?.find(f => f.id === 'hiTe3Yi5TlxheJq4bLzy')?.value || '',
-        status: 'ingepland',
+      appointments = rows.map((a) => ({
+        ...a,
+        ghlUrl: a.contactId ? `${GHL_BASE_URL}/${a.contactId}` : '',
         review: false,
         priceVisible: false,
-      };
-      });
+      }));
 
-      // Herstel klaar-status vanuit localStorage (blijft groen na datumwissel)
-      appointments.forEach(a => {
-        if (a.ghlId && isKlaarLocally(a.ghlId)) a.status = 'klaar';
+      appointments.forEach((a) => {
+        if (a.id && isKlaarLocally(a.id)) a.status = 'klaar';
       });
 
       const nBlk = appointments.filter((a) => a.isCalBlock).length;
@@ -2256,16 +2088,18 @@ function calcStats() {
 }
 
 function renderApptCard(a, i) {
+    const domId = appointmentDomSafeId(a.id);
+    const idQ = JSON.stringify(a.id);
     if (a.isCalBlock) {
       const endPart = a.blockEndLabel ? ` – ${a.blockEndLabel}` : '';
       return `
-    <div class="appt-card cal-block" id="card-${a.id}">
+    <div class="appt-card cal-block" id="card-${domId}">
       <div class="appt-number">—</div>
       <div class="appt-inner">
         <div class="appt-top">
           <div class="appt-time">
             <span class="time-window-badge" style="background:rgba(255,140,0,0.2);color:#ffb347;border:1px solid rgba(255,140,0,0.35)">GHL blokslot</span>
-            <span class="ghl-cal-time-hint" title="Officiële bloktijd in GHL">${a.time || '—'}${endPart}</span>
+            <span class="ghl-cal-time-hint" title="Officiële bloktijd in GHL">${a.timeSlot || '—'}${endPart}</span>
           </div>
           <div class="appt-actions"></div>
         </div>
@@ -2279,7 +2113,7 @@ function renderApptCard(a, i) {
     const isOnderweg = a.status === 'onderweg';
     const isViolation = !!a.violation;
     const barVisible = isOnderweg || !!a.priceVisible;
-    const showServiceDate = isOnderweg && a.type === 'reparatie';
+    const showServiceDate = isOnderweg && a.jobType === 'reparatie';
 
     const metaItems = [];
     if (a.datumInstallatie) metaItems.push(`<div class="meta-item"><div class="meta-label">Installatie</div><div class="meta-value">${a.datumInstallatie}</div></div>`);
@@ -2287,30 +2121,30 @@ function renderApptCard(a, i) {
 
     const slotHint = (a.dayPart ?? 1) === 0 ? 'Ochtend 09–13' : 'Middag 13–17';
     return `
-    <div class="appt-card ${isDone?'done':''} ${isOnderweg?'onderweg':''} ${isViolation?'violation':''}" id="card-${a.id}">
+    <div class="appt-card ${isDone?'done':''} ${isOnderweg?'onderweg':''} ${isViolation?'violation':''}" id="card-${domId}">
       <div class="appt-number">#${a.routeStop != null ? a.routeStop : i + 1}</div>
       <div class="appt-inner">
         <div class="appt-top">
           <div class="appt-time">
             ${a.timeWindow ? `<span class="time-window-badge">${a.timeWindow}</span>` : `<span class="slot-daypart-hint">${slotHint}</span>`}
-            <span class="ghl-cal-time-hint" title="Starttijd in GHL-agenda (ter referentie)">· agenda ${a.estimated ? '~' : ''}${a.time}</span>
+            <span class="ghl-cal-time-hint" title="Starttijd in GHL-agenda (ter referentie)">· agenda ${a.estimated ? '~' : ''}${a.timeSlot}</span>
           </div>
           <div class="appt-actions">
             ${a.phone ? `<a class="icon-btn" href="tel:${a.phone}" title="Bellen">📞</a>` : ''}
-            ${a.mapsUrl ? `<a class="icon-btn" href="${a.mapsUrl}" target="_blank" title="Maps">📍</a>` : ''}
+            ${a.mapsLink ? `<a class="icon-btn" href="${a.mapsLink}" target="_blank" title="Maps">📍</a>` : ''}
             ${a.ghlUrl ? `<a class="icon-btn ghl" href="${a.ghlUrl}" target="_blank" title="Open in GHL">🔗</a>` : ''}
-            ${isDaanEditor() && a.contactId ? `<button type="button" class="icon-btn daan-edit" onclick="openDaanEditModal(${a.id})" title="Bewerk klantgegevens in GHL">bewerk</button>` : ''}
-            <button class="icon-btn danger" onclick="deleteAppt(${a.id})" title="Verwijderen">✕</button>
+            ${isDaanEditor() && a.contactId ? `<button type="button" class="icon-btn daan-edit" onclick='openDaanEditModal(${idQ})' title="Bewerk klantgegevens in GHL">bewerk</button>` : ''}
+            <button class="icon-btn danger" onclick='deleteAppt(${idQ})' title="Verwijderen">✕</button>
           </div>
         </div>
         <div class="appt-name">${a.name.toUpperCase()}</div>
-        ${a.address ? `<div class="appt-address">📍 ${a.address}</div>` : ''}
-        <div class="appt-desc">${a.desc}</div>
+        ${a.fullAddressLine ? `<div class="appt-address">📍 ${a.fullAddressLine}</div>` : ''}
+        <div class="appt-desc">${a.jobDescription || ''}</div>
         ${metaItems.length ? `<div class="appt-meta">${metaItems.join('')}</div>` : ''}
         ${a.notes ? `<div class="appt-notes">💬 ${a.notes}</div>` : ''}
         <div class="appt-footer">
           <div class="appt-tags">
-            <span class="tag ${a.type}">${a.type}</span>
+            <span class="tag ${a.jobType}">${a.jobType}</span>
             ${a.phone ? `<span class="appt-phone">${a.phone}</span>` : ''}
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
@@ -2319,28 +2153,28 @@ function renderApptCard(a, i) {
               <div class="dot ${a.status}"></div>
               <span style="color:var(--muted);font-size:10px">${a.status}</span>
             </div>
-            ${!isDone ? `<button class="btn-prijs ${barVisible&&!isOnderweg?'active':''}" onclick="togglePrijs(${a.id})" title="Prijsoverzicht bekijken">💶 Prijs</button>` : ''}
-            ${!isDone ? `<button class="btn-done ${isOnderweg?'active':''}" onclick="${isOnderweg ? `scrollToPrijs(${a.id})` : `askOnderweg(${a.id})`}">
+            ${!isDone ? `<button class="btn-prijs ${barVisible&&!isOnderweg?'active':''}" onclick='togglePrijs(${idQ})' title="Prijsoverzicht bekijken">💶 Prijs</button>` : ''}
+            ${!isDone ? `<button class="btn-done ${isOnderweg?'active':''}" onclick='${isOnderweg ? `scrollToPrijs(${idQ})` : `askOnderweg(${idQ})`}'>
               ${isOnderweg ? '💳 Afrekenen' : '→ Onderweg'}
             </button>` : ''}
           </div>
         </div>
       </div>
 
-      <div class="complete-bar ${barVisible?'visible':''}" id="bar-${a.id}">
+      <div class="complete-bar ${barVisible?'visible':''}" id="bar-${domId}">
         <div class="complete-row">
-          <label class="review-toggle" onclick="toggleReview(${a.id})">
-            <div class="toggle ${a.review?'on':''}" id="tog-${a.id}"></div>
+          <label class="review-toggle" onclick='toggleReview(${idQ})'>
+            <div class="toggle ${a.review?'on':''}" id="tog-${domId}"></div>
             <span>Review mail versturen (morgen)</span>
           </label>
         </div>
         ${showServiceDate ? `
         <div class="service-date-row">
           <span>Laatste onderhoud:</span>
-          <input type="date" id="sdate-${a.id}" value="${a.lastService||''}" onchange="setLastService(${a.id}, this.value)">
+          <input type="date" id="sdate-${domId}" value="${a.lastService||''}" onchange='setLastService(${idQ}, this.value)'>
         </div>` : ''}
 
-        <div class="price-section" id="price-${a.id}">
+        <div class="price-section" id="price-${domId}">
           <div class="price-section-label">Prijsoverzicht${(a.extras||[]).length === 0 && !a.price ? '<span style="color:var(--muted);font-size:10px;font-weight:400;margin-left:6px">Nog geen prijs uit chat</span>' : ''}</div>
           ${a.price && (a.extras||[]).length === 0 ? `<div class="extra-item"><span>Basis</span><span>€${a.price}</span></div>` : ''}
           ${(a.extras||[]).map((e,i) => `
@@ -2348,19 +2182,19 @@ function renderApptCard(a, i) {
               <span>${e.desc}</span>
               <div style="display:flex;gap:8px;align-items:center">
                 <span>€${e.price}</span>
-                <span class="extra-remove" onclick="removeExtra(${a.id},${i})">✕</span>
+                <span class="extra-remove" onclick='removeExtra(${idQ},${i})'>✕</span>
               </div>
             </div>`).join('')}
           <div class="add-extra-row" style="flex-direction:column;gap:5px">
-            <select class="form-select" id="extra-select-${a.id}" onchange="onProductSelect(${a.id})">
+            <select class="form-select" id="extra-select-${domId}" onchange='onProductSelect(${idQ})'>
               <option value="">— Kies product / onderdeel —</option>
               ${PRODUCTS.map(p => `<option value="${p.desc}|${p.price}">${p.desc} — €${p.price}</option>`).join('')}
               <option value="eigen|0">Eigen omschrijving...</option>
             </select>
             <div style="display:flex;gap:6px">
-              <input class="form-input" type="text" id="extra-desc-${a.id}" placeholder="Omschrijving" style="flex:1">
-              <input class="form-input price-input" type="number" id="extra-price-${a.id}" placeholder="€" min="0">
-              <button class="btn-add-extra" onclick="addExtra(${a.id})">+</button>
+              <input class="form-input" type="text" id="extra-desc-${domId}" placeholder="Omschrijving" style="flex:1">
+              <input class="form-input price-input" type="number" id="extra-price-${domId}" placeholder="€" min="0">
+              <button class="btn-add-extra" onclick='addExtra(${idQ})'>+</button>
             </div>
           </div>
           <div class="price-total-row">
@@ -2371,8 +2205,8 @@ function renderApptCard(a, i) {
 
         <div class="complete-row">
           <div style="display:flex;gap:8px;margin-left:auto">
-            <button class="btn-cancel" onclick="cancelOnderweg(${a.id})">✕ Annuleer</button>
-            <button class="btn-confirm" onclick="confirmDone(${a.id})">✓ Bevestig klaar</button>
+            <button class="btn-cancel" onclick='cancelOnderweg(${idQ})'>✕ Annuleer</button>
+            <button class="btn-confirm" onclick='confirmDone(${idQ})'>✓ Bevestig klaar</button>
           </div>
         </div>
       </div>
@@ -2466,19 +2300,20 @@ function render() {
 }
 
 function renderRouteItemHtml(a) {
+  const idQ = JSON.stringify(a.id);
   return `
     <div class="route-item ${a.status === 'klaar' ? 'done' : ''}"
          draggable="true"
-         data-appt-id="${a.id}"
+         data-appt-id="${String(a.id).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"
          data-day-part="${routeDayPartKey(a)}"
-         onclick="scrollToCard(${a.id})">
+         onclick='scrollToCard(${idQ})'>
       <div class="route-drag-handle" onclick="event.stopPropagation()" title="Slepen om te herordenen">&#8801;</div>
       <div class="route-num">${a.routeStop != null ? a.routeStop : '–'}</div>
       <div class="route-info">
         <div class="route-name">${a.name}</div>
-        <div class="route-addr">${a.address}</div>
+        <div class="route-addr">${a.fullAddressLine || a.address || ''}</div>
       </div>
-      <div class="route-time">${a.timeWindow ? a.timeWindow : ((a.dayPart ?? 1) === 0 ? '09–13' : '13–17')}${a.estimated ? ` · ~${a.time}` : ''}</div>
+      <div class="route-time">${a.timeWindow ? a.timeWindow : ((a.dayPart ?? 1) === 0 ? '09–13' : '13–17')}${a.estimated ? ` · ~${a.timeSlot}` : ''}</div>
     </div>`;
 }
 
@@ -2510,9 +2345,9 @@ async function recalculateRouteTimesPreservingOrder(active) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       appointments: active.map(a => ({
-        address:     a.address,
+        address:     a.fullAddressLine || a.address,
         timeWindow:  a.timeWindow || null,
-        jobDuration: JOB_DURATION[a.type] || 30,
+        jobDuration: JOB_DURATION[a.jobType] || 30,
       })),
       preserveOrder: true,
     }),
@@ -2524,7 +2359,7 @@ async function recalculateRouteTimesPreservingOrder(active) {
   data.order.forEach((apptIdx, step) => {
     const appt = active[apptIdx];
     if (appt) {
-      appt.time      = data.etas[step];
+      appt.timeSlot  = data.etas[step];
       appt.estimated = true;
     }
   });
@@ -2551,7 +2386,7 @@ function initRouteDrag(list) {
 
   items.forEach(el => {
     el.addEventListener('dragstart', e => {
-      _dragSrcId = parseInt(el.dataset.apptId);
+      _dragSrcId = el.dataset.apptId;
       el.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
     });
@@ -2564,22 +2399,22 @@ function initRouteDrag(list) {
     el.addEventListener('dragover', e => {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
-      const tgtId = parseInt(el.dataset.apptId, 10);
-      const srcAp = appointments.find(a => a.id === _dragSrcId);
-      const tgtAp = appointments.find(a => a.id === tgtId);
+      const tgtId = el.dataset.apptId;
+      const srcAp = appointments.find(a => String(a.id) === String(_dragSrcId));
+      const tgtAp = appointments.find(a => String(a.id) === String(tgtId));
       list.querySelectorAll('.drag-over').forEach(x => x.classList.remove('drag-over'));
       if (srcAp && tgtAp && routeDayPartKey(srcAp) !== routeDayPartKey(tgtAp)) return;
-      if (tgtId !== _dragSrcId) el.classList.add('drag-over');
+      if (String(tgtId) !== String(_dragSrcId)) el.classList.add('drag-over');
     });
 
     el.addEventListener('drop', e => {
       e.preventDefault();
       e.stopPropagation();
-      const targetId = parseInt(el.dataset.apptId, 10);
-      if (targetId === _dragSrcId) return;
+      const targetId = el.dataset.apptId;
+      if (String(targetId) === String(_dragSrcId)) return;
 
-      const moved = appointments.find(a => a.id === _dragSrcId);
-      const target = appointments.find(a => a.id === targetId);
+      const moved = appointments.find(a => String(a.id) === String(_dragSrcId));
+      const target = appointments.find(a => String(a.id) === String(targetId));
       if (!moved || !target) return;
       if (routeDayPartKey(moved) !== routeDayPartKey(target)) {
         showToast('Alleen binnen ochtend of binnen middag herschikken', 'info');
@@ -2587,8 +2422,8 @@ function initRouteDrag(list) {
       }
 
       let ordered = orderRouteMorningFirst(getRouteStopsForSidebar());
-      const si = ordered.findIndex(a => a.id === _dragSrcId);
-      const ti = ordered.findIndex(a => a.id === targetId);
+      const si = ordered.findIndex(a => String(a.id) === String(_dragSrcId));
+      const ti = ordered.findIndex(a => String(a.id) === String(targetId));
       if (si === -1 || ti === -1) return;
       const [item] = ordered.splice(si, 1);
       ordered.splice(ti, 0, item);
@@ -2597,7 +2432,7 @@ function initRouteDrag(list) {
       mergeRouteOrderIntoSnapshot(getDateStr(currentDate));
       updateRouteLocalUi();
 
-      const active = appointments.filter(a => a.address && a.status !== 'klaar');
+      const active = appointments.filter(a => a.fullAddressLine && a.status !== 'klaar');
       routeLocked = true;
       document.getElementById('btnOptimize').disabled = true;
       document.getElementById('btnUnlock').style.display = 'inline-flex';
@@ -2613,9 +2448,9 @@ function initRouteDrag(list) {
           console.error(err);
           let mins = 9 * 60;
           active.forEach((a, i) => {
-            a.time      = i === 0 ? '08:00' : minsToTime(mins);
+            a.timeSlot  = i === 0 ? '08:00' : minsToTime(mins);
             a.estimated = true;
-            const jobMins    = JOB_DURATION[a.type] || 30;
+            const jobMins    = JOB_DURATION[a.jobType] || 30;
             const travelMins = 15;
             mins = Math.ceil((mins + jobMins + travelMins) / 15) * 15;
           });
@@ -2629,11 +2464,11 @@ function initRouteDrag(list) {
 }
 
 function scrollToCard(id) {
-  document.getElementById('card-'+id)?.scrollIntoView({behavior:'smooth', block:'center'});
+  document.getElementById('card-' + appointmentDomSafeId(id))?.scrollIntoView({behavior:'smooth', block:'center'});
 }
 
 function cancelOnderweg(id) {
-  const a = appointments.find(x=>x.id===id);
+  const a = appointments.find(x => String(x.id) === String(id));
   if (!a) return;
   a.status = 'ingepland';
   render();
@@ -2642,7 +2477,7 @@ function cancelOnderweg(id) {
 let _onderwegId = null;
 
 function togglePrijs(id) {
-  const a = appointments.find(x => x.id === id);
+  const a = appointments.find(x => String(x.id) === String(id));
   if (!a) return;
   a.priceVisible = !a.priceVisible;
   render();
@@ -2650,13 +2485,13 @@ function togglePrijs(id) {
 }
 
 function askOnderweg(id) {
-  const a = appointments.find(x => x.id === id);
+  const a = appointments.find(x => String(x.id) === String(id));
   if (!a) return;
   _onderwegId = id;
   document.getElementById('onderwegTitle').textContent = `Onderweg naar ${a.name}?`;
   document.getElementById('onderwegText').innerHTML =
     `Zal ik een WhatsApp sturen met de verwachte aankomsttijd?<br><br>` +
-    `<strong style="color:var(--yellow);font-size:15px">ETA: ${a.time}</strong>`;
+    `<strong style="color:var(--yellow);font-size:15px">ETA: ${a.timeSlot}</strong>`;
   document.getElementById('onderwegOverlay').classList.add('visible');
 }
 
@@ -2666,13 +2501,13 @@ function closeOnderwegModal() {
 }
 
 async function onderwegJaStuur() {
-  const a = appointments.find((x) => x.id === _onderwegId);
+  const a = appointments.find((x) => String(x.id) === String(_onderwegId));
   if (!a) return;
   if (!a.contactId) {
     showToast('Geen GHL-contact — koppel dit eerst in GHL of laad de dag opnieuw', 'info');
     return;
   }
-  const eta = String(a.time || '').trim();
+  const eta = String(a.timeSlot || '').trim();
   if (!eta) {
     showToast('Geen ETA-tijd bekend. Optimaliseer of bevestig eerst de route.', 'info');
     return;
@@ -2701,7 +2536,7 @@ async function onderwegJaStuur() {
 }
 
 function onderwegJeenBericht() {
-  const a = appointments.find(x => x.id === _onderwegId);
+  const a = appointments.find(x => String(x.id) === String(_onderwegId));
   if (!a) return;
   a.status = 'onderweg';
   a.priceVisible = false;
@@ -2712,7 +2547,7 @@ function onderwegJeenBericht() {
 
 function toggleOnderweg(id) {
   // Wordt alleen nog aangeroepen voor "✓ Klaar?" (isOnderweg → klaar flow)
-  const a = appointments.find(x=>x.id===id);
+  const a = appointments.find(x => String(x.id) === String(id));
   if (!a) return;
   if (a.status === 'onderweg') {
     // Klaar knop → open complete bar als die al niet open is
@@ -2723,17 +2558,17 @@ function toggleOnderweg(id) {
 }
 
 function scrollToPrijs(id) {
-  const el = document.getElementById(`price-${id}`);
+  const el = document.getElementById('price-' + appointmentDomSafeId(id));
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function toggleReview(id) {
-  const a = appointments.find(x=>x.id===id);
+  const a = appointments.find(x => String(x.id) === String(id));
   if (a) { a.review = !a.review; render(); }
 }
 
 function setLastService(id, val) {
-  const a = appointments.find(x=>x.id===id);
+  const a = appointments.find(x => String(x.id) === String(id));
   if (a) a.lastService = val;
 }
 
@@ -2751,11 +2586,12 @@ const PRODUCTS = [
 ];
 
 function onProductSelect(id) {
-  const val = document.getElementById(`extra-select-${id}`)?.value;
+  const sid = appointmentDomSafeId(id);
+  const val = document.getElementById(`extra-select-${sid}`)?.value;
   if (!val) return;
   const [desc, price] = val.split('|');
-  const descEl  = document.getElementById(`extra-desc-${id}`);
-  const priceEl = document.getElementById(`extra-price-${id}`);
+  const descEl  = document.getElementById(`extra-desc-${sid}`);
+  const priceEl = document.getElementById(`extra-price-${sid}`);
   if (descEl)  descEl.value  = desc;
   if (priceEl) priceEl.value = price;
 }
@@ -2767,11 +2603,12 @@ function calcTotalPrice(a) {
 }
 
 function addExtra(id) {
-  const a = appointments.find(x=>x.id===id);
+  const a = appointments.find(x => String(x.id) === String(id));
   if (!a) return;
-  const descEl   = document.getElementById(`extra-desc-${id}`);
-  const priceEl  = document.getElementById(`extra-price-${id}`);
-  const selectEl = document.getElementById(`extra-select-${id}`);
+  const sid = appointmentDomSafeId(id);
+  const descEl   = document.getElementById(`extra-desc-${sid}`);
+  const priceEl  = document.getElementById(`extra-price-${sid}`);
+  const selectEl = document.getElementById(`extra-select-${sid}`);
   const desc  = descEl?.value?.trim();
   const price = parseFloat(priceEl?.value);
   if (!desc || isNaN(price) || price <= 0) {
@@ -2788,14 +2625,14 @@ function addExtra(id) {
 }
 
 function removeExtra(id, idx) {
-  const a = appointments.find(x=>x.id===id);
+  const a = appointments.find(x => String(x.id) === String(id));
   if (!a || !a.extras) return;
   a.extras.splice(idx, 1);
   render();
 }
 
 async function confirmDone(id) {
-  const a = appointments.find(x=>x.id===id);
+  const a = appointments.find(x => String(x.id) === String(id));
   if (!a) return;
   showToast('⏳ Bezig met afronden...', 'loading');
 
@@ -2811,8 +2648,8 @@ async function confirmDone(id) {
         headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
         body: JSON.stringify({
           contactId:     a.contactId,
-          appointmentId: a.ghlId || undefined,
-          type:          a.type,
+          appointmentId: a.id || undefined,
+          type:          a.jobType,
           sendReview:    a.review,
           lastService:   a.lastService || null,
           totalPrice:    total,
@@ -2842,11 +2679,11 @@ async function confirmDone(id) {
           contactId:      a.contactId,
           contactName:    a.name,
           contactEmail:   contact.email || '',
-          contactAddress: a.address,
-          contactCity:    contact.city || '',
+          contactAddress: a.fullAddressLine || a.address,
+          contactCity:    contact.city || a.city || '',
           lines,
           basePrice:      a.price || 0,
-          appointmentDesc: a.desc || 'Werkzaamheden',
+          appointmentDesc: a.jobDescription || 'Werkzaamheden',
         })
       });
       const result = await resp.json();
@@ -2876,12 +2713,12 @@ async function confirmDone(id) {
 
   a.status = 'klaar';
   a.priceVisible = false;
-  saveKlaarStatus(a.ghlId); // blijft groen na datumwissel
+  saveKlaarStatus(a.id); // blijft groen na datumwissel
   render();
 
   // Groene vloed over de kaart
   requestAnimationFrame(() => {
-    const card = document.getElementById(`card-${id}`);
+    const card = document.getElementById('card-' + appointmentDomSafeId(id));
     if (card) {
       card.classList.add('just-done');
       card.addEventListener('animationend', () => card.classList.remove('just-done'), { once: true });
@@ -2903,7 +2740,7 @@ async function sendETA(appt) {
       headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
       body: JSON.stringify({
         contactId: appt.contactId,
-        eta: appt.time,
+        eta: appt.timeSlot,
         name: appt.name,
       }),
     });
@@ -2923,7 +2760,7 @@ async function sendETA(appt) {
 
 async function sendMorningMessages() {
   const appts = appointments.filter(a => a.contactId && a.status === 'ingepland')
-    .map(a => ({ contactId: a.contactId, timeFrom: a.time, timeTo: a.time }));
+    .map(a => ({ contactId: a.contactId, timeFrom: a.timeSlot, timeTo: a.timeSlot }));
   if (appts.length === 0) {
     showToast('Geen ingeplande klanten om te melden', 'info');
     return;
@@ -2959,7 +2796,7 @@ function timeToMins(timeStr) {
 
 async function optimizeRoute() {
   const active = orderRouteMorningFirst(getRouteStopsForSidebar());
-  const done   = appointments.filter(a => !a.address || a.status === 'klaar');
+  const done   = appointments.filter(a => !a.fullAddressLine || a.status === 'klaar');
 
   if (active.length < 2) {
     showToast('Minimaal 2 adressen nodig om te optimaliseren', 'info');
@@ -2974,9 +2811,9 @@ async function optimizeRoute() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         appointments: active.map(a => ({
-          address:     a.address,
+          address:     a.fullAddressLine || a.address,
           timeWindow:  a.timeWindow || null,
-          jobDuration: JOB_DURATION[a.type] || 30,
+          jobDuration: JOB_DURATION[a.jobType] || 30,
         }))
       })
     });
@@ -3022,13 +2859,13 @@ const DEPOT = 'Cornelis Dopperkade, Amsterdam';
 function openMaps(e) {
   e.preventDefault();
   const sorted = appointments
-    .filter(a => a.status !== 'klaar' && a.address)
+    .filter(a => a.status !== 'klaar' && (a.fullAddressLine || a.address))
     .sort((a, b) => (a.routeStop || 99) - (b.routeStop || 99));
 
   if (!sorted.length) { showToast('Geen adressen beschikbaar', 'info'); return; }
 
   // Google Maps waypoints formaat: origin → stops → destination (terug naar depot)
-  const waypoints = sorted.map(a => encodeURIComponent(a.address)).join('|');
+  const waypoints = sorted.map(a => encodeURIComponent(a.fullAddressLine || a.address)).join('|');
   const url = `https://www.google.com/maps/dir/?api=1` +
     `&origin=${encodeURIComponent(DEPOT)}` +
     `&destination=${encodeURIComponent(DEPOT)}` +
@@ -3043,7 +2880,7 @@ function openDaanEditModal(apptId) {
     showToast('Alleen Daan kan klantgegevens zo bewerken', 'info');
     return;
   }
-  const a = appointments.find(x => x.id === apptId);
+  const a = appointments.find(x => String(x.id) === String(apptId));
   if (!a || !a.contactId) {
     showToast('Geen GHL-contact op deze kaart', 'info');
     return;
@@ -3054,17 +2891,17 @@ function openDaanEditModal(apptId) {
   document.getElementById('dePhone').value = a.phone || '';
   document.getElementById('deStraat').value = a.straatnaam || '';
   document.getElementById('deHuisnr').value = a.huisnummer || '';
-  document.getElementById('dePostcode').value = a.postcode || '';
-  document.getElementById('deWoonplaats').value = a.woonplaats || '';
-  document.getElementById('deType').value = (a.type === 'installatie' || a.type === 'reparatie' || a.type === 'onderhoud') ? a.type : 'onderhoud';
-  document.getElementById('deDesc').value = a.desc || '';
+  document.getElementById('dePostcode').value = a.postalCode || '';
+  document.getElementById('deWoonplaats').value = a.city || '';
+  document.getElementById('deType').value = (a.jobType === 'installatie' || a.jobType === 'reparatie' || a.jobType === 'onderhoud') ? a.jobType : 'onderhoud';
+  document.getElementById('deDesc').value = a.jobDescription || '';
   document.getElementById('deTimeWindow').value = a.timeWindow || '';
   document.getElementById('deNotes').value = a.notes || '';
   const prijsTxt = a.priceLabel ? a.priceLabel.replace(/^€\s*/, '').trim() : (a.price ? String(a.price) : '');
   document.getElementById('dePrijs').value = prijsTxt;
-  const tm = normalizeTimeStr(a.time || '08:00');
+  const tm = normalizeTimeStr(a.timeSlot || '08:00');
   document.getElementById('deApptTime').value = tm.length >= 5 ? tm : '08:00';
-  document.getElementById('deDuration').value = String(JOB_DURATION[a.type] || 30);
+  document.getElementById('deDuration').value = String(JOB_DURATION[a.jobType] || 30);
   document.getElementById('daanEditOverlay').classList.add('visible');
 }
 
@@ -3074,8 +2911,8 @@ function closeDaanEditModal() {
 
 async function saveDaanEditToGhl() {
   if (!isDaanEditor()) return;
-  const apptId = parseInt(document.getElementById('deApptId').value, 10);
-  const a = appointments.find(x => x.id === apptId);
+  const apptIdRaw = document.getElementById('deApptId').value;
+  const a = appointments.find(x => String(x.id) === String(apptIdRaw));
   if (!a || !a.contactId) return;
 
   const btn = document.getElementById('deSaveBtn');
@@ -3101,7 +2938,7 @@ async function saveDaanEditToGhl() {
     prijs: document.getElementById('dePrijs').value.trim(),
     appointmentTime: document.getElementById('deApptTime').value,
     routeDate: getDateStr(currentDate),
-    ghlAppointmentId: a.ghlId || undefined,
+    ghlAppointmentId: a.id || undefined,
     durationMin: Number.isFinite(durVal) && durVal > 0 ? durVal : (JOB_DURATION[selType] || 30),
   };
 
@@ -3131,7 +2968,7 @@ async function saveDaanEditToGhl() {
 let _rescheduleId = null;
 
 function deleteAppt(id) {
-  const a = appointments.find(x => x.id === id);
+  const a = appointments.find(x => String(x.id) === String(id));
   if (!a) return;
   _rescheduleId = id;
 
@@ -3140,7 +2977,7 @@ function deleteAppt(id) {
   // Vul huidige datum en tijd in als startpunt
   const todayVal = document.getElementById('dateInput')?.value || new Date().toISOString().split('T')[0];
   document.getElementById('rDate').value       = todayVal;
-  document.getElementById('rTime').value       = a.time || '08:00';
+  document.getElementById('rTime').value       = a.timeSlot || '08:00';
   document.getElementById('rTimeWindow').value = a.timeWindow || '';
 
   document.getElementById('rescheduleOverlay').classList.add('visible');
@@ -3166,18 +3003,18 @@ function hideDeleteConfirm() {
 
 async function confirmDeleteAppt() {
   if (_rescheduleId == null) return;
-  const a = appointments.find(x => x.id === _rescheduleId);
+  const a = appointments.find(x => String(x.id) === String(_rescheduleId));
   closeRescheduleModal();
-  appointments = appointments.filter(x => x.id !== _rescheduleId);
+  appointments = appointments.filter(x => String(x.id) !== String(_rescheduleId));
   render();
   showToast('⏳ Afspraak verwijderen...', 'loading');
 
-  if (a?.ghlId) {
+  if (a?.id && !String(a.id).startsWith('local-')) {
     try {
       const res = await fetch('/api/ghl?action=deleteAppointment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
-        body: JSON.stringify({ ghlAppointmentId: a.ghlId }),
+        body: JSON.stringify({ ghlAppointmentId: a.id }),
       });
       if (res.ok) {
         showToast('✓ Afspraak verwijderd uit GHL', 'success');
@@ -3206,16 +3043,16 @@ function timeToWindow(timeStr, isFirst) {
 }
 
 async function confirmRoute() {
-  const active = appointments.filter(a => a.contactId && a.time && a.status !== 'klaar');
+  const active = appointments.filter(a => a.contactId && a.timeSlot && a.status !== 'klaar');
   const routeDate = getDateStr(currentDate);
   const routeSequence = [...active].sort((a, b) => (a.routeStop || 99) - (b.routeStop || 99));
   const toSave = routeSequence.map((a, i) => ({
     contactId: a.contactId,
-    plannedTime: timeToWindow(a.time, i === 0),
-    ghlAppointmentId: a.ghlId || undefined,
+    plannedTime: timeToWindow(a.timeSlot, i === 0),
+    ghlAppointmentId: a.id || undefined,
     routeDate,
-    startTime: a.time,
-    durationMin: JOB_DURATION[a.type] || 30,
+    startTime: a.timeSlot,
+    durationMin: JOB_DURATION[a.jobType] || 30,
   }));
 
   if (toSave.length === 0) {
@@ -3256,7 +3093,7 @@ async function confirmRoute() {
 }
 
 async function confirmReschedule() {
-  const a = appointments.find(x => x.id === _rescheduleId);
+  const a = appointments.find(x => String(x.id) === String(_rescheduleId));
   if (!a) return;
 
   const newDate       = document.getElementById('rDate').value;
@@ -3267,25 +3104,25 @@ async function confirmReschedule() {
   closeRescheduleModal();
 
   if (newDate && newDate !== todayVal) {
-    appointments = appointments.filter(x => x.id !== _rescheduleId);
+    appointments = appointments.filter(x => String(x.id) !== String(_rescheduleId));
   } else {
-    a.time       = newTime;
+    a.timeSlot   = newTime;
     a.timeWindow = newTimeWindow;
     a.estimated  = false;
   }
   render();
   showToast('⏳ Afspraak herplannen in GHL...', 'loading');
 
-  if (a.ghlId) {
+  if (a.id && !String(a.id).startsWith('local-')) {
     try {
       const res = await fetch('/api/ghl?action=rescheduleAppointment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
         body: JSON.stringify({
-          ghlAppointmentId: a.ghlId,
+          ghlAppointmentId: a.id,
           newDate: newDate || todayVal,
           newTime,
-          type: a.type,
+          type: a.jobType,
         }),
       });
       if (res.ok) {
@@ -3370,7 +3207,7 @@ async function unblockCurrentDayInGhl() {
   const dateStr = getDateStr(currentDate);
   const label = formatDate(currentDate);
   const blocks = appointments.filter((a) => a.isCalBlock);
-  const ids = [...new Set(blocks.map((a) => a.ghlId).filter(Boolean))];
+  const ids = [...new Set(blocks.map((a) => a.id).filter(Boolean))];
   const onlyPending = blocks.length === 0 && isDashBlockedPending(dateStr);
 
   if (
@@ -3519,17 +3356,36 @@ async function saveModal() {
   const desc    = document.getElementById('mDesc').value.trim() || '—';
   const contactId = document.getElementById('mContactId').value.trim();
   const date    = document.getElementById('mDate')?.value || document.getElementById('dateInput')?.value || new Date().toISOString().split('T')[0];
-  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+  const mapsLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
 
   // Lokaal alvast toevoegen
-  const localId = nextId++;
+  const localId = newLocalAppointmentId();
   appointments.push({
-    id: localId, time, name, address, mapsUrl, desc, type, phone,
-    price, priceLabel: price ? `€${price}` : '',
-    status: 'ingepland', review: false, priceVisible: false,
-    contactId, extras: [],
+    id: localId,
+    timeSlot: time,
+    name,
+    address,
+    fullAddressLine: address,
+    postalCode: '',
+    city: '',
+    phone,
+    jobType: type,
+    jobDescription: desc,
+    notes: '',
+    mapsLink,
+    price,
+    priceLabel: price ? `€${price}` : '',
+    status: 'ingepland',
+    review: false,
+    priceVisible: false,
+    contactId,
+    extras: [],
     ghlUrl: contactId ? `${GHL_BASE_URL}/${contactId}` : '',
-    notes: '', datumInstallatie: '', datumOnderhoud: '',
+    datumInstallatie: '',
+    datumOnderhoud: '',
+    dayPart: 0,
+    startMs: NaN,
+    isCalBlock: false,
   });
   closeModal();
   render();
@@ -3546,10 +3402,11 @@ async function saveModal() {
     if (!res.ok) throw new Error(data.error || 'Onbekende fout');
 
     // Update lokale afspraak met het echte contactId en GHL-url
-    const a = appointments.find(x => x.id === localId);
+    const a = appointments.find(x => String(x.id) === String(localId));
     if (a) {
       a.contactId = data.contactId;
       a.ghlUrl    = `${GHL_BASE_URL}/${data.contactId}`;
+      if (data.appointmentId) a.id = data.appointmentId;
     }
     render();
     showToast('✓ Afspraak opgeslagen in GHL', 'success');
