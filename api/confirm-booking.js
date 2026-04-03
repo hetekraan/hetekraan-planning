@@ -312,7 +312,24 @@ export default async function handler(req, res) {
   // ─── Model B1 (tokenSchemaVersion 2): block-capacity check + contact only; geen GHL appointment ──
   if (isV2) {
     console.log('[confirm-booking DEBUG] path=v2_B1_entered');
-    if (await hasConfirmedForContactDate(contactId, date)) {
+    console.log('[confirm-booking DEBUG] v2 before_duplicate_check_redis', { contactId, date });
+    let alreadyReservedRedis;
+    try {
+      alreadyReservedRedis = await hasConfirmedForContactDate(contactId, date);
+    } catch (dupCheckErr) {
+      console.error(
+        '[confirm-booking DEBUG] v2 hasConfirmedForContactDate threw:',
+        dupCheckErr?.message || dupCheckErr,
+        dupCheckErr?.stack
+      );
+      releaseBookingLock(lockKey);
+      return res.status(503).json({
+        error:
+          'Reserveringsservice is tijdelijk niet beschikbaar. Probeer het over een paar minuten opnieuw of neem contact op.',
+        code: 'RESERVATION_STORE_ERROR',
+      });
+    }
+    if (alreadyReservedRedis) {
       releaseBookingLock(lockKey);
       console.log('[confirm-booking] Duplicate (B1 reservering):', contactId, date);
       return res.status(200).json({
@@ -324,6 +341,7 @@ export default async function handler(req, res) {
         message: 'Er staat al een afspraak voor je ingepland op deze dag.',
       });
     }
+    console.log('[confirm-booking DEBUG] v2 after_duplicate_check_redis_ok');
 
     const merged = await loadMergedCalendarEventsForConfirmDate(date, {
       base: GHL_BASE,
@@ -347,6 +365,11 @@ export default async function handler(req, res) {
       console.error('[confirm-booking] listConfirmedSyntheticEventsForDate:', synErr?.message || synErr);
     }
     const eventsForCapacity = merged.concat(Array.isArray(synthetics) ? synthetics : []);
+    console.log('[confirm-booking DEBUG] v2 capacity_events', {
+      mergedLen: merged.length,
+      syntheticLen: Array.isArray(synthetics) ? synthetics.length : 0,
+      totalLen: eventsForCapacity.length,
+    });
 
     const customerEventsV2 = merged.filter((e) => !e._hkGhlBlockSlot);
 
@@ -369,12 +392,17 @@ export default async function handler(req, res) {
       });
     }
 
+    console.log('[confirm-booking DEBUG] v2 before_evaluateBlockOffer', { date, block, type });
     const evaluation = evaluateBlockOffer({
       dateStr: date,
       block,
       workType: type,
       events: eventsForCapacity,
       dayBlocked: false,
+    });
+    console.log('[confirm-booking DEBUG] v2 after_evaluateBlockOffer', {
+      eligible: evaluation.eligible,
+      reason: evaluation.reason,
     });
     if (!evaluation.eligible) {
       releaseBookingLock(lockKey);
@@ -411,6 +439,7 @@ export default async function handler(req, res) {
       });
     }
 
+    console.log('[confirm-booking DEBUG] v2 before_reservation_create');
     let resv;
     try {
       resv = await createConfirmedReservation({
@@ -420,6 +449,7 @@ export default async function handler(req, res) {
         workType: type,
       });
     } catch (e) {
+      console.error('[confirm-booking DEBUG] v2 reservation_create threw:', e?.message || e, e?.stack);
       console.error('[confirm-booking] reservation write:', e?.message || e);
       releaseBookingLock(lockKey);
       return res.status(503).json({
@@ -429,6 +459,7 @@ export default async function handler(req, res) {
       });
     }
     if (!resv.ok) {
+      console.log('[confirm-booking DEBUG] v2 after_reservation_create_not_ok', resv);
       if (resv.code === 'DUPLICATE_CONTACT_DATE') {
         releaseBookingLock(lockKey);
         console.log('[confirm-booking] Duplicate (B1 SET NX):', contactId, date);
@@ -452,6 +483,7 @@ export default async function handler(req, res) {
       releaseBookingLock(lockKey);
       return res.status(400).json({ error: 'Ongeldige boekingsgegevens. Vraag een nieuwe link aan.' });
     }
+    console.log('[confirm-booking DEBUG] v2 after_reservation_create_ok', { reservationId: resv.reservation?.id });
 
     const customerEventsForRoute = eventsForCapacity.filter((e) => !e._hkGhlBlockSlot);
     const routeStopDayV2 = Math.min(customerEventsForRoute.length + 1, 7);
@@ -466,6 +498,11 @@ export default async function handler(req, res) {
       routeStopDay: routeStopDayV2,
     });
 
+    console.log('[confirm-booking DEBUG] v2 before_ghl_contact_put', {
+      contactId,
+      putKeys: Object.keys(putPayloadB1),
+      customFieldsLen: putPayloadB1.customFields?.length ?? 0,
+    });
     const putResB1 = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', Version: '2021-04-15' },
@@ -473,6 +510,10 @@ export default async function handler(req, res) {
     });
     if (!putResB1.ok) {
       const errTxt = await putResB1.text().catch(() => '');
+      console.error('[confirm-booking DEBUG] v2 after_ghl_contact_put_failed', {
+        status: putResB1.status,
+        body: (errTxt || '').slice(0, 1200),
+      });
       console.error('[confirm-booking] contact PUT (B1):', putResB1.status, errTxt);
       try {
         await rollbackConfirmedReservation(resv.reservation);
@@ -482,6 +523,7 @@ export default async function handler(req, res) {
       releaseBookingLock(lockKey);
       return res.status(502).json({ error: 'Kon gegevens niet opslaan in GHL. Probeer het later opnieuw.' });
     }
+    console.log('[confirm-booking DEBUG] v2 after_ghl_contact_put_ok', { status: putResB1.status });
 
     releaseBookingLock(lockKey);
 
@@ -549,6 +591,7 @@ export default async function handler(req, res) {
         '” heet. WhatsApp gaat alleen via je workflow op die tag.';
     }
 
+    console.log('[confirm-booking DEBUG] v2 before_success_response');
     return res.status(200).json(outB1);
   }
 
