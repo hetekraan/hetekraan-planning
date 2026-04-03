@@ -28,6 +28,7 @@ import {
   GHL_CONFIG_MISSING_MSG,
   ghlCalendarIdFromEnv,
   ghlLocationIdFromEnv,
+  stripGhlEnvId,
 } from '../lib/ghl-env-ids.js';
 const GHL_API_KEY = process.env.GHL_API_KEY;
 
@@ -239,6 +240,18 @@ async function fetchGhlFreeSlots({ calendarId, locationId, startMs, endMs, apiKe
     ...(userIdOpt ? [`${GHL_BASE}/calendars/${encCal}/free-slots?${withLocUser}`] : []),
     `${GHL_BASE}/calendars/${encCal}/free-slots?${baseQs}`,
   ];
+  if (availabilityDebugEnabled()) {
+    logAvailability('suggest_free_slots_ghl_request_plan', {
+      base: GHL_BASE,
+      calendarId,
+      locationId: locationId || null,
+      startDateMs: startMs,
+      endDateMs: endMs,
+      timezone: 'Europe/Amsterdam',
+      userIdParamSet: !!userIdOpt,
+      urlAttemptOrder: urlAttempts.map((u) => u.split('?')[0]),
+    });
+  }
   /** Eerst één API-versie; tweede alleen bij mislukking (minder 429-risico). */
   const versions = ['2021-04-15', '2021-07-28'];
   let lastErr = '';
@@ -254,6 +267,13 @@ async function fetchGhlFreeSlots({ calendarId, locationId, startMs, endMs, apiKe
       const txt = await r.text().catch(() => '');
       if (!r.ok) {
         lastErr = `${r.status} ${txt.slice(0, 200)}`;
+        if (availabilityDebugEnabled()) {
+          logAvailability('suggest_free_slots_ghl_http_error', {
+            httpStatus: r.status,
+            apiVersion: Version,
+            bodyPreview: txt.slice(0, 300),
+          });
+        }
         continue;
       }
       let data;
@@ -261,16 +281,51 @@ async function fetchGhlFreeSlots({ calendarId, locationId, startMs, endMs, apiKe
         data = txt ? JSON.parse(txt) : {};
       } catch {
         lastErr = 'JSON parse';
+        if (availabilityDebugEnabled()) {
+          logAvailability('suggest_free_slots_ghl_json_error', {
+            apiVersion: Version,
+            textPreview: txt.slice(0, 200),
+          });
+        }
         continue;
       }
       const slotsObj = extractSlotsObject(data);
-      if (slotsObj) return { ok: true, data, slotsObj };
+      if (slotsObj) {
+        if (availabilityDebugEnabled()) {
+          const perDay = Object.fromEntries(
+            Object.entries(slotsObj).map(([k, v]) => [k, Array.isArray(v) ? v.length : 0])
+          );
+          logAvailability('suggest_free_slots_ghl_success', {
+            httpStatus: r.status,
+            apiVersion: Version,
+            requestPath: `/calendars/{id}/free-slots`,
+            fullUrl: url.split('?')[0] + '?[startDate,endDate,timezone,locationId?,userId?]',
+            slotShapeKeys: Object.keys(data || {}).slice(0, 20),
+            parsedDateKeys: Object.keys(slotsObj).filter((k) => k !== '_all'),
+            slotCountsByDateKey: perDay,
+          });
+        }
+        return { ok: true, data, slotsObj };
+      }
       if (isEmptyFreeSlotsSuccess(data)) {
+        if (availabilityDebugEnabled()) {
+          logAvailability('suggest_free_slots_ghl_empty_ok', {
+            httpStatus: r.status,
+            apiVersion: Version,
+            note: 'GHL 200 with empty slots object — treated as zero availability',
+          });
+        }
         return { ok: true, data, slotsObj: {} };
       }
       const keys = Object.keys(data).slice(0, 14).join(', ');
       lastErr = `Geen slots-object in response (top keys: ${keys || '—'})`;
     }
+  }
+  if (availabilityDebugEnabled()) {
+    logAvailability('suggest_free_slots_ghl_failed', {
+      lastError: lastErr || 'free-slots mislukt',
+      attempts: urlAttempts.length,
+    });
   }
   return { ok: false, error: lastErr || 'free-slots mislukt' };
 }
@@ -291,6 +346,18 @@ export default async function handler(req, res) {
       type: typeQ,
       workType: workTypeQ,
     } = q;
+
+    if (availabilityDebugEnabled()) {
+      logAvailability('suggest_slots_raw_input', {
+        method: req.method,
+        hasContactId: !!contactId,
+        hasName: !!(nameParam && String(nameParam).trim()),
+        hasPhone: !!(phoneParam && String(phoneParam).trim()),
+        hasAddress: !!(addressParam && String(addressParam).trim()),
+        type: typeQ || null,
+        workType: workTypeQ || null,
+      });
+    }
 
     if (!contactId && !addressParam && !nameParam && !phoneParam) {
       return res.status(400).json({ error: 'contactId, address, name of phone vereist' });
@@ -420,6 +487,19 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Kon ms-bereik voor free-slots niet bepalen' });
     }
 
+    if (availabilityDebugEnabled()) {
+      logAvailability('suggest_slots_resolved_before_ghl', {
+        resolvedContactId: resolvedContactId || null,
+        workType,
+        locationId: locId,
+        calendarId: calId,
+        windowAmsterdamYmd: [startDate, endDate],
+        windowMs: { start: startBounds.startMs, end: endBounds.endMs },
+        timeZone: 'Europe/Amsterdam',
+        geocodeOk: !!newCoord,
+      });
+    }
+
     const free = await fetchGhlFreeSlots({
       calendarId: calId,
       locationId: locId,
@@ -437,6 +517,14 @@ export default async function handler(req, res) {
     }
 
     const byDay = aggregateFreeSlotsByAmsterdamDay(free.slotsObj);
+
+    if (availabilityDebugEnabled()) {
+      logAvailability('suggest_slots_after_aggregate', {
+        byDayMorningAfternoon: Object.fromEntries(
+          [...byDay.entries()].map(([d, c]) => [d, { morning: c.morning, afternoon: c.afternoon }])
+        ),
+      });
+    }
 
     const availabilityCtx = {
       locationId: locId,
@@ -603,10 +691,17 @@ export default async function handler(req, res) {
     if (suggestTrace) {
       logAvailability('suggest_booking_flow_summary', {
         flow: 'suggest-slots',
+        httpResponse: 200,
+        suggestionCount: suggestions.length,
         windowAmsterdam: [startDate, endDate],
         timeZone: 'Europe/Amsterdam',
         dayDecisions: suggestTrace.days,
-        offeredToClient: suggestions.map((s) => ({ dateStr: s.dateStr, block: s.block })),
+        finalSlotsReturnedToFrontend: suggestions.map((s) => ({
+          dateStr: s.dateStr,
+          block: s.block,
+          slotsLeft: s.slotsLeft,
+          timeLabel: s.timeLabel,
+        })),
         ghlFreeSlotsSource: 'calendars/{id}/free-slots',
       });
     }
