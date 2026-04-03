@@ -1,12 +1,15 @@
 // api/suggest-slots.js
-// Tijdsloten via officieel GHL GET …/free-slots (blokken + afspraken + werktijden in GHL).
+// Klantvoorstellen: datum + dagdeel (ochtend/middag) via lib/block-capacity-offers.js — geen GHL free-slots in de handler.
+// Legacy: functies voor GET …/free-slots staan hier nog; worden door deze route niet meer aangeroepen.
 // Route-fit (geocode) blijft optioneel voor sortering.
 
+import { normalizeWorkType } from '../lib/booking-blocks.js';
 import {
-  blockAllowsNewCustomerBooking,
-  customerMaxForBlock,
-  normalizeWorkType,
-} from '../lib/booking-blocks.js';
+  blockDisplayLabels,
+  evaluateBlockOffer,
+  isEventInCustomerBlock,
+} from '../lib/block-capacity-offers.js';
+import { fetchCalendarEventsForDay } from '../lib/calendar-customer-cap.js';
 import {
   addAmsterdamCalendarDays,
   amsterdamCalendarDayBoundsMs,
@@ -14,16 +17,15 @@ import {
   formatYyyyMmDdInAmsterdam,
   hourInAmsterdam,
 } from '../lib/amsterdam-calendar-day.js';
-import {
-  DAYPART_SPLIT_HOUR,
-  SLOT_LABEL_AFTERNOON_SPACE,
-  SLOT_LABEL_MORNING_SPACE,
-} from '../lib/planning-work-hours.js';
+import { DAYPART_SPLIT_HOUR } from '../lib/planning-work-hours.js';
 import { availabilityDebugEnabled, logAvailability } from '../lib/availability-debug.js';
 import {
+  fetchBlockedSlotsAsEvents,
   isCustomerBookingBlockedOnAmsterdamDate,
+  markBlockLikeOnCalendarEvents,
   resolveAssignedUserIdForBlockedSlotQueries,
 } from '../lib/ghl-calendar-blocks.js';
+import { listConfirmedSyntheticEventsForDate } from '../lib/block-reservation-store.js';
 import {
   GHL_CONFIG_MISSING_MSG,
   ghlCalendarIdFromEnv,
@@ -532,7 +534,7 @@ export default async function handler(req, res) {
     }
 
     if (availabilityDebugEnabled()) {
-      logAvailability('suggest_slots_resolved_before_ghl', {
+      logAvailability('suggest_slots_resolved_before_eval', {
         resolvedContactId: resolvedContactId || null,
         workType,
         locationId: locId,
@@ -541,54 +543,7 @@ export default async function handler(req, res) {
         windowMs: { start: startBounds.startMs, end: endBounds.endMs },
         timeZone: 'Europe/Amsterdam',
         geocodeOk: !!newCoord,
-      });
-    }
-
-    const free = await fetchGhlFreeSlots({
-      calendarId: calId,
-      locationId: locId,
-      startMs: startBounds.startMs,
-      endMs: endBounds.endMs,
-      apiKey: GHL_API_KEY,
-    });
-
-    if (!free.ok) {
-      console.error('[suggest-slots] free-slots:', free.error);
-      return res.status(502).json({
-        success: false,
-        error: `GHL free-slots: ${free.error || 'onbekend'}`,
-      });
-    }
-
-    if (availabilityDebugEnabled()) {
-      const sample = pickFirstFreeSlotSample(free.slotsObj);
-      if (sample) {
-        const ms = slotStartMs(sample.raw);
-        const ok = !Number.isNaN(ms);
-        logAvailability('suggest_free_slots_slot_sample_pre_aggregate', {
-          bucketDateKeyFromGhl: sample.bucketDateKey,
-          slotJsType: sample.slotJsType,
-          topLevelKeysOnSlotObject: sample.topLevelKeys,
-          firstElementPreview:
-            sample.slotJsType === 'object' && sample.raw
-              ? JSON.stringify(sample.raw).slice(0, 500)
-              : String(sample.raw).slice(0, 200),
-          interpretedStartMs: ok ? ms : null,
-          aggregationWouldCountThisSlot: ok,
-          interpretationNote: ok
-            ? 'slotStartMs/coercedEpochMs produced UTC ms → aggregate maps to Amsterdam calendar day + morning/afternoon'
-            : 'slotStartMs returned NaN — this element is skipped in aggregateFreeSlotsByAmsterdamDay (no usable timestamp)',
-        });
-      }
-    }
-
-    const byDay = aggregateFreeSlotsByAmsterdamDay(free.slotsObj);
-
-    if (availabilityDebugEnabled()) {
-      logAvailability('suggest_slots_after_aggregate', {
-        byDayMorningAfternoon: Object.fromEntries(
-          [...byDay.entries()].map(([d, c]) => [d, { morning: c.morning, afternoon: c.afternoon }])
-        ),
+        engine: 'block-capacity-offers',
       });
     }
 
@@ -598,6 +553,41 @@ export default async function handler(req, res) {
       apiKey: GHL_API_KEY,
       assignedUserId: resolveAssignedUserIdForBlockedSlotQueries(),
     };
+
+    const geocodeEvents = async (evList) => {
+      const coords = [];
+      for (const e of evList) {
+        if (e.address) {
+          const c = await geocode(e.address);
+          if (c) coords.push(c);
+        }
+      }
+      return coords;
+    };
+
+    async function loadMergedCalendarDayEvents(dateStr) {
+      const bounds = amsterdamCalendarDayBoundsMs(dateStr);
+      if (!bounds) return [];
+      const calEv = await fetchCalendarEventsForDay(dateStr, {
+        base: GHL_BASE,
+        locationId: locId,
+        calendarId: calId,
+        apiKey: GHL_API_KEY,
+      });
+      if (calEv === null) return null;
+      const arr = Array.isArray(calEv) ? calEv : [];
+      const blockedMerged = await fetchBlockedSlotsAsEvents(GHL_BASE, {
+        locationId: locId,
+        calendarId: calId,
+        startMs: bounds.startMs,
+        endMs: bounds.endMs,
+        apiKey: GHL_API_KEY,
+        assignedUserId: resolveAssignedUserIdForBlockedSlotQueries(),
+      });
+      const merged = arr.concat(Array.isArray(blockedMerged) ? blockedMerged : []);
+      markBlockLikeOnCalendarEvents(merged);
+      return merged;
+    }
 
     const candidates = [];
     const dbg = availabilityDebugEnabled();
@@ -617,6 +607,7 @@ export default async function handler(req, res) {
       {
         try {
           if (await isCustomerBookingBlockedOnAmsterdamDate(GHL_BASE, availabilityCtx, cursor)) {
+            if (suggestTrace) suggestTrace.days.push({ dateStr: cursor, outcome: 'excluded', why: 'day_blocked' });
             cursor = addAmsterdamCalendarDays(cursor, 1);
             continue;
           }
@@ -628,7 +619,32 @@ export default async function handler(req, res) {
           });
         }
 
-        const counts = byDay.get(cursor) || { morning: 0, afternoon: 0 };
+        let mergedEvents;
+        try {
+          mergedEvents = await loadMergedCalendarDayEvents(cursor);
+        } catch (e) {
+          console.error('[suggest-slots] calendar events:', e?.message || e);
+          return res.status(503).json({
+            success: false,
+            error: 'Kalender-events tijdelijk niet beschikbaar. Probeer het later opnieuw.',
+          });
+        }
+        if (mergedEvents === null) {
+          return res.status(503).json({
+            success: false,
+            error: 'Kalender-events tijdelijk niet beschikbaar. Probeer het later opnieuw.',
+          });
+        }
+
+        let resvSynthetic = [];
+        try {
+          resvSynthetic = await listConfirmedSyntheticEventsForDate(cursor);
+        } catch (e) {
+          console.warn('[suggest-slots] block reservations:', e?.message || e);
+        }
+        const eventsForCapacity =
+          resvSynthetic.length > 0 ? [...mergedEvents, ...resvSynthetic] : mergedEvents;
+
         const dayBounds = amsterdamCalendarDayBoundsMs(cursor);
         const dateLabel = dayBounds
           ? new Date(dayBounds.startMs + 12 * 3600000).toLocaleDateString('nl-NL', {
@@ -639,56 +655,22 @@ export default async function handler(req, res) {
             })
           : cursor;
 
-        const geocodeEvents = async (evList) => {
-          const coords = [];
-          for (const e of evList) {
-            if (e.address) {
-              const c = await geocode(e.address);
-              if (c) coords.push(c);
-            }
-          }
-          return coords;
-        };
-
-        /** Eén events-fetch per dag (was 2× bij ochtend+middag) — minder GHL 429. */
-        let dayEventsForRoute = null;
-        if (newCoord) {
-          try {
-            const b = amsterdamCalendarDayBoundsMs(cursor);
-            if (b) {
-              const er = await ghlFetchWith429Backoff(
-                `${GHL_BASE}/calendars/events?locationId=${encodeURIComponent(locId)}&calendarId=${encodeURIComponent(calId)}&startTime=${b.startMs}&endTime=${b.endMs}`,
-                { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' }
-              );
-              if (er.ok) {
-                const ed = await er.json();
-                dayEventsForRoute = [...(ed?.events || [])].filter((e) => e.contactId || e.contact_id);
-              }
-            }
-          } catch {}
-        }
-
         let addedForDay = 0;
         for (const block of ['morning', 'afternoon']) {
-          const freeCount = block === 'morning' ? counts.morning : counts.afternoon;
-          if (freeCount < 1) {
+          const evaluation = evaluateBlockOffer({
+            dateStr: cursor,
+            block,
+            workType,
+            events: eventsForCapacity,
+            dayBlocked: false,
+          });
+
+          if (!evaluation.eligible) {
             if (suggestTrace) {
               suggestTrace.days.push({
                 dateStr: cursor,
                 outcome: 'excluded',
-                why: 'ghl_free_slots_zero_for_part',
-                part: block,
-                freeSlotsByPart: { morning: counts.morning, afternoon: counts.afternoon },
-              });
-            }
-            continue;
-          }
-          if (!blockAllowsNewCustomerBooking(block, [], workType)) {
-            if (suggestTrace) {
-              suggestTrace.days.push({
-                dateStr: cursor,
-                outcome: 'excluded',
-                why: 'booking_rules_disallow_part',
+                why: evaluation.reason || 'not_eligible',
                 part: block,
                 workType,
               });
@@ -696,24 +678,18 @@ export default async function handler(req, res) {
             continue;
           }
 
-          const maxB = customerMaxForBlock(block);
-          const slotsLeft = Math.min(freeCount, maxB);
-          const existingCount = maxB - slotsLeft;
+          const labels = blockDisplayLabels(block);
+          const maxB = evaluation.state.maxCustomersInBlock;
+          const slotsLeft = Math.max(0, maxB - evaluation.state.blockCustomerCount);
+          const existingCount = evaluation.state.blockCustomerCount;
 
-          let score = i * 10 + (block === 'morning' ? 0 : 1);
+          let sortScore = (evaluation.score ?? 0) + i * 0.02;
           if (newCoord) {
-            const events = dayEventsForRoute ?? [];
-            const blockEvents = events.filter((e) => {
-              const raw = e.startTime ?? e.start;
-              if (raw == null) return false;
-              const ms = typeof raw === 'number' ? (raw < 1e12 ? raw * 1000 : raw) : Date.parse(String(raw));
-              if (Number.isNaN(ms)) return false;
-              const h = hourInAmsterdam(ms);
-              return block === 'morning' ? h < DAYPART_SPLIT_HOUR : h >= DAYPART_SPLIT_HOUR;
-            });
+            const customerEvents = eventsForCapacity.filter((e) => !e._hkGhlBlockSlot);
+            const blockEvents = customerEvents.filter((e) => isEventInCustomerBlock(e, block));
             const existingCoords = await geocodeEvents(blockEvents);
             const fitScore = routeFitScore(newCoord, existingCoords);
-            score = fitScore * (1 + blockEvents.length / maxB) + i * 0.01;
+            sortScore += fitScore * (1 + blockEvents.length / Math.max(1, maxB)) + i * 0.01;
           }
 
           candidates.push({
@@ -721,19 +697,18 @@ export default async function handler(req, res) {
             dateLabel,
             block,
             existingCount,
-            score,
-            timeLabel: block === 'morning' ? SLOT_LABEL_MORNING_SPACE : SLOT_LABEL_AFTERNOON_SPACE,
-            blockLabel: block === 'morning' ? 'ochtend' : 'middag',
+            score: sortScore,
+            timeLabel: labels.slotLabelSpace,
+            blockLabel: labels.blockLabelNl,
             slotsLeft,
           });
           addedForDay++;
         }
-        if (suggestTrace && addedForDay === 0 && counts.morning + counts.afternoon > 0) {
+        if (suggestTrace && addedForDay === 0) {
           suggestTrace.days.push({
             dateStr: cursor,
             outcome: 'excluded',
-            why: 'no_part_passed_after_rules',
-            freeSlotsByPart: { morning: counts.morning, afternoon: counts.afternoon },
+            why: 'no_block_eligible_for_work_type',
           });
         }
       }
@@ -768,7 +743,7 @@ export default async function handler(req, res) {
           slotsLeft: s.slotsLeft,
           timeLabel: s.timeLabel,
         })),
-        ghlFreeSlotsSource: 'calendars/{id}/free-slots',
+        suggestionEngine: 'block-capacity-offers',
       });
     }
 
@@ -780,10 +755,10 @@ export default async function handler(req, res) {
       address,
       suggestions,
       meta: {
-        source: 'ghl-free-slots',
+        source: 'block-capacity-offers',
         startDate,
         endDate,
-        freeSlotsRangeMs: { startMs: startBounds.startMs, endMs: endBounds.endMs },
+        windowMs: { startMs: startBounds.startMs, endMs: endBounds.endMs },
         calendarId: calId,
       },
     });

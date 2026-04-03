@@ -3,7 +3,8 @@
 // Valt terug op Directions API (optimize:true) als Distance Matrix niet beschikbaar is.
 
 const DEPOT      = 'Cornelis Dopperkade, Amsterdam';
-const START_TIME = 8 * 60; // eerste stop: 08:00 (werkdag-start, gelijk met GHL)
+/** Eerste stop-baseline (minuten vanaf middernacht); intern, zie WORK_DAY_START_HOUR — niet het klantblok 09:00. */
+const START_TIME = 8 * 60;
 
 function parseTimeWindow(str) {
   if (!str || str === 'null') return null;

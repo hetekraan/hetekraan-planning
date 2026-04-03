@@ -1316,7 +1316,7 @@
     </div>
     <div class="form-row" style="margin-bottom:4px">
       <label class="form-label">Tijdsvenster afgesproken (optioneel)</label>
-      <input class="form-input" type="text" id="rTimeWindow" placeholder="bijv. 08:00-11:00 of ochtend">
+      <input class="form-input" type="text" id="rTimeWindow" placeholder="bijv. 09:00-12:00 of ochtend">
     </div>
 
     <div class="modal-actions" style="justify-content:space-between;margin-top:16px">
@@ -1405,7 +1405,7 @@
     </div>
     <div class="form-row">
       <label class="form-label">Tijdsvenster (klantafspraak)</label>
-      <input class="form-input" type="text" id="deTimeWindow" placeholder="bijv. ochtend of 08:00-11:00">
+      <input class="form-input" type="text" id="deTimeWindow" placeholder="bijv. ochtend of 09:00-12:00">
     </div>
     <div class="form-row">
       <label class="form-label">Opmerkingen</label>
@@ -2276,12 +2276,12 @@ function render() {
   }
   if (morningApts.length) {
     parts.push(
-      `<div class="planning-section"><div class="planning-section-title">Ochtend 08:00–13:00</div>${morningApts.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
+      `<div class="planning-section"><div class="planning-section-title">Ochtend 09:00–13:00</div>${morningApts.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
     );
   }
   if (afternoonApts.length) {
     parts.push(
-      `<div class="planning-section"><div class="planning-section-title">Middag 13:00–18:00</div>${afternoonApts.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
+      `<div class="planning-section"><div class="planning-section-title">Middag 13:00–17:00</div>${afternoonApts.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
     );
   }
   let listHtml = parts.join('');
@@ -2327,10 +2327,10 @@ function renderRoute(routeStops) {
       <div class="route-info"><div class="route-name">Depot / Start</div><div class="route-addr">Vaste startlocatie</div></div>
     </div>`;
   if (morning.length) {
-    body += `<div class="route-section-head">Ochtend 08:00–13:00</div>` + morning.map((a) => renderRouteItemHtml(a)).join('');
+    body += `<div class="route-section-head">Ochtend 09:00–13:00</div>` + morning.map((a) => renderRouteItemHtml(a)).join('');
   }
   if (afternoon.length) {
-    body += `<div class="route-section-head route-section-head--pm">Middag 13:00–18:00</div>` + afternoon.map((a) => renderRouteItemHtml(a)).join('');
+    body += `<div class="route-section-head route-section-head--pm">Middag 13:00–17:00</div>` + afternoon.map((a) => renderRouteItemHtml(a)).join('');
   }
   list.innerHTML = body;
 

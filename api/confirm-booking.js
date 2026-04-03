@@ -1,9 +1,14 @@
 // api/confirm-booking.js
 // Verwerkt de klantenkeuze uit de boekingspagina.
-// Maakt de GHL-afspraak aan; WhatsApp alleen via GHL-workflow (tag-puls).
+// Model B (tokenSchemaVersion 2): geen timed GHL appointment — capaciteit + boeking vastgelegd op het contact (custom fields + tag).
+// Legacy (v1): nog steeds POST …/appointments met start/end uit token of ankers.
+// WhatsApp alleen via GHL-workflow (tag-puls).
 
 import { logAvailability } from '../lib/availability-debug.js';
-import { hourInAmsterdam } from '../lib/amsterdam-calendar-day.js';
+import {
+  amsterdamCalendarDayBoundsMs,
+  hourInAmsterdam,
+} from '../lib/amsterdam-calendar-day.js';
 import {
   blockAllowsNewCustomerBooking,
   customerMaxForBlock,
@@ -17,6 +22,11 @@ import { fetchWithRetry } from '../lib/retry.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
 import { verifyBookingToken } from '../lib/session.js';
 import {
+  BLOCK_REASON,
+  evaluateBlockOffer,
+} from '../lib/block-capacity-offers.js';
+import {
+  fetchBlockedSlotsAsEvents,
   isCustomerBookingBlockedOnAmsterdamDate,
   markBlockLikeOnCalendarEvents,
   resolveAssignedUserIdForBlockedSlotQueries,
@@ -29,6 +39,11 @@ import {
   SLOT_LABEL_MORNING_NL,
   WORK_DAY_START_HOUR,
 } from '../lib/planning-work-hours.js';
+import {
+  createConfirmedReservation,
+  hasConfirmedForContactDate,
+  rollbackConfirmedReservation,
+} from '../lib/block-reservation-store.js';
 import { ghlCalendarIdFromEnv } from '../lib/ghl-env-ids.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
@@ -88,6 +103,63 @@ function firstValidNlMobile(...candidates) {
     if (/^\+31[1-9]\d{8}$/.test(n)) return n;
   }
   return '';
+}
+
+/**
+ * Zelfde merged dag als suggest-slots / send-booking-invite (events + blocked-slots → markBlockLike).
+ * @returns {object[]|null} null = GHL events-fetch mislukt
+ */
+async function loadMergedCalendarEventsForConfirmDate(dateStr, { base, locationId, calendarId, apiKey }) {
+  const bounds = amsterdamCalendarDayBoundsMs(dateStr);
+  if (!bounds) return [];
+  const raw = await fetchCalendarEventsForDay(dateStr, { base, locationId, calendarId, apiKey });
+  if (raw === null) return null;
+  const calEv = Array.isArray(raw) ? raw : [];
+  const blockedMerged = await fetchBlockedSlotsAsEvents(base, {
+    locationId,
+    calendarId,
+    startMs: bounds.startMs,
+    endMs: bounds.endMs,
+    apiKey,
+    assignedUserId: resolveAssignedUserIdForBlockedSlotQueries(),
+  });
+  const merged = calEv.concat(Array.isArray(blockedMerged) ? blockedMerged : []);
+  markBlockLikeOnCalendarEvents(merged);
+  return merged;
+}
+
+/**
+ * Contact-PUT na bevestiging. Model B: dit is de primaire persistente bron (geen timed appointment).
+ * @returns {{ putPayload: object, bevestigingTemplate1: string }}
+ */
+function buildConfirmPutPayload({
+  email,
+  phoneForPut,
+  address,
+  type,
+  desc,
+  date,
+  block,
+  routeStopDay,
+}) {
+  const putPayload = { email };
+  if (phoneForPut) putPayload.phone = phoneForPut;
+  if (address) {
+    const parts = address.split(' ');
+    const huisnummer = parts.find((p) => /^\d/.test(p)) || '';
+    const straatnaam = parts.slice(0, parts.findIndex((p) => /^\d/.test(p))).join(' ') || address;
+    putPayload.customFields = [
+      { id: FIELD_IDS.straatnaam, field_value: straatnaam },
+      { id: FIELD_IDS.huisnummer, field_value: huisnummer },
+      { id: FIELD_IDS.type_onderhoud, field_value: type },
+      { id: FIELD_IDS.probleemomschrijving, field_value: desc || '' },
+    ];
+  }
+  const bevestigingTemplate1 = formatGeboektTijdslotField(date, block, routeStopDay);
+  if (!putPayload.customFields) putPayload.customFields = [];
+  putPayload.customFields = putPayload.customFields.filter((f) => f.id !== FIELD_IDS.tijdafspraak);
+  putPayload.customFields.push({ id: FIELD_IDS.tijdafspraak, field_value: bevestigingTemplate1 });
+  return { putPayload, bevestigingTemplate1 };
 }
 
 /** Zelfde startvelden als suggest-slots / GHL-dashboard — niet alleen `e.startTime`. */
@@ -227,6 +299,243 @@ export default async function handler(req, res) {
   }
 
   const type = normalizeWorkType(typeRaw || getCf(contactSnap, FIELD_IDS.type_onderhoud));
+  const isV2 = Number(bookingData.tokenSchemaVersion) === 2;
+  const phoneForPut = firstValidNlMobile(phoneRaw, phone, contactSnap?.phone);
+
+  // ─── Model B1 (tokenSchemaVersion 2): block-capacity check + contact only; geen GHL appointment ──
+  if (isV2) {
+    if (await hasConfirmedForContactDate(contactId, date)) {
+      releaseBookingLock(lockKey);
+      console.log('[confirm-booking] Duplicate (B1 reservering):', contactId, date);
+      return res.status(200).json({
+        success: true,
+        tokenSchemaVersion: 2,
+        bookingModel: 'B',
+        appointmentId: null,
+        alreadyBooked: true,
+        message: 'Er staat al een afspraak voor je ingepland op deze dag.',
+      });
+    }
+
+    const merged = await loadMergedCalendarEventsForConfirmDate(date, {
+      base: GHL_BASE,
+      locationId: GHL_LOCATION_ID,
+      calendarId: ghlCalendarIdFromEnv(),
+      apiKey: GHL_API_KEY,
+    });
+    if (merged === null) {
+      releaseBookingLock(lockKey);
+      return res.status(503).json({
+        error:
+          'We konden de agenda nu niet uitlezen in GHL. Probeer het over een paar minuten opnieuw of neem contact op.',
+        code: 'AGENDA_CHECK_FAILED',
+      });
+    }
+
+    const customerEventsV2 = merged.filter((e) => !e._hkGhlBlockSlot);
+
+    const alreadyBookedV2 = customerEventsV2.find((e) => {
+      const cid = e.contactId || e.contact_id || e.contact?.id;
+      return cid && String(cid) === String(contactId);
+    });
+    if (alreadyBookedV2) {
+      releaseBookingLock(lockKey);
+      const existingId =
+        alreadyBookedV2.id || alreadyBookedV2.eventId || alreadyBookedV2.appointmentId || null;
+      console.log('[confirm-booking] Duplicate boeking (B1) onderschept:', contactId, date);
+      return res.status(200).json({
+        success: true,
+        tokenSchemaVersion: 2,
+        bookingModel: 'B',
+        appointmentId: existingId,
+        alreadyBooked: true,
+        message: 'Er staat al een afspraak voor je ingepland op deze dag.',
+      });
+    }
+
+    const evaluation = evaluateBlockOffer({
+      dateStr: date,
+      block,
+      workType: type,
+      events: merged,
+      dayBlocked: false,
+    });
+    if (!evaluation.eligible) {
+      releaseBookingLock(lockKey);
+      const reason = evaluation.reason;
+      if (reason === BLOCK_REASON.DAY_CAP) {
+        const maxD = evaluation.state.maxPerDay;
+        return res.status(409).json({
+          error:
+            `Er staan al ${maxD} klant-afspraken op deze dag in de agenda. Online boeken is niet meer mogelijk; neem contact op of kies een andere dag. Handmatig kun je in GHL nog een extra afspraak toevoegen.`,
+          code: 'DAY_CAP_REACHED',
+          dayCount: evaluation.state.dayCustomerCount,
+          maxPerDay: maxD,
+        });
+      }
+      if (reason === BLOCK_REASON.BLOCK_CAPACITY) {
+        const maxB = customerMaxForBlock(block);
+        const blokNaam =
+          block === 'morning'
+            ? `ochtend (${SLOT_LABEL_MORNING_NL})`
+            : `middag (${SLOT_LABEL_AFTERNOON_NL})`;
+        return res.status(409).json({
+          error: `Dit tijdslot past niet meer: in de ${blokNaam} zitten al ${maxB} klant-afspraken of er is onvoldoende geplande tijd over voor dit werk. Kies een andere optie of bel ons.`,
+          code: 'BLOCK_FULL',
+          maxPerBlock: maxB,
+        });
+      }
+      if (reason === BLOCK_REASON.INVALID_INPUT) {
+        releaseBookingLock(lockKey);
+        return res.status(400).json({ error: 'Ongeldige boekingskeuze. Vraag een nieuwe link aan.' });
+      }
+      return res.status(409).json({
+        error: 'Deze optie is niet meer beschikbaar. Kies een andere dag of neem contact op.',
+        code: 'BLOCK_FULL',
+      });
+    }
+
+    let resv;
+    try {
+      resv = await createConfirmedReservation({
+        contactId,
+        dateStr: date,
+        block,
+        workType: type,
+      });
+    } catch (e) {
+      console.error('[confirm-booking] reservation write:', e?.message || e);
+      releaseBookingLock(lockKey);
+      return res.status(503).json({
+        error:
+          'Reserveringsservice is tijdelijk niet beschikbaar. Probeer het over een paar minuten opnieuw of neem contact op.',
+        code: 'RESERVATION_STORE_ERROR',
+      });
+    }
+    if (!resv.ok) {
+      if (resv.code === 'DUPLICATE_CONTACT_DATE') {
+        releaseBookingLock(lockKey);
+        console.log('[confirm-booking] Duplicate (B1 SET NX):', contactId, date);
+        return res.status(200).json({
+          success: true,
+          tokenSchemaVersion: 2,
+          bookingModel: 'B',
+          appointmentId: null,
+          alreadyBooked: true,
+          message: 'Er staat al een afspraak voor je ingepland op deze dag.',
+        });
+      }
+      if (resv.code === 'STORE_UNAVAILABLE') {
+        releaseBookingLock(lockKey);
+        return res.status(503).json({
+          error:
+            'Reserveringsservice is tijdelijk niet beschikbaar. Probeer het over een paar minuten opnieuw of neem contact op.',
+          code: 'RESERVATION_STORE_UNAVAILABLE',
+        });
+      }
+      releaseBookingLock(lockKey);
+      return res.status(400).json({ error: 'Ongeldige boekingsgegevens. Vraag een nieuwe link aan.' });
+    }
+
+    const routeStopDayV2 = Math.min(customerEventsV2.length + 1, 7);
+    const { putPayload: putPayloadB1, bevestigingTemplate1: bevestigingB1 } = buildConfirmPutPayload({
+      email,
+      phoneForPut,
+      address,
+      type,
+      desc,
+      date,
+      block,
+      routeStopDay: routeStopDayV2,
+    });
+
+    const putResB1 = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', Version: '2021-04-15' },
+      body: JSON.stringify(putPayloadB1),
+    });
+    if (!putResB1.ok) {
+      const errTxt = await putResB1.text().catch(() => '');
+      console.error('[confirm-booking] contact PUT (B1):', putResB1.status, errTxt);
+      try {
+        await rollbackConfirmedReservation(resv.reservation);
+      } catch (rbErr) {
+        console.error('[confirm-booking] rollback na PUT-fout mislukt:', rbErr?.message || rbErr);
+      }
+      releaseBookingLock(lockKey);
+      return res.status(502).json({ error: 'Kon gegevens niet opslaan in GHL. Probeer het later opnieuw.' });
+    }
+
+    releaseBookingLock(lockKey);
+
+    logAvailability('confirm_booking_b1', {
+      flow: 'confirm-booking',
+      bookingModel: 'B',
+      dateStr: date,
+      block,
+      contactId,
+      /** Operationele bron: GHL-contact custom fields (o.a. tijdafspraak), geen agenda-item. */
+      sourceOfTruth: 'ghl_contact_custom_fields',
+    });
+
+    const dateFormattedB1 = new Date(`${date}T12:00:00+01:00`).toLocaleDateString('nl-NL', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+
+    const confirmTagB1 = process.env.BOOKING_CONFIRM_TAG === undefined || process.env.BOOKING_CONFIRM_TAG === ''
+      ? 'boeking-bevestigd'
+      : process.env.BOOKING_CONFIRM_TAG;
+    const tagDisabledB1 = confirmTagB1 === 'false' || confirmTagB1 === 'none';
+    const tagFallbackB1 = process.env.BOOKING_CONFIRM_TAG_FALLBACK !== 'false' && !tagDisabledB1;
+
+    const delayMsB1 = Math.min(Math.max(parseInt(process.env.BOOKING_CONFIRM_DELAY_MS || '600', 10) || 600, 0), 5000);
+    if (delayMsB1 > 0) {
+      await new Promise((r) => setTimeout(r, delayMsB1));
+    }
+
+    let workflowTriggeredB1 = false;
+    if (tagFallbackB1) {
+      workflowTriggeredB1 = await pulseContactTag(contactId, confirmTagB1, '[confirm-booking] B1');
+      if (workflowTriggeredB1) {
+        console.log('[confirm-booking] Tag-puls voor workflow (B1):', confirmTagB1);
+      } else {
+        console.error('[confirm-booking] Tag-puls mislukt (B1):', confirmTagB1);
+      }
+    }
+
+    const outB1 = {
+      success: true,
+      tokenSchemaVersion: 2,
+      bookingModel: 'B',
+      blockCapacityOnly: true,
+      appointmentId: null,
+      contactId,
+      slot: chosenSlot,
+      date: dateFormattedB1,
+      messageSent: false,
+      whatsappViaApi: false,
+      workflowTriggered: workflowTriggeredB1,
+      phoneSaved: Boolean(phoneForPut),
+      routeStopDay: routeStopDayV2,
+      tijdafspraakField: bevestigingB1,
+    };
+
+    if (process.env.BOOKING_CONFIRM_DEBUG === 'true') {
+      outB1.diag = { confirmTag: confirmTagB1, tagFallback: tagFallbackB1, tagPulseOk: workflowTriggeredB1 };
+    } else if (tagFallbackB1 && !workflowTriggeredB1) {
+      outB1.hint =
+        'Tag-puls mislukt. Controleer GHL API-key/scopes en of de tag exact “' +
+        confirmTagB1 +
+        '” heet. WhatsApp gaat alleen via je workflow op die tag.';
+    }
+
+    return res.status(200).json(outB1);
+  }
+
+  // ─── Legacy (v1): zelfde checks op ruwe dag-events + timed GHL appointment ─────────────────────
 
   const eventsForDay = await fetchCalendarEventsForDay(date, {
     base: GHL_BASE,
@@ -302,41 +611,49 @@ export default async function handler(req, res) {
     });
   }
 
-  const timeMap = { morning: DEFAULT_BOOK_START_MORNING, afternoon: DEFAULT_BOOK_START_AFTERNOON };
-  const startTimeStr = chosenSlot.suggestedTime || timeMap[block] || DEFAULT_BOOK_START_MORNING;
-  const timeParts = startTimeStr.split(':').map(Number);
-  const hours = timeParts[0] ?? WORK_DAY_START_HOUR;
-  const minutes = Number.isFinite(timeParts[1]) ? timeParts[1] : 0;
   const durationMin = ghlDurationMinutesForType(type);
 
-  const startAnchor = amsterdamWallTimeToDate(date, hours, minutes);
-  const startMs = startAnchor ? startAnchor.getTime() : NaN;
-  if (!Number.isFinite(startMs)) {
+  /** Legacy v1: exacte GHL free-slot in token; anders suggestedTime / DEFAULT_BOOK_START_* */
+  let bookStartMs;
+  let bookEndMs;
+  const tokenStart = chosenSlot.startMs;
+  const tokenEnd = chosenSlot.endMs;
+  if (Number.isFinite(tokenStart) && typeof tokenStart === 'number' && tokenStart > 1e11) {
+    bookStartMs = tokenStart;
+    if (Number.isFinite(tokenEnd) && typeof tokenEnd === 'number' && tokenEnd > bookStartMs) {
+      bookEndMs = tokenEnd;
+    } else {
+      bookEndMs = bookStartMs + durationMin * 60 * 1000;
+    }
+  } else {
+    const timeMap = { morning: DEFAULT_BOOK_START_MORNING, afternoon: DEFAULT_BOOK_START_AFTERNOON };
+    const startTimeStr = chosenSlot.suggestedTime || timeMap[block] || DEFAULT_BOOK_START_MORNING;
+    const timeParts = startTimeStr.split(':').map(Number);
+    const hours = timeParts[0] ?? WORK_DAY_START_HOUR;
+    const minutes = Number.isFinite(timeParts[1]) ? timeParts[1] : 0;
+    const startAnchor = amsterdamWallTimeToDate(date, hours, minutes);
+    bookStartMs = startAnchor ? startAnchor.getTime() : NaN;
+    bookEndMs = bookStartMs + durationMin * 60 * 1000;
+  }
+
+  if (!Number.isFinite(bookStartMs)) {
     releaseBookingLock(lockKey);
     return res.status(400).json({ error: 'Ongeldige datum of tijd in het tijdslot.' });
   }
 
-  const phoneForPut = firstValidNlMobile(phoneRaw, phone, contactSnap?.phone);
-  const putPayload = { email };
-  if (phoneForPut) putPayload.phone = phoneForPut;
-
-  if (address) {
-    const parts = address.split(' ');
-    const huisnummer = parts.find(p => /^\d/.test(p)) || '';
-    const straatnaam = parts.slice(0, parts.findIndex(p => /^\d/.test(p))).join(' ') || address;
-    putPayload.customFields = [
-      { id: FIELD_IDS.straatnaam, field_value: straatnaam },
-      { id: FIELD_IDS.huisnummer, field_value: huisnummer },
-      { id: FIELD_IDS.type_onderhoud, field_value: type },
-      { id: FIELD_IDS.probleemomschrijving, field_value: desc || '' },
-    ];
-  }
+  const appointmentSpanMs = Math.max(bookEndMs - bookStartMs, durationMin * 60 * 1000);
 
   const routeStopDay = Math.min(customerEvents.length + 1, 7);
-  const bevestigingTemplate1 = formatGeboektTijdslotField(date, block, routeStopDay);
-  if (!putPayload.customFields) putPayload.customFields = [];
-  putPayload.customFields = putPayload.customFields.filter((f) => f.id !== FIELD_IDS.tijdafspraak);
-  putPayload.customFields.push({ id: FIELD_IDS.tijdafspraak, field_value: bevestigingTemplate1 });
+  const { putPayload, bevestigingTemplate1 } = buildConfirmPutPayload({
+    email,
+    phoneForPut,
+    address,
+    type,
+    desc,
+    date,
+    block,
+    routeStopDay,
+  });
 
   // Zelfde API-versie als send-booking-invite (sommige PUTs mergen anders op 2021-07-28).
   const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
@@ -472,9 +789,9 @@ export default async function handler(req, res) {
   outer: for (const includeAssignedUser of userPasses) {
     for (const { version, extra } of attempts) {
       for (const offsetMin of offsets) {
-        const tryStartMs = startMs + offsetMin * 60 * 1000;
+        const tryStartMs = bookStartMs + offsetMin * 60 * 1000;
         const tryStart = new Date(tryStartMs);
-        const tryEnd = new Date(tryStartMs + durationMin * 60 * 1000);
+        const tryEnd = new Date(tryStartMs + appointmentSpanMs);
 
         // Gebruik plain fetch (geen retry): een retry na 5xx zou een tweede GHL-afspraak aanmaken.
         const apptRes = await fetch(`${GHL_BASE}/calendars/events/appointments`, {

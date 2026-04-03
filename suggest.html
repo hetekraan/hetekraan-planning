@@ -203,7 +203,7 @@
 <!-- Stap 2: Loading -->
 <div class="card hidden" id="loadingCard">
   <div class="spinner"></div>
-  <div class="loading-text">Beste tijdsloten berekenen op basis van route…</div>
+  <div class="loading-text">Beschikbare dagdelen berekenen (ochtend/middag)…</div>
 </div>
 
 <!-- Stap 2: Resultaat + stuur knop -->
@@ -352,7 +352,7 @@
       if (!data.success || !data.suggestions?.length) {
         showError(
           'Geen tijdsloten beschikbaar',
-          'Er zijn geen vrije tijdsloten (volgens GHL) in de komende weken op werkdagen. Controleer de agenda of probeer later opnieuw.'
+          'Er zijn geen vrije dagdelen (volgens de planningregels) in de komende week op werkdagen. Controleer de agenda of probeer later opnieuw.'
         );
         return;
       }
