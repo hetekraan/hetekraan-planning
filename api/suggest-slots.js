@@ -170,25 +170,69 @@ function isEmptyFreeSlotsSuccess(data) {
   return false;
 }
 
-function slotStartMs(slot) {
-  if (!slot || typeof slot !== 'object') return NaN;
+/** Zelfde ms-normalisatie voor losse timestamps en voor velden op een slot-object. */
+function coercedEpochMs(raw) {
+  if (raw == null) return NaN;
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw < 1e12 ? Math.round(raw * 1000) : raw;
+  if (typeof raw === 'string') {
+    const s = raw.trim();
+    if (/^\d+$/.test(s)) {
+      const n = Number(s);
+      if (!Number.isFinite(n)) return NaN;
+      return n < 1e12 ? Math.round(n * 1000) : n;
+    }
+    const t = Date.parse(s);
+    return Number.isNaN(t) ? NaN : t;
+  }
+  return NaN;
+}
+
+/**
+ * GHL free-slots levert soms per dag een array van ISO-strings of unix-getallen;
+ * soms objecten met bookingStartTime of genest calendarEvent — oude code las alleen { startTime, … }.
+ */
+function slotStartMs(slot, depth = 0) {
+  if (slot == null || depth > 3) return NaN;
+  if (typeof slot === 'string' || typeof slot === 'number') return coercedEpochMs(slot);
+  if (typeof slot !== 'object') return NaN;
   const raw =
     slot.startTime ??
     slot.start ??
     slot.from ??
+    slot.bookingStartTime ??
+    slot.booking_start_time ??
     slot.slotTime ??
     slot.dateTime ??
     slot.time ??
     slot.startDateTime;
-  if (raw == null) return NaN;
-  if (typeof raw === 'number') return raw < 1e12 ? Math.round(raw * 1000) : raw;
-  const t = Date.parse(String(raw));
-  return Number.isNaN(t) ? NaN : t;
+  const direct = coercedEpochMs(raw);
+  if (!Number.isNaN(direct)) return direct;
+  const nested =
+    slot.calendarEvent || slot.calendar_event || slot.event || slot.appointment;
+  if (nested && typeof nested === 'object') return slotStartMs(nested, depth + 1);
+  return NaN;
 }
 
 /**
  * Tel vrije slots per Amsterdam-kalenderdag en ochtend / middag (split op DAYPART_SPLIT_HOUR).
  */
+function pickFirstFreeSlotSample(slotsObj) {
+  if (!slotsObj || typeof slotsObj !== 'object') return null;
+  for (const [bucketDateKey, v] of Object.entries(slotsObj)) {
+    const arr = Array.isArray(v) ? v : [];
+    if (arr.length === 0) continue;
+    const raw = arr[0];
+    return {
+      bucketDateKey,
+      raw,
+      slotJsType: raw === null ? 'null' : typeof raw,
+      topLevelKeys:
+        raw && typeof raw === 'object' && !Array.isArray(raw) ? Object.keys(raw).slice(0, 20) : [],
+    };
+  }
+  return null;
+}
+
 function aggregateFreeSlotsByAmsterdamDay(slotsObj) {
   const out = new Map();
   for (const slots of Object.values(slotsObj)) {
@@ -514,6 +558,28 @@ export default async function handler(req, res) {
         success: false,
         error: `GHL free-slots: ${free.error || 'onbekend'}`,
       });
+    }
+
+    if (availabilityDebugEnabled()) {
+      const sample = pickFirstFreeSlotSample(free.slotsObj);
+      if (sample) {
+        const ms = slotStartMs(sample.raw);
+        const ok = !Number.isNaN(ms);
+        logAvailability('suggest_free_slots_slot_sample_pre_aggregate', {
+          bucketDateKeyFromGhl: sample.bucketDateKey,
+          slotJsType: sample.slotJsType,
+          topLevelKeysOnSlotObject: sample.topLevelKeys,
+          firstElementPreview:
+            sample.slotJsType === 'object' && sample.raw
+              ? JSON.stringify(sample.raw).slice(0, 500)
+              : String(sample.raw).slice(0, 200),
+          interpretedStartMs: ok ? ms : null,
+          aggregationWouldCountThisSlot: ok,
+          interpretationNote: ok
+            ? 'slotStartMs/coercedEpochMs produced UTC ms → aggregate maps to Amsterdam calendar day + morning/afternoon'
+            : 'slotStartMs returned NaN — this element is skipped in aggregateFreeSlotsByAmsterdamDay (no usable timestamp)',
+        });
+      }
     }
 
     const byDay = aggregateFreeSlotsByAmsterdamDay(free.slotsObj);
