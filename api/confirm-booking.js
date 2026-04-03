@@ -42,6 +42,7 @@ import {
 import {
   createConfirmedReservation,
   hasConfirmedForContactDate,
+  listConfirmedSyntheticEventsForDate,
   rollbackConfirmedReservation,
 } from '../lib/block-reservation-store.js';
 import { ghlCalendarIdFromEnv } from '../lib/ghl-env-ids.js';
@@ -339,6 +340,14 @@ export default async function handler(req, res) {
       });
     }
 
+    let synthetics = [];
+    try {
+      synthetics = await listConfirmedSyntheticEventsForDate(date);
+    } catch (synErr) {
+      console.error('[confirm-booking] listConfirmedSyntheticEventsForDate:', synErr?.message || synErr);
+    }
+    const eventsForCapacity = merged.concat(Array.isArray(synthetics) ? synthetics : []);
+
     const customerEventsV2 = merged.filter((e) => !e._hkGhlBlockSlot);
 
     const alreadyBookedV2 = customerEventsV2.find((e) => {
@@ -364,7 +373,7 @@ export default async function handler(req, res) {
       dateStr: date,
       block,
       workType: type,
-      events: merged,
+      events: eventsForCapacity,
       dayBlocked: false,
     });
     if (!evaluation.eligible) {
@@ -444,7 +453,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Ongeldige boekingsgegevens. Vraag een nieuwe link aan.' });
     }
 
-    const routeStopDayV2 = Math.min(customerEventsV2.length + 1, 7);
+    const customerEventsForRoute = eventsForCapacity.filter((e) => !e._hkGhlBlockSlot);
+    const routeStopDayV2 = Math.min(customerEventsForRoute.length + 1, 7);
     const { putPayload: putPayloadB1, bevestigingTemplate1: bevestigingB1 } = buildConfirmPutPayload({
       email,
       phoneForPut,
