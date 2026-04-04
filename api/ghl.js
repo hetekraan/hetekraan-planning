@@ -33,6 +33,7 @@ import {
   getEventStartDayAmsterdam,
 } from '../lib/planning/ghl-event-core.js';
 import { mapEnrichedGhlEventToAppointment } from '../lib/planning/appointment.js';
+import { listConfirmedSyntheticEventsForDate } from '../lib/block-reservation-store.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -338,6 +339,23 @@ export default async function handler(req, res) {
           events = [...events, ...blockedAsEvents];
         }
 
+        /** Model B1: geen GHL timed appointment — tonen als planner-rij via Redis + contact (tijdafspraak). */
+        let blockBookingSynthetic = [];
+        try {
+          blockBookingSynthetic = await listConfirmedSyntheticEventsForDate(date);
+        } catch (err) {
+          console.warn('[ghl] getAppointments block reservations:', err?.message || err);
+        }
+        for (const ev of blockBookingSynthetic) {
+          const cid = String(ev.contactId || ev.contact_id || '').trim();
+          if (!cid) continue;
+          events.push({
+            ...ev,
+            id: `hk-b1:${cid}:${date}`,
+            _hkBlockReservationSynthetic: true,
+          });
+        }
+
         // Unieke contactIds ophalen (dedupliceren: dezelfde klant kan meerdere events hebben)
         const uniqueCids = [...new Set(
           events.map(e => e.contactId || e.contact_id).filter(Boolean)
@@ -394,7 +412,7 @@ export default async function handler(req, res) {
 
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         res.setHeader('Pragma', 'no-cache');
-        res.setHeader('X-HK-GetAppointments-Filter', 'v4-amsterdam-day+id+contact-slot');
+        res.setHeader('X-HK-GetAppointments-Filter', 'v5-amsterdam-day+id+contact-slot+b1-redis');
         const appointments = unique.map((ev, i) => mapEnrichedGhlEventToAppointment(ev, i));
         return res.status(200).json({ appointments });
       }
