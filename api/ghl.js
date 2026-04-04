@@ -33,7 +33,13 @@ import {
   getEventStartDayAmsterdam,
 } from '../lib/planning/ghl-event-core.js';
 import { mapEnrichedGhlEventToAppointment } from '../lib/planning/appointment.js';
-import { listConfirmedSyntheticEventsForDate } from '../lib/block-reservation-store.js';
+import {
+  amsterdamDayReadCacheGet,
+  amsterdamDayReadCacheKeyBlockedSlots,
+  amsterdamDayReadCacheKeyCalendarEvents,
+  amsterdamDayReadCacheSet,
+  cachedListConfirmedSyntheticEventsForDate,
+} from '../lib/amsterdam-day-read-cache.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -308,6 +314,9 @@ export default async function handler(req, res) {
     switch (action) {
 
       case 'getAppointments': {
+        const gaT0 = Date.now();
+        const gaPerf = { route: 'getAppointments', ghl_calendar_events_ms: 0, blocked_slots_ms: 0, redis_b1_synthetic_ms: 0, contact_fetch_sum_ms: 0, filter_dedupe_map_ms: 0 };
+
         const dateRaw = req.query.date;
         const date = normalizeYyyyMmDdInput(
           Array.isArray(dateRaw) ? String(dateRaw[0]) : String(dateRaw || '')
@@ -319,22 +328,40 @@ export default async function handler(req, res) {
         const locId = locConfigured;
         const calId = calConfigured;
         const url = `${GHL_BASE}/calendars/events?locationId=${encodeURIComponent(locId)}&calendarId=${encodeURIComponent(calId)}&startTime=${startMs}&endTime=${endMs}`;
-        const response = await fetchWithRetry(url, {
-          headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
-        });
-        const data = await response.json();
-        let events = data?.events || [];
+        const calKey = amsterdamDayReadCacheKeyCalendarEvents(locId, calId, date);
+        const tCalEv = Date.now();
+        let events = amsterdamDayReadCacheGet(calKey);
+        if (events !== undefined) {
+          gaPerf.ghl_calendar_events_ms = Date.now() - tCalEv;
+        } else {
+          const response = await fetchWithRetry(url, {
+            headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' },
+          });
+          const data = await response.json();
+          gaPerf.ghl_calendar_events_ms = Date.now() - tCalEv;
+          events = data?.events || [];
+          if (response.ok) amsterdamDayReadCacheSet(calKey, events);
+        }
 
         markBlockLikeOnCalendarEvents(events);
 
-        const blockedAsEvents = await fetchBlockedSlotsAsEvents(GHL_BASE, {
-          locationId: locId,
-          calendarId: calId,
-          startMs: bounds.startMs,
-          endMs: bounds.endMs,
-          apiKey: GHL_API_KEY,
-          assignedUserId: effectiveBlockSlotAssignedUserId(),
-        });
+        const blkUser = effectiveBlockSlotAssignedUserId();
+        const blkKey = amsterdamDayReadCacheKeyBlockedSlots(locId, calId, startMs, endMs, blkUser);
+        const tBlk = Date.now();
+        let blockedAsEvents = amsterdamDayReadCacheGet(blkKey);
+        if (blockedAsEvents === undefined) {
+          const fetched = await fetchBlockedSlotsAsEvents(GHL_BASE, {
+            locationId: locId,
+            calendarId: calId,
+            startMs: bounds.startMs,
+            endMs: bounds.endMs,
+            apiKey: GHL_API_KEY,
+            assignedUserId: blkUser,
+          });
+          blockedAsEvents = Array.isArray(fetched) ? fetched : [];
+          amsterdamDayReadCacheSet(blkKey, blockedAsEvents);
+        }
+        gaPerf.blocked_slots_ms = Date.now() - tBlk;
         if (blockedAsEvents.length) {
           events = [...events, ...blockedAsEvents];
         }
@@ -342,7 +369,9 @@ export default async function handler(req, res) {
         /** Model B1: geen GHL timed appointment — tonen als planner-rij via Redis + contact (tijdafspraak). */
         let blockBookingSynthetic = [];
         try {
-          blockBookingSynthetic = await listConfirmedSyntheticEventsForDate(date);
+          const tRedis = Date.now();
+          blockBookingSynthetic = await cachedListConfirmedSyntheticEventsForDate(date);
+          gaPerf.redis_b1_synthetic_ms = Date.now() - tRedis;
         } catch (err) {
           console.warn('[ghl] getAppointments block reservations:', err?.message || err);
         }
@@ -356,23 +385,34 @@ export default async function handler(req, res) {
           });
         }
 
-        // Unieke contactIds ophalen (dedupliceren: dezelfde klant kan meerdere events hebben)
-        const uniqueCids = [...new Set(
-          events.map(e => e.contactId || e.contact_id).filter(Boolean)
-        )];
+        /** Eén overlap-check per event; verrijking gebruikt die niet — alleen events op deze dag hoeven contact. */
+        const overlapsAmsterdamDay = events.map((e) => eventOverlapsAmsterdamDay(e, date));
 
-        // Alle contacten parallel ophalen — één fetch per uniek contact
+        const contactIdKey = (id) => (id == null ? '' : String(id).trim());
+        const uniqueCids = [
+          ...new Set(
+            events
+              .map((e, i) => (overlapsAmsterdamDay[i] ? contactIdKey(e.contactId || e.contact_id) : ''))
+              .filter(Boolean)
+          ),
+        ];
+
         const contactMap = {};
-        await Promise.all(uniqueCids.map(async (cid) => {
-          try {
-            const cr = await fetchWithRetry(`${GHL_BASE}/contacts/${cid}`, {
-              headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
-            });
-            if (!cr.ok) return;
-            const cd = await cr.json();
-            contactMap[cid] = cd?.contact || cd;
-          } catch (_) {}
-        }));
+        const tContacts0 = Date.now();
+        await Promise.all(
+          uniqueCids.map(async (cidKey) => {
+            try {
+              const cr = await fetchWithRetry(
+                `${GHL_BASE}/contacts/${encodeURIComponent(cidKey)}`,
+                { headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' } }
+              );
+              if (!cr.ok) return;
+              const cd = await cr.json();
+              contactMap[cidKey] = cd?.contact || cd;
+            } catch (_) {}
+          })
+        );
+        gaPerf.contact_fetch_sum_ms = Date.now() - tContacts0;
 
         function enrichEvent(e, contact) {
           e.contact = contact;
@@ -397,23 +437,38 @@ export default async function handler(req, res) {
           }
         }
 
-        const enriched = events.map((e) => {
+        const tEnrich0 = Date.now();
+        const enriched = events.map((e, i) => {
+          if (!overlapsAmsterdamDay[i]) return e;
           const rawCid = e.contactId || e.contact_id;
           if (!rawCid) return e;
+          const cidKey = contactIdKey(rawCid);
+          if (!cidKey) return e;
           e.contactId = rawCid;
-          const contact = contactMap[rawCid];
+          const contact = contactMap[cidKey];
           if (contact) enrichEvent(e, contact);
           return e;
         });
+        gaPerf.contact_enrich_sync_ms = Date.now() - tEnrich0;
 
         /** Events die deze Amsterdam-dag raken (ook langlopende blokken / vakantie). */
-        const filtered = enriched.filter((e) => eventOverlapsAmsterdamDay(e, date));
+        const tFilt0 = Date.now();
+        const filtered = enriched.filter((e, i) => overlapsAmsterdamDay[i]);
+        gaPerf.filter_overlap_ms = Date.now() - tFilt0;
+        const tDedupe0 = Date.now();
         const unique = dedupeGhlEventsForDashboard(filtered);
+        gaPerf.dedupe_ms = Date.now() - tDedupe0;
 
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('X-HK-GetAppointments-Filter', 'v5-amsterdam-day+id+contact-slot+b1-redis');
+        const tMapAppt0 = Date.now();
         const appointments = unique.map((ev, i) => mapEnrichedGhlEventToAppointment(ev, i));
+        gaPerf.map_appointments_ms = Date.now() - tMapAppt0;
+        gaPerf.total_ms = Date.now() - gaT0;
+        gaPerf.unique_contact_fetches = uniqueCids.length;
+        gaPerf.event_count_before_filter = enriched.length;
+        console.log('[timing getAppointments]', JSON.stringify(gaPerf));
         return res.status(200).json({ appointments });
       }
 

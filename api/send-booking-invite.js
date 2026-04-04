@@ -15,18 +15,20 @@ import {
   blockOfferKey,
   evaluateBlockOffer,
 } from '../lib/block-capacity-offers.js';
-import { fetchCalendarEventsForDay } from '../lib/calendar-customer-cap.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { signBookingToken } from '../lib/session.js';
 import { availabilityDebugEnabled, logAvailability } from '../lib/availability-debug.js';
 import {
-  fetchBlockedSlotsAsEvents,
   isCustomerBookingBlockedOnAmsterdamDate,
   markBlockLikeOnCalendarEvents,
   resolveAssignedUserIdForBlockedSlotQueries,
 } from '../lib/ghl-calendar-blocks.js';
-import { listConfirmedSyntheticEventsForDate } from '../lib/block-reservation-store.js';
+import {
+  cachedFetchBlockedSlotsAsEvents,
+  cachedFetchCalendarEventsForDay,
+  cachedListConfirmedSyntheticEventsForDate,
+} from '../lib/amsterdam-day-read-cache.js';
 import { ghlCalendarIdFromEnv, ghlLocationIdFromEnv } from '../lib/ghl-env-ids.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
@@ -102,7 +104,8 @@ function dutchDateLabel(dateStr) {
 /**
  * Tot 2 opties `dateStr` + `block`, zelfde regels als api/suggest-slots (block-capacity-offers + merged kalender).
  */
-async function pickBlockInviteOffers(workType) {
+async function pickBlockInviteOffers(workType, timings) {
+  const perf = timings || null;
   if (!GHL_API_KEY) return [];
   const calId = ghlCalendarIdFromEnv();
   const locId = ghlLocationIdFromEnv();
@@ -125,25 +128,31 @@ async function pickBlockInviteOffers(workType) {
       eventCache.set(dateStr, []);
       return [];
     }
-    const raw = await fetchCalendarEventsForDay(dateStr, {
+    const tCal = Date.now();
+    const raw = await cachedFetchCalendarEventsForDay(dateStr, {
       base: GHL_BASE,
       locationId: GHL_LOCATION_ID,
       calendarId: calId,
       apiKey: GHL_API_KEY,
     });
+    if (perf) perf.ghl_calendar_fetch_sum_ms += Date.now() - tCal;
     if (raw === null) {
       eventCache.set(dateStr, null);
       return null;
     }
     const calEv = Array.isArray(raw) ? raw : [];
-    const blockedMerged = await fetchBlockedSlotsAsEvents(GHL_BASE, {
-      locationId: GHL_LOCATION_ID,
-      calendarId: calId,
-      startMs: dayBounds.startMs,
-      endMs: dayBounds.endMs,
-      apiKey: GHL_API_KEY,
-      assignedUserId: resolveAssignedUserIdForBlockedSlotQueries(),
-    });
+    const tBlk = Date.now();
+    const blockedMerged = await cachedFetchBlockedSlotsAsEvents(
+      GHL_BASE,
+      {
+        locationId: GHL_LOCATION_ID,
+        calendarId: calId,
+        apiKey: GHL_API_KEY,
+        assignedUserId: resolveAssignedUserIdForBlockedSlotQueries(),
+      },
+      dayBounds
+    );
+    if (perf) perf.blocked_slots_fetch_sum_ms += Date.now() - tBlk;
     const merged = calEv.concat(Array.isArray(blockedMerged) ? blockedMerged : []);
     markBlockLikeOnCalendarEvents(merged);
     eventCache.set(dateStr, merged);
@@ -156,7 +165,9 @@ async function pickBlockInviteOffers(workType) {
     if (merged === null) return null;
     let resvSynthetic = [];
     try {
-      resvSynthetic = await listConfirmedSyntheticEventsForDate(dateStr);
+      const tR = Date.now();
+      resvSynthetic = await cachedListConfirmedSyntheticEventsForDate(dateStr);
+      if (perf) perf.redis_synthetic_sum_ms += Date.now() - tR;
     } catch (e) {
       console.warn('[send-booking-invite] block reservations:', e?.message || e);
     }
@@ -177,7 +188,10 @@ async function pickBlockInviteOffers(workType) {
     }
 
     try {
-      if (await isCustomerBookingBlockedOnAmsterdamDate(GHL_BASE, customerAvailabilityCtx(), cursor)) {
+      const tDb = Date.now();
+      const db = await isCustomerBookingBlockedOnAmsterdamDate(GHL_BASE, customerAvailabilityCtx(), cursor);
+      if (perf) perf.day_blocked_check_sum_ms += Date.now() - tDb;
+      if (db) {
         if (trace) trace.dayDecisions.push({ dateStr: cursor, outcome: 'excluded', why: 'day_blocked' });
         cursor = addAmsterdamCalendarDays(cursor, 1);
         continue;
@@ -193,6 +207,7 @@ async function pickBlockInviteOffers(workType) {
     const dateLabel = dutchDateLabel(cursor);
 
     for (const block of ['morning', 'afternoon']) {
+      const tEv = Date.now();
       const evaluation = evaluateBlockOffer({
         dateStr: cursor,
         block,
@@ -200,6 +215,7 @@ async function pickBlockInviteOffers(workType) {
         events: eventsForCapacity,
         dayBlocked: false,
       });
+      if (perf) perf.evaluate_block_offer_sum_ms += Date.now() - tEv;
       if (!evaluation.eligible) {
         if (trace) {
           trace.dayDecisions.push({
@@ -246,6 +262,7 @@ async function pickBlockInviteOffers(workType) {
       const baseWithResv = await eventsForCapacityForDate(c.dateStr);
       if (baseWithResv === null) continue;
       const events = augmentMergedForPicks(baseWithResv, c.dateStr, picked, workType);
+      const tEv2 = Date.now();
       const evaluation = evaluateBlockOffer({
         dateStr: c.dateStr,
         block: c.block,
@@ -253,6 +270,7 @@ async function pickBlockInviteOffers(workType) {
         events,
         dayBlocked: false,
       });
+      if (perf) perf.evaluate_block_offer_sum_ms += Date.now() - tEv2;
       if (evaluation.eligible) picked.push(c);
     }
   };
@@ -294,7 +312,26 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
+  const reqT0 = Date.now();
+  const perf = {
+    route: 'send-booking-invite',
+    ghl_calendar_fetch_sum_ms: 0,
+    blocked_slots_fetch_sum_ms: 0,
+    redis_synthetic_sum_ms: 0,
+    day_blocked_check_sum_ms: 0,
+    evaluate_block_offer_sum_ms: 0,
+    contact_resolve_ms: 0,
+    ghl_contact_get_ms: 0,
+    ghl_contact_put_phone_ms: 0,
+    ghl_invite_puts_ms: 0,
+    ghl_tag_ops_ms: 0,
+    pick_block_wall_ms: 0,
+    map_token_response_ms: 0,
+  };
+
+  try {
   const body = parseRequestBody(req);
+  const tResolve0 = Date.now();
   let { contactId, name: nameParam, phone: phoneParam, address: addressParam, type: typeParam, workType: workTypeParam } = body;
 
   // Zoek contact op naam of telefoon als er geen contactId is
@@ -332,15 +369,22 @@ export default async function handler(req, res) {
     }
   }
 
+  perf.contact_resolve_ms = Date.now() - tResolve0;
+
   if (!contactId) return res.status(400).json({ error: 'Kon geen contact vinden of aanmaken' });
 
   // Haal contactgegevens op
+  const tGet0 = Date.now();
   const cr = await fetch(`${GHL_BASE}/contacts/${contactId}`, {
     headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
   });
-  if (!cr.ok) return res.status(404).json({ error: 'Contact niet gevonden' });
+  if (!cr.ok) {
+    perf.ghl_contact_get_ms = Date.now() - tGet0;
+    return res.status(404).json({ error: 'Contact niet gevonden' });
+  }
 
   const cd      = await cr.json();
+  perf.ghl_contact_get_ms = Date.now() - tGet0;
   const contact = cd?.contact || cd;
   const name    = contact.firstName
     ? `${contact.firstName} ${contact.lastName || ''}`.trim()
@@ -362,6 +406,7 @@ export default async function handler(req, res) {
   }
 
   let phoneSyncedToE164 = false;
+  const tPhonePut0 = Date.now();
   if (effectivePhone && /^\+31[1-9]\d{8}$/.test(effectivePhone)) {
     const raw = String(contact.phone || '').trim();
     const needsSync = !raw || !raw.startsWith('+') || normalizeNlPhone(raw) !== effectivePhone;
@@ -379,10 +424,13 @@ export default async function handler(req, res) {
       if (sync.ok) contact.phone = effectivePhone;
     }
   }
+  perf.ghl_contact_put_phone_ms = Date.now() - tPhonePut0;
 
   const workType = normalizeWorkType(workTypeParam || typeParam || getField(contact, FIELD_IDS.type_onderhoud));
 
-  const slots = await pickBlockInviteOffers(workType);
+  const tPick0 = Date.now();
+  const slots = await pickBlockInviteOffers(workType, perf);
+  perf.pick_block_wall_ms = Date.now() - tPick0;
   if (slots.length === 0) {
     return res.status(200).json({ success: false, message: 'Geen beschikbare slots in de komende 7 werkdagen.' });
   }
@@ -457,6 +505,7 @@ export default async function handler(req, res) {
    * Eerst token leegzetten (zoals handmatig wissen) + korte pauze, daarna volledige PUT — dan triggert de workflow weer.
    * Uitzetten: BOOKING_TOKEN_CLEAR_BEFORE_SET=false (bijv. dubbele workflow na leeg-puls).
    */
+  const tInvitePuts0 = Date.now();
   const clearTokenFirst = process.env.BOOKING_TOKEN_CLEAR_BEFORE_SET !== 'false';
   if (clearTokenFirst) {
     const clearRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
@@ -489,7 +538,9 @@ export default async function handler(req, res) {
     const t = await fieldsRes.text();
     console.error('[send-booking-invite] customFields PUT:', t);
   }
+  perf.ghl_invite_puts_ms = Date.now() - tInvitePuts0;
 
+  const tTag0 = Date.now();
   if (addBookingTag) {
     const delRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}/tags`, {
       method: 'DELETE',
@@ -519,11 +570,13 @@ export default async function handler(req, res) {
     diag.tagAdd = true;
     console.log('[send-booking-invite] BOOKING_ADD_TAG=false — alleen custom fields (workflow op Boekings token)');
   }
+  perf.ghl_tag_ops_ms = Date.now() - tTag0;
 
   const phoneOk = /^\+31[1-9]\d{8}$/.test(effectivePhone || '');
   const workflowReady = diag.fieldsPut && (addBookingTag ? diag.tagAdd : true);
 
-  return res.status(200).json({
+  const tMap0 = Date.now();
+  const outJson = {
     success: true,
     messageSent: false,
     whatsappViaApi: false,
@@ -537,7 +590,17 @@ export default async function handler(req, res) {
     workflowTip:
       'WhatsApp alleen via GHL-workflow (template). Standaard wist de API het Boekings token eerst en schrijft opnieuw. Uitzetten: BOOKING_TOKEN_CLEAR_BEFORE_SET=false. Pauze: BOOKING_TOKEN_RESET_MS. ' +
       'Trigger: veld Boekings token (whvgJ2ILKYukDlVj81rp) of BOOKING_ADD_TAG=true + tag stuur-tijdsloten. Contact +31-mobiel.',
-  });
+  };
+  perf.map_token_response_ms = Date.now() - tMap0;
+  return res.status(200).json(outJson);
+  } catch (err) {
+    perf.handler_error = String(err?.message || err).slice(0, 200);
+    console.error('[send-booking-invite]', err?.message || err);
+    return res.status(500).json({ error: err?.message || 'Serverfout' });
+  } finally {
+    perf.total_ms = Date.now() - reqT0;
+    console.log('[timing send-booking-invite]', JSON.stringify(perf));
+  }
 }
 
 function capitalize(s) {

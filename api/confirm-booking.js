@@ -15,7 +15,12 @@ import {
   ghlDurationMinutesForType,
   normalizeWorkType,
 } from '../lib/booking-blocks.js';
-import { fetchCalendarEventsForDay, maxCustomerAppointmentsPerDay } from '../lib/calendar-customer-cap.js';
+import { maxCustomerAppointmentsPerDay } from '../lib/calendar-customer-cap.js';
+import {
+  cachedFetchBlockedSlotsAsEvents,
+  cachedFetchCalendarEventsForDay,
+  cachedListConfirmedSyntheticEventsForDate,
+} from '../lib/amsterdam-day-read-cache.js';
 import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { fetchWithRetry } from '../lib/retry.js';
@@ -27,7 +32,6 @@ import {
   parseBlockOfferKey,
 } from '../lib/block-capacity-offers.js';
 import {
-  fetchBlockedSlotsAsEvents,
   isCustomerBookingBlockedOnAmsterdamDate,
   markBlockLikeOnCalendarEvents,
   resolveAssignedUserIdForBlockedSlotQueries,
@@ -43,7 +47,6 @@ import {
 import {
   createConfirmedReservation,
   hasConfirmedForContactDate,
-  listConfirmedSyntheticEventsForDate,
   rollbackConfirmedReservation,
 } from '../lib/block-reservation-store.js';
 import { ghlCalendarIdFromEnv } from '../lib/ghl-env-ids.js';
@@ -111,20 +114,26 @@ function firstValidNlMobile(...candidates) {
  * Zelfde merged dag als suggest-slots / send-booking-invite (events + blocked-slots → markBlockLike).
  * @returns {object[]|null} null = GHL events-fetch mislukt
  */
-async function loadMergedCalendarEventsForConfirmDate(dateStr, { base, locationId, calendarId, apiKey }) {
+async function loadMergedCalendarEventsForConfirmDate(dateStr, { base, locationId, calendarId, apiKey }, timingOut) {
   const bounds = amsterdamCalendarDayBoundsMs(dateStr);
   if (!bounds) return [];
-  const raw = await fetchCalendarEventsForDay(dateStr, { base, locationId, calendarId, apiKey });
+  const tCal = Date.now();
+  const raw = await cachedFetchCalendarEventsForDay(dateStr, { base, locationId, calendarId, apiKey });
+  if (timingOut) timingOut.ghl_calendar_fetch_ms = (timingOut.ghl_calendar_fetch_ms || 0) + (Date.now() - tCal);
   if (raw === null) return null;
   const calEv = Array.isArray(raw) ? raw : [];
-  const blockedMerged = await fetchBlockedSlotsAsEvents(base, {
-    locationId,
-    calendarId,
-    startMs: bounds.startMs,
-    endMs: bounds.endMs,
-    apiKey,
-    assignedUserId: resolveAssignedUserIdForBlockedSlotQueries(),
-  });
+  const tBlk = Date.now();
+  const blockedMerged = await cachedFetchBlockedSlotsAsEvents(
+    base,
+    {
+      locationId,
+      calendarId,
+      apiKey,
+      assignedUserId: resolveAssignedUserIdForBlockedSlotQueries(),
+    },
+    bounds
+  );
+  if (timingOut) timingOut.blocked_slots_fetch_ms = (timingOut.blocked_slots_fetch_ms || 0) + (Date.now() - tBlk);
   const merged = calEv.concat(Array.isArray(blockedMerged) ? blockedMerged : []);
   markBlockLikeOnCalendarEvents(merged);
   return merged;
@@ -205,6 +214,9 @@ export default async function handler(req, res) {
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
+  const reqT0 = Date.now();
+  const perf = { route: 'confirm-booking' };
+  try {
   let body = req.body;
   if (typeof body === 'string') {
     try {
@@ -240,6 +252,7 @@ export default async function handler(req, res) {
   if (!block) return res.status(400).json({ error: 'Ongeldig tijdblok in slot' });
 
   let contactSnap = null;
+  const tGhlContact0 = Date.now();
   const gr = await fetch(`${GHL_BASE}/contacts/${contactId}`, {
     headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' },
   });
@@ -247,6 +260,7 @@ export default async function handler(req, res) {
     const cd = await gr.json();
     contactSnap = cd?.contact || cd;
   }
+  perf.ghl_contact_get_ms = Date.now() - tGhlContact0;
 
   // E-mail: formulier > token > GHL-contact
   let email = normalizeEmail(emailRaw);
@@ -267,18 +281,19 @@ export default async function handler(req, res) {
   const date = slotIdParsed?.dateStr || chosenSlot.dateStr || legacyDate;
   if (!date) return res.status(400).json({ error: 'Geen datum in slot' });
 
-  if (
-    await isCustomerBookingBlockedOnAmsterdamDate(
-      GHL_BASE,
-      {
-        locationId: GHL_LOCATION_ID,
-        calendarId: ghlCalendarIdFromEnv(),
-        apiKey: GHL_API_KEY,
-        assignedUserId: resolveAssignedUserIdForBlockedSlotQueries(),
-      },
-      date
-    )
-  ) {
+  const tDayBlk0 = Date.now();
+  const dayBlkConfirm = await isCustomerBookingBlockedOnAmsterdamDate(
+    GHL_BASE,
+    {
+      locationId: GHL_LOCATION_ID,
+      calendarId: ghlCalendarIdFromEnv(),
+      apiKey: GHL_API_KEY,
+      assignedUserId: resolveAssignedUserIdForBlockedSlotQueries(),
+    },
+    date
+  );
+  perf.day_blocked_check_ms = Date.now() - tDayBlk0;
+  if (dayBlkConfirm) {
     logAvailability('confirm_booking_rejected', {
       flow: 'confirm-booking',
       outcome: 'excluded',
@@ -323,9 +338,11 @@ export default async function handler(req, res) {
     });
     console.log('[confirm-booking DEBUG] v2 before_duplicate_check_redis', { contactId, date });
     let alreadyReservedRedis;
+    const tRedisDup0 = Date.now();
     try {
       alreadyReservedRedis = await hasConfirmedForContactDate(contactId, date);
     } catch (dupCheckErr) {
+      perf.redis_has_confirmed_ms = Date.now() - tRedisDup0;
       console.error(
         '[confirm-booking DEBUG] v2 hasConfirmedForContactDate threw:',
         dupCheckErr?.message || dupCheckErr,
@@ -338,6 +355,7 @@ export default async function handler(req, res) {
         code: 'RESERVATION_STORE_ERROR',
       });
     }
+    perf.redis_has_confirmed_ms = Date.now() - tRedisDup0;
     if (alreadyReservedRedis) {
       releaseBookingLock(lockKey);
       console.log('[confirm-booking] Duplicate (B1 reservering):', contactId, date);
@@ -352,12 +370,15 @@ export default async function handler(req, res) {
     }
     console.log('[confirm-booking DEBUG] v2 after_duplicate_check_redis_ok');
 
+    const mergeTiming = {};
     const merged = await loadMergedCalendarEventsForConfirmDate(date, {
       base: GHL_BASE,
       locationId: GHL_LOCATION_ID,
       calendarId: ghlCalendarIdFromEnv(),
       apiKey: GHL_API_KEY,
-    });
+    }, mergeTiming);
+    perf.ghl_calendar_fetch_ms = mergeTiming.ghl_calendar_fetch_ms || 0;
+    perf.blocked_slots_fetch_ms = mergeTiming.blocked_slots_fetch_ms || 0;
     if (merged === null) {
       releaseBookingLock(lockKey);
       return res.status(503).json({
@@ -368,11 +389,13 @@ export default async function handler(req, res) {
     }
 
     let synthetics = [];
+    const tRedisSyn0 = Date.now();
     try {
-      synthetics = await listConfirmedSyntheticEventsForDate(date);
+      synthetics = await cachedListConfirmedSyntheticEventsForDate(date);
     } catch (synErr) {
       console.error('[confirm-booking] listConfirmedSyntheticEventsForDate:', synErr?.message || synErr);
     }
+    perf.redis_synthetic_read_ms = Date.now() - tRedisSyn0;
     const eventsForCapacity = merged.concat(Array.isArray(synthetics) ? synthetics : []);
     console.log('[confirm-booking DEBUG] v2 capacity_events', {
       mergedLen: merged.length,
@@ -402,6 +425,7 @@ export default async function handler(req, res) {
     }
 
     console.log('[confirm-booking DEBUG] v2 before_evaluateBlockOffer', { date, block, type });
+    const tEval0 = Date.now();
     const evaluation = evaluateBlockOffer({
       dateStr: date,
       block,
@@ -409,6 +433,7 @@ export default async function handler(req, res) {
       events: eventsForCapacity,
       dayBlocked: false,
     });
+    perf.evaluate_block_offer_ms = Date.now() - tEval0;
     console.log('[confirm-booking DEBUG] v2 after_evaluateBlockOffer', {
       eligible: evaluation.eligible,
       reason: evaluation.reason,
@@ -450,6 +475,7 @@ export default async function handler(req, res) {
 
     console.log('[confirm-booking DEBUG] v2 before_reservation_create');
     let resv;
+    const tResv0 = Date.now();
     try {
       resv = await createConfirmedReservation({
         contactId,
@@ -458,6 +484,7 @@ export default async function handler(req, res) {
         workType: type,
       });
     } catch (e) {
+      perf.redis_reservation_write_ms = Date.now() - tResv0;
       console.error('[confirm-booking DEBUG] v2 reservation_create threw:', e?.message || e, e?.stack);
       console.error('[confirm-booking] reservation write:', e?.message || e);
       releaseBookingLock(lockKey);
@@ -467,6 +494,7 @@ export default async function handler(req, res) {
         code: 'RESERVATION_STORE_ERROR',
       });
     }
+    perf.redis_reservation_write_ms = Date.now() - tResv0;
     if (!resv.ok) {
       console.log('[confirm-booking DEBUG] v2 after_reservation_create_not_ok', resv);
       if (resv.code === 'DUPLICATE_CONTACT_DATE') {
@@ -516,11 +544,13 @@ export default async function handler(req, res) {
       putKeys: Object.keys(putPayloadB1),
       customFieldsLen: putPayloadB1.customFields?.length ?? 0,
     });
+    const tPutB10 = Date.now();
     const putResB1 = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', Version: '2021-04-15' },
       body: JSON.stringify(putPayloadB1),
     });
+    perf.ghl_contact_put_ms = Date.now() - tPutB10;
     if (!putResB1.ok) {
       const errTxt = await putResB1.text().catch(() => '');
       console.error('[confirm-booking DEBUG] v2 after_ghl_contact_put_failed', {
@@ -565,6 +595,7 @@ export default async function handler(req, res) {
     const tagFallbackB1 = process.env.BOOKING_CONFIRM_TAG_FALLBACK !== 'false' && !tagDisabledB1;
 
     const delayMsB1 = Math.min(Math.max(parseInt(process.env.BOOKING_CONFIRM_DELAY_MS || '600', 10) || 600, 0), 5000);
+    const tTagB10 = Date.now();
     if (delayMsB1 > 0) {
       await new Promise((r) => setTimeout(r, delayMsB1));
     }
@@ -578,7 +609,9 @@ export default async function handler(req, res) {
         console.error('[confirm-booking] Tag-puls mislukt (B1):', confirmTagB1);
       }
     }
+    perf.tag_delay_and_pulse_ms = Date.now() - tTagB10;
 
+    const tMapB10 = Date.now();
     const outB1 = {
       success: true,
       tokenSchemaVersion: 2,
@@ -606,18 +639,23 @@ export default async function handler(req, res) {
     }
 
     console.log('[confirm-booking DEBUG] v2 before_success_response');
+    perf.map_response_ms = Date.now() - tMapB10;
+    perf.branch = 'v2_B1';
     return res.status(200).json(outB1);
   }
 
   // ─── Legacy (v1): zelfde checks op ruwe dag-events + timed GHL appointment ─────────────────────
   console.log('[confirm-booking DEBUG] path=legacy_v1_timed_appointment_entered');
+  perf.branch = 'v1_timed_appt';
 
-  const eventsForDay = await fetchCalendarEventsForDay(date, {
+  const tV1Cal0 = Date.now();
+  const eventsForDay = await cachedFetchCalendarEventsForDay(date, {
     base: GHL_BASE,
     locationId: GHL_LOCATION_ID,
     calendarId: ghlCalendarIdFromEnv(),
     apiKey: GHL_API_KEY,
   });
+  perf.v1_ghl_calendar_fetch_ms = Date.now() - tV1Cal0;
   if (!eventsForDay) {
     releaseBookingLock(lockKey);
     return res.status(503).json({
@@ -731,11 +769,13 @@ export default async function handler(req, res) {
   });
 
   // Zelfde API-versie als send-booking-invite (sommige PUTs mergen anders op 2021-07-28).
+  const tV1Put0 = Date.now();
   const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
     method: 'PUT',
     headers: { Authorization: `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', Version: '2021-04-15' },
     body: JSON.stringify(putPayload),
   });
+  perf.v1_ghl_contact_put_ms = Date.now() - tV1Put0;
   if (!putRes.ok) {
     const errTxt = await putRes.text().catch(() => '');
     console.error('[confirm-booking] contact PUT:', putRes.status, errTxt);
@@ -792,7 +832,9 @@ export default async function handler(req, res) {
     return '';
   }
 
+  const tResolveUser0 = Date.now();
   const assignedUserId = await resolveAssignedUserId();
+  perf.v1_resolve_calendar_user_ms = Date.now() - tResolveUser0;
 
   function summarizeGhlError(raw) {
     if (raw == null || typeof raw !== 'string') return '';
@@ -863,6 +905,7 @@ export default async function handler(req, res) {
 
   console.log('[confirm-booking DEBUG] agenda_POST_attempt_begin → POST …/calendars/events/appointments');
 
+  const tV1Appt0 = Date.now();
   outer: for (const includeAssignedUser of userPasses) {
     for (const { version, extra } of attempts) {
       for (const offsetMin of offsets) {
@@ -905,6 +948,7 @@ export default async function handler(req, res) {
       }
     }
   }
+  perf.v1_ghl_appointment_post_sum_ms = Date.now() - tV1Appt0;
 
   // Lock vrijgeven: de afspraak is aangemaakt (of mislukt) — verdere stappen (tag, response) hebben het slot niet meer nodig.
   releaseBookingLock(lockKey);
@@ -937,6 +981,7 @@ export default async function handler(req, res) {
   const tagDisabled = confirmTag === 'false' || confirmTag === 'none';
   const tagFallback = process.env.BOOKING_CONFIRM_TAG_FALLBACK !== 'false' && !tagDisabled;
 
+  const tV1Tag0 = Date.now();
   const delayMs = Math.min(Math.max(parseInt(process.env.BOOKING_CONFIRM_DELAY_MS || '600', 10) || 600, 0), 5000);
   if (delayMs > 0) {
     await new Promise((r) => setTimeout(r, delayMs));
@@ -951,7 +996,9 @@ export default async function handler(req, res) {
       console.error('[confirm-booking] Tag-puls mislukt:', confirmTag);
     }
   }
+  perf.v1_tag_delay_pulse_ms = Date.now() - tV1Tag0;
 
+  const tOutV10 = Date.now();
   const out = {
     success: true,
     appointmentId,
@@ -972,10 +1019,15 @@ export default async function handler(req, res) {
     out.hint =
       'Tag-puls mislukt. Controleer GHL API-key/scopes en of de tag exact “' +
       confirmTag +
-      '” heet. WhatsApp gaat alleen via je workflow op die tag.';
+        '” heet. WhatsApp gaat alleen via je workflow op die tag.';
   }
 
+  perf.map_response_ms = Date.now() - tOutV10;
   return res.status(200).json(out);
+  } finally {
+    perf.total_ms = Date.now() - reqT0;
+    console.log('[timing confirm-booking]', JSON.stringify(perf));
+  }
 }
 
 function normalizeEmail(v) {
