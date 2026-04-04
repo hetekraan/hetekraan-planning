@@ -24,6 +24,7 @@ import { verifyBookingToken } from '../lib/session.js';
 import {
   BLOCK_REASON,
   evaluateBlockOffer,
+  parseBlockOfferKey,
 } from '../lib/block-capacity-offers.js';
 import {
   fetchBlockedSlotsAsEvents,
@@ -261,7 +262,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Vul een geldig e-mailadres in (voor facturatie).' });
   }
 
-  const date = chosenSlot.dateStr || legacyDate;
+  /** V2 slot-id is `YYYY-MM-DD_morning|afternoon` — die datum is canoniek (voorkomt afwijkende dateStr in token). */
+  const slotIdParsed = parseBlockOfferKey(slotId);
+  const date = slotIdParsed?.dateStr || chosenSlot.dateStr || legacyDate;
   if (!date) return res.status(400).json({ error: 'Geen datum in slot' });
 
   if (
@@ -312,6 +315,12 @@ export default async function handler(req, res) {
   // ─── Model B1 (tokenSchemaVersion 2): block-capacity check + contact only; geen GHL appointment ──
   if (isV2) {
     console.log('[confirm-booking DEBUG] path=v2_B1_entered');
+    console.log('[confirm-booking DEBUG] v2 date_trace', {
+      slotId,
+      dateFromSlotId: slotIdParsed?.dateStr ?? null,
+      chosenSlotDateStr: chosenSlot.dateStr ?? null,
+      resolvedDate: date,
+    });
     console.log('[confirm-booking DEBUG] v2 before_duplicate_check_redis', { contactId, date });
     let alreadyReservedRedis;
     try {
@@ -483,7 +492,10 @@ export default async function handler(req, res) {
       releaseBookingLock(lockKey);
       return res.status(400).json({ error: 'Ongeldige boekingsgegevens. Vraag een nieuwe link aan.' });
     }
-    console.log('[confirm-booking DEBUG] v2 after_reservation_create_ok', { reservationId: resv.reservation?.id });
+    console.log('[confirm-booking DEBUG] v2 after_reservation_create_ok', {
+      reservationId: resv.reservation?.id,
+      reservationDateStr: resv.reservation?.dateStr,
+    });
 
     const customerEventsForRoute = eventsForCapacity.filter((e) => !e._hkGhlBlockSlot);
     const routeStopDayV2 = Math.min(customerEventsForRoute.length + 1, 7);
@@ -497,6 +509,7 @@ export default async function handler(req, res) {
       block,
       routeStopDay: routeStopDayV2,
     });
+    console.log('[confirm-booking DEBUG] v2 tijdafspraak_field', { value: bevestigingB1 });
 
     console.log('[confirm-booking DEBUG] v2 before_ghl_contact_put', {
       contactId,
@@ -542,6 +555,7 @@ export default async function handler(req, res) {
       day: 'numeric',
       month: 'long',
       year: 'numeric',
+      timeZone: 'Europe/Amsterdam',
     });
 
     const confirmTagB1 = process.env.BOOKING_CONFIRM_TAG === undefined || process.env.BOOKING_CONFIRM_TAG === ''
