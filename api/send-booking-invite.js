@@ -30,6 +30,13 @@ import {
   cachedListConfirmedSyntheticEventsForDate,
 } from '../lib/amsterdam-day-read-cache.js';
 import { ghlCalendarIdFromEnv, ghlLocationIdFromEnv } from '../lib/ghl-env-ids.js';
+import {
+  buildProposalScanSchedule,
+  effectiveMaxOptions,
+  parseProposalConstraints,
+  proposalBlocksToEvaluate,
+  proposalConstraintsPassCandidate,
+} from '../lib/proposal-constraints.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -103,8 +110,9 @@ function dutchDateLabel(dateStr) {
 
 /**
  * Tot 2 opties `dateStr` + `block`, zelfde regels als api/suggest-slots (block-capacity-offers + merged kalender).
+ * @param {Record<string, unknown> | null | undefined} proposalConstraints — geparsed; null = geen filter
  */
-async function pickBlockInviteOffers(workType, timings) {
+async function pickBlockInviteOffers(workType, timings, proposalConstraints = null) {
   const perf = timings || null;
   if (!GHL_API_KEY) return [];
   const calId = ghlCalendarIdFromEnv();
@@ -177,36 +185,34 @@ async function pickBlockInviteOffers(workType, timings) {
   /** @type {{ dateStr: string, block: 'morning'|'afternoon', score: number, dateLabel: string, blockLabel: string, timeLabel: string }[]} */
   const candidates = [];
 
-  let cursor = startDate;
-  for (let i = 0; i < DAYS_AHEAD; i++) {
-    if (!cursor) break;
-    const dow = amsterdamWeekdaySun0(cursor);
-    if (dow === 0 || dow === 6) {
-      if (trace) trace.dayDecisions.push({ dateStr: cursor, outcome: 'excluded', why: 'weekend' });
-      cursor = addAmsterdamCalendarDays(cursor, 1);
-      continue;
-    }
+  const schedule = buildProposalScanSchedule({
+    startDate,
+    defaultHorizonDays: DAYS_AHEAD,
+    proposalConstraints,
+  });
+  const blocksToTry = proposalBlocksToEvaluate(proposalConstraints);
 
+  const processOneDay = async (cursor, i) => {
     try {
       const tDb = Date.now();
       const db = await isCustomerBookingBlockedOnAmsterdamDate(GHL_BASE, customerAvailabilityCtx(), cursor);
       if (perf) perf.day_blocked_check_sum_ms += Date.now() - tDb;
       if (db) {
         if (trace) trace.dayDecisions.push({ dateStr: cursor, outcome: 'excluded', why: 'day_blocked' });
-        cursor = addAmsterdamCalendarDays(cursor, 1);
-        continue;
+        return;
       }
     } catch (e) {
       console.error('[send-booking-invite] availability check:', e?.message || e);
-      return [];
+      throw e;
     }
 
     const eventsForCapacity = await eventsForCapacityForDate(cursor);
-    if (eventsForCapacity === null) return [];
+    if (eventsForCapacity === null) return null;
 
     const dateLabel = dutchDateLabel(cursor);
 
-    for (const block of ['morning', 'afternoon']) {
+    for (const block of blocksToTry) {
+      if (!proposalConstraintsPassCandidate(cursor, block, proposalConstraints)) continue;
       const tEv = Date.now();
       const evaluation = evaluateBlockOffer({
         dateStr: cursor,
@@ -237,8 +243,33 @@ async function pickBlockInviteOffers(workType, timings) {
         timeLabel: labels.slotLabelSpace,
       });
     }
+    return undefined;
+  };
 
-    cursor = addAmsterdamCalendarDays(cursor, 1);
+  try {
+    if (schedule.kind === 'list') {
+      for (let j = 0; j < schedule.dates.length; j++) {
+        const cursor = schedule.dates[j];
+        const r = await processOneDay(cursor, j);
+        if (r === null) return [];
+      }
+    } else {
+      let cursor = schedule.start;
+      for (let i = 0; i < schedule.horizon; i++) {
+        if (!cursor) break;
+        const dow = amsterdamWeekdaySun0(cursor);
+        if (dow === 0 || dow === 6) {
+          if (trace) trace.dayDecisions.push({ dateStr: cursor, outcome: 'excluded', why: 'weekend' });
+          cursor = addAmsterdamCalendarDays(cursor, 1);
+          continue;
+        }
+        const r = await processOneDay(cursor, i);
+        if (r === null) return [];
+        cursor = addAmsterdamCalendarDays(cursor, 1);
+      }
+    }
+  } catch {
+    return [];
   }
 
   candidates.sort((a, b) => a.score - b.score);
@@ -253,10 +284,11 @@ async function pickBlockInviteOffers(workType, timings) {
     return [];
   }
 
+  const maxPick = effectiveMaxOptions(proposalConstraints, 2, 3);
   const picked = [];
-  const tryPickSecond = async () => {
+  const tryPickMore = async () => {
     for (const c of candidates) {
-      if (picked.length >= 2) break;
+      if (picked.length >= maxPick) break;
       if (picked.some((p) => p.dateStr === c.dateStr && p.block === c.block)) continue;
 
       const baseWithResv = await eventsForCapacityForDate(c.dateStr);
@@ -276,7 +308,7 @@ async function pickBlockInviteOffers(workType, timings) {
   };
 
   picked.push(candidates[0]);
-  await tryPickSecond();
+  await tryPickMore();
 
   if (trace) {
     logAvailability('invite_booking_flow_summary', {
@@ -427,9 +459,10 @@ export default async function handler(req, res) {
   perf.ghl_contact_put_phone_ms = Date.now() - tPhonePut0;
 
   const workType = normalizeWorkType(workTypeParam || typeParam || getField(contact, FIELD_IDS.type_onderhoud));
+  const proposalConstraints = parseProposalConstraints(body.proposalConstraints);
 
   const tPick0 = Date.now();
-  const slots = await pickBlockInviteOffers(workType, perf);
+  const slots = await pickBlockInviteOffers(workType, perf, proposalConstraints);
   perf.pick_block_wall_ms = Date.now() - tPick0;
   if (slots.length === 0) {
     return res.status(200).json({ success: false, message: 'Geen beschikbare slots in de komende 7 werkdagen.' });

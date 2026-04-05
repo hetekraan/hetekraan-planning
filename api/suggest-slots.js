@@ -34,6 +34,13 @@ import {
   ghlLocationIdFromEnv,
   stripGhlEnvId,
 } from '../lib/ghl-env-ids.js';
+import {
+  buildProposalScanSchedule,
+  effectiveMaxOptions,
+  parseProposalConstraints,
+  proposalBlocksToEvaluate,
+  proposalConstraintsPassCandidate,
+} from '../lib/proposal-constraints.js';
 const GHL_API_KEY = process.env.GHL_API_KEY;
 
 function sleepMs(ms) {
@@ -407,7 +414,9 @@ export default async function handler(req, res) {
       phone: phoneParam,
       type: typeQ,
       workType: workTypeQ,
+      proposalConstraints: proposalConstraintsRaw,
     } = q;
+    const proposalConstraints = parseProposalConstraints(proposalConstraintsRaw);
 
     if (availabilityDebugEnabled()) {
       logAvailability('suggest_slots_raw_input', {
@@ -672,130 +681,175 @@ export default async function handler(req, res) {
       ? { flow: 'suggest-slots', window: [startDate, endDate], timeZone: 'Europe/Amsterdam', days: [] }
       : null;
 
-    let cursor = startDate;
-    for (let i = 0; i < FREE_SLOTS_DAYS; i++) {
-      if (!cursor) break;
-      const dow = amsterdamWeekdaySun0(cursor);
-      if (dow === 0 || dow === 6) {
-        if (suggestTrace) suggestTrace.days.push({ dateStr: cursor, outcome: 'excluded', why: 'weekend' });
-        cursor = addAmsterdamCalendarDays(cursor, 1);
-        continue;
+    const schedule = buildProposalScanSchedule({
+      startDate,
+      defaultHorizonDays: FREE_SLOTS_DAYS,
+      proposalConstraints,
+    });
+    const blocksToTry = proposalBlocksToEvaluate(proposalConstraints);
+
+    const processSuggestDay = async (cursor, i) => {
+      try {
+        const tDayBlk = Date.now();
+        const dayBlk = await isCustomerBookingBlockedOnAmsterdamDate(GHL_BASE, availabilityCtx, cursor);
+        perf.day_blocked_check_sum_ms += Date.now() - tDayBlk;
+        if (dayBlk) {
+          if (suggestTrace) suggestTrace.days.push({ dateStr: cursor, outcome: 'excluded', why: 'day_blocked' });
+          return 'ok';
+        }
+      } catch (e) {
+        console.error('[suggest-slots] availability check:', e?.message || e);
+        return 'availability_error';
       }
-      {
-        try {
-          const tDayBlk = Date.now();
-          const dayBlk = await isCustomerBookingBlockedOnAmsterdamDate(GHL_BASE, availabilityCtx, cursor);
-          perf.day_blocked_check_sum_ms += Date.now() - tDayBlk;
-          if (dayBlk) {
-            if (suggestTrace) suggestTrace.days.push({ dateStr: cursor, outcome: 'excluded', why: 'day_blocked' });
-            cursor = addAmsterdamCalendarDays(cursor, 1);
-            continue;
+
+      let dayBundle;
+      try {
+        dayBundle = await loadDayBundle(cursor);
+      } catch (e) {
+        console.error('[suggest-slots] calendar events:', e?.message || e);
+        return 'calendar_error';
+      }
+      if (dayBundle === null) return 'calendar_null';
+
+      const { eventsForCapacity } = dayBundle;
+
+      const dayBounds = amsterdamCalendarDayBoundsMs(cursor);
+      const dateLabel = dayBounds
+        ? new Date(dayBounds.startMs + 12 * 3600000).toLocaleDateString('nl-NL', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+            timeZone: 'Europe/Amsterdam',
+          })
+        : cursor;
+
+      let addedForDay = 0;
+      for (const block of blocksToTry) {
+        if (!proposalConstraintsPassCandidate(cursor, block, proposalConstraints)) continue;
+        const tEval = Date.now();
+        const evaluation = evaluateBlockOffer({
+          dateStr: cursor,
+          block,
+          workType,
+          events: eventsForCapacity,
+          dayBlocked: false,
+        });
+        perf.evaluate_block_offer_sum_ms += Date.now() - tEval;
+
+        if (!evaluation.eligible) {
+          if (suggestTrace) {
+            suggestTrace.days.push({
+              dateStr: cursor,
+              outcome: 'excluded',
+              why: evaluation.reason || 'not_eligible',
+              part: block,
+              workType,
+            });
           }
-        } catch (e) {
-          console.error('[suggest-slots] availability check:', e?.message || e);
+          continue;
+        }
+
+        const labels = blockDisplayLabels(block);
+        const maxB = evaluation.state.maxCustomersInBlock;
+        const slotsLeft = Math.max(0, maxB - evaluation.state.blockCustomerCount);
+        const existingCount = evaluation.state.blockCustomerCount;
+
+        let sortScore = (evaluation.score ?? 0) + i * 0.02;
+        if (newCoord) {
+          const customerEvents = eventsForCapacity.filter((e) => !e._hkGhlBlockSlot);
+          const blockEvents = customerEvents.filter((e) => isEventInCustomerBlock(e, block));
+          const tRg = Date.now();
+          const existingCoords = await geocodeEvents(blockEvents);
+          perf.geocode_route_fit_sum_ms += Date.now() - tRg;
+          const fitScore = routeFitScore(newCoord, existingCoords);
+          sortScore += fitScore * (1 + blockEvents.length / Math.max(1, maxB)) + i * 0.01;
+        }
+
+        candidates.push({
+          dateStr: cursor,
+          dateLabel,
+          block,
+          existingCount,
+          score: sortScore,
+          timeLabel: labels.slotLabelSpace,
+          blockLabel: labels.blockLabelNl,
+          slotsLeft,
+        });
+        addedForDay++;
+      }
+      if (suggestTrace && addedForDay === 0) {
+        suggestTrace.days.push({
+          dateStr: cursor,
+          outcome: 'excluded',
+          why: 'no_block_eligible_for_work_type',
+        });
+      }
+      return 'ok';
+    };
+
+    if (schedule.kind === 'list') {
+      for (let j = 0; j < schedule.dates.length; j++) {
+        const cursor = schedule.dates[j];
+        const status = await processSuggestDay(cursor, j);
+        if (status === 'availability_error') {
           return res.status(503).json({
             success: false,
             error: 'Agenda-blokkades tijdelijk niet beschikbaar. Probeer het later opnieuw.',
           });
         }
-
-        let dayBundle;
-        try {
-          dayBundle = await loadDayBundle(cursor);
-        } catch (e) {
-          console.error('[suggest-slots] calendar events:', e?.message || e);
+        if (status === 'calendar_error') {
           return res.status(503).json({
             success: false,
             error: 'Kalender-events tijdelijk niet beschikbaar. Probeer het later opnieuw.',
           });
         }
-        if (dayBundle === null) {
+        if (status === 'calendar_null') {
           return res.status(503).json({
             success: false,
             error: 'Kalender-events tijdelijk niet beschikbaar. Probeer het later opnieuw.',
           });
         }
-        const { eventsForCapacity } = dayBundle;
-
-        const dayBounds = amsterdamCalendarDayBoundsMs(cursor);
-        const dateLabel = dayBounds
-          ? new Date(dayBounds.startMs + 12 * 3600000).toLocaleDateString('nl-NL', {
-              weekday: 'long',
-              day: 'numeric',
-              month: 'long',
-              timeZone: 'Europe/Amsterdam',
-            })
-          : cursor;
-
-        let addedForDay = 0;
-        for (const block of ['morning', 'afternoon']) {
-          const tEval = Date.now();
-          const evaluation = evaluateBlockOffer({
-            dateStr: cursor,
-            block,
-            workType,
-            events: eventsForCapacity,
-            dayBlocked: false,
-          });
-          perf.evaluate_block_offer_sum_ms += Date.now() - tEval;
-
-          if (!evaluation.eligible) {
-            if (suggestTrace) {
-              suggestTrace.days.push({
-                dateStr: cursor,
-                outcome: 'excluded',
-                why: evaluation.reason || 'not_eligible',
-                part: block,
-                workType,
-              });
-            }
-            continue;
-          }
-
-          const labels = blockDisplayLabels(block);
-          const maxB = evaluation.state.maxCustomersInBlock;
-          const slotsLeft = Math.max(0, maxB - evaluation.state.blockCustomerCount);
-          const existingCount = evaluation.state.blockCustomerCount;
-
-          let sortScore = (evaluation.score ?? 0) + i * 0.02;
-          if (newCoord) {
-            const customerEvents = eventsForCapacity.filter((e) => !e._hkGhlBlockSlot);
-            const blockEvents = customerEvents.filter((e) => isEventInCustomerBlock(e, block));
-            const tRg = Date.now();
-            const existingCoords = await geocodeEvents(blockEvents);
-            perf.geocode_route_fit_sum_ms += Date.now() - tRg;
-            const fitScore = routeFitScore(newCoord, existingCoords);
-            sortScore += fitScore * (1 + blockEvents.length / Math.max(1, maxB)) + i * 0.01;
-          }
-
-          candidates.push({
-            dateStr: cursor,
-            dateLabel,
-            block,
-            existingCount,
-            score: sortScore,
-            timeLabel: labels.slotLabelSpace,
-            blockLabel: labels.blockLabelNl,
-            slotsLeft,
-          });
-          addedForDay++;
-        }
-        if (suggestTrace && addedForDay === 0) {
-          suggestTrace.days.push({
-            dateStr: cursor,
-            outcome: 'excluded',
-            why: 'no_block_eligible_for_work_type',
-          });
-        }
+        if (candidates.length >= 18) break;
       }
-      cursor = addAmsterdamCalendarDays(cursor, 1);
-      if (candidates.length >= 18) break;
+    } else {
+      let cursor = schedule.start;
+      for (let i = 0; i < schedule.horizon; i++) {
+        if (!cursor) break;
+        const dow = amsterdamWeekdaySun0(cursor);
+        if (dow === 0 || dow === 6) {
+          if (suggestTrace) suggestTrace.days.push({ dateStr: cursor, outcome: 'excluded', why: 'weekend' });
+          cursor = addAmsterdamCalendarDays(cursor, 1);
+          continue;
+        }
+        const status = await processSuggestDay(cursor, i);
+        if (status === 'availability_error') {
+          return res.status(503).json({
+            success: false,
+            error: 'Agenda-blokkades tijdelijk niet beschikbaar. Probeer het later opnieuw.',
+          });
+        }
+        if (status === 'calendar_error') {
+          return res.status(503).json({
+            success: false,
+            error: 'Kalender-events tijdelijk niet beschikbaar. Probeer het later opnieuw.',
+          });
+        }
+        if (status === 'calendar_null') {
+          return res.status(503).json({
+            success: false,
+            error: 'Kalender-events tijdelijk niet beschikbaar. Probeer het later opnieuw.',
+          });
+        }
+        cursor = addAmsterdamCalendarDays(cursor, 1);
+        if (candidates.length >= 18) break;
+      }
     }
 
     const tMap0 = Date.now();
     candidates.sort((a, b) => a.score - b.score);
 
-    const suggestions = candidates.slice(0, 3).map((c) => ({
+    const maxSuggest = effectiveMaxOptions(proposalConstraints, 3, 5);
+    const suggestions = candidates.slice(0, maxSuggest).map((c) => ({
       dateStr: c.dateStr,
       dateLabel: c.dateLabel,
       block: c.block,

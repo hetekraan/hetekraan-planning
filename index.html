@@ -1481,6 +1481,38 @@
       <label class="form-label">GHL Contact ID (optioneel)</label>
       <input class="form-input" type="text" id="mContactId" placeholder="GHL contact ID">
     </div>
+    <details class="hk-proposal-constraints" style="margin-top:10px;padding:10px 0;border-top:1px solid var(--border)">
+      <summary style="cursor:pointer;font-size:13px;color:var(--muted);user-select:none">Beperkingen voor boekingsopties (optioneel)</summary>
+      <p style="font-size:11px;color:var(--muted);margin:8px 0 10px">Alleen voor de gegenereerde link — de klant ziet nog steeds max. een paar vaste opties.</p>
+      <div class="form-row">
+        <label class="form-label" style="display:flex;align-items:center;gap:8px;font-weight:normal">
+          <input type="checkbox" id="hkProposalFridaysOnly">
+          Alleen vrijdagen (Amsterdam-kalender)
+        </label>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Specifieke datums (YYYY-MM-DD)</label>
+        <textarea class="form-input" id="hkProposalSpecificDates" rows="2" style="resize:vertical;min-height:40px;font-family:monospace;font-size:12px" placeholder="2026-05-01&#10;2026-05-08"></textarea>
+      </div>
+      <div class="form-row">
+        <label class="form-label" style="display:flex;align-items:center;gap:8px;font-weight:normal">
+          <input type="checkbox" id="hkProposalDatesOnlyMode">
+          Alleen deze datums (geen standaard 7-dagen venster)
+        </label>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Uitsluiten (eerdere opties)</label>
+        <textarea class="form-input" id="hkProposalExcludeKeys" rows="2" style="resize:vertical;min-height:40px;font-family:monospace;font-size:12px" placeholder="2026-04-03_morning&#10;2026-04-04_afternoon"></textarea>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Dagdeel</label>
+        <select class="form-select" id="hkProposalBlockPart">
+          <option value="">Ochtend en middag</option>
+          <option value="morning">Alleen ochtend</option>
+          <option value="afternoon">Alleen middag</option>
+        </select>
+      </div>
+    </details>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal()">Annuleren</button>
       <button class="btn-send-link" onclick="sendBookingLink()" title="Stuur de klant een boekingslink via WhatsApp">📲 Stuur boekingslink</button>
@@ -3295,6 +3327,33 @@ async function blockCurrentDayInGhl() {
   }
 }
 
+/** Bouwt ProposalConstraints voor /api/send-booking-invite (Europe/Amsterdam-dates). */
+function buildPlannerProposalConstraints() {
+  const c = {};
+  if (document.getElementById('hkProposalFridaysOnly')?.checked) {
+    c.allowedWeekdays = [5];
+  }
+  const datesRaw = document.getElementById('hkProposalSpecificDates')?.value?.trim();
+  const datesOnlyMode = document.getElementById('hkProposalDatesOnlyMode')?.checked;
+  if (datesRaw) {
+    const dates = [...new Set(datesRaw.split(/[\s,;]+/).map((s) => s.trim()).filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s)))];
+    if (dates.length) {
+      c.allowedDates = dates;
+      if (datesOnlyMode) c.datesOnly = true;
+    }
+  }
+  const excl = document.getElementById('hkProposalExcludeKeys')?.value?.trim();
+  if (excl) {
+    const keys = [...new Set(excl.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean))];
+    if (keys.length) c.excludedOfferKeys = keys;
+  }
+  const blockPart = document.getElementById('hkProposalBlockPart')?.value;
+  if (blockPart === 'morning' || blockPart === 'afternoon') {
+    c.allowedBlocks = [blockPart];
+  }
+  return Object.keys(c).length ? c : null;
+}
+
 async function sendBookingLink() {
   const name    = document.getElementById('mName').value.trim();
   const phone   = document.getElementById('mPhone').value.trim();
@@ -3309,10 +3368,13 @@ async function sendBookingLink() {
   showToast('⏳ Boekingslink aanmaken...', 'loading');
 
   try {
+    const proposalConstraints = buildPlannerProposalConstraints();
+    const body = { name, phone, address, type, workType: type, desc };
+    if (proposalConstraints) body.proposalConstraints = proposalConstraints;
     const res = await fetch('/api/send-booking-invite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, phone, address, type, workType: type, desc })
+      body: JSON.stringify(body)
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.message || data.error || 'Fout');
