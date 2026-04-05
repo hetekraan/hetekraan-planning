@@ -180,6 +180,17 @@
   </div>
 </div>
 
+<!-- Blijft zichtbaar tijdens preview/WhatsApp: #searchCard wordt verborgen na berekenen. -->
+<div class="card" id="proposalConstraintsBar">
+  <details class="hk-suggest-constraints" style="font-size:13px;color:#555">
+    <summary style="cursor:pointer;user-select:none;color:#666">Beperkingen (optioneel)</summary>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-weight:normal;cursor:pointer">
+      <input type="checkbox" id="hkSuggestFridaysOnly">
+      Alleen vrijdagen voorstellen
+    </label>
+  </details>
+</div>
+
 <!-- Stap 1: Zoekformulier -->
 <div class="card" id="searchCard">
   <div class="search-title">Stuur tijdsloten naar klant</div>
@@ -197,13 +208,6 @@
     <label class="field-label">Adres klant</label>
     <input class="field-input" type="text" id="inputAddress" placeholder="Hoofdstraat 12, Amsterdam">
   </div>
-  <details class="hk-suggest-constraints" style="margin:12px 0 14px;font-size:13px;color:#555">
-    <summary style="cursor:pointer;user-select:none;color:#666">Beperkingen (optioneel)</summary>
-    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-weight:normal;cursor:pointer">
-      <input type="checkbox" id="hkSuggestFridaysOnly">
-      Alleen vrijdagen voorstellen
-    </label>
-  </details>
   <button type="button" class="btn-search" id="searchBtn">Tijdsloten berekenen →</button>
 </div>
 
