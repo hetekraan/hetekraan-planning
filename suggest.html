@@ -65,6 +65,24 @@
     .field-input:focus { outline: none; border-color: #ffd000; }
     .field-input::placeholder { color: #444; }
 
+    .form-select {
+      width: 100%; padding: 10px 13px;
+      background: #111; border: 1px solid #333; border-radius: 9px;
+      color: #eee; font-size: 14px; font-family: inherit;
+      cursor: pointer;
+    }
+    .form-select:focus { outline: none; border-color: #ffd000; }
+
+    .hk-weekday-chips {
+      display: flex; flex-wrap: wrap; gap: 10px 14px;
+      margin-top: 6px;
+    }
+    .hk-weekday-chips label {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 13px; color: #aaa; cursor: pointer; user-select: none;
+    }
+    .hk-weekday-chips input { accent-color: #ffd000; width: 15px; height: 15px; }
+
     .field-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
 
     .btn-search {
@@ -147,6 +165,19 @@
       user-select: none;
     }
     .btn-send:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
+
+    .hk-stale-banner {
+      display: none;
+      background: #3a2a00;
+      border: 1px solid rgba(255, 208, 0, 0.35);
+      color: #ffd000;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.4;
+      margin-bottom: 14px;
+    }
+    .hk-stale-banner:not(.hidden) { display: block; }
     .btn-send:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
 
     .btn-back {
@@ -184,10 +215,29 @@
 <div class="card" id="proposalConstraintsBar">
   <details class="hk-suggest-constraints" style="font-size:13px;color:#555">
     <summary style="cursor:pointer;user-select:none;color:#666">Beperkingen (optioneel)</summary>
-    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-weight:normal;cursor:pointer">
-      <input type="checkbox" id="hkSuggestFridaysOnly">
-      Alleen vrijdagen voorstellen
-    </label>
+    <div class="field-row" style="margin-top:12px;margin-bottom:0">
+      <label class="field-label" for="hkSuggestConstraintMode">Modus</label>
+      <select class="form-select" id="hkSuggestConstraintMode">
+        <option value="auto">Automatisch (standaard venster)</option>
+        <option value="weekdays">Specifieke weekdagen</option>
+        <option value="dates">Specifieke datums</option>
+      </select>
+    </div>
+    <div id="hkSuggestWeekdaysRow" style="display:none;margin-top:12px">
+      <div class="field-label">Weekdagen (Amsterdam)</div>
+      <div class="hk-weekday-chips">
+        <label><input type="checkbox" class="hk-suggest-dow" value="1"> Ma</label>
+        <label><input type="checkbox" class="hk-suggest-dow" value="2"> Di</label>
+        <label><input type="checkbox" class="hk-suggest-dow" value="3"> Wo</label>
+        <label><input type="checkbox" class="hk-suggest-dow" value="4"> Do</label>
+        <label><input type="checkbox" class="hk-suggest-dow" value="5"> Vr</label>
+      </div>
+    </div>
+    <div id="hkSuggestDatesRow" style="display:none;margin-top:12px">
+      <label class="field-label" for="hkSuggestSpecificDates">Datums (YYYY-MM-DD)</label>
+      <textarea class="field-input" id="hkSuggestSpecificDates" rows="3" style="resize:vertical;font-family:ui-monospace,monospace;font-size:12px" placeholder="2026-04-08&#10;2026-04-10"></textarea>
+      <p style="font-size:11px;color:#555;margin-top:6px">Eén datum per regel, of gescheiden door komma/spatie. Alleen deze dagen worden gebruikt.</p>
+    </div>
   </details>
 </div>
 
@@ -234,6 +284,9 @@
 <div class="card hidden" id="messageCard">
   <div class="preview-label">📱 WhatsApp bericht dat verstuurd wordt</div>
   <div class="preview-bubble" id="previewText"></div>
+  <div id="hkPreviewStaleBanner" class="hk-stale-banner hidden" role="status">
+    Beperkingen gewijzigd — bereken de tijdsloten opnieuw.
+  </div>
   <button type="button" class="btn-send" id="sendBtn">
     <span>📲</span> Stuur WhatsApp
   </button>
@@ -263,10 +316,84 @@
   let sendInviteInFlight = false;
   /** Zelfde als bij laatste geslaagde preview — gebruikt bij send zodat link = preview. */
   let pendingProposalConstraints = null;
+  /** UI-snapshot (modus + weekdagen + datums-tekst) bij laatste geslaagde preview; null = nog geen preview. */
+  let lastConstraintsUiSnapshotAtPreview = null;
+  /** True zodra beperkingen wijzigen na een geslaagde preview; alleen opnieuw “berekenen” zet dit terug. */
+  let previewStale = false;
 
+  function getConstraintsUiSnapshot() {
+    const mode = document.getElementById('hkSuggestConstraintMode')?.value || 'auto';
+    const dows = [...document.querySelectorAll('.hk-suggest-dow:checked')]
+      .map((b) => b.value)
+      .sort()
+      .join(',');
+    const dates = (document.getElementById('hkSuggestSpecificDates')?.value || '').trim();
+    return JSON.stringify({ mode, dows, dates });
+  }
+
+  function applySendButtonEnabledState() {
+    const btn = document.getElementById('sendBtn');
+    if (!btn || sendInviteInFlight) return;
+    btn.disabled = previewStale === true;
+  }
+
+  function updateStaleUi() {
+    const banner = document.getElementById('hkPreviewStaleBanner');
+    if (banner) {
+      if (previewStale) banner.classList.remove('hidden');
+      else banner.classList.add('hidden');
+    }
+    applySendButtonEnabledState();
+  }
+
+  function invalidatePreviewIfConstraintsChanged() {
+    if (lastConstraintsUiSnapshotAtPreview === null) return;
+    if (getConstraintsUiSnapshot() === lastConstraintsUiSnapshotAtPreview) return;
+    if (!previewStale) {
+      previewStale = true;
+      pendingProposalConstraints = null;
+      updateStaleUi();
+    }
+  }
+
+  function syncConstraintPanels() {
+    const mode = document.getElementById('hkSuggestConstraintMode')?.value || 'auto';
+    const w = document.getElementById('hkSuggestWeekdaysRow');
+    const d = document.getElementById('hkSuggestDatesRow');
+    if (w) w.style.display = mode === 'weekdays' ? 'block' : 'none';
+    if (d) d.style.display = mode === 'dates' ? 'block' : 'none';
+  }
+
+  /**
+   * @returns {object|null} proposalConstraints of null (= automatisch)
+   */
   function buildSuggestProposalConstraintsFromUI() {
-    if (document.getElementById('hkSuggestFridaysOnly')?.checked) {
-      return { allowedWeekdays: [5] };
+    const mode = document.getElementById('hkSuggestConstraintMode')?.value || 'auto';
+    if (mode === 'auto') return null;
+    if (mode === 'weekdays') {
+      const boxes = document.querySelectorAll('.hk-suggest-dow:checked');
+      const days = [
+        ...new Set(
+          [...boxes]
+            .map((b) => parseInt(b.value, 10))
+            .filter((n) => Number.isFinite(n) && n >= 1 && n <= 5)
+        ),
+      ].sort((a, b) => a - b);
+      if (days.length === 0) return null;
+      return { allowedWeekdays: days };
+    }
+    if (mode === 'dates') {
+      const raw = document.getElementById('hkSuggestSpecificDates')?.value?.trim() || '';
+      const dates = [
+        ...new Set(
+          raw
+            .split(/[\s,;]+/)
+            .map((s) => s.trim())
+            .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s))
+        ),
+      ];
+      if (dates.length === 0) return null;
+      return { allowedDates: dates, datesOnly: true };
     }
     return null;
   }
@@ -279,14 +406,15 @@
   function resetSendButton() {
     const btn = document.getElementById('sendBtn');
     if (!btn) return;
-    btn.disabled = false;
     btn.innerHTML = '<span>📲</span> Stuur WhatsApp';
+    applySendButtonEnabledState();
   }
 
   /** Voorkomt “knop doet niks” na afgebroken/trage request of bfcache. */
   function resetInviteFlowState() {
     sendInviteInFlight = false;
     resetSendButton();
+    updateStaleUi();
   }
 
   function getParam(p) { return new URLSearchParams(window.location.search).get(p); }
@@ -302,6 +430,24 @@
   // Als GHL het contactId meestuurt, vul alvast naam/telefoon in
   window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('searchBtn').addEventListener('click', () => deferAction(loadSlots));
+    const modeSel = document.getElementById('hkSuggestConstraintMode');
+    if (modeSel) {
+      modeSel.addEventListener('change', () => {
+        syncConstraintPanels();
+        invalidatePreviewIfConstraintsChanged();
+      });
+      syncConstraintPanels();
+    }
+    const bar = document.getElementById('proposalConstraintsBar');
+    if (bar) {
+      bar.addEventListener('change', (ev) => {
+        if (ev.target && ev.target.classList && ev.target.classList.contains('hk-suggest-dow')) {
+          invalidatePreviewIfConstraintsChanged();
+        }
+      });
+    }
+    const taDates = document.getElementById('hkSuggestSpecificDates');
+    if (taDates) taDates.addEventListener('input', invalidatePreviewIfConstraintsChanged);
     // Delegatie + pointer: betrouwbaarder dan één listener op de knop (WebKit / webviews).
     const msgCard = document.getElementById('messageCard');
     if (msgCard) msgCard.addEventListener('click', onSendBtnClick);
@@ -324,13 +470,27 @@
 
   async function loadSlots() {
     pendingProposalConstraints = null;
+    const sendBtnEarly = document.getElementById('sendBtn');
+    if (sendBtnEarly && !document.getElementById('messageCard').classList.contains('hidden')) {
+      sendBtnEarly.disabled = true;
+    }
+
     const name    = document.getElementById('inputName').value.trim();
     const phone   = document.getElementById('inputPhone').value.trim();
     const address = document.getElementById('inputAddress').value.trim();
-    const proposalConstraints = buildSuggestProposalConstraintsFromUI();
-
     if (!name && !phone && !resolvedContactId) {
       showError('Vul de naam of het telefoonnummer in.', '');
+      return;
+    }
+
+    const mode = document.getElementById('hkSuggestConstraintMode')?.value || 'auto';
+    const proposalConstraints = buildSuggestProposalConstraintsFromUI();
+    if (mode === 'weekdays' && !proposalConstraints) {
+      showError('Kies minstens één weekdag (ma–vr).', '');
+      return;
+    }
+    if (mode === 'dates' && !proposalConstraints) {
+      showError('Vul minstens één geldige datum (YYYY-MM-DD).', '');
       return;
     }
 
@@ -386,6 +546,8 @@
       resolvedContactId = data.contactId || resolvedContactId;
       loadedSlots = data.suggestions;
       pendingProposalConstraints = proposalConstraints;
+      previewStale = false;
+      lastConstraintsUiSnapshotAtPreview = getConstraintsUiSnapshot();
 
       // Contact info
       const displayName = data.contactName || name || 'Klant';
@@ -423,6 +585,7 @@
       msg += `\nKlik op de link om jouw voorkeur door te geven, dan plannen we het gelijk in:\n[boekingslink]`;
       document.getElementById('previewText').textContent = msg;
       show('messageCard');
+      updateStaleUi();
       resetInviteFlowState();
 
     } catch (e) {
@@ -433,6 +596,7 @@
 
   async function sendInvite() {
     if (sendInviteInFlight) return;
+    if (previewStale) return;
     sendInviteInFlight = true;
     const btn = document.getElementById('sendBtn');
     try {
@@ -503,11 +667,24 @@
     resolvedContactId = null;
     loadedSlots = [];
     pendingProposalConstraints = null;
+    lastConstraintsUiSnapshotAtPreview = null;
+    previewStale = false;
+    const modeSel = document.getElementById('hkSuggestConstraintMode');
+    if (modeSel) {
+      modeSel.value = 'auto';
+      syncConstraintPanels();
+    }
+    document.querySelectorAll('.hk-suggest-dow').forEach((el) => {
+      el.checked = false;
+    });
+    const ta = document.getElementById('hkSuggestSpecificDates');
+    if (ta) ta.value = '';
     document.getElementById('inputName').value    = '';
     document.getElementById('inputPhone').value   = '';
     document.getElementById('inputAddress').value = '';
     hide('resultCard'); hide('messageCard'); hide('successCard'); hide('errorCard'); hide('loadingCard');
     show('searchCard');
+    updateStaleUi();
     resetSendButton();
   }
 
@@ -515,6 +692,7 @@
     hide('errorCard');
     show('searchCard');
     resetSendButton();
+    updateStaleUi();
   }
 
   function showError(title, msg) {
