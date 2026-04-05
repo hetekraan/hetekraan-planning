@@ -391,6 +391,20 @@
         <p class="email-hint" id="emailHint">Verplicht voor facturatie als we je e-mail nog niet hebben. We slaan dit op in GHL.</p>
       </div>
 
+      <div class="email-block" id="addressBlock" hidden>
+        <label class="email-label" for="bookingAddress">Adres</label>
+        <input
+          type="text"
+          id="bookingAddress"
+          class="email-input"
+          name="address"
+          autocomplete="street-address"
+          placeholder="Straat en huisnummer, postcode en plaats"
+          aria-describedby="addressHint"
+        />
+        <p class="email-hint" id="addressHint">Verplicht als we je adres nog niet hebben. We slaan dit op in GHL.</p>
+      </div>
+
       <button type="button" class="confirm-btn" id="confirmBtn" disabled style="display:block;width:100%;background-color:#ffd000;color:#111111;border:none;border-radius:12px;padding:16px;font-size:16px;font-weight:700;margin-top:20px;box-sizing:border-box;">
         Bevestig afspraak
       </button>
@@ -436,6 +450,8 @@
     let bookingData = null;
     /** Al bekend in link/GHL → geen invoerveld; wel meesturen bij bevestigen */
     let knownEmailFromToken = '';
+    /** Al bekend in boekingstoken → geen adresveld */
+    let knownAddressFromToken = '';
 
     const esc = (s) => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 
@@ -498,10 +514,19 @@
         knownEmailFromToken = rawTokenEmail.toLowerCase();
       }
 
+      knownAddressFromToken = '';
+      const rawTokenAddress = bookingData.address != null ? String(bookingData.address).replace(/\s+/g, ' ').trim() : '';
+      if (rawTokenAddress) {
+        knownAddressFromToken = rawTokenAddress;
+      }
+
       document.getElementById('emailBlock').hidden = true;
       document.getElementById('phoneBlock').hidden = true;
+      document.getElementById('addressBlock').hidden = true;
       document.getElementById('bookingPhone').value = '';
       document.getElementById('bookingPhone').classList.remove('invalid');
+      document.getElementById('bookingAddress').value = '';
+      document.getElementById('bookingAddress').classList.remove('invalid');
 
       // Vul info rows (geen vaste datum – elk slot heeft eigen datum)
       const infoRows = document.getElementById('infoRows');
@@ -565,11 +590,14 @@
     function updateConfirmButtonState() {
       const emailEl = document.getElementById('bookingEmail');
       const phoneEl = document.getElementById('bookingPhone');
+      const addressEl = document.getElementById('bookingAddress');
       const needEmail = !knownEmailFromToken;
       const needPhone = bookingData && !hasMobileFromToken(bookingData.phone);
+      const needAddress = !knownAddressFromToken;
       const emailOk = !needEmail || isValidEmail(emailEl.value);
       const phoneOk = !needPhone || isValidNlMobile(phoneEl.value);
-      document.getElementById('confirmBtn').disabled = !selectedSlot || !emailOk || !phoneOk;
+      const addrOk = !needAddress || String(addressEl.value || '').replace(/\s+/g, ' ').trim().length > 0;
+      document.getElementById('confirmBtn').disabled = !selectedSlot || !emailOk || !phoneOk || !addrOk;
     }
 
     function selectSlot(slotId, btn) {
@@ -598,6 +626,9 @@
       if (!knownEmailFromToken) {
         document.getElementById('emailBlock').hidden = false;
       }
+      if (!knownAddressFromToken) {
+        document.getElementById('addressBlock').hidden = false;
+      }
       updateConfirmButtonState();
       queueMicrotask(() => updateConfirmButtonState());
     }
@@ -625,6 +656,14 @@
         return;
       }
 
+      const addressEl = document.getElementById('bookingAddress');
+      const address = knownAddressFromToken || String(addressEl.value || '').replace(/\s+/g, ' ').trim();
+      if (!knownAddressFromToken && !address) {
+        addressEl.classList.add('invalid');
+        addressEl.focus();
+        return;
+      }
+
       _bookingInProgress = true;
       const confirmBtn = document.getElementById('confirmBtn');
       if (confirmBtn) confirmBtn.disabled = true;
@@ -636,7 +675,7 @@
         const res = await fetch('/api/confirm-booking', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, slotId: selectedSlot, email, phone })
+          body: JSON.stringify({ token, slotId: selectedSlot, email, phone, address })
         });
         const data = await res.json();
 
@@ -645,7 +684,7 @@
         if (data.success) {
           const chosenSlot = bookingData.slots.find(s => s.id === selectedSlot);
           const tslot = esc(sanitizeTimeDisplay(chosenSlot?.time) || selectedSlot);
-          const addr = esc(bookingData.address || '—');
+          const addr = esc(address || bookingData.address || '—');
           // Bij alreadyBooked heeft de server mogelijk geen date terug; gebruik dan slotlabel.
           const d = data.date ? esc(data.date) : esc(chosenSlot?.label || selectedSlot);
           document.getElementById('successDetail').innerHTML = `
@@ -722,6 +761,7 @@
       const bump = () => {
         document.getElementById('bookingEmail').classList.remove('invalid');
         document.getElementById('bookingPhone').classList.remove('invalid');
+        document.getElementById('bookingAddress').classList.remove('invalid');
         updateConfirmButtonState();
       };
       const emailEl = document.getElementById('bookingEmail');
@@ -732,6 +772,10 @@
       phoneEl.addEventListener('input', bump);
       phoneEl.addEventListener('change', bump);
       phoneEl.addEventListener('blur', bump);
+      const addressEl = document.getElementById('bookingAddress');
+      addressEl.addEventListener('input', bump);
+      addressEl.addEventListener('change', bump);
+      addressEl.addEventListener('blur', bump);
     }
 
     /** Zelfde als suggest: autofill vult velden vaak pas ná de click-stack. */

@@ -58,6 +58,8 @@ const GHL_BASE        = 'https://services.leadconnectorhq.com';
 const FIELD_IDS = {
   straatnaam:          'ZwIMY4VPelG5rKROb5NR',
   huisnummer:          'co5Mr16rF6S6ay5hJOSJ',
+  postcode:            '3bCi5hL0rR9XGG33x2Gv',
+  woonplaats:          'mFRQjlUppycMfyjENKF9',
   type_onderhoud:      'EXSQmlt7BqkXJMs8F3Qk',
   probleemomschrijving:'BBcbPCNA9Eu0Kyi4U1LN',
   /** Zelfde als api/ghl.js — voor WhatsApp-template {{1}}: "23 maart tussen 13 en 17 uur" */
@@ -66,6 +68,26 @@ const FIELD_IDS = {
 
 function getCf(contact, fieldId) {
   return contact?.customFields?.find((f) => f.id === fieldId)?.value || '';
+}
+
+function normalizeAddressStr(s) {
+  return String(s ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Zelfde samenstelling als send-booking-invite (straat + huisnr + postcode + plaats / address1). */
+function addressFromContactSnap(contact) {
+  if (!contact) return '';
+  const straat = getCf(contact, FIELD_IDS.straatnaam);
+  const huisnr = getCf(contact, FIELD_IDS.huisnummer);
+  const postcode = getCf(contact, FIELD_IDS.postcode);
+  const woonplaats = getCf(contact, FIELD_IDS.woonplaats) || contact.city || '';
+  return (
+    [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ') ||
+    normalizeAddressStr(contact.address1) ||
+    ''
+  );
 }
 
 /** NL datum (kalenderdag Amsterdam) voor custom fields. */
@@ -225,7 +247,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Ongeldige JSON' });
     }
   }
-  const { token, slotId, email: emailRaw, phone: phoneRaw } = body || {};
+  const { token, slotId, email: emailRaw, phone: phoneRaw, address: addressRaw } = body || {};
   if (!token || !slotId) return res.status(400).json({ error: 'token en slotId zijn verplicht' });
 
   const bookingData = verifyBookingToken(token);
@@ -235,7 +257,17 @@ export default async function handler(req, res) {
     });
   }
 
-  const { contactId, name, phone, address, date: legacyDate, type: typeRaw, desc, slots, email: emailInToken } = bookingData;
+  const {
+    contactId,
+    name,
+    phone,
+    address: addressInToken,
+    date: legacyDate,
+    type: typeRaw,
+    desc,
+    slots,
+    email: emailInToken,
+  } = bookingData;
   const chosenSlot = slots.find(s => s.id === slotId);
   if (!chosenSlot) return res.status(400).json({ error: 'Ongeldig slot' });
 
@@ -274,6 +306,14 @@ export default async function handler(req, res) {
   }
   if (!isValidEmail(email)) {
     return res.status(400).json({ error: 'Vul een geldig e-mailadres in (voor facturatie).' });
+  }
+
+  // Adres: formulier > token > GHL-contact (zelfde volgorde-idee als e-mail)
+  let address = normalizeAddressStr(addressRaw);
+  if (!address) address = normalizeAddressStr(addressInToken);
+  if (!address && contactSnap) address = addressFromContactSnap(contactSnap);
+  if (!address) {
+    return res.status(400).json({ error: 'Vul een adres in (nodig voor de monteur en facturatie).' });
   }
 
   /** V2 slot-id is `YYYY-MM-DD_morning|afternoon` — die datum is canoniek (voorkomt afwijkende dateStr in token). */
