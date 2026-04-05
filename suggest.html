@@ -197,6 +197,13 @@
     <label class="field-label">Adres klant</label>
     <input class="field-input" type="text" id="inputAddress" placeholder="Hoofdstraat 12, Amsterdam">
   </div>
+  <details class="hk-suggest-constraints" style="margin:12px 0 14px;font-size:13px;color:#555">
+    <summary style="cursor:pointer;user-select:none;color:#666">Beperkingen (optioneel)</summary>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-weight:normal;cursor:pointer">
+      <input type="checkbox" id="hkSuggestFridaysOnly">
+      Alleen vrijdagen voorstellen
+    </label>
+  </details>
   <button type="button" class="btn-search" id="searchBtn">Tijdsloten berekenen →</button>
 </div>
 
@@ -250,6 +257,15 @@
   let resolvedContactId = null;
   let loadedSlots       = [];
   let sendInviteInFlight = false;
+  /** Zelfde als bij laatste geslaagde preview — gebruikt bij send zodat link = preview. */
+  let pendingProposalConstraints = null;
+
+  function buildSuggestProposalConstraintsFromUI() {
+    if (document.getElementById('hkSuggestFridaysOnly')?.checked) {
+      return { allowedWeekdays: [5] };
+    }
+    return null;
+  }
 
   /** iOS/Safari/Chrome: autofill zet .value vaak pas ná de huidige click-tick; één tick wachten voorkomt “eerste klik doet niks”. */
   function deferAction(fn) {
@@ -303,9 +319,11 @@
   });
 
   async function loadSlots() {
+    pendingProposalConstraints = null;
     const name    = document.getElementById('inputName').value.trim();
     const phone   = document.getElementById('inputPhone').value.trim();
     const address = document.getElementById('inputAddress').value.trim();
+    const proposalConstraints = buildSuggestProposalConstraintsFromUI();
 
     if (!name && !phone && !resolvedContactId) {
       showError('Vul de naam of het telefoonnummer in.', '');
@@ -325,6 +343,10 @@
         if (phone)   p.set('phone',   phone);
         if (address) p.set('address', address);
         url += p.toString();
+      }
+      if (proposalConstraints) {
+        const enc = encodeURIComponent(JSON.stringify(proposalConstraints));
+        url += url.endsWith('?') ? `proposalConstraints=${enc}` : `&proposalConstraints=${enc}`;
       }
 
       const res = await fetch(url);
@@ -359,6 +381,7 @@
 
       resolvedContactId = data.contactId || resolvedContactId;
       loadedSlots = data.suggestions;
+      pendingProposalConstraints = proposalConstraints;
 
       // Contact info
       const displayName = data.contactName || name || 'Klant';
@@ -420,6 +443,7 @@
       const body = resolvedContactId
         ? { contactId: resolvedContactId }
         : { name, phone, address };
+      if (pendingProposalConstraints) body.proposalConstraints = pendingProposalConstraints;
 
       const ac = new AbortController();
       const to = setTimeout(() => ac.abort(), 120000);
@@ -474,6 +498,7 @@
   function resetForm() {
     resolvedContactId = null;
     loadedSlots = [];
+    pendingProposalConstraints = null;
     document.getElementById('inputName').value    = '';
     document.getElementById('inputPhone').value   = '';
     document.getElementById('inputAddress').value = '';
