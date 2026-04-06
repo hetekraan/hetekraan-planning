@@ -50,16 +50,19 @@ import {
   rollbackConfirmedReservation,
 } from '../lib/block-reservation-store.js';
 import { ghlCalendarIdFromEnv } from '../lib/ghl-env-ids.js';
+import {
+  buildCanonicalAddressWritePayload,
+  GHL_ADDR_CF_IDS,
+  logCanonicalAddressWrite,
+  logCanonicalEmailWrite,
+  readCanonicalAddressLine,
+} from '../lib/ghl-contact-canonical.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_BASE        = 'https://services.leadconnectorhq.com';
 
 const FIELD_IDS = {
-  straatnaam:          'ZwIMY4VPelG5rKROb5NR',
-  huisnummer:          'co5Mr16rF6S6ay5hJOSJ',
-  postcode:            '3bCi5hL0rR9XGG33x2Gv',
-  woonplaats:          'mFRQjlUppycMfyjENKF9',
   type_onderhoud:      'EXSQmlt7BqkXJMs8F3Qk',
   probleemomschrijving:'BBcbPCNA9Eu0Kyi4U1LN',
   /** Zelfde als api/ghl.js — voor WhatsApp-template {{1}}: "23 maart tussen 13 en 17 uur" */
@@ -74,20 +77,6 @@ function normalizeAddressStr(s) {
   return String(s ?? '')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-/** Zelfde samenstelling als send-booking-invite (straat + huisnr + postcode + plaats / address1). */
-function addressFromContactSnap(contact) {
-  if (!contact) return '';
-  const straat = getCf(contact, FIELD_IDS.straatnaam);
-  const huisnr = getCf(contact, FIELD_IDS.huisnummer);
-  const postcode = getCf(contact, FIELD_IDS.postcode);
-  const woonplaats = getCf(contact, FIELD_IDS.woonplaats) || contact.city || '';
-  return (
-    [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ') ||
-    normalizeAddressStr(contact.address1) ||
-    ''
-  );
 }
 
 /** NL datum (kalenderdag Amsterdam) voor custom fields. */
@@ -178,31 +167,22 @@ function buildConfirmPutPayload({
   const putPayload = { email };
   if (phoneForPut) putPayload.phone = phoneForPut;
   if (address) {
-    // Zelfde patroon als e-mail: vaste GHL-contactvelden + custom fields (dashboard gebruikt straat/huisnr).
-    putPayload.address1 = address;
-    const parts = address.split(/\s+/).filter(Boolean);
-    const numIdx = parts.findIndex((p) => /^\d/.test(p));
-    const huisnummer = numIdx >= 0 ? parts[numIdx] : '';
-    const straatnaam = numIdx >= 0 ? parts.slice(0, numIdx).join(' ') : address;
+    const { address1, customFields: addrCf } = buildCanonicalAddressWritePayload(address);
+    putPayload.address1 = address1;
     putPayload.customFields = [
-      { id: FIELD_IDS.straatnaam, field_value: straatnaam || address },
-      { id: FIELD_IDS.huisnummer, field_value: huisnummer },
+      ...addrCf,
       { id: FIELD_IDS.type_onderhoud, field_value: type },
       { id: FIELD_IDS.probleemomschrijving, field_value: desc || '' },
     ];
+    logCanonicalAddressWrite('confirm-booking_buildPutPayload', {
+      address1,
+      straatHuisCf: addrCf.slice(0, 2).map((f) => f.field_value),
+    });
   }
   const bevestigingTemplate1 = formatGeboektTijdslotField(date, block, routeStopDay);
   if (!putPayload.customFields) putPayload.customFields = [];
   putPayload.customFields = putPayload.customFields.filter((f) => f.id !== FIELD_IDS.tijdafspraak);
   putPayload.customFields.push({ id: FIELD_IDS.tijdafspraak, field_value: bevestigingTemplate1 });
-  if (address) {
-    console.log('[confirm-booking DEBUG] GHL PUT payload address fields', {
-      address1: putPayload.address1,
-      straatnaamCf: putPayload.customFields?.find((f) => f.id === FIELD_IDS.straatnaam)?.field_value,
-      huisnummerCf: putPayload.customFields?.find((f) => f.id === FIELD_IDS.huisnummer)?.field_value,
-      putTopLevelKeys: Object.keys(putPayload),
-    });
-  }
   return { putPayload, bevestigingTemplate1 };
 }
 
@@ -259,12 +239,6 @@ export default async function handler(req, res) {
     }
   }
   const { token, slotId, email: emailRaw, phone: phoneRaw, address: addressRaw } = body || {};
-  console.log('[confirm-booking DEBUG] body.address (raw)', {
-    hasKey: body && Object.prototype.hasOwnProperty.call(body, 'address'),
-    type: addressRaw == null ? 'nullish' : typeof addressRaw,
-    len: addressRaw != null ? String(addressRaw).length : 0,
-    preview: addressRaw != null ? String(addressRaw).replace(/\s+/g, ' ').trim().slice(0, 80) : '',
-  });
   if (!token || !slotId) return res.status(400).json({ error: 'token en slotId zijn verplicht' });
 
   const bookingData = verifyBookingToken(token);
@@ -324,18 +298,24 @@ export default async function handler(req, res) {
   if (!isValidEmail(email)) {
     return res.status(400).json({ error: 'Vul een geldig e-mailadres in (voor facturatie).' });
   }
+  logCanonicalEmailWrite('confirm-booking_resolved', {
+    ghlField: 'email',
+    fromBody: Boolean(normalizeEmail(emailRaw) && isValidEmail(normalizeEmail(emailRaw))),
+    len: email.length,
+  });
 
   // Adres: formulier > token > GHL-contact (zelfde volgorde-idee als e-mail)
   let address = normalizeAddressStr(addressRaw);
   if (!address) address = normalizeAddressStr(addressInToken);
-  if (!address && contactSnap) address = addressFromContactSnap(contactSnap);
+  if (!address && contactSnap) address = readCanonicalAddressLine(contactSnap);
   if (!address) {
     return res.status(400).json({ error: 'Vul een adres in (nodig voor de monteur en facturatie).' });
   }
-  console.log('[confirm-booking DEBUG] resolved address for GHL', {
+  logCanonicalAddressWrite('confirm-booking_resolved', {
     len: address.length,
     preview: address.slice(0, 100),
     fromBody: Boolean(normalizeAddressStr(addressRaw)),
+    ghlFields: ['address1', 'customFields.straatnaam', 'customFields.huisnummer', 'customFields.postcode', 'customFields.woonplaats'],
   });
 
   /** V2 slot-id is `YYYY-MM-DD_morning|afternoon` — die datum is canoniek (voorkomt afwijkende dateStr in token). */
@@ -619,7 +599,7 @@ export default async function handler(req, res) {
         status: putResB1.status,
         body: (errTxt || '').slice(0, 1200),
         attemptedAddress1: putPayloadB1.address1,
-        attemptedStraatCf: putPayloadB1.customFields?.find((f) => f.id === FIELD_IDS.straatnaam)?.field_value,
+        attemptedStraatCf: putPayloadB1.customFields?.find((f) => f.id === GHL_ADDR_CF_IDS.straatnaam)?.field_value,
       });
       console.error('[confirm-booking] contact PUT (B1):', putResB1.status, errTxt);
       try {
@@ -845,7 +825,7 @@ export default async function handler(req, res) {
     console.error('[confirm-booking] contact PUT (v1):', putRes.status, errTxt);
     console.error('[confirm-booking DEBUG] v1 contact_put_failed address snapshot', {
       attemptedAddress1: putPayload.address1,
-      attemptedStraatCf: putPayload.customFields?.find((f) => f.id === FIELD_IDS.straatnaam)?.field_value,
+      attemptedStraatCf: putPayload.customFields?.find((f) => f.id === GHL_ADDR_CF_IDS.straatnaam)?.field_value,
     });
     releaseBookingLock(lockKey);
     return res.status(502).json({ error: 'Kon gegevens niet opslaan in GHL. Probeer het later opnieuw.' });

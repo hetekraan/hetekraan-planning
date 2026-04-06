@@ -19,6 +19,7 @@ import { fetchWithRetry } from '../lib/retry.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { signBookingToken } from '../lib/session.js';
 import { availabilityDebugEnabled, logAvailability } from '../lib/availability-debug.js';
+import { buildCanonicalAddressWritePayload, logCanonicalAddressWrite } from '../lib/ghl-contact-canonical.js';
 import {
   isCustomerBookingBlockedOnAmsterdamDate,
   markBlockLikeOnCalendarEvents,
@@ -558,13 +559,21 @@ export default async function handler(req, res) {
     if (resetMs > 0) await new Promise((r) => setTimeout(r, resetMs));
   }
 
+  const invitePut = {
+    customFields: [...customFields],
+    ...(phoneForPut ? { phone: phoneForPut } : {}),
+  };
+  if (address && String(address).replace(/\s+/g, ' ').trim()) {
+    const { address1, customFields: addrCf } = buildCanonicalAddressWritePayload(address);
+    invitePut.address1 = address1;
+    invitePut.customFields = [...addrCf, ...customFields];
+    logCanonicalAddressWrite('send-booking-invite_slot_put', { contactId, address1 });
+  }
+
   const fieldsRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
     method: 'PUT',
     headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-04-15' },
-    body: JSON.stringify({
-      customFields,
-      ...(phoneForPut ? { phone: phoneForPut } : {}),
-    })
+    body: JSON.stringify(invitePut),
   });
   diag.fieldsPut = fieldsRes.ok;
   if (!fieldsRes.ok) {

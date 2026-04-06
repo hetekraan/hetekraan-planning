@@ -7,6 +7,7 @@
 
 import { fetchWithRetry } from '../../lib/retry.js';
 import { sendErrorNotification } from '../../lib/notify.js';
+import { logCanonicalAddressWrite } from '../../lib/ghl-contact-canonical.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -156,12 +157,35 @@ async function saveToContact(contactId, extracted) {
     }
   }
 
-  if (!customFields.length) return;
+  const addrLine = [
+    extracted.straatnaam,
+    extracted.huisnummer,
+    extracted.postcode,
+    extracted.woonplaats,
+  ]
+    .filter((v) => v && v !== 'null')
+    .map((v) => String(v).trim())
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const payload = {};
+  if (addrLine) payload.address1 = addrLine;
+  if (customFields.length) payload.customFields = customFields;
+
+  if (!payload.address1 && !payload.customFields?.length) return;
+
+  logCanonicalAddressWrite('daily-analysis_whatsapp_extract', {
+    contactId,
+    address1: payload.address1 || null,
+    customFieldCount: customFields.length,
+  });
 
   await fetch(`${GHL_BASE}/contacts/${contactId}`, {
     method: 'PUT',
     headers: GHL_HEADERS(),
-    body: JSON.stringify({ customFields }),
+    body: JSON.stringify(payload),
   });
 }
 

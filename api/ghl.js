@@ -34,6 +34,12 @@ import {
 } from '../lib/planning/ghl-event-core.js';
 import { mapEnrichedGhlEventToAppointment } from '../lib/planning/appointment.js';
 import {
+  buildCanonicalAddressWritePayload,
+  logCanonicalAddressRead,
+  logCanonicalAddressWrite,
+  readCanonicalAddressLine,
+} from '../lib/ghl-contact-canonical.js';
+import {
   amsterdamDayReadCacheGet,
   amsterdamDayReadCacheKeyBlockedSlots,
   amsterdamDayReadCacheKeyCalendarEvents,
@@ -421,11 +427,30 @@ export default async function handler(req, res) {
           const huisnr     = getField(contact, FIELD_IDS.huisnummer);
           const postcode   = getField(contact, FIELD_IDS.postcode);
           const woonplaats = getField(contact, FIELD_IDS.woonplaats) || contact.city || '';
-          e.parsedAddress    = [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ');
-          e.parsedStraatnaam = straat;
-          e.parsedHuisnummer = huisnr;
-          e.parsedPostcode   = postcode;
-          e.parsedWoonplaats = woonplaats;
+          const fromCf     = [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+          const canonical  = readCanonicalAddressLine(contact);
+          e.parsedAddress = canonical;
+          if (fromCf) {
+            e.parsedStraatnaam = straat;
+            e.parsedHuisnummer = huisnr;
+            e.parsedPostcode   = postcode;
+            e.parsedWoonplaats = woonplaats;
+          } else if (canonical) {
+            // Alleen address1 / losse regel: hele regel in straat voor Maps (zelfde tekst als readCanonicalAddressLine).
+            e.parsedStraatnaam = canonical;
+            e.parsedHuisnummer = '';
+            e.parsedPostcode   = '';
+            e.parsedWoonplaats = '';
+            logCanonicalAddressRead('getAppointments_fallback_address1', {
+              contactId: contact.id,
+              preview: canonical.slice(0, 100),
+            });
+          } else {
+            e.parsedStraatnaam = '';
+            e.parsedHuisnummer = '';
+            e.parsedPostcode   = '';
+            e.parsedWoonplaats = '';
+          }
           const werkzaamheden = getField(contact, FIELD_IDS.probleemomschrijving);
           e.parsedWork       = werkzaamheden || e.title;
           e.parsedPrice      = getField(contact, FIELD_IDS.prijs);
@@ -525,9 +550,23 @@ export default async function handler(req, res) {
         if (phone !== undefined) payload.phone = String(phone).replace(/\s/g, '');
         if (customFields.length) payload.customFields = customFields;
 
+        const composedAddr = [straatnaam, huisnummer, postcode, woonplaats]
+          .map((x) => (x != null ? String(x).trim() : ''))
+          .filter(Boolean)
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (composedAddr) payload.address1 = composedAddr;
+
         if (Object.keys(payload).length === 0) {
           return res.status(400).json({ error: 'Geen velden om bij te werken' });
         }
+
+        logCanonicalAddressWrite('updateContactDashboard', {
+          contactId,
+          address1: payload.address1 || null,
+          customFieldIds: customFields.map((f) => f.id),
+        });
 
         const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
           method: 'PUT',
@@ -729,23 +768,22 @@ export default async function handler(req, res) {
 
         if (!contactId) return res.status(400).json({ error: 'Kon geen contact vinden of aanmaken' });
 
-        // Stap 2: adres opslaan als custom field
+        // Stap 2: canoniek adres (address1 + straat/huis-CF) + type/omschrijving
         if (address) {
-          const parts = address.split(' ');
-          const huisnummer = parts.find(p => /^\d/.test(p)) || '';
-          const straatnaam = parts.slice(0, parts.indexOf(huisnummer)).join(' ') || address;
+          const { address1, customFields: addrCf } = buildCanonicalAddressWritePayload(address);
           await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
             method: 'PUT',
             headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-04-15' },
             body: JSON.stringify({
+              address1,
               customFields: [
-                { id: FIELD_IDS.straatnaam, field_value: straatnaam },
-                { id: FIELD_IDS.huisnummer, field_value: huisnummer },
+                ...addrCf,
                 { id: FIELD_IDS.type_onderhoud, field_value: apptType || 'reparatie' },
                 { id: FIELD_IDS.probleemomschrijving, field_value: desc || '' },
-              ]
-            })
+              ],
+            }),
           });
+          logCanonicalAddressWrite('createAppointment', { contactId, address1 });
         }
 
         // Stap 3: agenda-afspraak aanmaken (met retry bij slot-conflict)
