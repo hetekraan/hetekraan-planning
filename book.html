@@ -673,10 +673,11 @@
       document.getElementById('loadingScreen').style.display = 'block';
 
       try {
+        // address = knownAddressFromToken of ingevuld #bookingAddress; server zet o.a. GHL address1 + straat/huisnr-CF
         const res = await fetch('/api/confirm-booking', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, slotId: selectedSlot, email, phone, address })
+          body: JSON.stringify({ token, slotId: selectedSlot, email, phone, address }),
         });
         const data = await res.json();
 
