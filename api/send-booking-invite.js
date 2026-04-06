@@ -70,8 +70,13 @@ const FIELD_IDS = {
 };
 
 function getField(contact, fieldId) {
-  const f = contact?.customFields?.find(f => f.id === fieldId);
-  return f?.value || '';
+  if (!contact?.customFields) return '';
+  const fid = String(fieldId);
+  const f = contact.customFields.find(
+    (x) => x.id === fid || x.fieldId === fid || x.customFieldId === fid
+  );
+  const raw = f?.value ?? f?.field_value;
+  return raw != null && raw !== '' ? String(raw) : '';
 }
 
 /** Synthetische klant-afspraak voor capaciteit na eerste invite-keuze (zelfde dagdeel + duur als workType). */

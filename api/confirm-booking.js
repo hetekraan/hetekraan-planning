@@ -52,9 +52,11 @@ import {
 import { ghlCalendarIdFromEnv } from '../lib/ghl-env-ids.js';
 import {
   buildCanonicalAddressWritePayload,
+  getCfValue,
   GHL_ADDR_CF_IDS,
   logCanonicalAddressWrite,
   logCanonicalEmailWrite,
+  mergeGhlNativeAddressFromParts,
   readCanonicalAddressLine,
   splitAddressLineToStraatHuis,
 } from '../lib/ghl-contact-canonical.js';
@@ -71,7 +73,7 @@ const FIELD_IDS = {
 };
 
 function getCf(contact, fieldId) {
-  return contact?.customFields?.find((f) => f.id === fieldId)?.value || '';
+  return getCfValue(contact, fieldId);
 }
 
 function normalizeAddressStr(s) {
@@ -189,27 +191,43 @@ function buildConfirmPutPayload({
       ({ address1, customFields: addrCf, parts } = buildCanonicalAddressWritePayload(address));
     }
     putPayload.address1 = address1;
+    mergeGhlNativeAddressFromParts(putPayload, parts);
     putPayload.customFields = [
       ...addrCf,
-      { id: FIELD_IDS.type_onderhoud, field_value: type },
-      { id: FIELD_IDS.probleemomschrijving, field_value: desc || '' },
+      { id: FIELD_IDS.type_onderhoud, value: type, field_value: type },
+      { id: FIELD_IDS.probleemomschrijving, value: desc || '', field_value: desc || '' },
     ];
     console.log('[confirm-booking DEBUG] canonical_address_write (same shape as daily-analysis)', {
       structuredFromForm: Boolean(structuredBookingAddress),
       resolvedFullLine: String(address).replace(/\s+/g, ' ').trim(),
       address1Written: address1,
+      nativePostalCode: putPayload.postalCode ?? null,
+      nativeCity: putPayload.city ?? null,
       cfStraatnaam: parts.straatnaam,
       cfHuisnummer: parts.huisnummer,
       cfPostcode: parts.postcode,
       cfWoonplaats: parts.woonplaats,
       addressCustomFieldIdsInPut: addrCf.map((f) => f.id),
     });
+    if (structuredBookingAddress) {
+      console.log('[confirm-booking DEBUG] structured_address_form', {
+        streetHouse: structuredBookingAddress.streetHouse,
+        postcode: structuredBookingAddress.postcode,
+        city: structuredBookingAddress.city,
+      });
+    }
     logCanonicalAddressWrite('confirm-booking_buildPutPayload', { address1, parts });
   }
   const bevestigingTemplate1 = formatGeboektTijdslotField(date, block, routeStopDay);
   if (!putPayload.customFields) putPayload.customFields = [];
   putPayload.customFields = putPayload.customFields.filter((f) => f.id !== FIELD_IDS.tijdafspraak);
-  putPayload.customFields.push({ id: FIELD_IDS.tijdafspraak, field_value: bevestigingTemplate1 });
+  putPayload.customFields.push({
+    id: FIELD_IDS.tijdafspraak,
+    value: bevestigingTemplate1,
+    field_value: bevestigingTemplate1,
+  });
+  putPayload.locationId = GHL_LOCATION_ID;
+  console.log('[confirm-booking DEBUG] ghl_contact_put_payload_json', JSON.stringify(putPayload));
   return { putPayload, bevestigingTemplate1 };
 }
 
@@ -640,14 +658,17 @@ export default async function handler(req, res) {
     const tPutB10 = Date.now();
     const putResB1 = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
       method: 'PUT',
-      headers: { Authorization: `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', Version: '2021-04-15' },
+      headers: { Authorization: `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', Version: '2021-07-28' },
       body: JSON.stringify(putPayloadB1),
     });
     perf.ghl_contact_put_ms = Date.now() - tPutB10;
     if (!putResB1.ok) {
       const errTxt = await putResB1.text().catch(() => '');
       const cf = putPayloadB1.customFields || [];
-      const pickCf = (id) => cf.find((f) => f.id === id)?.field_value;
+      const pickCf = (id) => {
+        const row = cf.find((f) => f.id === id);
+        return row?.field_value ?? row?.value;
+      };
       console.error('[confirm-booking DEBUG] v2 after_ghl_contact_put_failed', {
         status: putResB1.status,
         body: (errTxt || '').slice(0, 1200),
@@ -666,7 +687,21 @@ export default async function handler(req, res) {
       releaseBookingLock(lockKey);
       return res.status(502).json({ error: 'Kon gegevens niet opslaan in GHL. Probeer het later opnieuw.' });
     }
-    console.log('[confirm-booking DEBUG] v2 after_ghl_contact_put_ok', { status: putResB1.status });
+    let ghlPutOkBodyB1 = null;
+    try {
+      ghlPutOkBodyB1 = await putResB1.json();
+    } catch (_) {
+      ghlPutOkBodyB1 = null;
+    }
+    const cAfter = ghlPutOkBodyB1?.contact || ghlPutOkBodyB1;
+    console.log('[confirm-booking DEBUG] v2 after_ghl_contact_put_ok', {
+      status: putResB1.status,
+      responseAddress1: cAfter?.address1 ?? null,
+      responsePostalCode: cAfter?.postalCode ?? null,
+      responseCity: cAfter?.city ?? null,
+      responseCustomFieldIds: Array.isArray(cAfter?.customFields) ? cAfter.customFields.map((f) => f.id) : null,
+      responseBodyJson: ghlPutOkBodyB1 ? JSON.stringify(ghlPutOkBodyB1).slice(0, 2500) : null,
+    });
 
     releaseBookingLock(lockKey);
 
@@ -869,11 +904,11 @@ export default async function handler(req, res) {
     routeStopDay,
   });
 
-  // Zelfde API-versie als send-booking-invite (sommige PUTs mergen anders op 2021-07-28).
+  // Contact-PUT: 2021-07-28 — custom fields + native city/postalCode worden betrouwbaar gemerged (vs 2021-04-15).
   const tV1Put0 = Date.now();
   const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
     method: 'PUT',
-    headers: { Authorization: `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', Version: '2021-04-15' },
+    headers: { Authorization: `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', Version: '2021-07-28' },
     body: JSON.stringify(putPayload),
   });
   perf.v1_ghl_contact_put_ms = Date.now() - tV1Put0;
@@ -881,7 +916,10 @@ export default async function handler(req, res) {
     const errTxt = await putRes.text().catch(() => '');
     console.error('[confirm-booking] contact PUT (v1):', putRes.status, errTxt);
     const cfV1 = putPayload.customFields || [];
-    const pickCfV1 = (id) => cfV1.find((f) => f.id === id)?.field_value;
+    const pickCfV1 = (id) => {
+      const row = cfV1.find((f) => f.id === id);
+      return row?.field_value ?? row?.value;
+    };
     console.error('[confirm-booking DEBUG] v1 contact_put_failed', {
       status: putRes.status,
       body: (errTxt || '').slice(0, 1200),
@@ -894,6 +932,22 @@ export default async function handler(req, res) {
     releaseBookingLock(lockKey);
     return res.status(502).json({ error: 'Kon gegevens niet opslaan in GHL. Probeer het later opnieuw.' });
   }
+
+  let ghlPutOkBodyV1 = null;
+  try {
+    ghlPutOkBodyV1 = await putRes.json();
+  } catch (_) {
+    ghlPutOkBodyV1 = null;
+  }
+  const cAfterV1 = ghlPutOkBodyV1?.contact || ghlPutOkBodyV1;
+  console.log('[confirm-booking DEBUG] v1 after_ghl_contact_put_ok', {
+    status: putRes.status,
+    responseAddress1: cAfterV1?.address1 ?? null,
+    responsePostalCode: cAfterV1?.postalCode ?? null,
+    responseCity: cAfterV1?.city ?? null,
+    responseCustomFieldIds: Array.isArray(cAfterV1?.customFields) ? cAfterV1.customFields.map((f) => f.id) : null,
+    responseBodyJson: ghlPutOkBodyV1 ? JSON.stringify(ghlPutOkBodyV1).slice(0, 2500) : null,
+  });
 
   function pickAppointmentId(data) {
     if (!data || typeof data !== 'object') return null;

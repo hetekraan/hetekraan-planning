@@ -148,12 +148,14 @@ async function saveToContact(contactId, extracted) {
     // prijs_regels is een array → opslaan als JSON-string
     if (key === 'prijs_regels') {
       if (Array.isArray(value) && value.length > 0) {
-        customFields.push({ id: fieldId, field_value: JSON.stringify(value) });
+        const js = JSON.stringify(value);
+        customFields.push({ id: fieldId, value: js, field_value: js });
       }
       continue;
     }
     if (key === 'probleemomschrijving' || value) {
-      customFields.push({ id: fieldId, field_value: value });
+      const s = String(value);
+      customFields.push({ id: fieldId, value: s, field_value: s });
     }
   }
 
@@ -172,6 +174,12 @@ async function saveToContact(contactId, extracted) {
 
   const payload = {};
   if (addrLine) payload.address1 = addrLine;
+  if (extracted.postcode && extracted.postcode !== 'null') {
+    payload.postalCode = String(extracted.postcode).replace(/\s+/g, ' ').trim();
+  }
+  if (extracted.woonplaats && extracted.woonplaats !== 'null') {
+    payload.city = String(extracted.woonplaats).trim();
+  }
   if (customFields.length) payload.customFields = customFields;
 
   if (!payload.address1 && !payload.customFields?.length) return;

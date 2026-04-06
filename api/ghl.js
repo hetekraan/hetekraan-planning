@@ -203,8 +203,12 @@ const FIELD_IDS = {
 
 function getField(contact, fieldId) {
   if (!contact?.customFields) return '';
-  const field = contact.customFields.find(f => f.id === fieldId);
-  return field?.value || '';
+  const fid = String(fieldId);
+  const field = contact.customFields.find(
+    (f) => f.id === fid || f.fieldId === fid || f.customFieldId === fid
+  );
+  const raw = field?.value ?? field?.field_value;
+  return raw != null && raw !== '' ? String(raw) : '';
 }
 
 /**
@@ -425,7 +429,11 @@ export default async function handler(req, res) {
           if (contact?.id) e.contactId = contact.id;
           const straat     = getField(contact, FIELD_IDS.straatnaam);
           const huisnr     = getField(contact, FIELD_IDS.huisnummer);
-          const postcode   = getField(contact, FIELD_IDS.postcode);
+          const postcode   =
+            getField(contact, FIELD_IDS.postcode) ||
+            String(contact.postalCode || '')
+              .replace(/\s+/g, ' ')
+              .trim();
           const woonplaats = getField(contact, FIELD_IDS.woonplaats) || contact.city || '';
           const fromCf     = [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
           const canonical  = readCanonicalAddressLine(contact);
