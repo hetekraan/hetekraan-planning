@@ -180,13 +180,24 @@ function buildConfirmPutPayload({
       const pcc = normalizeAddressStr(structuredBookingAddress.postcode);
       const pl = normalizeAddressStr(structuredBookingAddress.city);
       const { straatnaam, huisnummer } = splitAddressLineToStraatHuis(sh);
-      ({ customFields: addrCf, parts } = buildCanonicalAddressWritePayload('', {
+      // Zelfde address1 als daily-analysis saveToContact: join(straatnaam, huisnummer, postcode, woonplaats)
+      ({ address1, customFields: addrCf, parts } = buildCanonicalAddressWritePayload('', {
         straatnaam,
         huisnummer,
         postcode: pcc,
         woonplaats: pl,
       }));
-      address1 = [sh, pcc, pl].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+      console.log('[confirm-booking DEBUG] booking_address_submitted', {
+        streetHouse: structuredBookingAddress.streetHouse,
+        postcode: structuredBookingAddress.postcode,
+        city: structuredBookingAddress.city,
+      });
+      console.log('[confirm-booking DEBUG] booking_address_derived_parts', {
+        straatnaam: parts.straatnaam,
+        huisnummer: parts.huisnummer,
+        postcode: parts.postcode,
+        woonplaats: parts.woonplaats,
+      });
     } else {
       ({ address1, customFields: addrCf, parts } = buildCanonicalAddressWritePayload(address));
     }
@@ -197,25 +208,18 @@ function buildConfirmPutPayload({
       { id: FIELD_IDS.type_onderhoud, value: type, field_value: type },
       { id: FIELD_IDS.probleemomschrijving, value: desc || '', field_value: desc || '' },
     ];
-    console.log('[confirm-booking DEBUG] canonical_address_write (same shape as daily-analysis)', {
+    console.log('[confirm-booking DEBUG] canonical_address_write_whatsapp_shape', {
       structuredFromForm: Boolean(structuredBookingAddress),
       resolvedFullLine: String(address).replace(/\s+/g, ' ').trim(),
-      address1Written: address1,
+      address1JoinStraatHuisPcPlaats: address1,
       nativePostalCode: putPayload.postalCode ?? null,
       nativeCity: putPayload.city ?? null,
-      cfStraatnaam: parts.straatnaam,
-      cfHuisnummer: parts.huisnummer,
-      cfPostcode: parts.postcode,
-      cfWoonplaats: parts.woonplaats,
+      partsStraatnaam: parts.straatnaam,
+      partsHuisnummer: parts.huisnummer,
+      partsPostcode: parts.postcode,
+      partsWoonplaats: parts.woonplaats,
       addressCustomFieldIdsInPut: addrCf.map((f) => f.id),
     });
-    if (structuredBookingAddress) {
-      console.log('[confirm-booking DEBUG] structured_address_form', {
-        streetHouse: structuredBookingAddress.streetHouse,
-        postcode: structuredBookingAddress.postcode,
-        city: structuredBookingAddress.city,
-      });
-    }
     logCanonicalAddressWrite('confirm-booking_buildPutPayload', { address1, parts });
   }
   const bevestigingTemplate1 = formatGeboektTijdslotField(date, block, routeStopDay);
@@ -929,6 +933,10 @@ export default async function handler(req, res) {
       attemptedCfPostcode: pickCfV1(GHL_ADDR_CF_IDS.postcode),
       attemptedCfWoonplaats: pickCfV1(GHL_ADDR_CF_IDS.woonplaats),
     });
+    console.error(
+      '[confirm-booking DEBUG] ghl_contact_put_failure_response_body',
+      (errTxt || '').slice(0, 8000)
+    );
     releaseBookingLock(lockKey);
     return res.status(502).json({ error: 'Kon gegevens niet opslaan in GHL. Probeer het later opnieuw.' });
   }
