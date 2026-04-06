@@ -56,6 +56,7 @@ import {
   logCanonicalAddressWrite,
   logCanonicalEmailWrite,
   readCanonicalAddressLine,
+  splitAddressLineToStraatHuis,
 } from '../lib/ghl-contact-canonical.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
@@ -158,6 +159,8 @@ function buildConfirmPutPayload({
   email,
   phoneForPut,
   address,
+  /** Boekingsformulier: drie velden; geen parseSingleLineAddressToParts voor postcode/plaats */
+  structuredBookingAddress,
   type,
   desc,
   date,
@@ -167,7 +170,24 @@ function buildConfirmPutPayload({
   const putPayload = { email };
   if (phoneForPut) putPayload.phone = phoneForPut;
   if (address) {
-    const { address1, customFields: addrCf, parts } = buildCanonicalAddressWritePayload(address);
+    let address1;
+    let addrCf;
+    let parts;
+    if (structuredBookingAddress) {
+      const sh = normalizeAddressStr(structuredBookingAddress.streetHouse);
+      const pcc = normalizeAddressStr(structuredBookingAddress.postcode);
+      const pl = normalizeAddressStr(structuredBookingAddress.city);
+      const { straatnaam, huisnummer } = splitAddressLineToStraatHuis(sh);
+      ({ customFields: addrCf, parts } = buildCanonicalAddressWritePayload('', {
+        straatnaam,
+        huisnummer,
+        postcode: pcc,
+        woonplaats: pl,
+      }));
+      address1 = [sh, pcc, pl].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    } else {
+      ({ address1, customFields: addrCf, parts } = buildCanonicalAddressWritePayload(address));
+    }
     putPayload.address1 = address1;
     putPayload.customFields = [
       ...addrCf,
@@ -175,6 +195,7 @@ function buildConfirmPutPayload({
       { id: FIELD_IDS.probleemomschrijving, field_value: desc || '' },
     ];
     console.log('[confirm-booking DEBUG] canonical_address_write (same shape as daily-analysis)', {
+      structuredFromForm: Boolean(structuredBookingAddress),
       resolvedFullLine: String(address).replace(/\s+/g, ' ').trim(),
       address1Written: address1,
       cfStraatnaam: parts.straatnaam,
@@ -244,7 +265,16 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Ongeldige JSON' });
     }
   }
-  const { token, slotId, email: emailRaw, phone: phoneRaw, address: addressRaw } = body || {};
+  const {
+    token,
+    slotId,
+    email: emailRaw,
+    phone: phoneRaw,
+    address: addressRaw,
+    addressStreetHouse,
+    addressPostcode,
+    addressCity,
+  } = body || {};
   if (!token || !slotId) return res.status(400).json({ error: 'token en slotId zijn verplicht' });
 
   const bookingData = verifyBookingToken(token);
@@ -310,17 +340,31 @@ export default async function handler(req, res) {
     len: email.length,
   });
 
-  // Adres: formulier > token > GHL-contact (zelfde volgorde-idee als e-mail)
-  let address = normalizeAddressStr(addressRaw);
-  if (!address) address = normalizeAddressStr(addressInToken);
-  if (!address && contactSnap) address = readCanonicalAddressLine(contactSnap);
+  // Adres: gestructureerd formulier (3 velden) > één regel body > token > GHL-contact
+  const shForm = normalizeAddressStr(addressStreetHouse);
+  const pcForm = normalizeAddressStr(addressPostcode);
+  const cityForm = normalizeAddressStr(addressCity);
+  const structuredBookingAddress =
+    shForm && pcForm && cityForm
+      ? { streetHouse: shForm, postcode: pcForm, city: cityForm }
+      : null;
+
+  let address = '';
+  if (structuredBookingAddress) {
+    address = [shForm, pcForm, cityForm].join(' ').replace(/\s+/g, ' ').trim();
+  } else {
+    address = normalizeAddressStr(addressRaw);
+    if (!address) address = normalizeAddressStr(addressInToken);
+    if (!address && contactSnap) address = readCanonicalAddressLine(contactSnap);
+  }
   if (!address) {
     return res.status(400).json({ error: 'Vul een adres in (nodig voor de monteur en facturatie).' });
   }
   logCanonicalAddressWrite('confirm-booking_resolved', {
     len: address.length,
     preview: address.slice(0, 100),
-    fromBody: Boolean(normalizeAddressStr(addressRaw)),
+    structuredForm: Boolean(structuredBookingAddress),
+    fromBody: Boolean(structuredBookingAddress || normalizeAddressStr(addressRaw)),
     ghlFields: ['address1', 'customFields.straatnaam', 'customFields.huisnummer', 'customFields.postcode', 'customFields.woonplaats'],
   });
 
@@ -579,6 +623,7 @@ export default async function handler(req, res) {
       email,
       phoneForPut,
       address,
+      structuredBookingAddress,
       type,
       desc,
       date,
@@ -816,6 +861,7 @@ export default async function handler(req, res) {
     email,
     phoneForPut,
     address,
+    structuredBookingAddress,
     type,
     desc,
     date,
