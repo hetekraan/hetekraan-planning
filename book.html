@@ -515,8 +515,8 @@
       }
 
       knownAddressFromToken = '';
-      const rawTokenAddress = bookingData.address != null ? String(bookingData.address).replace(/\s+/g, ' ').trim() : '';
-      if (rawTokenAddress) {
+      const rawTokenAddress = normalizeTokenAddress(bookingData.address);
+      if (isPresentBookingAddress(bookingData.address)) {
         knownAddressFromToken = rawTokenAddress;
       }
 
@@ -536,7 +536,7 @@
           : '';
       infoRows.innerHTML = `
         <div class="info-row"><span class="info-label">Naam</span><span>${esc(bookingData.name)}</span></div>
-        ${bookingData.address ? `<div class="info-row"><span class="info-label">Adres</span><span>${esc(bookingData.address)}</span></div>` : ''}
+        ${knownAddressFromToken ? `<div class="info-row"><span class="info-label">Adres</span><span>${esc(knownAddressFromToken)}</span></div>` : ''}
         ${phoneRow}
         ${knownEmailFromToken ? `<div class="info-row"><span class="info-label">E-mail</span><span>${esc(rawTokenEmail)}</span></div>` : ''}
       `;
@@ -573,6 +573,20 @@
       const s = String(str || '').trim();
       if (!s || s.length > 254) return false;
       return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(s);
+    }
+
+    /** Zelfde idee als isValidEmail: alleen “bekend” als de token een bruikbare adresregel bevat (niet alleen plaatsnaam). */
+    function isPresentBookingAddress(addr) {
+      const s = addr == null ? '' : String(addr).replace(/\s+/g, ' ').trim();
+      if (!s) return false;
+      if (s.length >= 12) return true;
+      if (/\d/.test(s) && s.length >= 6) return true;
+      if (/\b\d{4}\s*[A-Za-z]{2}\b/i.test(s)) return true;
+      return false;
+    }
+
+    function normalizeTokenAddress(addr) {
+      return addr == null ? '' : String(addr).replace(/\s+/g, ' ').trim();
     }
 
     /** NL-mobiel (06… of +31 6…) — sluit aan op server normalizeNlPhone */
@@ -627,7 +641,9 @@
         document.getElementById('emailBlock').hidden = false;
       }
       if (!knownAddressFromToken) {
-        document.getElementById('addressBlock').hidden = false;
+        const ab = document.getElementById('addressBlock');
+        ab.hidden = false;
+        ab.removeAttribute('hidden');
       }
       updateConfirmButtonState();
       queueMicrotask(() => updateConfirmButtonState());
