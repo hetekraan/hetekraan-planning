@@ -167,17 +167,23 @@ function buildConfirmPutPayload({
   const putPayload = { email };
   if (phoneForPut) putPayload.phone = phoneForPut;
   if (address) {
-    const { address1, customFields: addrCf } = buildCanonicalAddressWritePayload(address);
+    const { address1, customFields: addrCf, parts } = buildCanonicalAddressWritePayload(address);
     putPayload.address1 = address1;
     putPayload.customFields = [
       ...addrCf,
       { id: FIELD_IDS.type_onderhoud, field_value: type },
       { id: FIELD_IDS.probleemomschrijving, field_value: desc || '' },
     ];
-    logCanonicalAddressWrite('confirm-booking_buildPutPayload', {
-      address1,
-      straatHuisCf: addrCf.slice(0, 2).map((f) => f.field_value),
+    console.log('[confirm-booking DEBUG] canonical_address_write (same shape as daily-analysis)', {
+      resolvedFullLine: String(address).replace(/\s+/g, ' ').trim(),
+      address1Written: address1,
+      cfStraatnaam: parts.straatnaam,
+      cfHuisnummer: parts.huisnummer,
+      cfPostcode: parts.postcode,
+      cfWoonplaats: parts.woonplaats,
+      addressCustomFieldIdsInPut: addrCf.map((f) => f.id),
     });
+    logCanonicalAddressWrite('confirm-booking_buildPutPayload', { address1, parts });
   }
   const bevestigingTemplate1 = formatGeboektTijdslotField(date, block, routeStopDay);
   if (!putPayload.customFields) putPayload.customFields = [];
@@ -595,11 +601,16 @@ export default async function handler(req, res) {
     perf.ghl_contact_put_ms = Date.now() - tPutB10;
     if (!putResB1.ok) {
       const errTxt = await putResB1.text().catch(() => '');
+      const cf = putPayloadB1.customFields || [];
+      const pickCf = (id) => cf.find((f) => f.id === id)?.field_value;
       console.error('[confirm-booking DEBUG] v2 after_ghl_contact_put_failed', {
         status: putResB1.status,
         body: (errTxt || '').slice(0, 1200),
         attemptedAddress1: putPayloadB1.address1,
-        attemptedStraatCf: putPayloadB1.customFields?.find((f) => f.id === GHL_ADDR_CF_IDS.straatnaam)?.field_value,
+        attemptedCfStraatnaam: pickCf(GHL_ADDR_CF_IDS.straatnaam),
+        attemptedCfHuisnummer: pickCf(GHL_ADDR_CF_IDS.huisnummer),
+        attemptedCfPostcode: pickCf(GHL_ADDR_CF_IDS.postcode),
+        attemptedCfWoonplaats: pickCf(GHL_ADDR_CF_IDS.woonplaats),
       });
       console.error('[confirm-booking] contact PUT (B1):', putResB1.status, errTxt);
       try {
@@ -823,9 +834,16 @@ export default async function handler(req, res) {
   if (!putRes.ok) {
     const errTxt = await putRes.text().catch(() => '');
     console.error('[confirm-booking] contact PUT (v1):', putRes.status, errTxt);
-    console.error('[confirm-booking DEBUG] v1 contact_put_failed address snapshot', {
+    const cfV1 = putPayload.customFields || [];
+    const pickCfV1 = (id) => cfV1.find((f) => f.id === id)?.field_value;
+    console.error('[confirm-booking DEBUG] v1 contact_put_failed', {
+      status: putRes.status,
+      body: (errTxt || '').slice(0, 1200),
       attemptedAddress1: putPayload.address1,
-      attemptedStraatCf: putPayload.customFields?.find((f) => f.id === GHL_ADDR_CF_IDS.straatnaam)?.field_value,
+      attemptedCfStraatnaam: pickCfV1(GHL_ADDR_CF_IDS.straatnaam),
+      attemptedCfHuisnummer: pickCfV1(GHL_ADDR_CF_IDS.huisnummer),
+      attemptedCfPostcode: pickCfV1(GHL_ADDR_CF_IDS.postcode),
+      attemptedCfWoonplaats: pickCfV1(GHL_ADDR_CF_IDS.woonplaats),
     });
     releaseBookingLock(lockKey);
     return res.status(502).json({ error: 'Kon gegevens niet opslaan in GHL. Probeer het later opnieuw.' });
