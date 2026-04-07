@@ -1003,26 +1003,6 @@
     letter-spacing: 1px;
     margin-bottom: 4px;
   }
-  .price-quick-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-bottom: 4px;
-  }
-  .btn-price-chip {
-    border: 1px solid var(--border);
-    background: #111;
-    color: var(--text);
-    border-radius: 999px;
-    font-size: 11px;
-    padding: 4px 9px;
-    cursor: pointer;
-  }
-  .btn-price-chip.active {
-    border-color: var(--accent2);
-    color: var(--accent2);
-    background: rgba(0, 212, 170, 0.1);
-  }
   .extra-item {
     display: flex;
     justify-content: space-between;
@@ -2228,12 +2208,6 @@ function renderApptCard(a, i) {
 
         <div class="price-section" id="price-${domId}">
           <div class="price-section-label">Prijsoverzicht${(a.extras||[]).length === 0 && !a.price ? '<span style="color:var(--muted);font-size:10px;font-weight:400;margin-left:6px">Nog geen prijs uit chat</span>' : ''}</div>
-          <div class="price-quick-row">
-            ${STANDARD_PRICE_ITEMS.map((p) => {
-              const active = (a.extras || []).some((e) => String(e.desc || '').toLowerCase() === String(p.label).toLowerCase() && Number(e.price || 0) === Number(p.price));
-              return `<button type="button" class="btn-price-chip ${active ? 'active' : ''}" onclick='toggleStandardPriceLine(${idQ}, ${JSON.stringify(p.label)}, ${Number(p.price)})'>${p.label} (€${euroDisplay(p.price)})</button>`;
-            }).join('')}
-          </div>
           ${a.price && (a.extras||[]).length === 0 ? `<div class="extra-item"><span>Basis</span><span>€${euroDisplay(a.price)}</span></div>` : ''}
           ${(a.extras||[]).map((e,i) => `
             <div class="extra-item" style="align-items:center">
@@ -2667,14 +2641,33 @@ const PRODUCTS = [
 ];
 
 function onProductSelect(id) {
+  const a = appointments.find((x) => String(x.id) === String(id));
+  if (!a) return;
   const sid = appointmentDomSafeId(id);
-  const val = document.getElementById(`extra-select-${sid}`)?.value;
+  const selectEl = document.getElementById(`extra-select-${sid}`);
+  const val = selectEl?.value;
   if (!val) return;
-  const [desc, price] = val.split('|');
-  const descEl  = document.getElementById(`extra-desc-${sid}`);
+  const pipe = val.indexOf('|');
+  const desc = pipe >= 0 ? val.slice(0, pipe) : val;
+  const priceStr = pipe >= 0 ? val.slice(pipe + 1) : '';
+  const price = parseFloat(priceStr);
+  const descEl = document.getElementById(`extra-desc-${sid}`);
   const priceEl = document.getElementById(`extra-price-${sid}`);
-  if (descEl)  descEl.value  = desc;
-  if (priceEl) priceEl.value = price;
+  if (desc === 'eigen') {
+    if (descEl) descEl.value = '';
+    if (priceEl) priceEl.value = '';
+    if (selectEl) selectEl.value = '';
+    return;
+  }
+  if (!desc || !Number.isFinite(price) || price <= 0) {
+    if (selectEl) selectEl.value = '';
+    return;
+  }
+  if (!a.extras) a.extras = [];
+  a.extras.push({ desc: String(desc).trim(), price: Math.round(price * 100) / 100 });
+  if (selectEl) selectEl.value = '';
+  render();
+  void persistPriceLines(id);
 }
 
 function calcTotalPrice(a) {
@@ -2725,20 +2718,6 @@ async function persistPriceLines(id) {
     console.warn('updatePriceLines netwerkfout', e);
     showToast('⚠ Prijsregels niet opgeslagen (netwerkfout)', 'info');
   }
-}
-
-function toggleStandardPriceLine(id, label, amount) {
-  const a = appointments.find(x => String(x.id) === String(id));
-  if (!a) return;
-  if (!a.extras) a.extras = [];
-  const idx = a.extras.findIndex((e) =>
-    String(e.desc || '').toLowerCase() === String(label || '').toLowerCase() &&
-    Number(e.price || 0) === Number(amount || 0)
-  );
-  if (idx >= 0) a.extras.splice(idx, 1);
-  else a.extras.push({ desc: String(label || '').trim(), price: Number(amount) || 0 });
-  render();
-  void persistPriceLines(id);
 }
 
 function addExtra(id) {
