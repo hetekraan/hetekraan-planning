@@ -42,8 +42,10 @@ import {
   logCanonicalAddressRead,
   logCanonicalAddressWrite,
   readCanonicalAddressLine,
+  splitAddressLineToStraatHuis,
 } from '../lib/ghl-contact-canonical.js';
 import {
+  BOOKING_FORM_FIELD_IDS,
   appendBookingCanonFields,
   formatPriceRulesStructuredString,
   toPriceNumber,
@@ -218,6 +220,22 @@ function getField(contact, fieldId) {
   );
   const raw = field?.value ?? field?.field_value;
   return raw != null && raw !== '' ? String(raw) : '';
+}
+
+function parseCanonPriceRulesLines(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return [];
+  const rows = s.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const out = [];
+  for (const row of rows) {
+    const [left, ...rest] = row.split('|');
+    const label = String(left || '').trim();
+    const amountRaw = String(rest.join('|') || '').trim().replace(',', '.');
+    const amount = Number(amountRaw.replace(/[^\d.-]/g, ''));
+    if (!label || !Number.isFinite(amount)) continue;
+    out.push({ desc: label, price: amount });
+  }
+  return out;
 }
 
 /**
@@ -436,14 +454,19 @@ export default async function handler(req, res) {
         function enrichEvent(e, contact) {
           e.contact = contact;
           if (contact?.id) e.contactId = contact.id;
-          const straat     = getField(contact, FIELD_IDS.straatnaam);
-          const huisnr     = getField(contact, FIELD_IDS.huisnummer);
-          const postcode   =
+          const canonStreetHouse = getField(contact, BOOKING_FORM_FIELD_IDS.straat_huisnummer);
+          const canonPostcode = getField(contact, BOOKING_FORM_FIELD_IDS.postcode);
+          const canonWoonplaats = getField(contact, BOOKING_FORM_FIELD_IDS.woonplaats);
+          const splitCanon = splitAddressLineToStraatHuis(canonStreetHouse);
+          const straat = splitCanon.straatnaam || getField(contact, FIELD_IDS.straatnaam);
+          const huisnr = splitCanon.huisnummer || getField(contact, FIELD_IDS.huisnummer);
+          const postcode =
+            canonPostcode ||
             getField(contact, FIELD_IDS.postcode) ||
             String(contact.postalCode || '')
               .replace(/\s+/g, ' ')
               .trim();
-          const woonplaats = getField(contact, FIELD_IDS.woonplaats) || contact.city || '';
+          const woonplaats = canonWoonplaats || getField(contact, FIELD_IDS.woonplaats) || contact.city || '';
           const fromCf     = [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
           const canonical  = readCanonicalAddressLine(contact);
           e.parsedAddress = canonical;
@@ -468,7 +491,10 @@ export default async function handler(req, res) {
             e.parsedPostcode   = '';
             e.parsedWoonplaats = '';
           }
-          const werkzaamheden = getField(contact, FIELD_IDS.probleemomschrijving);
+          const canonType = getField(contact, BOOKING_FORM_FIELD_IDS.type_onderhoud);
+          const canonWerkzaamheden = getField(contact, BOOKING_FORM_FIELD_IDS.probleemomschrijving);
+          const werkzaamheden = canonWerkzaamheden || getField(contact, FIELD_IDS.probleemomschrijving);
+          e.parsedJobType = canonType || '';
           if (e._hkBlockReservationSynthetic) {
             const blk = e._hkSyntheticBlock === 'afternoon' ? 'afternoon' : 'morning';
             const windowLabel =
@@ -483,11 +509,20 @@ export default async function handler(req, res) {
           } else {
             e.parsedWork = werkzaamheden || e.title;
           }
-          e.parsedPrice      = getField(contact, FIELD_IDS.prijs);
+          const canonPriceTotal = getField(contact, BOOKING_FORM_FIELD_IDS.prijs_totaal);
+          e.parsedPrice      = canonPriceTotal || getField(contact, FIELD_IDS.prijs);
           e.parsedNotes      = getField(contact, FIELD_IDS.opmerkingen);
-          e.parsedTimeWindow = getField(contact, FIELD_IDS.tijdafspraak) || null;
+          e.parsedTimeWindow =
+            getField(contact, BOOKING_FORM_FIELD_IDS.tijdslot) ||
+            getField(contact, FIELD_IDS.tijdafspraak) ||
+            null;
+          e.parsedPaymentStatus = getField(contact, BOOKING_FORM_FIELD_IDS.betaal_status) || '';
+          const canonPrijsRegels = getField(contact, BOOKING_FORM_FIELD_IDS.prijs_regels);
+          if (canonPrijsRegels) {
+            e.parsedExtras = parseCanonPriceRulesLines(canonPrijsRegels);
+          }
           const prijsRegelsRaw = getField(contact, FIELD_IDS.prijs_regels);
-          if (prijsRegelsRaw) {
+          if ((!Array.isArray(e.parsedExtras) || e.parsedExtras.length === 0) && prijsRegelsRaw) {
             try { e.parsedExtras = JSON.parse(prijsRegelsRaw); } catch (_) {}
           }
         }
