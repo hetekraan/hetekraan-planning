@@ -58,7 +58,9 @@ import {
   amsterdamDayReadCacheKeyCalendarEvents,
   amsterdamDayReadCacheSet,
   cachedListConfirmedSyntheticEventsForDate,
+  invalidateRedisSyntheticsCacheForDate,
 } from '../lib/amsterdam-day-read-cache.js';
+import { deleteConfirmedReservationForContactDate } from '../lib/block-reservation-store.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -1030,6 +1032,138 @@ export default async function handler(req, res) {
         }
         console.log('[deleteAppointment] verwijderd:', delId);
         return res.status(200).json({ success: true });
+      }
+
+      case 'deletePlannerBooking': {
+        const { contactId, routeDate, rowId, isSyntheticB1, isCalBlock } = req.body || {};
+        console.log('[BOOKING_DELETE_START]', {
+          contactId: contactId ?? null,
+          routeDate: routeDate ?? null,
+          rowId: rowId ?? null,
+          isSyntheticB1: !!isSyntheticB1,
+          isCalBlock: !!isCalBlock,
+        });
+
+        if (isCalBlock) {
+          return res.status(400).json({
+            error:
+              'Dit is een agenda-blok, geen klantboeking. Gebruik “Blokkeer dag opheffen” / GHL om het blok te verwijderen.',
+          });
+        }
+        const cid = String(contactId ?? '').trim();
+        const dateNorm = normalizeYyyyMmDdInput(String(routeDate ?? ''));
+        if (!cid || !dateNorm) {
+          return res.status(400).json({ error: 'contactId en geldige routeDate (YYYY-MM-DD) vereist' });
+        }
+
+        const rid = String(rowId ?? '').trim();
+        const hkRow = /^hk-b1:([^:]+):(\d{4}-\d{2}-\d{2})$/i.exec(rid);
+        if (hkRow) {
+          if (hkRow[1] !== cid) {
+            return res.status(400).json({ error: 'contactId hoort niet bij deze plannerrij' });
+          }
+          if (hkRow[2] !== dateNorm) {
+            return res.status(400).json({ error: 'routeDate hoort niet bij deze plannerrij' });
+          }
+        }
+
+        const synthetic = Boolean(isSyntheticB1) || /^hk-b1:/i.test(rid);
+
+        const redisOut = await deleteConfirmedReservationForContactDate(cid, dateNorm);
+        console.log('[BOOKING_DELETE_REDIS]', redisOut);
+        invalidateRedisSyntheticsCacheForDate(dateNorm);
+
+        let ghlApptResult = { attempted: false, ok: null, detail: '' };
+        const skipGhlDelete =
+          synthetic ||
+          !rid ||
+          /^row-/i.test(rid) ||
+          /^local-/i.test(rid) ||
+          /^hk-b1:/i.test(rid);
+        if (!skipGhlDelete) {
+          ghlApptResult.attempted = true;
+          const delPaths = [
+            `${GHL_BASE}/calendars/events/appointments/${encodeURIComponent(rid)}`,
+            `${GHL_BASE}/calendars/events/${encodeURIComponent(rid)}`,
+          ];
+          let delOk = false;
+          let delErr = '';
+          for (const url of delPaths) {
+            for (const Version of ['2021-04-15', '2021-07-28']) {
+              const r = await fetchWithRetry(
+                url,
+                {
+                  method: 'DELETE',
+                  headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version },
+                },
+                0
+              );
+              if (r.ok || r.status === 404) {
+                delOk = true;
+                break;
+              }
+              const t = await r.text().catch(() => '');
+              delErr = `${r.status} ${t}`.slice(0, 300);
+            }
+            if (delOk) break;
+          }
+          ghlApptResult.ok = delOk;
+          ghlApptResult.detail = delErr || '';
+          console.log('[BOOKING_DELETE_GHL_APPOINTMENT]', {
+            rowId: rid,
+            ok: delOk,
+            detail: delErr ? delErr.slice(0, 200) : '',
+          });
+        }
+
+        const bookingResetFields = [
+          { id: FIELD_IDS.tijdafspraak, field_value: '', value: '' },
+          { id: BOOKING_FORM_FIELD_IDS.tijdslot, field_value: '', value: '' },
+          { id: BOOKING_FORM_FIELD_IDS.boeking_bevestigd_datum, field_value: '', value: '' },
+          { id: BOOKING_FORM_FIELD_IDS.boeking_bevestigd_dagdeel, field_value: '', value: '' },
+          { id: BOOKING_FORM_FIELD_IDS.boeking_bevestigd_status, field_value: '', value: '' },
+        ];
+        const resetPut = await fetchWithRetry(`${GHL_BASE}/contacts/${encodeURIComponent(cid)}`, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${GHL_API_KEY}`,
+            'Content-Type': 'application/json',
+            Version: '2021-04-15',
+          },
+          body: JSON.stringify({ customFields: bookingResetFields }),
+          _allowPostRetry: false,
+        });
+        const resetOk = resetPut.ok;
+        const resetTxt = resetOk ? '' : (await resetPut.text().catch(() => '')).slice(0, 400);
+        console.log('[BOOKING_DELETE_CONTACT_RESET]', {
+          contactId: cid,
+          httpStatus: resetPut.status,
+          ok: resetOk,
+          detail: resetTxt ? resetTxt.slice(0, 200) : '',
+        });
+        if (!resetOk) {
+          return res.status(502).json({
+            error: 'Boekingsvelden op contact wissen mislukt',
+            detail: resetTxt || undefined,
+            redis: redisOut,
+            ghlAppointment: ghlApptResult,
+          });
+        }
+
+        console.log('[BOOKING_DELETE_DONE]', {
+          contactId: cid,
+          routeDate: dateNorm,
+          synthetic,
+          redis: redisOut,
+          ghlAppointment: ghlApptResult,
+        });
+
+        return res.status(200).json({
+          success: true,
+          synthetic,
+          redis: redisOut,
+          ghlAppointment: ghlApptResult,
+        });
       }
 
       case 'rescheduleAppointment': {

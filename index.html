@@ -3123,30 +3123,46 @@ function hideDeleteConfirm() {
 
 async function confirmDeleteAppt() {
   if (_rescheduleId == null) return;
-  const a = appointments.find(x => String(x.id) === String(_rescheduleId));
+  const a = appointments.find((x) => String(x.id) === String(_rescheduleId));
   closeRescheduleModal();
-  appointments = appointments.filter(x => String(x.id) !== String(_rescheduleId));
-  render();
-  showToast('⏳ Afspraak verwijderen...', 'loading');
+  if (!a) return;
+  showToast('⏳ Boeking verwijderen en GHL reset…', 'loading');
 
-  if (a?.id && !String(a.id).startsWith('local-')) {
-    try {
-      const res = await fetch('/api/ghl?action=deleteAppointment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
-        body: JSON.stringify({ ghlAppointmentId: a.id }),
-      });
-      if (res.ok) {
-        showToast('✓ Afspraak verwijderd uit GHL', 'success');
-      } else {
-        const d = await res.json().catch(() => ({}));
-        showToast(`⚠ Lokaal verwijderd, GHL mislukt: ${d.error || res.status}`, 'info');
-      }
-    } catch (e) {
-      showToast('⚠ Lokaal verwijderd, GHL niet bereikbaar', 'info');
+  if (!a.contactId) {
+    appointments = appointments.filter((x) => String(x.id) !== String(a.id));
+    render();
+    showToast('Rij verwijderd (geen GHL contactId)', 'info');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/ghl?action=deletePlannerBooking', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
+      body: JSON.stringify({
+        contactId: a.contactId,
+        routeDate: getDateStr(currentDate),
+        rowId: a.id,
+        isSyntheticB1: !!a.isSyntheticBlockBooking,
+        isCalBlock: !!a.isCalBlock,
+      }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showToast(`⚠ ${d.error || res.status}${d.detail ? ': ' + String(d.detail).slice(0, 80) : ''}`, 'info');
+      return;
     }
-  } else {
-    showToast('Afspraak verwijderd (geen GHL-id)', 'info');
+    if (d.ghlAppointment?.attempted && d.ghlAppointment.ok === false) {
+      showToast(
+        '⚠ Boeking vrijgegeven in Redis/contact; GHL-afspraak niet verwijderd — controleer de agenda',
+        'info'
+      );
+    } else {
+      showToast('✓ Boeking verwijderd / ge-reset', 'success');
+    }
+    await loadAppointments(currentDate);
+  } catch (e) {
+    showToast('⚠ Verwijderen mislukt: ' + (e.message || e), 'info');
   }
 }
 
