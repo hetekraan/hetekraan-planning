@@ -1003,6 +1003,26 @@
     letter-spacing: 1px;
     margin-bottom: 4px;
   }
+  .price-quick-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .btn-price-chip {
+    border: 1px solid var(--border);
+    background: #111;
+    color: var(--text);
+    border-radius: 999px;
+    font-size: 11px;
+    padding: 4px 9px;
+    cursor: pointer;
+  }
+  .btn-price-chip.active {
+    border-color: var(--accent2);
+    color: var(--accent2);
+    background: rgba(0, 212, 170, 0.1);
+  }
   .extra-item {
     display: flex;
     justify-content: space-between;
@@ -2208,6 +2228,12 @@ function renderApptCard(a, i) {
 
         <div class="price-section" id="price-${domId}">
           <div class="price-section-label">Prijsoverzicht${(a.extras||[]).length === 0 && !a.price ? '<span style="color:var(--muted);font-size:10px;font-weight:400;margin-left:6px">Nog geen prijs uit chat</span>' : ''}</div>
+          <div class="price-quick-row">
+            ${STANDARD_PRICE_ITEMS.map((p) => {
+              const active = (a.extras || []).some((e) => String(e.desc || '').toLowerCase() === String(p.label).toLowerCase() && Number(e.price || 0) === Number(p.amount));
+              return `<button type="button" class="btn-price-chip ${active ? 'active' : ''}" onclick='toggleStandardPriceLine(${idQ}, ${JSON.stringify(p.label)}, ${Number(p.amount)})'>${p.label} (€${p.amount})</button>`;
+            }).join('')}
+          </div>
           ${a.price && (a.extras||[]).length === 0 ? `<div class="extra-item"><span>Basis</span><span>€${a.price}</span></div>` : ''}
           ${(a.extras||[]).map((e,i) => `
             <div class="extra-item">
@@ -2604,7 +2630,13 @@ function setLastService(id, val) {
   if (a) a.lastService = val;
 }
 
+const STANDARD_PRICE_ITEMS = [
+  { label: 'onderhoud', price: 195 },
+  { label: 'voorrijkosten', price: 50 },
+];
+
 const PRODUCTS = [
+  ...STANDARD_PRICE_ITEMS.map((x) => ({ desc: x.label, price: x.price })),
   { desc: 'Slang FLEX',        price: 70  },
   { desc: 'Cartridge FLEX',    price: 195 },
   { desc: 'Reduceerventiel',   price: 125 },
@@ -2613,7 +2645,6 @@ const PRODUCTS = [
   { desc: 'Perlator',          price: 30  },
   { desc: 'Binnenwerk Pro 3',  price: 280 },
   { desc: 'Binnenwerk COMBI',  price: 320 },
-  { desc: 'Voorrijkosten',     price: 50  },
   { desc: 'Montagekosten',     price: 105 },
 ];
 
@@ -2632,6 +2663,49 @@ function calcTotalPrice(a) {
   const base = a.price || 0;
   const extrasTotal = (a.extras || []).reduce((s, e) => s + (e.price || 0), 0);
   return base + extrasTotal;
+}
+
+async function persistPriceLines(id) {
+  const a = appointments.find(x => String(x.id) === String(id));
+  if (!a || !a.contactId) return;
+  const lines = (a.extras || []).map((e) => ({
+    desc: String(e.desc || '').trim(),
+    price: Number(e.price) || 0,
+  })).filter((e) => e.desc && e.price > 0);
+  const total = calcTotalPrice(a);
+  try {
+    const res = await fetch('/api/ghl?action=updatePriceLines', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
+      body: JSON.stringify({
+        contactId: a.contactId,
+        extras: lines,
+        totalPrice: total,
+      }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      console.warn('updatePriceLines mislukt', d.error || res.status);
+      showToast(`⚠ Prijsregels niet opgeslagen in GHL (${res.status})`, 'info');
+    }
+  } catch (e) {
+    console.warn('updatePriceLines netwerkfout', e);
+    showToast('⚠ Prijsregels niet opgeslagen (netwerkfout)', 'info');
+  }
+}
+
+function toggleStandardPriceLine(id, label, amount) {
+  const a = appointments.find(x => String(x.id) === String(id));
+  if (!a) return;
+  if (!a.extras) a.extras = [];
+  const idx = a.extras.findIndex((e) =>
+    String(e.desc || '').toLowerCase() === String(label || '').toLowerCase() &&
+    Number(e.price || 0) === Number(amount || 0)
+  );
+  if (idx >= 0) a.extras.splice(idx, 1);
+  else a.extras.push({ desc: String(label || '').trim(), price: Number(amount) || 0 });
+  render();
+  void persistPriceLines(id);
 }
 
 function addExtra(id) {
@@ -2654,6 +2728,7 @@ function addExtra(id) {
   if (priceEl)  priceEl.value = '';
   if (selectEl) selectEl.value = '';
   render();
+  void persistPriceLines(id);
 }
 
 function removeExtra(id, idx) {
@@ -2661,6 +2736,7 @@ function removeExtra(id, idx) {
   if (!a || !a.extras) return;
   a.extras.splice(idx, 1);
   render();
+  void persistPriceLines(id);
 }
 
 async function confirmDone(id) {

@@ -743,6 +743,48 @@ export default async function handler(req, res) {
         });
       }
 
+      case 'updatePriceLines': {
+        const { contactId, extras, totalPrice } = req.body || {};
+        if (!contactId) return res.status(400).json({ error: 'contactId vereist' });
+        const extrasArr = Array.isArray(extras) ? extras : [];
+        const totalNum = toPriceNumber(totalPrice);
+        const customFields = [];
+        if (totalNum !== null) {
+          customFields.push({ id: FIELD_IDS.prijs, field_value: String(totalNum) });
+        }
+        if (extrasArr.length > 0) {
+          customFields.push({ id: FIELD_IDS.prijs_regels, field_value: JSON.stringify(extrasArr) });
+        } else {
+          customFields.push({ id: FIELD_IDS.prijs_regels, field_value: '' });
+        }
+        const canonicalPrijsRegels = formatPriceRulesStructuredString(extrasArr);
+        const bookingCanon = appendBookingCanonFields(customFields, {
+          prijs_regels: canonicalPrijsRegels,
+          prijs_totaal: totalNum,
+        });
+        console.log('[BOOKING_PRICE_DEBUG]', {
+          contactId,
+          extrasCount: extrasArr.length,
+          serializedPrijsRegels: canonicalPrijsRegels,
+          prijsTotaal: totalNum,
+        });
+        const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${GHL_API_KEY}`,
+            'Content-Type': 'application/json',
+            Version: '2021-04-15',
+          },
+          body: JSON.stringify({ customFields: bookingCanon.customFields }),
+          _allowPostRetry: false,
+        });
+        if (!putRes.ok) {
+          const detail = (await putRes.text().catch(() => '')).slice(0, 400);
+          return res.status(502).json({ error: 'Kon prijsregels niet opslaan in GHL', detail });
+        }
+        return res.status(200).json({ success: true, savedLines: extrasArr.length, totalPrice: totalNum });
+      }
+
       case 'saveRouteTimes': {
         // Custom field geplande aankomst + optioneel GHL-kalender bijwerken
         const { routeTimes } = req.body; // [{ contactId, plannedTime, ghlAppointmentId?, routeDate?, startTime?, durationMin? }]
