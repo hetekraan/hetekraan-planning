@@ -37,6 +37,10 @@ import {
   resolveAssignedUserIdForBlockedSlotQueries,
 } from '../lib/ghl-calendar-blocks.js';
 import {
+  CUSTOMER_BLOCK_AFTERNOON_END_HOUR,
+  CUSTOMER_BLOCK_AFTERNOON_START_HOUR,
+  CUSTOMER_BLOCK_MORNING_END_HOUR,
+  CUSTOMER_BLOCK_MORNING_START_HOUR,
   DAYPART_SPLIT_HOUR,
   DEFAULT_BOOK_START_AFTERNOON,
   DEFAULT_BOOK_START_MORNING,
@@ -172,6 +176,29 @@ function formatGeboektTijdslotField(dateStr, block, routeStopDay) {
   return s;
 }
 
+/** Alleen voor `boekingsformulier_tijdslot` — korte klantregel (WhatsApp / GHL). Legacy `tijdafspraak` blijft `formatGeboektTijdslotField`. */
+function formatCanonBoekingsformulierTijdslot(dateStr, dagdeel) {
+  const parts = String(dateStr || '').split('-').map(Number);
+  const y = parts[0];
+  const mo = parts[1];
+  const d = parts[2];
+  if (!y || !mo || !d) return '';
+  const utc = Date.UTC(y, mo - 1, d, 12, 0, 0);
+  const dateHuman = new Date(utc).toLocaleDateString('nl-NL', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'Europe/Amsterdam',
+  });
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const window =
+    dagdeel === 'afternoon'
+      ? `${pad2(CUSTOMER_BLOCK_AFTERNOON_START_HOUR)}:00-${pad2(CUSTOMER_BLOCK_AFTERNOON_END_HOUR)}:00`
+      : `${pad2(CUSTOMER_BLOCK_MORNING_START_HOUR)}:00-${pad2(CUSTOMER_BLOCK_MORNING_END_HOUR)}:00`;
+  return `${dateHuman} tussen ${window}`;
+}
+
 function firstValidNlMobile(...candidates) {
   for (const c of candidates) {
     const n = normalizeNlPhone(String(c ?? '').trim());
@@ -288,6 +315,7 @@ function buildConfirmPutPayload({
   const dagdeel = String(block || '').toLowerCase() === 'afternoon' ? 'afternoon' : 'morning';
   const status = 'confirmed';
   const bevestigingTemplate1 = formatGeboektTijdslotField(datum, dagdeel, routeStopDay);
+  const tijdslotCanon = formatCanonBoekingsformulierTijdslot(datum, dagdeel);
   if (!putPayload.customFields) putPayload.customFields = [];
   putPayload.customFields = putPayload.customFields.filter((f) => f.id !== FIELD_IDS.tijdafspraak);
   putPayload.customFields.push({
@@ -300,7 +328,7 @@ function buildConfirmPutPayload({
     straat_huisnummer: bookingCanonStreetHouse,
     postcode: bookingCanonPostcode,
     woonplaats: bookingCanonWoonplaats,
-    tijdslot: bevestigingTemplate1,
+    tijdslot: tijdslotCanon,
     type_onderhoud: type,
     probleemomschrijving: desc || '',
     boeking_bevestigd_datum: datum,
@@ -333,7 +361,8 @@ function buildConfirmPutPayload({
   ];
   console.log('[BOOKING_CANON_WRITE]', bookingCanon.written);
   console.log('[BOOKING_CANON_WRITE][confirmed]', {
-    boekingsformulier_tijdslot: bevestigingTemplate1,
+    boekingsformulier_tijdslot: tijdslotCanon,
+    legacy_tijdafspraak_field: bevestigingTemplate1,
     boeking_bevestigd_datum: datum,
     boeking_bevestigd_dagdeel: dagdeel,
     boeking_bevestigd_status: status,
