@@ -2230,16 +2230,19 @@ function renderApptCard(a, i) {
           <div class="price-section-label">Prijsoverzicht${(a.extras||[]).length === 0 && !a.price ? '<span style="color:var(--muted);font-size:10px;font-weight:400;margin-left:6px">Nog geen prijs uit chat</span>' : ''}</div>
           <div class="price-quick-row">
             ${STANDARD_PRICE_ITEMS.map((p) => {
-              const active = (a.extras || []).some((e) => String(e.desc || '').toLowerCase() === String(p.label).toLowerCase() && Number(e.price || 0) === Number(p.amount));
-              return `<button type="button" class="btn-price-chip ${active ? 'active' : ''}" onclick='toggleStandardPriceLine(${idQ}, ${JSON.stringify(p.label)}, ${Number(p.amount)})'>${p.label} (€${p.amount})</button>`;
+              const active = (a.extras || []).some((e) => String(e.desc || '').toLowerCase() === String(p.label).toLowerCase() && Number(e.price || 0) === Number(p.price));
+              return `<button type="button" class="btn-price-chip ${active ? 'active' : ''}" onclick='toggleStandardPriceLine(${idQ}, ${JSON.stringify(p.label)}, ${Number(p.price)})'>${p.label} (€${euroDisplay(p.price)})</button>`;
             }).join('')}
           </div>
-          ${a.price && (a.extras||[]).length === 0 ? `<div class="extra-item"><span>Basis</span><span>€${a.price}</span></div>` : ''}
+          ${a.price && (a.extras||[]).length === 0 ? `<div class="extra-item"><span>Basis</span><span>€${euroDisplay(a.price)}</span></div>` : ''}
           ${(a.extras||[]).map((e,i) => `
-            <div class="extra-item">
-              <span>${e.desc}</span>
-              <div style="display:flex;gap:8px;align-items:center">
-                <span>€${e.price}</span>
+            <div class="extra-item" style="align-items:center">
+              <input class="form-input" type="text" value="${escapePriceAttr(e.desc)}" style="flex:1;min-width:0"
+                onchange='updateExtraLine(${idQ},${i},this.value,null)' />
+              <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+                <span style="font-size:13px;color:var(--muted)">€</span>
+                <input class="form-input price-input" type="number" step="0.01" min="0" value="${Number.isFinite(Number(e.price)) ? e.price : 0}"
+                  style="width:88px" onchange='updateExtraLine(${idQ},${i},null,parseFloat(this.value))' />
                 <span class="extra-remove" onclick='removeExtra(${idQ},${i})'>✕</span>
               </div>
             </div>`).join('')}
@@ -2257,7 +2260,7 @@ function renderApptCard(a, i) {
           </div>
           <div class="price-total-row">
             <span>Totaal</span>
-            <span>€${calcTotalPrice(a)}</span>
+            <span>€${euroDisplay(calcTotalPrice(a))}</span>
           </div>
         </div>
 
@@ -2630,6 +2633,21 @@ function setLastService(id, val) {
   if (a) a.lastService = val;
 }
 
+function escapePriceAttr(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function euroDisplay(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return '0';
+  const r = Math.round(x * 100) / 100;
+  return r.toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
 const STANDARD_PRICE_ITEMS = [
   { label: 'onderhoud', price: 195 },
   { label: 'voorrijkosten', price: 50 },
@@ -2660,9 +2678,24 @@ function onProductSelect(id) {
 }
 
 function calcTotalPrice(a) {
-  const base = a.price || 0;
-  const extrasTotal = (a.extras || []).reduce((s, e) => s + (e.price || 0), 0);
-  return base + extrasTotal;
+  const baseRaw = Number(a?.price);
+  const base = Number.isFinite(baseRaw) ? baseRaw : 0;
+  const extrasTotal = (a.extras || []).reduce((s, e) => {
+    const p = Number(e?.price);
+    return s + (Number.isFinite(p) ? p : 0);
+  }, 0);
+  return Math.round((base + extrasTotal) * 100) / 100;
+}
+
+function updateExtraLine(id, idx, desc, price) {
+  const a = appointments.find((x) => String(x.id) === String(id));
+  if (!a || !a.extras || !a.extras[idx]) return;
+  if (desc !== null && desc !== undefined) a.extras[idx].desc = String(desc).trim();
+  if (price !== null && price !== undefined && !Number.isNaN(Number(price))) {
+    a.extras[idx].price = Math.max(0, Math.round(Number(price) * 100) / 100);
+  }
+  render();
+  void persistPriceLines(id);
 }
 
 async function persistPriceLines(id) {
@@ -2670,8 +2703,8 @@ async function persistPriceLines(id) {
   if (!a || !a.contactId) return;
   const lines = (a.extras || []).map((e) => ({
     desc: String(e.desc || '').trim(),
-    price: Number(e.price) || 0,
-  })).filter((e) => e.desc && e.price > 0);
+    price: Math.round((Number(e.price) || 0) * 100) / 100,
+  })).filter((e) => e.desc && e.price > 0 && Number.isFinite(e.price));
   const total = calcTotalPrice(a);
   try {
     const res = await fetch('/api/ghl?action=updatePriceLines', {

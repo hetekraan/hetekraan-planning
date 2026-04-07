@@ -321,14 +321,14 @@
     <div class="price-rule-list">
       <label class="price-rule-item">
         <span class="price-rule-left">
-          <input type="checkbox" class="price-rule-checkbox" data-label="standaard onderhoud" data-amount="195">
+          <input type="checkbox" class="price-rule-checkbox" data-label="standaard onderhoud" data-price="195">
           standaard onderhoud
         </span>
         <span class="price-rule-amount">€195</span>
       </label>
       <label class="price-rule-item">
         <span class="price-rule-left">
-          <input type="checkbox" class="price-rule-checkbox" data-label="voorrijkosten" data-amount="50">
+          <input type="checkbox" class="price-rule-checkbox" data-label="voorrijkosten" data-price="50">
           voorrijkosten
         </span>
         <span class="price-rule-amount">€50</span>
@@ -396,9 +396,10 @@
   let resolvedContactId = null;
   let loadedSlots       = [];
   let sendInviteInFlight = false;
+  /** Zelfde shape als dashboard: { label, price } — API kan ook amount tot normalizePriceLineItems. */
   const STANDARD_PRICE_ITEMS = [
-    { label: 'standaard onderhoud', amount: 195 },
-    { label: 'voorrijkosten', amount: 50 },
+    { label: 'standaard onderhoud', price: 195 },
+    { label: 'voorrijkosten', price: 50 },
   ];
   /** Zelfde als bij laatste geslaagde preview — gebruikt bij send zodat link = preview. */
   let pendingProposalConstraints = null;
@@ -508,16 +509,19 @@
 
   function getSelectedPriceItems() {
     return [...document.querySelectorAll('.price-rule-checkbox:checked')]
-      .map((el) => ({
-        label: String(el.dataset.label || '').trim(),
-        amount: Number(el.dataset.amount || 0),
-      }))
-      .filter((x) => x.label && Number.isFinite(x.amount) && x.amount > 0);
+      .map((el) => {
+        const p = Number(el.dataset.price ?? el.dataset.amount ?? 0);
+        return {
+          label: String(el.dataset.label || '').trim(),
+          price: p,
+        };
+      })
+      .filter((x) => x.label && Number.isFinite(x.price) && x.price > 0);
   }
 
   function getPriceTotal(items) {
     const rows = Array.isArray(items) ? items : [];
-    return rows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+    return rows.reduce((sum, row) => sum + (Number(row.price ?? row.amount) || 0), 0);
   }
 
   function updatePriceTotalUi() {

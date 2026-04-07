@@ -48,6 +48,8 @@ import {
   BOOKING_FORM_FIELD_IDS,
   appendBookingCanonFields,
   formatPriceRulesStructuredString,
+  normalizePriceLineItems,
+  parseStructuredPriceRulesString,
   toPriceNumber,
 } from '../lib/booking-canon-fields.js';
 import {
@@ -220,22 +222,6 @@ function getField(contact, fieldId) {
   );
   const raw = field?.value ?? field?.field_value;
   return raw != null && raw !== '' ? String(raw) : '';
-}
-
-function parseCanonPriceRulesLines(raw) {
-  const s = String(raw || '').trim();
-  if (!s) return [];
-  const rows = s.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const out = [];
-  for (const row of rows) {
-    const [left, ...rest] = row.split('|');
-    const label = String(left || '').trim();
-    const amountRaw = String(rest.join('|') || '').trim().replace(',', '.');
-    const amount = Number(amountRaw.replace(/[^\d.-]/g, ''));
-    if (!label || !Number.isFinite(amount)) continue;
-    out.push({ desc: label, price: amount });
-  }
-  return out;
 }
 
 /**
@@ -518,13 +504,12 @@ export default async function handler(req, res) {
             null;
           e.parsedPaymentStatus = getField(contact, BOOKING_FORM_FIELD_IDS.betaal_status) || '';
           const canonPrijsRegels = getField(contact, BOOKING_FORM_FIELD_IDS.prijs_regels);
-          if (canonPrijsRegels) {
-            e.parsedExtras = parseCanonPriceRulesLines(canonPrijsRegels);
+          let parsedPrijsRegels = parseStructuredPriceRulesString(canonPrijsRegels);
+          if (parsedPrijsRegels.length === 0) {
+            const prijsRegelsRaw = getField(contact, FIELD_IDS.prijs_regels);
+            parsedPrijsRegels = parseStructuredPriceRulesString(prijsRegelsRaw);
           }
-          const prijsRegelsRaw = getField(contact, FIELD_IDS.prijs_regels);
-          if ((!Array.isArray(e.parsedExtras) || e.parsedExtras.length === 0) && prijsRegelsRaw) {
-            try { e.parsedExtras = JSON.parse(prijsRegelsRaw); } catch (_) {}
-          }
+          e.parsedExtras = parsedPrijsRegels;
         }
 
         const tEnrich0 = Date.now();
@@ -698,10 +683,11 @@ export default async function handler(req, res) {
         if (totalPrice != null) {
           customFields.push({ id: FIELD_IDS.prijs, field_value: String(totalPrice) });
         }
-        if (Array.isArray(extras) && extras.length > 0) {
-          customFields.push({ id: FIELD_IDS.prijs_regels, field_value: JSON.stringify(extras) });
+        const extrasNorm = normalizePriceLineItems(Array.isArray(extras) ? extras : []);
+        if (extrasNorm.length > 0) {
+          customFields.push({ id: FIELD_IDS.prijs_regels, field_value: JSON.stringify(extrasNorm) });
         }
-        const canonicalPrijsRegels = formatPriceRulesStructuredString(extras);
+        const canonicalPrijsRegels = formatPriceRulesStructuredString(extrasNorm);
         const canonicalPrijsTotaal = toPriceNumber(totalPrice);
         const bookingCanon = appendBookingCanonFields(customFields, {
           prijs_regels: canonicalPrijsRegels,
@@ -709,7 +695,7 @@ export default async function handler(req, res) {
         });
         console.log('[BOOKING_PRICE_DEBUG]', {
           contactId,
-          extrasCount: Array.isArray(extras) ? extras.length : 0,
+          extrasCount: extrasNorm.length,
           serializedPrijsRegels: canonicalPrijsRegels,
           prijsTotaal: canonicalPrijsTotaal,
         });
@@ -746,7 +732,7 @@ export default async function handler(req, res) {
       case 'updatePriceLines': {
         const { contactId, extras, totalPrice } = req.body || {};
         if (!contactId) return res.status(400).json({ error: 'contactId vereist' });
-        const extrasArr = Array.isArray(extras) ? extras : [];
+        const extrasArr = normalizePriceLineItems(Array.isArray(extras) ? extras : []);
         const totalNum = toPriceNumber(totalPrice);
         const customFields = [];
         if (totalNum !== null) {
