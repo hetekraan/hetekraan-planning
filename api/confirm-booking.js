@@ -61,7 +61,7 @@ import {
   readCanonicalAddressLine,
   splitAddressLineToStraatHuis,
 } from '../lib/ghl-contact-canonical.js';
-import { appendBookingCanonFields } from '../lib/booking-canon-fields.js';
+import { appendBookingCanonFields, BOOKING_FORM_FIELD_IDS } from '../lib/booking-canon-fields.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -230,7 +230,10 @@ function buildConfirmPutPayload({
     });
     logCanonicalAddressWrite('confirm-booking_buildPutPayload', { address1, parts });
   }
-  const bevestigingTemplate1 = formatGeboektTijdslotField(date, block, routeStopDay);
+  const datum = String(date || '').trim().slice(0, 10);
+  const dagdeel = String(block || '').toLowerCase() === 'afternoon' ? 'afternoon' : 'morning';
+  const status = 'confirmed';
+  const bevestigingTemplate1 = formatGeboektTijdslotField(datum, dagdeel, routeStopDay);
   if (!putPayload.customFields) putPayload.customFields = [];
   putPayload.customFields = putPayload.customFields.filter((f) => f.id !== FIELD_IDS.tijdafspraak);
   putPayload.customFields.push({
@@ -246,18 +249,46 @@ function buildConfirmPutPayload({
     tijdslot: bevestigingTemplate1,
     type_onderhoud: type,
     probleemomschrijving: desc || '',
-    boeking_bevestigd_datum: date,
-    boeking_bevestigd_dagdeel: block,
-    boeking_bevestigd_status: 'confirmed',
+    boeking_bevestigd_datum: datum,
+    boeking_bevestigd_dagdeel: dagdeel,
+    boeking_bevestigd_status: status,
   };
   const bookingCanon = appendBookingCanonFields(putPayload.customFields, canonValues);
-  putPayload.customFields = bookingCanon.customFields;
+  const bevestigdIds = [
+    BOOKING_FORM_FIELD_IDS.boeking_bevestigd_datum,
+    BOOKING_FORM_FIELD_IDS.boeking_bevestigd_dagdeel,
+    BOOKING_FORM_FIELD_IDS.boeking_bevestigd_status,
+  ];
+  putPayload.customFields = [
+    ...bookingCanon.customFields.filter((f) => !bevestigdIds.includes(f.id)),
+    {
+      id: BOOKING_FORM_FIELD_IDS.boeking_bevestigd_datum,
+      value: datum,
+      field_value: datum,
+    },
+    {
+      id: BOOKING_FORM_FIELD_IDS.boeking_bevestigd_dagdeel,
+      value: dagdeel,
+      field_value: dagdeel,
+    },
+    {
+      id: BOOKING_FORM_FIELD_IDS.boeking_bevestigd_status,
+      value: status,
+      field_value: status,
+    },
+  ];
   console.log('[BOOKING_CANON_WRITE]', bookingCanon.written);
   console.log('[BOOKING_CANON_WRITE][confirmed]', {
     boekingsformulier_tijdslot: bevestigingTemplate1,
-    boeking_bevestigd_datum: date,
-    boeking_bevestigd_dagdeel: block,
-    boeking_bevestigd_status: 'confirmed',
+    boeking_bevestigd_datum: datum,
+    boeking_bevestigd_dagdeel: dagdeel,
+    boeking_bevestigd_status: status,
+  });
+  console.log('[BOOKING_CONFIRMED_FIELDS]', {
+    datum,
+    dagdeel,
+    status,
+    customFields: putPayload.customFields,
   });
   // Geen locationId op PUT /contacts/:id — GHL 422: "property locationId should not exist"
   console.log('[confirm-booking DEBUG] ghl_contact_put_payload_json', JSON.stringify(putPayload));
