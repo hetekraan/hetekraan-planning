@@ -20,6 +20,7 @@ import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { signBookingToken } from '../lib/session.js';
 import { availabilityDebugEnabled, logAvailability } from '../lib/availability-debug.js';
 import { buildCanonicalAddressWritePayload, logCanonicalAddressWrite } from '../lib/ghl-contact-canonical.js';
+import { appendBookingCanonFields } from '../lib/booking-canon-fields.js';
 import {
   isCustomerBookingBlockedOnAmsterdamDate,
   markBlockLikeOnCalendarEvents,
@@ -503,9 +504,13 @@ export default async function handler(req, res) {
   const bookingUrl = `${publicBaseUrl()}/book?token=${encodeURIComponent(token)}`;
 
   // Custom field IDs voor GHL workflow
-  const FIELD_SLOT1  = 'EiSw9gZQSG4kyhPn1rtF'; // Tijdslot optie 1
-  const FIELD_SLOT2  = '7Fi0c2XTjEiZve3ORFjM'; // Tijdslot optie 2
-  const FIELD_TOKEN  = 'whvgJ2ILKYukDlVj81rp'; // Boekings token
+  const FIELD_SLOT1          = 'EiSw9gZQSG4kyhPn1rtF'; // Tijdslot optie 1
+  const FIELD_SLOT2          = '7Fi0c2XTjEiZve3ORFjM'; // Tijdslot optie 2
+  const FIELD_TOKEN_VISIBLE  = 'whvgJ2ILKYukDlVj81rp'; // Boekings token (operationeel zichtbaar)
+  const FIELD_TOKEN_TECHNICAL =
+    String(process.env.BOOKING_TECH_TOKEN_FIELD_ID || '').trim() || FIELD_TOKEN_VISIBLE;
+  const tokenSummary = inviteSummaryLabel(slots);
+  const tokenStoredInVisibleField = FIELD_TOKEN_TECHNICAL === FIELD_TOKEN_VISIBLE;
 
   const slot1 = slots[0];
   const slot2 = slots[1];
@@ -515,14 +520,36 @@ export default async function handler(req, res) {
   if (slot2) message += `*Optie 2:* ${capitalize(slot2.dateLabel)} tussen ${slot2.timeLabel}\n`;
   message += `\nKlik op de link om jouw voorkeur door te geven, dan plannen we het gelijk in:\n${bookingUrl}`;
 
-  // Sla tijdsloten + token op — GHL-workflow stuurt het goedgekeurde WhatsApp-template
+  // Sla tijdsloten + leesbare samenvatting op in zichtbaar veld.
+  // Technische token gaat (optioneel) naar apart technisch veld voor template-link.
   const customFields = [
     { id: FIELD_SLOT1, field_value: `${capitalize(slot1.dateLabel)} tussen ${slot1.timeLabel}` },
-    { id: FIELD_TOKEN, field_value: token },
+    { id: FIELD_TOKEN_VISIBLE, field_value: tokenStoredInVisibleField ? token : tokenSummary },
   ];
+  if (FIELD_TOKEN_TECHNICAL !== FIELD_TOKEN_VISIBLE) {
+    customFields.push({ id: FIELD_TOKEN_TECHNICAL, field_value: token });
+  }
   if (slot2) {
     customFields.push({ id: FIELD_SLOT2, field_value: `${capitalize(slot2.dateLabel)} tussen ${slot2.timeLabel}` });
   }
+  const canonSlotLabel = [
+    `${capitalize(slot1.dateLabel)} tussen ${slot1.timeLabel}`,
+    slot2 ? `${capitalize(slot2.dateLabel)} tussen ${slot2.timeLabel}` : '',
+  ]
+    .filter(Boolean)
+    .join(' / ');
+  const bookingCanonStreetHouse = [straat, huisnr].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+  const canonValues = {
+    email: String(contact.email || '').trim(),
+    straat_huisnummer: bookingCanonStreetHouse,
+    postcode: postcode || '',
+    woonplaats: woonplaats || '',
+    tijdslot: canonSlotLabel,
+    type_onderhoud: workType,
+  };
+  const bookingCanon = appendBookingCanonFields(customFields, canonValues);
+  const allCustomFields = bookingCanon.customFields;
+  console.log('[BOOKING_CANON_WRITE]', bookingCanon.written);
 
   const diag = {
     fieldsPut: false,
@@ -551,7 +578,7 @@ export default async function handler(req, res) {
       method: 'PUT',
       headers: { Authorization: `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', Version: '2021-04-15' },
       body: JSON.stringify({
-        customFields: [{ id: FIELD_TOKEN, field_value: '' }],
+        customFields: [{ id: FIELD_TOKEN_TECHNICAL, field_value: '' }],
         ...(phoneForPut ? { phone: phoneForPut } : {}),
       }),
     });
@@ -565,13 +592,13 @@ export default async function handler(req, res) {
   }
 
   const invitePut = {
-    customFields: [...customFields],
+    customFields: [...allCustomFields],
     ...(phoneForPut ? { phone: phoneForPut } : {}),
   };
   if (address && String(address).replace(/\s+/g, ' ').trim()) {
     const { address1, customFields: addrCf } = buildCanonicalAddressWritePayload(address);
     invitePut.address1 = address1;
-    invitePut.customFields = [...addrCf, ...customFields];
+    invitePut.customFields = [...addrCf, ...allCustomFields];
     logCanonicalAddressWrite('send-booking-invite_slot_put', { contactId, address1 });
   }
 
@@ -635,8 +662,16 @@ export default async function handler(req, res) {
     message,
     diag,
     workflowTip:
-      'WhatsApp alleen via GHL-workflow (template). Standaard wist de API het Boekings token eerst en schrijft opnieuw. Uitzetten: BOOKING_TOKEN_CLEAR_BEFORE_SET=false. Pauze: BOOKING_TOKEN_RESET_MS. ' +
-      'Trigger: veld Boekings token (whvgJ2ILKYukDlVj81rp) of BOOKING_ADD_TAG=true + tag stuur-tijdsloten. Contact +31-mobiel.',
+      'WhatsApp alleen via GHL-workflow (template). Met BOOKING_TECH_TOKEN_FIELD_ID krijgt zichtbaar Boekings token een leesbare samenvatting; ' +
+      'zonder die env blijft legacy token-opslag actief in Boekings token voor compatibiliteit. ' +
+      'Standaard wist de API het technische tokenveld eerst en schrijft opnieuw. Uitzetten: BOOKING_TOKEN_CLEAR_BEFORE_SET=false. Pauze: BOOKING_TOKEN_RESET_MS.',
+    tokenStorage: {
+      visibleFieldId: FIELD_TOKEN_VISIBLE,
+      technicalFieldId: FIELD_TOKEN_TECHNICAL,
+      visibleValue: tokenStoredInVisibleField ? token : tokenSummary,
+      technicalTokenStored: FIELD_TOKEN_TECHNICAL !== FIELD_TOKEN_VISIBLE,
+      fallbackLegacyTokenInVisibleField: tokenStoredInVisibleField,
+    },
   };
   perf.map_token_response_ms = Date.now() - tMap0;
   return res.status(200).json(outJson);
@@ -652,4 +687,31 @@ export default async function handler(req, res) {
 
 function capitalize(s) {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+function blockLabelNlFromKey(block) {
+  if (block === 'morning') return 'ochtend';
+  if (block === 'afternoon') return 'middag';
+  return String(block || '').trim() || 'onbekend';
+}
+
+/**
+ * Korte, operationeel leesbare samenvatting voor zichtbaar GHL-veld.
+ * Voorbeeld: "Woensdag 22 april: ochtend / middag"
+ */
+function inviteSummaryLabel(slots) {
+  const byDate = new Map();
+  for (const s of Array.isArray(slots) ? slots : []) {
+    const dateLabel = capitalize(String(s?.dateLabel || '').trim());
+    if (!dateLabel) continue;
+    const blockLabel = blockLabelNlFromKey(s?.block);
+    const list = byDate.get(dateLabel) || [];
+    if (!list.includes(blockLabel)) list.push(blockLabel);
+    byDate.set(dateLabel, list);
+  }
+  const parts = [];
+  for (const [dateLabel, blocks] of byDate.entries()) {
+    parts.push(`${dateLabel}: ${blocks.join(' / ')}`);
+  }
+  return parts.join(' | ');
 }

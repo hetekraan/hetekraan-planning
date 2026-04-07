@@ -61,6 +61,7 @@ import {
   readCanonicalAddressLine,
   splitAddressLineToStraatHuis,
 } from '../lib/ghl-contact-canonical.js';
+import { appendBookingCanonFields } from '../lib/booking-canon-fields.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -171,6 +172,9 @@ function buildConfirmPutPayload({
   routeStopDay,
 }) {
   const putPayload = { email };
+  let bookingCanonStreetHouse = '';
+  let bookingCanonPostcode = '';
+  let bookingCanonWoonplaats = '';
   if (phoneForPut) putPayload.phone = phoneForPut;
   if (address) {
     let address1;
@@ -204,6 +208,9 @@ function buildConfirmPutPayload({
     }
     putPayload.address1 = address1;
     mergeGhlNativeAddressFromParts(putPayload, parts);
+    bookingCanonStreetHouse = [parts?.straatnaam, parts?.huisnummer].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    bookingCanonPostcode = String(parts?.postcode || '').trim();
+    bookingCanonWoonplaats = String(parts?.woonplaats || '').trim();
     putPayload.customFields = [
       ...addrCf,
       { id: FIELD_IDS.type_onderhoud, value: type, field_value: type },
@@ -231,6 +238,18 @@ function buildConfirmPutPayload({
     value: bevestigingTemplate1,
     field_value: bevestigingTemplate1,
   });
+  const canonValues = {
+    email,
+    straat_huisnummer: bookingCanonStreetHouse,
+    postcode: bookingCanonPostcode,
+    woonplaats: bookingCanonWoonplaats,
+    tijdslot: bevestigingTemplate1,
+    type_onderhoud: type,
+    probleemomschrijving: desc || '',
+  };
+  const bookingCanon = appendBookingCanonFields(putPayload.customFields, canonValues);
+  putPayload.customFields = bookingCanon.customFields;
+  console.log('[BOOKING_CANON_WRITE]', bookingCanon.written);
   // Geen locationId op PUT /contacts/:id — GHL 422: "property locationId should not exist"
   console.log('[confirm-booking DEBUG] ghl_contact_put_payload_json', JSON.stringify(putPayload));
   return { putPayload, bevestigingTemplate1 };

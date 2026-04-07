@@ -728,6 +728,8 @@
               addressPostcode: postcode,
               addressCity: city,
             };
+        // TEMP DIAG: verwijder na onderzoek — bewijs welke velden echt naar de API gaan
+        console.log('[book DIAG] POST /api/confirm-booking body', JSON.stringify(confirmBody));
         const res = await fetch('/api/confirm-booking', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

@@ -8,6 +8,11 @@
 import { fetchWithRetry } from '../../lib/retry.js';
 import { sendErrorNotification } from '../../lib/notify.js';
 import { logCanonicalAddressWrite } from '../../lib/ghl-contact-canonical.js';
+import {
+  appendBookingCanonFields,
+  formatPriceRulesStructuredString,
+  toPriceNumber,
+} from '../../lib/booking-canon-fields.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -181,6 +186,27 @@ async function saveToContact(contactId, extracted) {
     payload.city = String(extracted.woonplaats).trim();
   }
   if (customFields.length) payload.customFields = customFields;
+
+  const canonValues = {
+    straat_huisnummer: [extracted.straatnaam, extracted.huisnummer]
+      .filter((v) => v && v !== 'null')
+      .map((v) => String(v).trim())
+      .filter(Boolean)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim(),
+    postcode: extracted.postcode,
+    woonplaats: extracted.woonplaats,
+    tijdslot: extracted.tijdafspraak,
+    type_onderhoud: extracted.type_onderhoud,
+    probleemomschrijving: extracted.probleemomschrijving,
+    prijs_regels: formatPriceRulesStructuredString(extracted.prijs_regels),
+    prijs_totaal: toPriceNumber(extracted.afgesproken_prijs),
+    betaal_status: extracted.betaal_status,
+  };
+  const bookingCanon = appendBookingCanonFields(payload.customFields || [], canonValues);
+  payload.customFields = bookingCanon.customFields;
+  console.log('[BOOKING_CANON_WRITE]', bookingCanon.written);
 
   if (!payload.address1 && !payload.customFields?.length) return;
 
