@@ -74,6 +74,60 @@ const FIELD_IDS = {
   tijdafspraak:        'RfKARymCOYYkufGY053T',
 };
 
+/** Wijzig dit bij elke diagnose-deploy; grep in productielogs op `[BOOKING_DIAG_RUNTIME]` → `build`. */
+const CONFIRM_BOOKING_DIAG_BUILD = '20260408-trace-2';
+
+function pickBevestigdFromCustomFields(cf) {
+  const ids = [
+    BOOKING_FORM_FIELD_IDS.boeking_bevestigd_datum,
+    BOOKING_FORM_FIELD_IDS.boeking_bevestigd_dagdeel,
+    BOOKING_FORM_FIELD_IDS.boeking_bevestigd_status,
+  ];
+  if (!Array.isArray(cf)) {
+    return { datum: null, dagdeel: null, status: null, matchingRows: [] };
+  }
+  const pick = (id) => {
+    const row = cf.find((f) => f && String(f.id) === id);
+    if (!row) return null;
+    return row.field_value ?? row.value ?? null;
+  };
+  const matchingRows = cf
+    .filter((f) => f && ids.includes(String(f.id)))
+    .map((f) => ({ id: f.id, value: f.field_value ?? f.value }));
+  return {
+    datum: pick(ids[0]),
+    dagdeel: pick(ids[1]),
+    status: pick(ids[2]),
+    matchingRows,
+  };
+}
+
+function logDiagGhlContactPut(branch, contactId, putPayload) {
+  const cf = putPayload?.customFields;
+  const cfStr = JSON.stringify(cf ?? []);
+  console.log('[BOOKING_DIAG_GHL_CONTACT_PUT]', {
+    build: CONFIRM_BOOKING_DIAG_BUILD,
+    branch,
+    contactId,
+    customFieldsCount: Array.isArray(cf) ? cf.length : 0,
+    bevestigdResolvedFromPayload: pickBevestigdFromCustomFields(cf),
+    customFieldsJson: cfStr.length > 16000 ? `${cfStr.slice(0, 16000)}…[truncated total ${cfStr.length}]` : cfStr,
+  });
+}
+
+function logDiagGhlContactPutResult(branch, contactId, httpStatus, ok, errBodySlice, responseContact) {
+  console.log('[BOOKING_DIAG_GHL_CONTACT_PUT_RESULT]', {
+    build: CONFIRM_BOOKING_DIAG_BUILD,
+    branch,
+    contactId,
+    httpStatus,
+    ok,
+    errBodySlice: errBodySlice ? String(errBodySlice).slice(0, 4000) : null,
+    bevestigdInResponseContact: pickBevestigdFromCustomFields(responseContact?.customFields),
+    responseCustomFieldCount: Array.isArray(responseContact?.customFields) ? responseContact.customFields.length : 0,
+  });
+}
+
 function getCf(contact, fieldId) {
   return getCfValue(contact, fieldId);
 }
@@ -284,11 +338,17 @@ function buildConfirmPutPayload({
     boeking_bevestigd_dagdeel: dagdeel,
     boeking_bevestigd_status: status,
   });
+  const cfJsonForLog = JSON.stringify(putPayload.customFields || []);
   console.log('[BOOKING_CONFIRMED_FIELDS]', {
+    build: CONFIRM_BOOKING_DIAG_BUILD,
     datum,
     dagdeel,
     status,
-    customFields: putPayload.customFields,
+    bevestigdFieldIds: bevestigdIds,
+    bevestigdResolvedFromPayload: pickBevestigdFromCustomFields(putPayload.customFields),
+    customFieldsCount: putPayload.customFields?.length ?? 0,
+    customFieldsJson:
+      cfJsonForLog.length > 16000 ? `${cfJsonForLog.slice(0, 16000)}…[truncated total ${cfJsonForLog.length}]` : cfJsonForLog,
   });
   // Geen locationId op PUT /contacts/:id — GHL 422: "property locationId should not exist"
   console.log('[confirm-booking DEBUG] ghl_contact_put_payload_json', JSON.stringify(putPayload));
@@ -385,6 +445,13 @@ export default async function handler(req, res) {
     slots,
     email: emailInToken,
   } = bookingData;
+  console.log('[BOOKING_DIAG_RUNTIME]', {
+    build: CONFIRM_BOOKING_DIAG_BUILD,
+    contactId,
+    slotId,
+    tokenSchemaVersion: bookingData.tokenSchemaVersion ?? null,
+    slotCount: Array.isArray(slots) ? slots.length : 0,
+  });
   const chosenSlot = slots.find(s => s.id === slotId);
   if (!chosenSlot) return res.status(400).json({ error: 'Ongeldig slot' });
 
@@ -549,6 +616,14 @@ export default async function handler(req, res) {
     perf.redis_has_confirmed_ms = Date.now() - tRedisDup0;
     if (alreadyReservedRedis) {
       releaseBookingLock(lockKey);
+      console.log('[BOOKING_DIAG_NO_CONTACT_PUT]', {
+        build: CONFIRM_BOOKING_DIAG_BUILD,
+        reason: 'alreadyReservedRedis_B1',
+        branch: 'v2_B1',
+        contactId,
+        date,
+        httpResponse: '200_alreadyBooked',
+      });
       console.log('[confirm-booking] Duplicate (B1 reservering):', contactId, date);
       return res.status(200).json({
         success: true,
@@ -609,6 +684,15 @@ export default async function handler(req, res) {
         contactId,
         '— geen email/adres-PUT'
       );
+      console.log('[BOOKING_DIAG_NO_CONTACT_PUT]', {
+        build: CONFIRM_BOOKING_DIAG_BUILD,
+        reason: 'alreadyBookedV2_calendar',
+        branch: 'v2_B1',
+        contactId,
+        date,
+        existingId,
+        httpResponse: '200_alreadyBooked',
+      });
       console.log('[confirm-booking] Duplicate boeking (B1) onderschept:', contactId, date);
       return res.status(200).json({
         success: true,
@@ -700,6 +784,14 @@ export default async function handler(req, res) {
           contactId,
           '— geen email/adres-PUT'
         );
+        console.log('[BOOKING_DIAG_NO_CONTACT_PUT]', {
+          build: CONFIRM_BOOKING_DIAG_BUILD,
+          reason: 'DUPLICATE_CONTACT_DATE_B1',
+          branch: 'v2_B1',
+          contactId,
+          date,
+          httpResponse: '200_alreadyBooked',
+        });
         console.log('[confirm-booking] Duplicate (B1 SET NX):', contactId, date);
         return res.status(200).json({
           success: true,
@@ -756,6 +848,7 @@ export default async function handler(req, res) {
       putPayloadHasEmail: 'email' in putPayloadB1 && Boolean(putPayloadB1.email),
       putPayloadHasAddress1: 'address1' in putPayloadB1 && Boolean(putPayloadB1.address1),
     });
+    logDiagGhlContactPut('v2_B1', contactId, putPayloadB1);
     const tPutB10 = Date.now();
     const putResB1 = await fetchWithRetry(putUrlB1, {
       method: 'PUT',
@@ -784,6 +877,7 @@ export default async function handler(req, res) {
         (errTxt || '').slice(0, 8000)
       );
       console.error('[confirm-booking] contact PUT (B1):', putResB1.status, errTxt);
+      logDiagGhlContactPutResult('v2_B1', contactId, putResB1.status, false, errTxt, null);
       try {
         await rollbackConfirmedReservation(resv.reservation);
       } catch (rbErr) {
@@ -810,6 +904,7 @@ export default async function handler(req, res) {
       responseCustomFieldIds: Array.isArray(cAfter?.customFields) ? cAfter.customFields.map((f) => f.id) : null,
       responseBodyJson: ghlPutOkBodyB1 ? JSON.stringify(ghlPutOkBodyB1).slice(0, 2500) : null,
     });
+    logDiagGhlContactPutResult('v2_B1', contactId, putResB1.status, true, null, cAfter);
 
     releaseBookingLock(lockKey);
 
@@ -839,6 +934,16 @@ export default async function handler(req, res) {
 
     const delayMsB1 = Math.min(Math.max(parseInt(process.env.BOOKING_CONFIRM_DELAY_MS || '600', 10) || 600, 0), 5000);
     const tTagB10 = Date.now();
+    console.log('[BOOKING_DIAG_TAG_PULSE]', {
+      build: CONFIRM_BOOKING_DIAG_BUILD,
+      branch: 'v2_B1',
+      contactId,
+      confirmTag: confirmTagB1,
+      tagFallback: tagFallbackB1,
+      tagDisabled: tagDisabledB1,
+      delayMs: delayMsB1,
+      willPulse: Boolean(tagFallbackB1),
+    });
     if (delayMsB1 > 0) {
       await new Promise((r) => setTimeout(r, delayMsB1));
     }
@@ -846,6 +951,13 @@ export default async function handler(req, res) {
     let workflowTriggeredB1 = false;
     if (tagFallbackB1) {
       workflowTriggeredB1 = await pulseContactTag(contactId, confirmTagB1, '[confirm-booking] B1');
+      console.log('[BOOKING_DIAG_TAG_PULSE_RESULT]', {
+        build: CONFIRM_BOOKING_DIAG_BUILD,
+        branch: 'v2_B1',
+        contactId,
+        tag: confirmTagB1,
+        ok: workflowTriggeredB1,
+      });
       if (workflowTriggeredB1) {
         console.log('[confirm-booking] Tag-puls voor workflow (B1):', confirmTagB1);
       } else {
@@ -963,6 +1075,15 @@ export default async function handler(req, res) {
       contactId,
       '— geen email/adres-PUT (v1 branch stopt vóór buildConfirmPutPayload)'
     );
+    console.log('[BOOKING_DIAG_NO_CONTACT_PUT]', {
+      build: CONFIRM_BOOKING_DIAG_BUILD,
+      reason: 'alreadyBooked_v1_calendar',
+      branch: 'v1_timed_appt',
+      contactId,
+      date,
+      existingId,
+      httpResponse: '200_alreadyBooked',
+    });
     console.log('[confirm-booking] Duplicate boeking onderschept via GHL-check:', contactId, date);
     return res.status(200).json({
       success: true,
@@ -1028,6 +1149,7 @@ export default async function handler(req, res) {
     putPayloadHasEmail: 'email' in putPayload && Boolean(putPayload.email),
     putPayloadHasAddress1: 'address1' in putPayload && Boolean(putPayload.address1),
   });
+  logDiagGhlContactPut('v1_timed_appt', contactId, putPayload);
   const tV1Put0 = Date.now();
   const putRes = await fetchWithRetry(putUrlV1, {
     method: 'PUT',
@@ -1056,6 +1178,7 @@ export default async function handler(req, res) {
       '[confirm-booking DEBUG] ghl_contact_put_failure_response_body',
       (errTxt || '').slice(0, 8000)
     );
+    logDiagGhlContactPutResult('v1_timed_appt', contactId, putRes.status, false, errTxt, null);
     releaseBookingLock(lockKey);
     return res.status(502).json({ error: 'Kon gegevens niet opslaan in GHL. Probeer het later opnieuw.' });
   }
@@ -1078,6 +1201,7 @@ export default async function handler(req, res) {
     responseCustomFieldIds: Array.isArray(cAfterV1?.customFields) ? cAfterV1.customFields.map((f) => f.id) : null,
     responseBodyJson: ghlPutOkBodyV1 ? JSON.stringify(ghlPutOkBodyV1).slice(0, 2500) : null,
   });
+  logDiagGhlContactPutResult('v1_timed_appt', contactId, putRes.status, true, null, cAfterV1);
 
   function pickAppointmentId(data) {
     if (!data || typeof data !== 'object') return null;
@@ -1279,6 +1403,16 @@ export default async function handler(req, res) {
 
   const tV1Tag0 = Date.now();
   const delayMs = Math.min(Math.max(parseInt(process.env.BOOKING_CONFIRM_DELAY_MS || '600', 10) || 600, 0), 5000);
+  console.log('[BOOKING_DIAG_TAG_PULSE]', {
+    build: CONFIRM_BOOKING_DIAG_BUILD,
+    branch: 'v1_timed_appt',
+    contactId,
+    confirmTag,
+    tagFallback,
+    tagDisabled,
+    delayMs,
+    willPulse: Boolean(tagFallback),
+  });
   if (delayMs > 0) {
     await new Promise((r) => setTimeout(r, delayMs));
   }
@@ -1286,6 +1420,13 @@ export default async function handler(req, res) {
   let workflowTriggered = false;
   if (tagFallback) {
     workflowTriggered = await pulseContactTag(contactId, confirmTag, '[confirm-booking]');
+    console.log('[BOOKING_DIAG_TAG_PULSE_RESULT]', {
+      build: CONFIRM_BOOKING_DIAG_BUILD,
+      branch: 'v1_timed_appt',
+      contactId,
+      tag: confirmTag,
+      ok: workflowTriggered,
+    });
     if (workflowTriggered) {
       console.log('[confirm-booking] Tag-puls voor workflow:', confirmTag);
     } else {
