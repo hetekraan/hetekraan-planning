@@ -2057,6 +2057,7 @@ async function loadAppointments(date) {
 
       appointments.forEach((a) => {
         if (a.id && isKlaarLocally(a.id)) a.status = 'klaar';
+        if (a.contactId && isKlaarLocallyContactDate(a.contactId, dateStr)) a.status = 'klaar';
       });
 
       const nBlk = appointments.filter((a) => a.isCalBlock).length;
@@ -2774,6 +2775,7 @@ async function confirmDone(id) {
           lastService:   a.lastService || null,
           totalPrice:    total,
           extras:        lines,
+          routeDate:     getDateStr(currentDate),
         })
       });
       if (!ghlRes.ok) {
@@ -2833,7 +2835,7 @@ async function confirmDone(id) {
 
   a.status = 'klaar';
   a.priceVisible = false;
-  saveKlaarStatus(a.id); // blijft groen na datumwissel
+  saveKlaarStatus(a.id, a.contactId, getDateStr(currentDate));
   render();
 
   // Groene vloed over de kaart
@@ -3649,14 +3651,23 @@ document.getElementById('dateLabel').textContent = formatDate(currentDate);
 const HK_USER_KEY    = 'hk_user';
 const HK_KLAAR_KEY   = 'hk_klaar_ids';
 
-function saveKlaarStatus(ghlId) {
-  if (!ghlId) return;
+function klaarStorageKeyContactDate(contactId, routeYmd) {
+  const c = String(contactId || '').trim();
+  const d = String(routeYmd || '').trim();
+  if (!c || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+  return `cid:${c}:${d}`;
+}
+
+function saveKlaarStatus(ghlId, contactId, routeYmd) {
   try {
     const map = JSON.parse(localStorage.getItem(HK_KLAAR_KEY) || '{}');
-    map[ghlId] = Date.now();
-    // Verwijder items ouder dan 60 dagen om localStorage schoon te houden
+    if (ghlId) map[String(ghlId)] = Date.now();
+    const cd = klaarStorageKeyContactDate(contactId, routeYmd);
+    if (cd) map[cd] = Date.now();
     const cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000;
-    for (const [k, v] of Object.entries(map)) { if (v < cutoff) delete map[k]; }
+    for (const [k, v] of Object.entries(map)) {
+      if (v < cutoff) delete map[k];
+    }
     localStorage.setItem(HK_KLAAR_KEY, JSON.stringify(map));
   } catch {}
 }
@@ -3666,7 +3677,20 @@ function isKlaarLocally(ghlId) {
   try {
     const map = JSON.parse(localStorage.getItem(HK_KLAAR_KEY) || '{}');
     return !!map[ghlId];
-  } catch { return false; }
+  } catch {
+    return false;
+  }
+}
+
+function isKlaarLocallyContactDate(contactId, routeYmd) {
+  const cd = klaarStorageKeyContactDate(contactId, routeYmd);
+  if (!cd) return false;
+  try {
+    const map = JSON.parse(localStorage.getItem(HK_KLAAR_KEY) || '{}');
+    return !!map[cd];
+  } catch {
+    return false;
+  }
 }
 const HK_SESSION_KEY = 'hk_session_token';
 const HK_COOKIE_MAX  = 86400; // 24 uur in seconden

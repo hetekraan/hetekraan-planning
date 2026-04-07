@@ -88,6 +88,7 @@ function eventOverlapsAmsterdamDay(e, dateStr) {
   const startMs = eventStartMsGhl(e);
   if (Number.isNaN(startMs)) {
     if (e?._hkGhlBlockSlot) return true;
+    if (e?._hkBlockReservationSynthetic) return true;
     return false;
   }
   let endMs = eventEndMsGhl(e);
@@ -108,7 +109,8 @@ function eventOverlapsAmsterdamDay(e, dateStr) {
  *         Opmerking: twee ECHTE afspraken voor dezelfde klant op dezelfde dag (ochtend +
  *         middag) hebben >60 min verschil en blijven dus beide zichtbaar.
  */
-function dedupeGhlEventsForDashboard(list) {
+/** Alleen echte kalender-events; 60-min dedupe (retry-dubbels). B1-synthetisch wordt apart gemerged. */
+function dedupeGhlRealEventsForDashboard(list) {
   const byId = new Set();
   const pass1 = [];
   for (const e of list) {
@@ -120,10 +122,9 @@ function dedupeGhlEventsForDashboard(list) {
     pass1.push(e);
   }
 
-  // Sorteer op starttijd zodat we altijd de vroegste variant houden.
   pass1.sort((a, b) => (eventStartMsGhl(a) || 0) - (eventStartMsGhl(b) || 0));
 
-  const firstSeenMs = new Map(); // contactId → earliest startMs
+  const firstSeenMs = new Map();
   const out = [];
   for (const e of pass1) {
     const rawCid = e.contactId || e.contact_id || e.contact?.id;
@@ -134,16 +135,41 @@ function dedupeGhlEventsForDashboard(list) {
       if (first === undefined) {
         firstSeenMs.set(cid, ms);
       } else if (ms - first < 60 * 60 * 1000) {
-        // Zelfde contact, start binnen 60 min na eerste event → retry-duplicaat, overslaan.
         continue;
       } else {
-        // Meer dan 60 min later → legitieme tweede afspraak (bijv. ochtend + middag).
         firstSeenMs.set(cid, ms);
       }
     }
     out.push(e);
   }
   return out;
+}
+
+/**
+ * Dedupe GHL-events voor het dashboard.
+ * B1 Redis-synthetische rijen niet wegfilteren als “retry-duplicaat” van een echt event
+ * (zelfde contact binnen 60 min) — anders verdwijnt de enige zichtbare rij na refresh.
+ */
+function dedupeGhlEventsForDashboard(list) {
+  const reals = list.filter((e) => !e._hkBlockReservationSynthetic);
+  const synthetics = list.filter((e) => e._hkBlockReservationSynthetic);
+  const dedupedReals = dedupeGhlRealEventsForDashboard(reals);
+  const realCids = new Set(
+    dedupedReals
+      .map((e) => {
+        const raw = e.contactId || e.contact_id || e.contact?.id;
+        return raw != null && String(raw).trim() ? String(raw).trim() : '';
+      })
+      .filter(Boolean)
+  );
+  const synthKeep = synthetics.filter((e) => {
+    const raw = e.contactId || e.contact_id;
+    const cid = raw != null && String(raw).trim() ? String(raw).trim() : '';
+    return cid && !realCids.has(cid);
+  });
+  const merged = [...dedupedReals, ...synthKeep];
+  merged.sort((a, b) => (eventStartMsGhl(a) || 0) - (eventStartMsGhl(b) || 0));
+  return merged;
 }
 
 // Custom field ID mapping
@@ -482,21 +508,58 @@ export default async function handler(req, res) {
         /** Events die deze Amsterdam-dag raken (ook langlopende blokken / vakantie). */
         const tFilt0 = Date.now();
         const filtered = enriched.filter((e, i) => overlapsAmsterdamDay[i]);
+        const overlapDropped = enriched.length - filtered.length;
+        if (overlapDropped > 0) {
+          console.log(
+            JSON.stringify({
+              event: 'BOOKING_COMPLETE_FILTER',
+              phase: 'overlap_amsterdam_day',
+              dateStr: date,
+              before: enriched.length,
+              after: filtered.length,
+              dropped: overlapDropped,
+            })
+          );
+        }
         gaPerf.filter_overlap_ms = Date.now() - tFilt0;
         const tDedupe0 = Date.now();
         const unique = dedupeGhlEventsForDashboard(filtered);
+        if (filtered.length !== unique.length) {
+          console.log(
+            JSON.stringify({
+              event: 'BOOKING_COMPLETE_FILTER',
+              phase: 'dedupe',
+              dateStr: date,
+              before: filtered.length,
+              after: unique.length,
+              dropped: filtered.length - unique.length,
+            })
+          );
+        }
         gaPerf.dedupe_ms = Date.now() - tDedupe0;
 
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('X-HK-GetAppointments-Filter', 'v5-amsterdam-day+id+contact-slot+b1-redis');
         const tMapAppt0 = Date.now();
-        const appointments = unique.map((ev, i) => mapEnrichedGhlEventToAppointment(ev, i));
+        const appointments = unique.map((ev, i) => mapEnrichedGhlEventToAppointment(ev, i, date));
         gaPerf.map_appointments_ms = Date.now() - tMapAppt0;
         gaPerf.total_ms = Date.now() - gaT0;
         gaPerf.unique_contact_fetches = uniqueCids.length;
         gaPerf.event_count_before_filter = enriched.length;
+        const clientRows = appointments.filter((a) => !a.isCalBlock);
+        const nKlaarFromContact = clientRows.filter((a) => a.status === 'klaar').length;
         console.log('[timing getAppointments]', JSON.stringify(gaPerf));
+        console.log(
+          JSON.stringify({
+            event: 'BOOKING_COMPLETE_RELOAD',
+            dateStr: date,
+            rowsReturned: appointments.length,
+            clientRows: clientRows.length,
+            klaarFromDatumField: nKlaarFromContact,
+            syntheticRows: appointments.filter((a) => a.isSyntheticBlockBooking).length,
+          })
+        );
         return res.status(200).json({ appointments });
       }
 
@@ -622,16 +685,19 @@ export default async function handler(req, res) {
       }
 
       case 'completeAppointment': {
-        const { contactId, appointmentId, type, sendReview, lastService, totalPrice, extras } = req.body;
+        const { contactId, appointmentId, type, sendReview, lastService, totalPrice, extras, routeDate } =
+          req.body || {};
         if (!contactId) return res.status(400).json({ error: 'contactId vereist' });
 
         const today = formatYyyyMmDdInAmsterdam(new Date()) || new Date().toISOString().split('T')[0];
+        /** Route-dag in de planner (YYYY-MM-DD); bewaart afgerond op die dienst-dag i.p.v. alleen “vandaag”. */
+        const serviceDay = normalizeYyyyMmDdInput(String(routeDate || '').trim()) || today;
         const customFields = [
-          { id: 'hiTe3Yi5TlxheJq4bLzy', field_value: today },         // datum_laatste_onderhoud
-          { id: 'xAg0jUYsOL6IZZjdHuRq', field_value: 'Afgerond' },    // Betalingsstatus
+          { id: 'hiTe3Yi5TlxheJq4bLzy', field_value: serviceDay }, // datum_laatste_onderhoud = route-dag
+          { id: 'xAg0jUYsOL6IZZjdHuRq', field_value: 'Afgerond' }, // legacy Betalingsstatus
         ];
         if (type === 'installatie') {
-          customFields.push({ id: 'kYP2SCmhZ21Ig0aaLl5l', field_value: today }); // datum_installatie
+          customFields.push({ id: 'kYP2SCmhZ21Ig0aaLl5l', field_value: serviceDay }); // datum_installatie
         }
         if (totalPrice != null) {
           customFields.push({ id: FIELD_IDS.prijs, field_value: String(totalPrice) });
@@ -645,6 +711,7 @@ export default async function handler(req, res) {
         const bookingCanon = appendBookingCanonFields(customFields, {
           prijs_regels: canonicalPrijsRegels,
           prijs_totaal: canonicalPrijsTotaal,
+          betaal_status: 'Afgerond',
         });
         console.log('[BOOKING_PRICE_DEBUG]', {
           contactId,
@@ -652,6 +719,17 @@ export default async function handler(req, res) {
           serializedPrijsRegels: canonicalPrijsRegels,
           prijsTotaal: canonicalPrijsTotaal,
         });
+        console.log(
+          JSON.stringify({
+            event: 'BOOKING_COMPLETE_PERSIST',
+            contactId,
+            routeDateRequested: routeDate != null ? String(routeDate) : null,
+            serviceDayWritten: serviceDay,
+            appointmentId: appointmentId != null ? String(appointmentId) : null,
+            prijsTotaal: canonicalPrijsTotaal,
+            prijsRegelsLines: extrasNorm.length,
+          })
+        );
         const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
           method: 'PUT',
           headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-04-15' },
