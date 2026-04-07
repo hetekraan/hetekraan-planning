@@ -230,7 +230,7 @@ function buildConfirmPutPayload({
     value: bevestigingTemplate1,
     field_value: bevestigingTemplate1,
   });
-  putPayload.locationId = GHL_LOCATION_ID;
+  // Geen locationId op PUT /contacts/:id — GHL 422: "property locationId should not exist"
   console.log('[confirm-booking DEBUG] ghl_contact_put_payload_json', JSON.stringify(putPayload));
   return { putPayload, bevestigingTemplate1 };
 }
@@ -297,6 +297,14 @@ export default async function handler(req, res) {
     addressPostcode,
     addressCity,
   } = body || {};
+  // TEMP DIAG: bewijs server-side parse (geen volledige e-mail loggen)
+  console.log('[confirm-booking DIAG] req_body_keys', Object.keys(body || {}), {
+    hasEmailField: emailRaw != null && String(emailRaw).length > 0,
+    hasAddressRaw: addressRaw != null && String(addressRaw).trim().length > 0,
+    hasStructuredAddress: [addressStreetHouse, addressPostcode, addressCity].some(
+      (x) => x != null && String(x).trim().length > 0
+    ),
+  });
   if (!token || !slotId) return res.status(400).json({ error: 'token en slotId zijn verplicht' });
 
   const bookingData = verifyBookingToken(token);
@@ -382,6 +390,13 @@ export default async function handler(req, res) {
   if (!address) {
     return res.status(400).json({ error: 'Vul een adres in (nodig voor de monteur en facturatie).' });
   }
+  console.log('[confirm-booking DIAG] resolved_for_put', {
+    contactIdFromToken: contactId,
+    resolvedEmailLen: email.length,
+    resolvedAddressLen: address.length,
+    emailFromRequestBody: Boolean(normalizeEmail(emailRaw) && isValidEmail(normalizeEmail(emailRaw))),
+    structuredBookingAddress: Boolean(structuredBookingAddress),
+  });
   logCanonicalAddressWrite('confirm-booking_resolved', {
     len: address.length,
     preview: address.slice(0, 100),
@@ -527,6 +542,11 @@ export default async function handler(req, res) {
       releaseBookingLock(lockKey);
       const existingId =
         alreadyBookedV2.id || alreadyBookedV2.eventId || alreadyBookedV2.appointmentId || null;
+      console.warn(
+        '[confirm-booking DIAG] success_without_ghl_contact_put reason=alreadyBookedV2_calendar contactId=',
+        contactId,
+        '— geen email/adres-PUT'
+      );
       console.log('[confirm-booking] Duplicate boeking (B1) onderschept:', contactId, date);
       return res.status(200).json({
         success: true,
@@ -613,6 +633,11 @@ export default async function handler(req, res) {
       console.log('[confirm-booking DEBUG] v2 after_reservation_create_not_ok', resv);
       if (resv.code === 'DUPLICATE_CONTACT_DATE') {
         releaseBookingLock(lockKey);
+        console.warn(
+          '[confirm-booking DIAG] success_without_ghl_contact_put reason=DUPLICATE_CONTACT_DATE contactId=',
+          contactId,
+          '— geen email/adres-PUT'
+        );
         console.log('[confirm-booking] Duplicate (B1 SET NX):', contactId, date);
         return res.status(200).json({
           success: true,
@@ -659,8 +684,18 @@ export default async function handler(req, res) {
       putKeys: Object.keys(putPayloadB1),
       customFieldsLen: putPayloadB1.customFields?.length ?? 0,
     });
+    const putUrlB1 = `${GHL_BASE}/contacts/${contactId}`;
+    console.log('[confirm-booking DIAG] ghl_contact_put_request', {
+      method: 'PUT',
+      url: putUrlB1,
+      apiVersionHeader: '2021-07-28',
+      contactIdInUrl: contactId,
+      payloadTopLevelKeys: Object.keys(putPayloadB1),
+      putPayloadHasEmail: 'email' in putPayloadB1 && Boolean(putPayloadB1.email),
+      putPayloadHasAddress1: 'address1' in putPayloadB1 && Boolean(putPayloadB1.address1),
+    });
     const tPutB10 = Date.now();
-    const putResB1 = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
+    const putResB1 = await fetchWithRetry(putUrlB1, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', Version: '2021-07-28' },
       body: JSON.stringify(putPayloadB1),
@@ -682,6 +717,10 @@ export default async function handler(req, res) {
         attemptedCfPostcode: pickCf(GHL_ADDR_CF_IDS.postcode),
         attemptedCfWoonplaats: pickCf(GHL_ADDR_CF_IDS.woonplaats),
       });
+      console.error(
+        '[confirm-booking DEBUG] ghl_contact_put_failure_response_body',
+        (errTxt || '').slice(0, 8000)
+      );
       console.error('[confirm-booking] contact PUT (B1):', putResB1.status, errTxt);
       try {
         await rollbackConfirmedReservation(resv.reservation);
@@ -700,6 +739,9 @@ export default async function handler(req, res) {
     const cAfter = ghlPutOkBodyB1?.contact || ghlPutOkBodyB1;
     console.log('[confirm-booking DEBUG] v2 after_ghl_contact_put_ok', {
       status: putResB1.status,
+      putTreatedAsSuccess: putResB1.ok,
+      responseContactId: cAfter?.id ?? null,
+      responseEmailPresent: Boolean(cAfter?.email),
       responseAddress1: cAfter?.address1 ?? null,
       responsePostalCode: cAfter?.postalCode ?? null,
       responseCity: cAfter?.city ?? null,
@@ -854,6 +896,11 @@ export default async function handler(req, res) {
     releaseBookingLock(lockKey);
     const existingId =
       alreadyBooked.id || alreadyBooked.eventId || alreadyBooked.appointmentId || null;
+    console.warn(
+      '[confirm-booking DIAG] success_without_ghl_contact_put reason=alreadyBooked_v1_calendar contactId=',
+      contactId,
+      '— geen email/adres-PUT (v1 branch stopt vóór buildConfirmPutPayload)'
+    );
     console.log('[confirm-booking] Duplicate boeking onderschept via GHL-check:', contactId, date);
     return res.status(200).json({
       success: true,
@@ -909,8 +956,18 @@ export default async function handler(req, res) {
   });
 
   // Contact-PUT: 2021-07-28 — custom fields + native city/postalCode worden betrouwbaar gemerged (vs 2021-04-15).
+  const putUrlV1 = `${GHL_BASE}/contacts/${contactId}`;
+  console.log('[confirm-booking DIAG] ghl_contact_put_request', {
+    method: 'PUT',
+    url: putUrlV1,
+    apiVersionHeader: '2021-07-28',
+    contactIdInUrl: contactId,
+    payloadTopLevelKeys: Object.keys(putPayload),
+    putPayloadHasEmail: 'email' in putPayload && Boolean(putPayload.email),
+    putPayloadHasAddress1: 'address1' in putPayload && Boolean(putPayload.address1),
+  });
   const tV1Put0 = Date.now();
-  const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
+  const putRes = await fetchWithRetry(putUrlV1, {
     method: 'PUT',
     headers: { Authorization: `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', Version: '2021-07-28' },
     body: JSON.stringify(putPayload),
@@ -950,6 +1007,9 @@ export default async function handler(req, res) {
   const cAfterV1 = ghlPutOkBodyV1?.contact || ghlPutOkBodyV1;
   console.log('[confirm-booking DEBUG] v1 after_ghl_contact_put_ok', {
     status: putRes.status,
+    putTreatedAsSuccess: putRes.ok,
+    responseContactId: cAfterV1?.id ?? null,
+    responseEmailPresent: Boolean(cAfterV1?.email),
     responseAddress1: cAfterV1?.address1 ?? null,
     responsePostalCode: cAfterV1?.postalCode ?? null,
     responseCity: cAfterV1?.city ?? null,
