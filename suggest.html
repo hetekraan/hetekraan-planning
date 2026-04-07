@@ -668,7 +668,8 @@
       }
 
       resolvedContactId = data.contactId || resolvedContactId;
-      loadedSlots = data.suggestions;
+      const suggestions = (data.suggestions || []).slice(0, 2);
+      loadedSlots = suggestions;
       pendingProposalConstraints = proposalConstraints;
       previewStale = false;
       lastConstraintsUiSnapshotAtPreview = getConstraintsUiSnapshot();
@@ -683,7 +684,7 @@
       // Slots
       const list = document.getElementById('slotList');
       list.innerHTML = '';
-      data.suggestions.forEach((s, i) => {
+      suggestions.forEach((s, i) => {
         const div = document.createElement('div');
         div.className = 'slot-item';
         div.innerHTML = `
@@ -698,7 +699,7 @@
       });
 
       // Bericht preview (zelfde opties als de lijst erboven)
-      const sugg = data.suggestions || [];
+      const sugg = suggestions;
       const n = sugg.length;
       const slotPhrase =
         n <= 1 ? 'dit tijdslot' : n === 2 ? 'een van de volgende twee tijdslots' : `een van de volgende ${n} tijdslots`;

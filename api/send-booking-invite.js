@@ -295,7 +295,7 @@ async function pickBlockInviteOffers(workType, timings, proposalConstraints = nu
     return [];
   }
 
-  const maxPick = effectiveMaxOptions(proposalConstraints, 2, 3);
+  const maxPick = effectiveMaxOptions(proposalConstraints, 2, 2);
   const picked = [];
   const tryPickMore = async () => {
     for (const c of candidates) {
@@ -502,6 +502,14 @@ export default async function handler(req, res) {
   if (slots.length === 0) {
     return res.status(200).json({ success: false, message: 'Geen beschikbare slots in de komende 7 werkdagen.' });
   }
+  console.log(
+    '[send-booking-invite] final_proposals_2',
+    slots.slice(0, 2).map((s) => ({
+      dateStr: s.dateStr,
+      block: s.block,
+      timeLabel: s.timeLabel,
+    }))
+  );
 
   const phoneInToken = (effectivePhone && /^\+31[1-9]\d{8}$/.test(effectivePhone))
     ? effectivePhone

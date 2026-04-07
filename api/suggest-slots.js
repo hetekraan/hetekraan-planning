@@ -853,7 +853,7 @@ export default async function handler(req, res) {
     const tMap0 = Date.now();
     candidates.sort((a, b) => a.score - b.score);
 
-    const maxSuggest = effectiveMaxOptions(proposalConstraints, 3, 5);
+    const maxSuggest = effectiveMaxOptions(proposalConstraints, 2, 2);
     const suggestions = candidates.slice(0, maxSuggest).map((c) => ({
       dateStr: c.dateStr,
       dateLabel: c.dateLabel,
@@ -883,6 +883,14 @@ export default async function handler(req, res) {
         suggestionEngine: 'block-capacity-offers',
       });
     }
+    console.log(
+      '[suggest-slots] final_proposals_2',
+      suggestions.map((s) => ({
+        dateStr: s.dateStr,
+        block: s.block,
+        timeLabel: s.timeLabel,
+      }))
+    );
 
     return res.status(200).json({
       success: true,
