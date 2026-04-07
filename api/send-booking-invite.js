@@ -20,7 +20,11 @@ import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { signBookingToken } from '../lib/session.js';
 import { availabilityDebugEnabled, logAvailability } from '../lib/availability-debug.js';
 import { buildCanonicalAddressWritePayload, logCanonicalAddressWrite } from '../lib/ghl-contact-canonical.js';
-import { appendBookingCanonFields } from '../lib/booking-canon-fields.js';
+import {
+  appendBookingCanonFields,
+  formatPriceRulesStructuredString,
+  toPriceNumber,
+} from '../lib/booking-canon-fields.js';
 import {
   isCustomerBookingBlockedOnAmsterdamDate,
   markBlockLikeOnCalendarEvents,
@@ -371,7 +375,17 @@ export default async function handler(req, res) {
   try {
   const body = parseRequestBody(req);
   const tResolve0 = Date.now();
-  let { contactId, name: nameParam, phone: phoneParam, address: addressParam, type: typeParam, workType: workTypeParam } = body;
+  let {
+    contactId,
+    name: nameParam,
+    phone: phoneParam,
+    address: addressParam,
+    type: typeParam,
+    workType: workTypeParam,
+    desc: descParam,
+    priceRules: priceRulesParam,
+    priceTotal: priceTotalParam,
+  } = body;
 
   // Zoek contact op naam of telefoon als er geen contactId is
   if (!contactId) {
@@ -466,6 +480,20 @@ export default async function handler(req, res) {
   perf.ghl_contact_put_phone_ms = Date.now() - tPhonePut0;
 
   const workType = normalizeWorkType(workTypeParam || typeParam || getField(contact, FIELD_IDS.type_onderhoud));
+  const intakeDesc = String(descParam || '').trim();
+  let intakePriceRules = [];
+  if (Array.isArray(priceRulesParam)) {
+    intakePriceRules = priceRulesParam;
+  } else if (typeof priceRulesParam === 'string' && priceRulesParam.trim()) {
+    try {
+      const parsed = JSON.parse(priceRulesParam);
+      if (Array.isArray(parsed)) intakePriceRules = parsed;
+    } catch {
+      intakePriceRules = [];
+    }
+  }
+  const intakePriceRulesSerialized = formatPriceRulesStructuredString(intakePriceRules);
+  const intakePriceTotal = toPriceNumber(priceTotalParam);
   const proposalConstraints = parseProposalConstraints(body.proposalConstraints);
 
   const tPick0 = Date.now();
@@ -546,10 +574,19 @@ export default async function handler(req, res) {
     woonplaats: woonplaats || '',
     tijdslot: canonSlotLabel,
     type_onderhoud: workType,
+    probleemomschrijving: intakeDesc,
+    prijs_regels: intakePriceRulesSerialized,
+    prijs_totaal: intakePriceTotal,
   };
   const bookingCanon = appendBookingCanonFields(customFields, canonValues);
   const allCustomFields = bookingCanon.customFields;
   console.log('[BOOKING_CANON_WRITE]', bookingCanon.written);
+  console.log('[BOOKING_PRICE_DEBUG]', {
+    contactId,
+    priceRulesCount: intakePriceRules.length,
+    serializedPrijsRegels: intakePriceRulesSerialized,
+    prijsTotaal: intakePriceTotal,
+  });
 
   const diag = {
     fieldsPut: false,
