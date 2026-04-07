@@ -84,6 +84,52 @@
     .hk-weekday-chips input { accent-color: #ffd000; width: 15px; height: 15px; }
 
     .field-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+    .field-textarea {
+      min-height: 74px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+    .price-rule-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 2px;
+    }
+    .price-rule-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1px solid #333;
+      border-radius: 9px;
+      background: #111;
+      cursor: pointer;
+      user-select: none;
+    }
+    .price-rule-item input {
+      accent-color: #ffd000;
+      width: 16px;
+      height: 16px;
+      margin-right: 8px;
+    }
+    .price-rule-left {
+      display: flex;
+      align-items: center;
+      color: #ddd;
+      font-size: 13px;
+    }
+    .price-rule-amount {
+      color: #ffd000;
+      font-size: 13px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .field-help {
+      margin-top: 6px;
+      font-size: 11px;
+      color: #666;
+      line-height: 1.4;
+    }
 
     .btn-search {
       width: 100%;
@@ -258,6 +304,42 @@
     <label class="field-label">Adres klant</label>
     <input class="field-input" type="text" id="inputAddress" placeholder="Hoofdstraat 12, Amsterdam">
   </div>
+  <div class="field-row">
+    <label class="field-label">Type onderhoud</label>
+    <select class="form-select" id="inputTypeOnderhoud">
+      <option value="onderhoud">onderhoud</option>
+      <option value="reparatie">reparatie</option>
+      <option value="installatie">installatie</option>
+    </select>
+  </div>
+  <div class="field-row">
+    <label class="field-label">Probleemomschrijving</label>
+    <textarea class="field-input field-textarea" id="inputProbleemomschrijving" placeholder="Bijv. Quooker knippert 2x, storing kraan. Vervangen kraan."></textarea>
+  </div>
+  <div class="field-row">
+    <label class="field-label">Prijsregels</label>
+    <div class="price-rule-list">
+      <label class="price-rule-item">
+        <span class="price-rule-left">
+          <input type="checkbox" class="price-rule-checkbox" data-label="standaard onderhoud" data-amount="195">
+          standaard onderhoud
+        </span>
+        <span class="price-rule-amount">€195</span>
+      </label>
+      <label class="price-rule-item">
+        <span class="price-rule-left">
+          <input type="checkbox" class="price-rule-checkbox" data-label="voorrijkosten" data-amount="50">
+          voorrijkosten
+        </span>
+        <span class="price-rule-amount">€50</span>
+      </label>
+    </div>
+    <div class="field-help">Geselecteerde regels worden meegestuurd als planner intakedata.</div>
+  </div>
+  <div class="field-row">
+    <label class="field-label">Totaalprijs</label>
+    <input class="field-input" type="text" id="inputTotaalprijs" value="0" readonly>
+  </div>
   <button type="button" class="btn-search" id="searchBtn">Tijdsloten berekenen →</button>
 </div>
 
@@ -314,6 +396,10 @@
   let resolvedContactId = null;
   let loadedSlots       = [];
   let sendInviteInFlight = false;
+  const STANDARD_PRICE_ITEMS = [
+    { label: 'standaard onderhoud', amount: 195 },
+    { label: 'voorrijkosten', amount: 50 },
+  ];
   /** Zelfde als bij laatste geslaagde preview — gebruikt bij send zodat link = preview. */
   let pendingProposalConstraints = null;
   /** UI-snapshot (modus + weekdagen + datums-tekst) bij laatste geslaagde preview; null = nog geen preview. */
@@ -420,6 +506,40 @@
   function getParam(p) { return new URLSearchParams(window.location.search).get(p); }
   function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 
+  function getSelectedPriceItems() {
+    return [...document.querySelectorAll('.price-rule-checkbox:checked')]
+      .map((el) => ({
+        label: String(el.dataset.label || '').trim(),
+        amount: Number(el.dataset.amount || 0),
+      }))
+      .filter((x) => x.label && Number.isFinite(x.amount) && x.amount > 0);
+  }
+
+  function getPriceTotal(items) {
+    const rows = Array.isArray(items) ? items : [];
+    return rows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+  }
+
+  function updatePriceTotalUi() {
+    const items = getSelectedPriceItems();
+    const total = getPriceTotal(items);
+    const totalInput = document.getElementById('inputTotaalprijs');
+    if (totalInput) totalInput.value = String(total);
+  }
+
+  function readPlannerIntakeState() {
+    const typeOnderhoud = document.getElementById('inputTypeOnderhoud')?.value || 'onderhoud';
+    const probleemomschrijving = document.getElementById('inputProbleemomschrijving')?.value?.trim() || '';
+    const selectedPriceItems = getSelectedPriceItems();
+    const totaalprijs = getPriceTotal(selectedPriceItems);
+    return {
+      typeOnderhoud,
+      probleemomschrijving,
+      selectedPriceItems,
+      totaalprijs,
+    };
+  }
+
   function onSendBtnClick(ev) {
     const btn = ev.target && ev.target.closest && ev.target.closest('#sendBtn');
     if (!btn || btn.disabled) return;
@@ -451,6 +571,10 @@
     // Delegatie + pointer: betrouwbaarder dan één listener op de knop (WebKit / webviews).
     const msgCard = document.getElementById('messageCard');
     if (msgCard) msgCard.addEventListener('click', onSendBtnClick);
+    document.querySelectorAll('.price-rule-checkbox').forEach((el) => {
+      el.addEventListener('change', updatePriceTotalUi);
+    });
+    updatePriceTotalUi();
 
     const cid   = getParam('contactId');
     const name  = getParam('name');
@@ -607,10 +731,27 @@
       const name    = document.getElementById('inputName').value.trim();
       const phone   = document.getElementById('inputPhone').value.trim();
       const address = document.getElementById('inputAddress').value.trim();
+      const intake  = readPlannerIntakeState();
 
       const body = resolvedContactId
-        ? { contactId: resolvedContactId }
-        : { name, phone, address };
+        ? {
+            contactId: resolvedContactId,
+            type: intake.typeOnderhoud,
+            workType: intake.typeOnderhoud,
+            desc: intake.probleemomschrijving,
+            priceRules: intake.selectedPriceItems,
+            priceTotal: intake.totaalprijs,
+          }
+        : {
+            name,
+            phone,
+            address,
+            type: intake.typeOnderhoud,
+            workType: intake.typeOnderhoud,
+            desc: intake.probleemomschrijving,
+            priceRules: intake.selectedPriceItems,
+            priceTotal: intake.totaalprijs,
+          };
       if (pendingProposalConstraints) body.proposalConstraints = pendingProposalConstraints;
 
       const ac = new AbortController();
@@ -682,6 +823,14 @@
     document.getElementById('inputName').value    = '';
     document.getElementById('inputPhone').value   = '';
     document.getElementById('inputAddress').value = '';
+    const typeSel = document.getElementById('inputTypeOnderhoud');
+    if (typeSel) typeSel.value = 'onderhoud';
+    const descEl = document.getElementById('inputProbleemomschrijving');
+    if (descEl) descEl.value = '';
+    document.querySelectorAll('.price-rule-checkbox').forEach((el) => {
+      el.checked = false;
+    });
+    updatePriceTotalUi();
     hide('resultCard'); hide('messageCard'); hide('successCard'); hide('errorCard'); hide('loadingCard');
     show('searchCard');
     updateStaleUi();
