@@ -246,10 +246,19 @@ function buildConfirmPutPayload({
     tijdslot: bevestigingTemplate1,
     type_onderhoud: type,
     probleemomschrijving: desc || '',
+    boeking_bevestigd_datum: date,
+    boeking_bevestigd_dagdeel: block,
+    boeking_bevestigd_status: 'confirmed',
   };
   const bookingCanon = appendBookingCanonFields(putPayload.customFields, canonValues);
   putPayload.customFields = bookingCanon.customFields;
   console.log('[BOOKING_CANON_WRITE]', bookingCanon.written);
+  console.log('[BOOKING_CANON_WRITE][confirmed]', {
+    boekingsformulier_tijdslot: bevestigingTemplate1,
+    boeking_bevestigd_datum: date,
+    boeking_bevestigd_dagdeel: block,
+    boeking_bevestigd_status: 'confirmed',
+  });
   // Geen locationId op PUT /contacts/:id — GHL 422: "property locationId should not exist"
   console.log('[confirm-booking DEBUG] ghl_contact_put_payload_json', JSON.stringify(putPayload));
   return { putPayload, bevestigingTemplate1 };

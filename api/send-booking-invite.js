@@ -560,27 +560,28 @@ export default async function handler(req, res) {
   if (slot2) {
     customFields.push({ id: FIELD_SLOT2, field_value: `${capitalize(slot2.dateLabel)} tussen ${slot2.timeLabel}` });
   }
-  const canonSlotLabel = [
-    `${capitalize(slot1.dateLabel)} tussen ${slot1.timeLabel}`,
-    slot2 ? `${capitalize(slot2.dateLabel)} tussen ${slot2.timeLabel}` : '',
-  ]
-    .filter(Boolean)
-    .join(' / ');
   const bookingCanonStreetHouse = [straat, huisnr].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
   const canonValues = {
     email: String(contact.email || '').trim(),
     straat_huisnummer: bookingCanonStreetHouse,
     postcode: postcode || '',
     woonplaats: woonplaats || '',
-    tijdslot: canonSlotLabel,
     type_onderhoud: workType,
     probleemomschrijving: intakeDesc,
     prijs_regels: intakePriceRulesSerialized,
     prijs_totaal: intakePriceTotal,
+    boekingsvoorstel_optie_1: `${capitalize(slot1.dateLabel)} tussen ${slot1.timeLabel}`,
+    boekingsvoorstel_optie_2: slot2 ? `${capitalize(slot2.dateLabel)} tussen ${slot2.timeLabel}` : '',
+    boekingsvoorstel_status: 'sent',
   };
   const bookingCanon = appendBookingCanonFields(customFields, canonValues);
   const allCustomFields = bookingCanon.customFields;
   console.log('[BOOKING_CANON_WRITE]', bookingCanon.written);
+  console.log('[BOOKING_CANON_WRITE][proposal]', {
+    boekingsvoorstel_optie_1: canonValues.boekingsvoorstel_optie_1,
+    boekingsvoorstel_optie_2: canonValues.boekingsvoorstel_optie_2,
+    boekingsvoorstel_status: canonValues.boekingsvoorstel_status,
+  });
   console.log('[BOOKING_PRICE_DEBUG]', {
     contactId,
     priceRulesCount: intakePriceRules.length,
