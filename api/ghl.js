@@ -18,6 +18,7 @@ import {
   listDeletableBlockIdsForMsRange,
   markBlockLikeOnCalendarEvents,
   postFullDayBlockSlot,
+  resolveBlockSlotAssignedUserId,
 } from '../lib/ghl-calendar-blocks.js';
 import {
   DEFAULT_BOOK_START_MORNING,
@@ -28,7 +29,6 @@ import {
   GHL_CONFIG_MISSING_MSG,
   ghlCalendarIdFromEnv,
   ghlLocationIdFromEnv,
-  stripGhlEnvId,
 } from '../lib/ghl-env-ids.js';
 import {
   canonicalGhlEventId,
@@ -58,6 +58,7 @@ import {
   amsterdamDayReadCacheKeyCalendarEvents,
   amsterdamDayReadCacheSet,
   cachedListConfirmedSyntheticEventsForDate,
+  invalidateAmsterdamDayGhlReadCachesForDate,
   invalidateRedisSyntheticsCacheForDate,
 } from '../lib/amsterdam-day-read-cache.js';
 import { deleteConfirmedReservationForContactDate } from '../lib/block-reservation-store.js';
@@ -68,61 +69,6 @@ const GHL_BASE = 'https://services.leadconnectorhq.com';
 
 function effectiveCalendarId() {
   return ghlCalendarIdFromEnv();
-}
-
-/** Block-slots aangemaakt met assignedUserId (geen event calendar) — zelfde user als in Vercel of vaste fallback. */
-function effectiveBlockSlotAssignedUserId() {
-  return (
-    stripGhlEnvId(process.env.GHL_BLOCK_SLOT_USER_ID) ||
-    stripGhlEnvId(process.env.GHL_APPOINTMENT_ASSIGNED_USER_ID) ||
-    HK_DEFAULT_BLOCK_SLOT_USER_ID
-  );
-}
-
-/**
- * User-id voor blokslots: GHL_BLOCK_SLOT_USER_ID of GHL_APPOINTMENT_ASSIGNED_USER_ID,
- * anders eerste gekoppelde user van de kalender (zelfde logica als confirm-booking).
- */
-async function resolveGhlCalendarAssignedUserIdForBlock(base, apiKey, locationId, calendarId) {
-  for (const key of ['GHL_BLOCK_SLOT_USER_ID', 'GHL_APPOINTMENT_ASSIGNED_USER_ID']) {
-    const s = stripGhlEnvId(process.env[key]);
-    if (s) return s;
-  }
-  const loc = stripGhlEnvId(locationId);
-  const cal = stripGhlEnvId(calendarId);
-  if (!apiKey || !loc || !cal) return '';
-  const urls = [
-    `${base}/calendars/${encodeURIComponent(cal)}?locationId=${encodeURIComponent(loc)}`,
-    `${base}/locations/${encodeURIComponent(loc)}/calendars/${encodeURIComponent(cal)}`,
-  ];
-  for (const url of urls) {
-    for (const Version of ['2021-04-15', '2021-07-28']) {
-      try {
-        const r = await fetchWithRetry(
-          url,
-          {
-            headers: { Authorization: `Bearer ${apiKey}`, Version },
-          },
-          0
-        );
-        if (!r.ok) continue;
-        const j = await r.json().catch(() => ({}));
-        const c = j?.calendar || j?.data || j;
-        const uid =
-          c?.userId ??
-          c?.primaryUserId ??
-          c?.assignedUserId ??
-          c?.teamMembers?.[0]?.userId ??
-          c?.teamMembers?.[0]?.id ??
-          (Array.isArray(c?.calendarUserIds) ? c.calendarUserIds[0] : null) ??
-          (Array.isArray(c?.memberIds) ? c.memberIds[0] : null);
-        if (uid != null && String(uid).trim()) return String(uid).trim();
-      } catch {
-        /* ignore */
-      }
-    }
-  }
-  return '';
 }
 
 /** YYYY-M-DD → YYYY-MM-DD (match met formatYyyyMmDdInAmsterdam) */
@@ -352,6 +298,12 @@ export default async function handler(req, res) {
         const { startMs, endMs } = bounds;
         const locId = locConfigured;
         const calId = calConfigured;
+        const blockSlotUserId = await resolveBlockSlotAssignedUserId(
+          GHL_BASE,
+          GHL_API_KEY,
+          locId,
+          calId
+        );
         const url = `${GHL_BASE}/calendars/events?locationId=${encodeURIComponent(locId)}&calendarId=${encodeURIComponent(calId)}&startTime=${startMs}&endTime=${endMs}`;
         const calKey = amsterdamDayReadCacheKeyCalendarEvents(locId, calId, date);
         const tCalEv = Date.now();
@@ -370,8 +322,7 @@ export default async function handler(req, res) {
 
         markBlockLikeOnCalendarEvents(events);
 
-        const blkUser = effectiveBlockSlotAssignedUserId();
-        const blkKey = amsterdamDayReadCacheKeyBlockedSlots(locId, calId, startMs, endMs, blkUser);
+        const blkKey = amsterdamDayReadCacheKeyBlockedSlots(locId, calId, startMs, endMs, blockSlotUserId);
         const tBlk = Date.now();
         let blockedAsEvents = amsterdamDayReadCacheGet(blkKey);
         if (blockedAsEvents === undefined) {
@@ -381,7 +332,7 @@ export default async function handler(req, res) {
             startMs: bounds.startMs,
             endMs: bounds.endMs,
             apiKey: GHL_API_KEY,
-            assignedUserId: blkUser,
+            assignedUserId: blockSlotUserId,
           });
           blockedAsEvents = Array.isArray(fetched) ? fetched : [];
           amsterdamDayReadCacheSet(blkKey, blockedAsEvents);
@@ -1213,19 +1164,23 @@ export default async function handler(req, res) {
         const calendarId = calConfigured;
         const titleRaw = req.body?.title;
         const title = titleRaw != null && String(titleRaw).trim() ? String(titleRaw).trim().slice(0, 120) : 'Dag geblokkeerd';
-        const assignedUserId = await resolveGhlCalendarAssignedUserIdForBlock(
+        const assignedUserId = await resolveBlockSlotAssignedUserId(
           GHL_BASE,
           GHL_API_KEY,
           locationId,
           calendarId
         );
-        if (!assignedUserId) {
-          return res.status(500).json({
-            error:
-              'Geen GHL-gebruiker voor blokslots: zet GHL_BLOCK_SLOT_USER_ID of GHL_APPOINTMENT_ASSIGNED_USER_ID in Vercel (UUID van een user die aan deze kalender gekoppeld is), of koppel in GHL minstens één user aan de kalender.',
-          });
-        }
-        console.log('[blockCalendarDay] calendarId:', calendarId, 'locationId:', locationId);
+        console.log(
+          JSON.stringify({
+            event: 'hk_block_calendar_day',
+            stage: 'request',
+            dateStr: date,
+            calendarId,
+            locationId,
+            assignedUserId,
+            usingDefaultBlockUser: assignedUserId === HK_DEFAULT_BLOCK_SLOT_USER_ID,
+          })
+        );
         const r = await postFullDayBlockSlot(GHL_BASE, {
           locationId,
           calendarId,
@@ -1238,6 +1193,21 @@ export default async function handler(req, res) {
           return res.status(400).json({ error: r.error });
         }
         if (r.skipped) {
+          invalidateAmsterdamDayGhlReadCachesForDate({
+            locationId,
+            calendarId,
+            dateStr: date,
+            blockSlotAssignedUserIds: [assignedUserId, HK_DEFAULT_BLOCK_SLOT_USER_ID],
+            trigger: 'blockCalendarDay',
+          });
+          console.log(
+            JSON.stringify({
+              event: 'hk_block_calendar_day',
+              outcome: 'skipped_already_blocked',
+              dateStr: date,
+              assignedUserId,
+            })
+          );
           return res.status(200).json({
             success: true,
             alreadyBlocked: true,
@@ -1279,6 +1249,22 @@ export default async function handler(req, res) {
                 : undefined,
           });
         }
+        invalidateAmsterdamDayGhlReadCachesForDate({
+          locationId,
+          calendarId,
+          dateStr: date,
+          blockSlotAssignedUserIds: [assignedUserId, HK_DEFAULT_BLOCK_SLOT_USER_ID],
+          trigger: 'blockCalendarDay',
+        });
+        console.log(
+          JSON.stringify({
+            event: 'hk_block_calendar_day',
+            outcome: 'blocked',
+            dateStr: date,
+            assignedUserId,
+            ghlHttpStatus: r.status,
+          })
+        );
         return res.status(200).json({ success: true, ...r.data });
       }
 
@@ -1303,7 +1289,16 @@ export default async function handler(req, res) {
         ];
 
         const idsFromClient = ids.length > 0;
-        const blockUserId = effectiveBlockSlotAssignedUserId() || HK_DEFAULT_BLOCK_SLOT_USER_ID;
+        const blockUserId = await resolveBlockSlotAssignedUserId(GHL_BASE, GHL_API_KEY, loc, cal);
+        console.log(
+          JSON.stringify({
+            event: 'hk_unblock_calendar_day',
+            stage: 'request',
+            dateStr: date,
+            assignedUserId: blockUserId,
+            usingDefaultBlockUser: blockUserId === HK_DEFAULT_BLOCK_SLOT_USER_ID,
+          })
+        );
 
         if (!ids.length) {
           /** Personal block-slots: GET blocked-slots met userId + merged calendar-queries. */
@@ -1362,9 +1357,27 @@ export default async function handler(req, res) {
           });
         }
         const partial = results.some((x) => !x.ok);
+        const deletedN = results.filter((x) => x.ok).length;
+        invalidateAmsterdamDayGhlReadCachesForDate({
+          locationId: loc,
+          calendarId: cal,
+          dateStr: date,
+          blockSlotAssignedUserIds: [blockUserId, HK_DEFAULT_BLOCK_SLOT_USER_ID],
+          trigger: 'unblockCalendarDay',
+        });
+        console.log(
+          JSON.stringify({
+            event: 'hk_unblock_calendar_day',
+            outcome: 'success',
+            dateStr: date,
+            assignedUserId: blockUserId,
+            deleted: deletedN,
+            partial,
+          })
+        );
         return res.status(200).json({
           success: true,
-          deleted: results.filter((x) => x.ok).length,
+          deleted: deletedN,
           partial,
           results,
         });
@@ -1417,13 +1430,14 @@ export default async function handler(req, res) {
           });
         }
 
+        const bulkBlockUserId = await resolveBlockSlotAssignedUserId(GHL_BASE, GHL_API_KEY, loc, cal);
         const allIds = await listDeletableBlockIdsForMsRange(GHL_BASE, {
           locationId: loc,
           calendarId: cal,
           apiKey: GHL_API_KEY,
           startMs,
           endMs,
-          assignedUserId: effectiveBlockSlotAssignedUserId(),
+          assignedUserId: bulkBlockUserId,
         });
         const MAX_PER_RUN = 300;
         const truncated = allIds.length > MAX_PER_RUN;

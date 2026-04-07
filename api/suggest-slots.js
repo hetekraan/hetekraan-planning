@@ -21,7 +21,7 @@ import { availabilityDebugEnabled, logAvailability } from '../lib/availability-d
 import {
   isCustomerBookingBlockedOnAmsterdamDate,
   markBlockLikeOnCalendarEvents,
-  resolveAssignedUserIdForBlockedSlotQueries,
+  resolveBlockSlotAssignedUserId,
 } from '../lib/ghl-calendar-blocks.js';
 import {
   cachedFetchBlockedSlotsAsEvents,
@@ -591,11 +591,13 @@ export default async function handler(req, res) {
       });
     }
 
+    const blockSlotUserId = await resolveBlockSlotAssignedUserId(GHL_BASE, GHL_API_KEY, locId, calId);
+
     const availabilityCtx = {
       locationId: locId,
       calendarId: calId,
       apiKey: GHL_API_KEY,
-      assignedUserId: resolveAssignedUserIdForBlockedSlotQueries(),
+      assignedUserId: blockSlotUserId,
     };
 
     const geocodeEvents = async (evList) => {
@@ -650,7 +652,7 @@ export default async function handler(req, res) {
                 locationId: locId,
                 calendarId: calId,
                 apiKey: GHL_API_KEY,
-                assignedUserId: resolveAssignedUserIdForBlockedSlotQueries(),
+                assignedUserId: blockSlotUserId,
               },
               bounds
             );

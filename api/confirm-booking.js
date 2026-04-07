@@ -34,7 +34,7 @@ import {
 import {
   isCustomerBookingBlockedOnAmsterdamDate,
   markBlockLikeOnCalendarEvents,
-  resolveAssignedUserIdForBlockedSlotQueries,
+  resolveBlockSlotAssignedUserId,
 } from '../lib/ghl-calendar-blocks.js';
 import {
   CUSTOMER_BLOCK_AFTERNOON_END_HOUR,
@@ -211,7 +211,11 @@ function firstValidNlMobile(...candidates) {
  * Zelfde merged dag als suggest-slots / send-booking-invite (events + blocked-slots → markBlockLike).
  * @returns {object[]|null} null = GHL events-fetch mislukt
  */
-async function loadMergedCalendarEventsForConfirmDate(dateStr, { base, locationId, calendarId, apiKey }, timingOut) {
+async function loadMergedCalendarEventsForConfirmDate(
+  dateStr,
+  { base, locationId, calendarId, apiKey, assignedUserId },
+  timingOut
+) {
   const bounds = amsterdamCalendarDayBoundsMs(dateStr);
   if (!bounds) return [];
   const tCal = Date.now();
@@ -226,7 +230,7 @@ async function loadMergedCalendarEventsForConfirmDate(dateStr, { base, locationI
       locationId,
       calendarId,
       apiKey,
-      assignedUserId: resolveAssignedUserIdForBlockedSlotQueries(),
+      assignedUserId,
     },
     bounds
   );
@@ -568,14 +572,22 @@ export default async function handler(req, res) {
   const date = slotIdParsed?.dateStr || chosenSlot.dateStr || legacyDate;
   if (!date) return res.status(400).json({ error: 'Geen datum in slot' });
 
+  const ghlCalIdConfirm = ghlCalendarIdFromEnv();
+  const blockSlotUserId = await resolveBlockSlotAssignedUserId(
+    GHL_BASE,
+    GHL_API_KEY,
+    GHL_LOCATION_ID,
+    ghlCalIdConfirm
+  );
+
   const tDayBlk0 = Date.now();
   const dayBlkConfirm = await isCustomerBookingBlockedOnAmsterdamDate(
     GHL_BASE,
     {
       locationId: GHL_LOCATION_ID,
-      calendarId: ghlCalendarIdFromEnv(),
+      calendarId: ghlCalIdConfirm,
       apiKey: GHL_API_KEY,
-      assignedUserId: resolveAssignedUserIdForBlockedSlotQueries(),
+      assignedUserId: blockSlotUserId,
     },
     date
   );
@@ -666,12 +678,17 @@ export default async function handler(req, res) {
     console.log('[confirm-booking DEBUG] v2 after_duplicate_check_redis_ok');
 
     const mergeTiming = {};
-    const merged = await loadMergedCalendarEventsForConfirmDate(date, {
-      base: GHL_BASE,
-      locationId: GHL_LOCATION_ID,
-      calendarId: ghlCalendarIdFromEnv(),
-      apiKey: GHL_API_KEY,
-    }, mergeTiming);
+    const merged = await loadMergedCalendarEventsForConfirmDate(
+      date,
+      {
+        base: GHL_BASE,
+        locationId: GHL_LOCATION_ID,
+        calendarId: ghlCalIdConfirm,
+        apiKey: GHL_API_KEY,
+        assignedUserId: blockSlotUserId,
+      },
+      mergeTiming
+    );
     perf.ghl_calendar_fetch_ms = mergeTiming.ghl_calendar_fetch_ms || 0;
     perf.blocked_slots_fetch_ms = mergeTiming.blocked_slots_fetch_ms || 0;
     if (merged === null) {

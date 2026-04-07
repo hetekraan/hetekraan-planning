@@ -1254,7 +1254,7 @@
       <div class="section-title">⬛ Afspraken van de dag</div>
       <div class="appointments-header-actions">
         <button class="btn-dagopgave" onclick="openDagopgave()" title="Dagopgave voor Tellow">📋</button>
-        <button class="btn-block-cal" id="btnBlockDayGhl" type="button" onclick="onBlockDayButtonClick()" title="Dag blokkeren of blokkade in GHL opheffen">🚫 Blokkeer dag</button>
+        <button class="btn-block-cal" id="btnBlockDayGhl" type="button" onclick="onBlockDayButtonClick()" title="Hele-dag GHL-blokslot (00:00–23:59) zetten of blokkade opheffen. Online boeken sluit de hele kalenderdatum uit; kortere GHL-blokken kunnen dat ook (zie banner, 08–18 Amsterdam).">🚫 Blokkeer dag</button>
         <button class="btn-bulk-clear-blocks" id="btnBulkClearGhlBlocks" type="button" onclick="bulkDeleteAllGhlBlockedSlots()" title="Alleen daan: verwijder alle blokslots in GHL in een breed datumbereik via de API" style="display:none">⚠ Opruimen blokslots</button>
         <button class="btn-add" onclick="openModal()">+ Afspraak</button>
       </div>
@@ -2136,7 +2136,7 @@ function renderApptCard(a, i) {
           <div class="appt-actions"></div>
         </div>
         <div class="appt-name">${a.name.toUpperCase()}</div>
-        <div class="appt-desc" style="color:var(--muted);font-size:12px;line-height:1.45">Geen klantafspraak. Gebruik <strong>Blokkade opheffen</strong> bovenaan om dit uit GHL te halen, of pas het aan in de GHL-agenda.</div>
+        <div class="appt-desc" style="color:var(--muted);font-size:12px;line-height:1.45">Geen klantafspraak — bloktijd telt voor online boeken mee als <strong>hele datum dicht</strong> (08–18 Amsterdam overlap). Gebruik <strong>Blokkade opheffen</strong> bovenaan om dashboard-blokken te verwijderen, of pas aan in GHL.</div>
       </div>
     </div>`;
     }
@@ -2263,11 +2263,11 @@ function render() {
     if (blocks.length) {
       bannerEl.style.display = 'flex';
       bannerEl.innerHTML =
-        '<span aria-hidden="true">🚫</span><span><strong>Deze dag is geblokkeerd in GHL</strong> — er staat officiële bloktijd op de agenda (geen klantafspraak in die uren). Online boeken slaat geblokkeerde werktijd over. Details staan hieronder.</span>';
+        '<span aria-hidden="true">🚫</span><span><strong>Deze dag is geblokkeerd in GHL</strong> — er staat officiële bloktijd op de agenda. <strong>Online boeken</strong> sluit deze <strong>kalenderdag volledig</strong> zodra er bloktijd in de planningdag <strong>08:00–18:00</strong> (Amsterdam) valt (ook bij een blokslot dat alleen bijv. de ochtend beslaat). Details staan hieronder.</span>';
     } else if (dashBlockedPending) {
       bannerEl.style.display = 'flex';
       bannerEl.innerHTML =
-        '<span aria-hidden="true">🚫</span><span><strong>Deze dag is geblokkeerd</strong> — zojuist via dit dashboard gezet. GHL toont het blokslot soms pas na een paar seconden; ververs de dag of controleer de GHL-agenda. <button type="button" class="day-blocked-dismiss" onclick="dismissDashBlockedBanner()">Melding verbergen</button></span>';
+        '<span aria-hidden="true">🚫</span><span><strong>Deze dag is geblokkeerd</strong> — zojuist via dit dashboard (hele datum in GHL). Online boeken sluit daarna deze <strong>hele datum</strong> uit zolang het blok actief is. GHL toont het blokslot soms pas na een paar seconden; ververs de dag of controleer de GHL-agenda. <button type="button" class="day-blocked-dismiss" onclick="dismissDashBlockedBanner()">Melding verbergen</button></span>';
     } else {
       bannerEl.style.display = 'none';
       bannerEl.innerHTML = '';
@@ -2281,8 +2281,8 @@ function render() {
     blockBtn.textContent = dayIsBlocked ? '🔓 Blokkade opheffen' : '🚫 Blokkeer dag';
     blockBtn.disabled = false;
     blockBtn.title = dayIsBlocked
-      ? 'Heft de GHL-blokkade voor deze dag op (na bevestiging)'
-      : 'Zet in GHL een officiële blokslot over deze hele dag (geen klantafspraak)';
+      ? 'Heft de GHL-blokkade voor deze dag op — daarna kan online boeken deze datum weer voorstellen (als er verder geen blok in 08–18 Ams valt).'
+      : 'Zet in GHL een officiële blokslot voor deze hele kalenderdag (00–24). Online boeken sluit deze datum dan volledig uit. Kortere blokken alleen in GHL kunnen ook de hele dag voor klanten sluiten (08–18-overlap).';
   }
 
   const parts = [];
@@ -3394,7 +3394,7 @@ let hkGhlBlockDayInFlight = false;
 async function blockCurrentDayInGhl() {
   const dateStr = getDateStr(currentDate);
   const label = formatDate(currentDate);
-  if (!confirm(`Hele dag blokkeren in GHL voor ${label}?\n\nEr wordt een officiële “blokslot” gezet op kalender Planning Jerry (geen klantafspraak). Online boeken slaat deze dag dan over.`)) return;
+  if (!confirm(`Hele kalenderdag blokkeren in GHL voor ${label}?\n\nEr komt een officiële blokslot (hele dag). Online boeken slaat deze datum daarna volledig over — totdat je de blokkade weer opheft of het blok in GHL verwijdert.\n\nLet op: kortere blokken die je alleen in GHL zet kunnen óók de hele datum voor klanten sluiten (overlap met 08–18 Amsterdam).`)) return;
   if (hkGhlBlockDayInFlight) return;
   hkGhlBlockDayInFlight = true;
   const blockBtn = document.getElementById('btnBlockDayGhl');

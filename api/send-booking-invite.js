@@ -28,7 +28,7 @@ import {
 import {
   isCustomerBookingBlockedOnAmsterdamDate,
   markBlockLikeOnCalendarEvents,
-  resolveAssignedUserIdForBlockedSlotQueries,
+  resolveBlockSlotAssignedUserId,
 } from '../lib/ghl-calendar-blocks.js';
 import {
   cachedFetchBlockedSlotsAsEvents,
@@ -49,12 +49,12 @@ const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_BASE        = 'https://services.leadconnectorhq.com';
 
 /** Zelfde availability-context als confirm-booking / suggest-slots (Europe/Amsterdam-dag via GHL). */
-function customerAvailabilityCtx() {
+function customerAvailabilityCtx(assignedUserId) {
   return {
     locationId: GHL_LOCATION_ID,
     calendarId: ghlCalendarIdFromEnv(),
     apiKey: GHL_API_KEY,
-    assignedUserId: resolveAssignedUserIdForBlockedSlotQueries(),
+    assignedUserId,
   };
 }
 
@@ -130,6 +130,8 @@ async function pickBlockInviteOffers(workType, timings, proposalConstraints = nu
   const locId = ghlLocationIdFromEnv();
   if (!calId || !locId) return [];
 
+  const blockSlotUserId = await resolveBlockSlotAssignedUserId(GHL_BASE, GHL_API_KEY, locId, calId);
+
   const todayAmsterdam = formatYyyyMmDdInAmsterdam(new Date());
   if (!todayAmsterdam) return [];
   const startDate = addAmsterdamCalendarDays(todayAmsterdam, 1);
@@ -167,7 +169,7 @@ async function pickBlockInviteOffers(workType, timings, proposalConstraints = nu
         locationId: GHL_LOCATION_ID,
         calendarId: calId,
         apiKey: GHL_API_KEY,
-        assignedUserId: resolveAssignedUserIdForBlockedSlotQueries(),
+        assignedUserId: blockSlotUserId,
       },
       dayBounds
     );
@@ -206,7 +208,11 @@ async function pickBlockInviteOffers(workType, timings, proposalConstraints = nu
   const processOneDay = async (cursor, i) => {
     try {
       const tDb = Date.now();
-      const db = await isCustomerBookingBlockedOnAmsterdamDate(GHL_BASE, customerAvailabilityCtx(), cursor);
+      const db = await isCustomerBookingBlockedOnAmsterdamDate(
+        GHL_BASE,
+        customerAvailabilityCtx(blockSlotUserId),
+        cursor
+      );
       if (perf) perf.day_blocked_check_sum_ms += Date.now() - tDb;
       if (db) {
         if (trace) trace.dayDecisions.push({ dateStr: cursor, outcome: 'excluded', why: 'day_blocked' });
