@@ -573,22 +573,14 @@ export default async function handler(req, res) {
         pushField(FIELD_IDS.tijdafspraak, tijdafspraak);
         pushField(FIELD_IDS.opmerkingen, opmerkingen);
         pushField(FIELD_IDS.prijs, prijs);
-        const bookingCanonStreetHouse = [straatnaam, huisnummer]
-          .map((x) => (x != null ? String(x).trim() : ''))
-          .filter(Boolean)
-          .join(' ')
-          .replace(/\s+/g, ' ')
-          .trim();
         const bookingCanon = appendBookingCanonFields(customFields, {
-          straat_huisnummer: bookingCanonStreetHouse,
-          postcode,
-          woonplaats,
-          tijdslot: tijdafspraak,
           type_onderhoud: typeOnderhoud,
           probleemomschrijving,
-          prijs_totaal: toPriceNumber(prijs),
         });
-        console.log('[BOOKING_CANON_WRITE]', bookingCanon.written);
+        console.log('[BOOKING_CANON_WRITE]', {
+          typeOnderhoud: bookingCanon.written.type_onderhoud || '',
+          probleemomschrijving: bookingCanon.written.probleemomschrijving || '',
+        });
 
         const payload = {};
         if (firstName !== undefined) payload.firstName = String(firstName).trim();
@@ -674,14 +666,18 @@ export default async function handler(req, res) {
         if (Array.isArray(extras) && extras.length > 0) {
           customFields.push({ id: FIELD_IDS.prijs_regels, field_value: JSON.stringify(extras) });
         }
+        const canonicalPrijsRegels = formatPriceRulesStructuredString(extras);
+        const canonicalPrijsTotaal = toPriceNumber(totalPrice);
         const bookingCanon = appendBookingCanonFields(customFields, {
-          type_onderhoud: type,
-          prijs_regels: formatPriceRulesStructuredString(extras),
-          prijs_totaal: toPriceNumber(totalPrice),
-          betaal_status: 'Afgerond',
+          prijs_regels: canonicalPrijsRegels,
+          prijs_totaal: canonicalPrijsTotaal,
         });
-        console.log('[BOOKING_CANON_WRITE]', bookingCanon.written);
-
+        console.log('[BOOKING_PRICE_DEBUG]', {
+          contactId,
+          extrasCount: Array.isArray(extras) ? extras.length : 0,
+          serializedPrijsRegels: canonicalPrijsRegels,
+          prijsTotaal: canonicalPrijsTotaal,
+        });
         const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
           method: 'PUT',
           headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-04-15' },
@@ -823,12 +819,7 @@ export default async function handler(req, res) {
 
         // Stap 2: canoniek adres (address1 + straat/huis-CF) + type/omschrijving
         if (address) {
-          const { address1, customFields: addrCf, parts } = buildCanonicalAddressWritePayload(address);
-          const bookingCanonStreetHouse = [parts?.straatnaam, parts?.huisnummer]
-            .filter(Boolean)
-            .join(' ')
-            .replace(/\s+/g, ' ')
-            .trim();
+          const { address1, customFields: addrCf } = buildCanonicalAddressWritePayload(address);
           const bookingCanon = appendBookingCanonFields(
             [
               ...addrCf,
@@ -836,15 +827,14 @@ export default async function handler(req, res) {
               { id: FIELD_IDS.probleemomschrijving, field_value: desc || '' },
             ],
             {
-              straat_huisnummer: bookingCanonStreetHouse,
-              postcode: parts?.postcode || '',
-              woonplaats: parts?.woonplaats || '',
               type_onderhoud: apptType || 'reparatie',
               probleemomschrijving: desc || '',
-              tijdslot: [date, time].filter(Boolean).join(' ').trim(),
             }
           );
-          console.log('[BOOKING_CANON_WRITE]', bookingCanon.written);
+          console.log('[BOOKING_CANON_WRITE]', {
+            typeOnderhoud: bookingCanon.written.type_onderhoud || '',
+            probleemomschrijving: bookingCanon.written.probleemomschrijving || '',
+          });
           await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
             method: 'PUT',
             headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-04-15' },
