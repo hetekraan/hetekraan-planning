@@ -57,6 +57,7 @@ import {
   logCanonicalAddressWrite,
   logCanonicalEmailWrite,
   mergeGhlNativeAddressFromParts,
+  normalizeCanonicalGhlEmail,
   readCanonicalAddressLine,
   splitAddressLineToStraatHuis,
 } from '../lib/ghl-contact-canonical.js';
@@ -101,7 +102,7 @@ function formatDateLongNl(dateStr) {
 
 /**
  * Custom field "Tijdafspraak": het **geboekte dagdeel** (ochtend/middag-venster), niet de GHL starttijd.
- * Zo weet de monteur welk venster de klant verwacht; route-optimalisatie gebruikt de dagnummers op het dashboard.
+ * Geen routevolgorde in deze tekst (klant/WA-templates); volgorde staat alleen in de planner-UI.
  */
 function formatGeboektTijdslotField(dateStr, block, routeStopDay) {
   const dateLong = formatDateLongNl(dateStr);
@@ -109,9 +110,9 @@ function formatGeboektTijdslotField(dateStr, block, routeStopDay) {
     block === 'morning'
       ? `ochtend ${SLOT_LABEL_MORNING_NL}`
       : `middag ${SLOT_LABEL_AFTERNOON_NL}`;
-  let s = `${dateLong}. Geboekt tijdslot: ${slot}. Klant verwacht bezoek binnen dit venster.`;
+  const s = `${dateLong}. Geboekt tijdslot: ${slot}. Klant verwacht bezoek binnen dit venster.`;
   if (routeStopDay != null && routeStopDay >= 1) {
-    s += ` Routevolgorde deze dag: ${routeStopDay}.`;
+    console.log('[confirm-booking] interne routevolgorde (niet in tijdafspraak-CF):', routeStopDay);
   }
   return s;
 }
@@ -352,13 +353,13 @@ export default async function handler(req, res) {
   perf.ghl_contact_get_ms = Date.now() - tGhlContact0;
 
   // E-mail: formulier > token > GHL-contact
-  let email = normalizeEmail(emailRaw);
+  let email = normalizeCanonicalGhlEmail(emailRaw);
   if (!isValidEmail(email)) {
-    const fromToken = normalizeEmail(emailInToken);
+    const fromToken = normalizeCanonicalGhlEmail(emailInToken);
     if (isValidEmail(fromToken)) email = fromToken;
   }
   if (!isValidEmail(email) && contactSnap) {
-    const ge = normalizeEmail(contactSnap.email);
+    const ge = normalizeCanonicalGhlEmail(contactSnap.email);
     if (isValidEmail(ge)) email = ge;
   }
   if (!isValidEmail(email)) {
@@ -366,7 +367,7 @@ export default async function handler(req, res) {
   }
   logCanonicalEmailWrite('confirm-booking_resolved', {
     ghlField: 'email',
-    fromBody: Boolean(normalizeEmail(emailRaw) && isValidEmail(normalizeEmail(emailRaw))),
+    fromBody: Boolean(normalizeCanonicalGhlEmail(emailRaw) && isValidEmail(normalizeCanonicalGhlEmail(emailRaw))),
     len: email.length,
   });
 
@@ -394,7 +395,9 @@ export default async function handler(req, res) {
     contactIdFromToken: contactId,
     resolvedEmailLen: email.length,
     resolvedAddressLen: address.length,
-    emailFromRequestBody: Boolean(normalizeEmail(emailRaw) && isValidEmail(normalizeEmail(emailRaw))),
+    emailFromRequestBody: Boolean(
+      normalizeCanonicalGhlEmail(emailRaw) && isValidEmail(normalizeCanonicalGhlEmail(emailRaw))
+    ),
     structuredBookingAddress: Boolean(structuredBookingAddress),
   });
   logCanonicalAddressWrite('confirm-booking_resolved', {
@@ -1262,10 +1265,6 @@ export default async function handler(req, res) {
     perf.total_ms = Date.now() - reqT0;
     console.log('[timing confirm-booking]', JSON.stringify(perf));
   }
-}
-
-function normalizeEmail(v) {
-  return String(v ?? '').trim().toLowerCase();
 }
 
 function isValidEmail(s) {

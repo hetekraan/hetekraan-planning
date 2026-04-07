@@ -19,7 +19,11 @@ import {
   markBlockLikeOnCalendarEvents,
   postFullDayBlockSlot,
 } from '../lib/ghl-calendar-blocks.js';
-import { DEFAULT_BOOK_START_MORNING } from '../lib/planning-work-hours.js';
+import {
+  DEFAULT_BOOK_START_MORNING,
+  SLOT_LABEL_AFTERNOON_NL,
+  SLOT_LABEL_MORNING_NL,
+} from '../lib/planning-work-hours.js';
 import {
   GHL_CONFIG_MISSING_MSG,
   ghlCalendarIdFromEnv,
@@ -460,7 +464,20 @@ export default async function handler(req, res) {
             e.parsedWoonplaats = '';
           }
           const werkzaamheden = getField(contact, FIELD_IDS.probleemomschrijving);
-          e.parsedWork       = werkzaamheden || e.title;
+          if (e._hkBlockReservationSynthetic) {
+            const blk = e._hkSyntheticBlock === 'afternoon' ? 'afternoon' : 'morning';
+            const windowLabel =
+              blk === 'afternoon' ? SLOT_LABEL_AFTERNOON_NL : SLOT_LABEL_MORNING_NL;
+            const titleStr = typeof e.title === 'string' ? e.title : '';
+            const techTitle = titleStr.includes('__hk_block_res__');
+            e.parsedWork =
+              werkzaamheden ||
+              (techTitle
+                ? `Online geboekt — ${blk === 'morning' ? 'ochtend' : 'middag'} (${windowLabel})`
+                : e.title);
+          } else {
+            e.parsedWork = werkzaamheden || e.title;
+          }
           e.parsedPrice      = getField(contact, FIELD_IDS.prijs);
           e.parsedNotes      = getField(contact, FIELD_IDS.opmerkingen);
           e.parsedTimeWindow = getField(contact, FIELD_IDS.tijdafspraak) || null;
