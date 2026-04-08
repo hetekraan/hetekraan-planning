@@ -1,4 +1,19 @@
 (function () {
+  function isLoginDebugEnabled() {
+    try {
+      return localStorage.getItem('hk_debug_login') === '1';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function loginDebug(step, payload) {
+    if (!isLoginDebugEnabled()) return;
+    try {
+      console.debug(`[LOGIN_DEBUG] ${step}`, payload || {});
+    } catch (_) {}
+  }
+
   function clearLoginState(input) {
     const userKey = input?.userKey;
     const sessionKey = input?.sessionKey;
@@ -41,6 +56,7 @@
     if (!getStoredSession || !render || !loadAppointments || !clearLoginState) return;
 
     const session = getStoredSession();
+    loginDebug('checkLogin_session', { hasSession: !!session, user: session?.user || null });
     if (session) {
       const overlay = document.getElementById('loginOverlay');
       if (overlay) overlay.classList.add('hidden');
@@ -65,6 +81,7 @@
     const btn = document.querySelector('.btn-login');
     const user = String(userEl?.value || '').trim().toLowerCase();
     const pass = String(passEl?.value || '');
+    loginDebug('doLogin_start', { hasUser: !!user, hasPass: !!pass });
 
     if (btn) btn.disabled = true;
     if (errEl) errEl.classList.remove('visible');
@@ -79,6 +96,7 @@
       try {
         data = await res.json();
       } catch (_) {}
+      loginDebug('doLogin_response', { status: res.status, ok: res.ok, hasToken: !!data?.token, user: data?.user || null });
       if (res.ok && data?.token) {
         try {
           localStorage.setItem(userKey, data.user);
@@ -92,6 +110,7 @@
         if (overlay) overlay.classList.add('hidden');
         render();
         loadAppointments();
+        loginDebug('doLogin_success', { storedUser: data.user });
         return;
       }
       const msg =
@@ -104,6 +123,7 @@
       }
       if (passEl) passEl.value = '';
     } catch (_) {
+      loginDebug('doLogin_network_error');
       if (errEl) {
         errEl.textContent = 'Geen verbinding met de server — controleer je internet';
         errEl.classList.add('visible');
