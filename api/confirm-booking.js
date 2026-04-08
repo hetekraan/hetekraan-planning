@@ -26,6 +26,8 @@ import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
 import { verifyBookingToken } from '../lib/session.js';
+import { getOrCreateRequestId, logEvent } from '../lib/observability.js';
+import { applySecurityHeaders, enforceSimpleRateLimit } from '../lib/http-security.js';
 import {
   BLOCK_REASON,
   evaluateBlockOffer,
@@ -422,6 +424,12 @@ function releaseBookingLock(key) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
+  applySecurityHeaders(res);
+  const requestId = getOrCreateRequestId(req, res);
+  if (!enforceSimpleRateLimit(req, res, 'confirm-booking')) {
+    logEvent('rate_limit_exceeded', { route: 'api/confirm-booking', request_id: requestId }, 'warn');
+    return res.status(429).json({ error: 'Te veel requests, probeer zo opnieuw.' });
+  }
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -431,6 +439,7 @@ export default async function handler(req, res) {
 
   const reqT0 = Date.now();
   const perf = { route: 'confirm-booking' };
+  logEvent('confirm_booking_request', { method: req.method, request_id: requestId });
   try {
   let body = req.body;
   if (typeof body === 'string') {

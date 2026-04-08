@@ -10,6 +10,8 @@ import { fetchWithRetry } from '../lib/retry.js';
 import { sendErrorNotification } from '../lib/notify.js';
 import { pulseContactTag } from '../lib/ghl-tag.js';
 import { signSessionToken, parseUsers, verifySessionToken } from '../lib/session.js';
+import { getOrCreateRequestId, logEvent } from '../lib/observability.js';
+import { applySecurityHeaders, enforceSimpleRateLimit } from '../lib/http-security.js';
 import {
   deleteGhlCalendarBlock,
   fetchBlockedSlotsAsEvents,
@@ -62,6 +64,7 @@ import {
   invalidateRedisSyntheticsCacheForDate,
 } from '../lib/amsterdam-day-read-cache.js';
 import { deleteConfirmedReservationForContactDate } from '../lib/block-reservation-store.js';
+import { buildCompleteAppointmentPayload } from '../lib/usecases/complete-appointment.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -257,12 +260,19 @@ function requireAuth(req, res) {
 }
 
 export default async function handler(req, res) {
+  applySecurityHeaders(res);
+  const requestId = getOrCreateRequestId(req, res);
+  if (!enforceSimpleRateLimit(req, res, 'ghl')) {
+    logEvent('rate_limit_exceeded', { route: 'api/ghl', request_id: requestId }, 'warn');
+    return res.status(429).json({ error: 'Te veel requests, probeer zo opnieuw.' });
+  }
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-HK-Auth');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const { action } = req.query;
+  logEvent('api_ghl_request', { action, method: req.method, request_id: requestId });
 
   // ─── Diagnose (geen auth vereist) ─────────────────────────────────────────
   if (action === 'health') {
@@ -689,29 +699,17 @@ export default async function handler(req, res) {
           req.body || {};
         if (!contactId) return res.status(400).json({ error: 'contactId vereist' });
 
-        const today = formatYyyyMmDdInAmsterdam(new Date()) || new Date().toISOString().split('T')[0];
-        /** Route-dag in de planner (YYYY-MM-DD); bewaart afgerond op die dienst-dag i.p.v. alleen “vandaag”. */
-        const serviceDay = normalizeYyyyMmDdInput(String(routeDate || '').trim()) || today;
-        const customFields = [
-          { id: 'hiTe3Yi5TlxheJq4bLzy', field_value: serviceDay }, // datum_laatste_onderhoud = route-dag
-          { id: 'xAg0jUYsOL6IZZjdHuRq', field_value: 'Afgerond' }, // legacy Betalingsstatus
-        ];
-        if (type === 'installatie') {
-          customFields.push({ id: 'kYP2SCmhZ21Ig0aaLl5l', field_value: serviceDay }); // datum_installatie
-        }
-        if (totalPrice != null) {
-          customFields.push({ id: FIELD_IDS.prijs, field_value: String(totalPrice) });
-        }
-        const extrasNorm = normalizePriceLineItems(Array.isArray(extras) ? extras : []);
-        if (extrasNorm.length > 0) {
-          customFields.push({ id: FIELD_IDS.prijs_regels, field_value: JSON.stringify(extrasNorm) });
-        }
-        const canonicalPrijsRegels = formatPriceRulesStructuredString(extrasNorm);
-        const canonicalPrijsTotaal = toPriceNumber(totalPrice);
-        const bookingCanon = appendBookingCanonFields(customFields, {
-          prijs_regels: canonicalPrijsRegels,
-          prijs_totaal: canonicalPrijsTotaal,
-          betaal_status: 'Afgerond',
+        const {
+          serviceDay,
+          extrasNorm,
+          canonicalPrijsRegels,
+          canonicalPrijsTotaal,
+          customFields,
+        } = buildCompleteAppointmentPayload({
+          routeDate,
+          type,
+          totalPrice,
+          extras,
         });
         console.log('[BOOKING_PRICE_DEBUG]', {
           contactId,
@@ -733,7 +731,7 @@ export default async function handler(req, res) {
         const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
           method: 'PUT',
           headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-04-15' },
-          body: JSON.stringify({ customFields: bookingCanon.customFields }),
+          body: JSON.stringify({ customFields }),
           _allowPostRetry: false,
         });
         if (!putRes.ok) {
