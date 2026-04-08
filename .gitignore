@@ -5,4 +5,11 @@
 .env*.local
 node_modules/
 public/
+!public/
+public/*
+public/*.html
+!public/app/
+!public/app/**
+!public/styles/
+!public/styles/**
 .DS_Store
