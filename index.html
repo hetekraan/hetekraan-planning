@@ -4,6 +4,25 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Hetekraan — Planning</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="/styles/global.css">
+<script src="/app/planner-storage.js"></script>
+<script src="/app/planner-block-state.js"></script>
+<script src="/app/planner-pricing.js"></script>
+<script src="/app/planner-load.js"></script>
+<script src="/app/planner-route-snapshot.js"></script>
+<script src="/app/planner-route-local-ui.js"></script>
+<script src="/app/planner-route-maps.js"></script>
+<script src="/app/planner-modal-ui.js"></script>
+<script src="/app/planner-feedback-ui.js"></script>
+<script src="/app/planner-auth-session.js"></script>
+<script src="/app/planner-login.js"></script>
+<script src="/app/planner-utils.js"></script>
+<script src="/app/planner-actions.js"></script>
+<script src="/app/planner-route.js"></script>
+<script src="/app/planner-scheduling.js"></script>
+<script src="/app/planner-admin.js"></script>
+<script src="/app/planner-proposals.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -1542,6 +1561,46 @@ async function refreshGhlContactBaseUrl() {
 let currentDate = new Date();
 let appointments = [];
 
+function createPlannerCtx() {
+  return {
+    getDateStr,
+    refreshGhlContactBaseUrl,
+    showToast,
+    hkAuthHeader,
+    getGhlBaseUrl: () => GHL_BASE_URL,
+    isKlaarLocally,
+    isKlaarLocallyContactDate,
+    clearDashBlockedDate,
+    applyRouteSnapshot,
+    render,
+    setAppointments: (arr) => {
+      appointments = arr;
+    },
+    getAppointmentsRef: () => appointments,
+    getCurrentDate: () => currentDate,
+    loadAppointments,
+    calcTotalPrice,
+    showPaymentLinkFallback,
+    saveKlaarStatus,
+    appointmentDomSafeId,
+    findAppointmentById: (x) => appointments.find((a) => String(a.id) === String(x)),
+    getRescheduleId: () => _rescheduleId,
+    closeRescheduleModal,
+    formatDate,
+    isDashBlockedPending,
+    markDashBlockedDate,
+    orderRouteMorningFirst,
+    getRouteStopsForSidebar,
+    recalculateRouteTimesPreservingOrder,
+    saveRouteSnapshot,
+    jobDurationForType: (t) => JOB_DURATION[t] || 30,
+    isDaanEditor,
+    normalizeTimeStr,
+    closeModal,
+  };
+}
+window.createPlannerCtx = createPlannerCtx;
+
 /** Minuten per type werkzaamheid (ook gebruikt bij route / GHL) */
 const JOB_DURATION = { onderhoud: 45, reparatie: 60, installatie: 90 };
 
@@ -1652,39 +1711,19 @@ function routeSnapshotKey(dateStr) {
   return `hk_route_times_${dateStr}`;
 }
 
-const HK_DASH_BLOCKED_DATES_KEY = 'hk_dash_blocked_dates';
-
-function readDashBlockedDates() {
-  try {
-    const raw = localStorage.getItem(HK_DASH_BLOCKED_DATES_KEY);
-    const o = raw ? JSON.parse(raw) : {};
-    return typeof o === 'object' && o && !Array.isArray(o) ? o : {};
-  } catch (_) {
-    return {};
-  }
-}
-
-function writeDashBlockedDates(o) {
-  try {
-    localStorage.setItem(HK_DASH_BLOCKED_DATES_KEY, JSON.stringify(o));
-  } catch (_) {}
-}
-
 function markDashBlockedDate(dateStr) {
-  const o = readDashBlockedDates();
-  o[dateStr] = Date.now();
-  writeDashBlockedDates(o);
+  if (!window.HKPlannerBlockState?.markDashBlockedDate) return;
+  return window.HKPlannerBlockState.markDashBlockedDate(dateStr);
 }
 
 function clearDashBlockedDate(dateStr) {
-  const o = readDashBlockedDates();
-  if (o[dateStr] == null) return;
-  delete o[dateStr];
-  writeDashBlockedDates(o);
+  if (!window.HKPlannerBlockState?.clearDashBlockedDate) return;
+  return window.HKPlannerBlockState.clearDashBlockedDate(dateStr);
 }
 
 function isDashBlockedPending(dateStr) {
-  return readDashBlockedDates()[dateStr] != null;
+  if (!window.HKPlannerBlockState?.isDashBlockedPending) return false;
+  return window.HKPlannerBlockState.isDashBlockedPending(dateStr);
 }
 
 function dismissDashBlockedBanner() {
@@ -1730,137 +1769,68 @@ function applyAppointmentsOrder(contactIdsOrder) {
  * Anders sorteert de UI weer op kloktijd en lijkt je volgorde “weer weg”.
  */
 function mergeRouteOrderIntoSnapshot(dateStr) {
-  const contactIdsOrder = activeRouteContactIdsMorningFirst();
-  let prev = {};
-  try {
-    const raw = localStorage.getItem(routeSnapshotKey(dateStr));
-    if (raw) prev = JSON.parse(raw);
-  } catch (_) {}
-  const byContactId = { ...(prev.byContactId || {}) };
-  appointments.forEach(a => {
-    if (!a.contactId || !a.timeSlot) return;
-    byContactId[a.contactId] = { timeSlot: normalizeTimeStr(a.timeSlot), estimated: !!a.estimated };
+  if (!window.HKPlannerRouteSnapshot?.mergeRouteOrderIntoSnapshot) return;
+  return window.HKPlannerRouteSnapshot.mergeRouteOrderIntoSnapshot({
+    dateStr,
+    routeSnapshotKey,
+    getContactIdsOrder: activeRouteContactIdsMorningFirst,
+    getAppointmentsRef: () => appointments,
+    normalizeTimeStr,
   });
-  try {
-    localStorage.setItem(
-      routeSnapshotKey(dateStr),
-      JSON.stringify({ savedAt: Date.now(), byContactId, contactIdsOrder })
-    );
-  } catch (_) {}
 }
 
 function saveRouteSnapshot(dateStr) {
-  const contactIdsOrder = activeRouteContactIdsMorningFirst();
-  const byContactId = {};
-  appointments.forEach(a => {
-    if (!a.contactId || !a.timeSlot) return;
-    byContactId[a.contactId] = { timeSlot: normalizeTimeStr(a.timeSlot), estimated: !!a.estimated };
+  if (!window.HKPlannerRouteSnapshot?.saveRouteSnapshot) return;
+  return window.HKPlannerRouteSnapshot.saveRouteSnapshot({
+    dateStr,
+    routeSnapshotKey,
+    getContactIdsOrder: activeRouteContactIdsMorningFirst,
+    getAppointmentsRef: () => appointments,
+    normalizeTimeStr,
   });
-  try {
-    let order = contactIdsOrder;
-    if (!order.length) {
-      try {
-        const raw = localStorage.getItem(routeSnapshotKey(dateStr));
-        if (raw) {
-          const p = JSON.parse(raw);
-          if (p.contactIdsOrder?.length) order = p.contactIdsOrder;
-        }
-      } catch (_) {}
-    }
-    localStorage.setItem(
-      routeSnapshotKey(dateStr),
-      JSON.stringify({ savedAt: Date.now(), byContactId, contactIdsOrder: order })
-    );
-  } catch (_) {}
 }
 
 function applyRouteSnapshot(dateStr) {
-  try {
-    const raw = localStorage.getItem(routeSnapshotKey(dateStr));
-    if (!raw) return false;
-    const snap = JSON.parse(raw);
-    let n = 0;
-    if (snap.byContactId && typeof snap.byContactId === 'object') {
-      appointments.forEach(a => {
-        const o = snap.byContactId[a.contactId];
-        const slot = o?.timeSlot ?? o?.time;
-        if (slot && a.contactId) {
-          a.timeSlot = normalizeTimeStr(slot);
-          a.estimated = !!o.estimated;
-          n++;
-        }
-      });
-    }
-    if (snap.contactIdsOrder?.length) {
-      applyAppointmentsOrder(snap.contactIdsOrder);
-    }
-    return n > 0 || (snap.contactIdsOrder?.length > 0);
-  } catch (_) {
-    return false;
+  if (!window.HKPlannerRouteSnapshot?.applyRouteSnapshot) return false;
+  const applied = window.HKPlannerRouteSnapshot.applyRouteSnapshot({
+    dateStr,
+    routeSnapshotKey,
+    getAppointmentsRef: () => appointments,
+    normalizeTimeStr,
+  });
+  if (applied.contactIdsOrder?.length) {
+    applyAppointmentsOrder(applied.contactIdsOrder);
   }
+  return !!applied.hasData;
 }
 
 /** Routestops in dezelfde volgorde als je handmatig hebt gezet (of anders op tijd). */
 function getRouteStopsForSidebar() {
-  const active = appointments.filter(a => a.fullAddressLine && a.status !== 'klaar');
-  const ds = getDateStr(currentDate);
-  let orderIds = [];
-  try {
-    const raw = localStorage.getItem(routeSnapshotKey(ds));
-    if (raw) {
-      const snap = JSON.parse(raw);
-      if (snap.contactIdsOrder?.length) orderIds = snap.contactIdsOrder;
-    }
-  } catch (_) {}
-  if (!orderIds.length) {
-    return [...active].sort(
-      (a, b) =>
-        (a.dayPart ?? 0) - (b.dayPart ?? 0) ||
-        (a.startMs ?? 0) - (b.startMs ?? 0) ||
-        String(a.timeSlot || '').localeCompare(String(b.timeSlot || ''))
-    );
-  }
-  const byC = Object.fromEntries(active.filter(a => a.contactId).map(a => [a.contactId, a]));
-  const used = new Set();
-  const out = [];
-  for (const cid of orderIds) {
-    if (byC[cid] && !used.has(cid)) {
-      out.push(byC[cid]);
-      used.add(cid);
-    }
-  }
-  active.forEach(a => {
-    if (!a.contactId || !used.has(a.contactId)) {
-      if (!out.includes(a)) out.push(a);
-      if (a.contactId) used.add(a.contactId);
-    }
+  if (!window.HKPlannerRouteLocalUi?.getRouteStopsForSidebar) return [];
+  return window.HKPlannerRouteLocalUi.getRouteStopsForSidebar({
+    appointments,
+    dateStr: getDateStr(currentDate),
+    routeSnapshotKey,
   });
-  return out;
 }
 
 function updateRouteLocalUi() {
-  const ds = getDateStr(currentDate);
-  let has = false;
-  try { has = !!localStorage.getItem(routeSnapshotKey(ds)); } catch (_) {}
-  const hint = document.getElementById('routeLocalHint');
-  const btn = document.getElementById('btnResetLocalRoute');
-  if (hint) {
-    if (has) {
-      hint.style.display = 'block';
-      hint.textContent = 'ℹ️ Lokale route (volgorde + tijden) actief — blijft zo na verversen of andere dag, tot je opnieuw bevestigt of hieronder reset.';
-    } else {
-      hint.style.display = 'none';
-      hint.textContent = '';
-    }
-  }
-  if (btn) btn.style.display = has ? 'block' : 'none';
+  if (!window.HKPlannerRouteLocalUi?.updateRouteLocalUi) return;
+  return window.HKPlannerRouteLocalUi.updateRouteLocalUi({
+    dateStr: getDateStr(currentDate),
+    routeSnapshotKey,
+  });
 }
 
 async function resetLocalRouteTimes() {
-  try { localStorage.removeItem(routeSnapshotKey(getDateStr(currentDate))); } catch (_) {}
-  updateRouteLocalUi();
-  await loadAppointments(currentDate);
-  showToast('Lokale tijden gewist — opnieuw uit GHL geladen', 'success');
+  if (!window.HKPlannerRouteLocalUi?.resetLocalRouteTimes) return;
+  return window.HKPlannerRouteLocalUi.resetLocalRouteTimes({
+    dateStr: getDateStr(currentDate),
+    routeSnapshotKey,
+    updateRouteLocalUi,
+    reload: () => loadAppointments(currentDate),
+    showToast,
+  });
 }
 
 // ─── Grote-tekst modus ───────────────────────────────────────────────────────
@@ -2030,65 +2000,13 @@ function printDagopgave() {
 }
 
 async function loadAppointments(date) {
-  const dateStr = getDateStr(date);
-  try {
-    await refreshGhlContactBaseUrl();
-    showToast('⏳ Afspraken laden...', 'loading');
-      const res = await fetch(
-        `/api/ghl?action=getAppointments&date=${encodeURIComponent(dateStr)}&_=${Date.now()}`,
-        { cache: 'no-store', headers: { 'X-HK-Auth': hkAuthHeader() } }
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        appointments = [];
-        showToast(data?.error ? String(data.error) : `Afspraken laden mislukt (${res.status})`, 'info');
-        applyRouteSnapshot(dateStr);
-        render();
-        return;
-      }
-      const rows = Array.isArray(data?.appointments) ? data.appointments : [];
-
-      appointments = rows.map((a) => ({
-        ...a,
-        ghlUrl: a.contactId ? `${GHL_BASE_URL}/${a.contactId}` : '',
-        review: false,
-        priceVisible: false,
-      }));
-
-      appointments.forEach((a) => {
-        if (a.id && isKlaarLocally(a.id)) a.status = 'klaar';
-        if (a.contactId && isKlaarLocallyContactDate(a.contactId, dateStr)) a.status = 'klaar';
-      });
-
-      const nBlk = appointments.filter((a) => a.isCalBlock).length;
-      const nCli = appointments.length - nBlk;
-      if (nBlk > 0) clearDashBlockedDate(dateStr);
-
-      if (appointments.length === 0) {
-        showToast('Geen afspraken voor deze dag', 'info');
-      } else {
-        const parts = [];
-        if (nCli) parts.push(`${nCli} afspraak${nCli === 1 ? '' : 'en'}`);
-        if (nBlk) parts.push(`${nBlk} blokslot${nBlk === 1 ? '' : 'ten'}`);
-        showToast(`✓ ${parts.join(', ')} geladen`, 'success');
-      }
-  } catch (err) {
-    console.warn('GHL niet bereikbaar', err);
-    appointments = [];
-    showToast('Kon afspraken niet laden', 'info');
-  }
-  applyRouteSnapshot(dateStr);
-  render();
+  if (!window.HKPlannerLoad?.loadAppointments) return;
+  return window.HKPlannerLoad.loadAppointments(createPlannerCtx(), date);
 }
 
 function formatDate(d) {
-  return d.toLocaleDateString('nl-NL', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'Europe/Amsterdam',
-  });
+  if (!window.HKPlannerUtils?.formatDate) return '';
+  return window.HKPlannerUtils.formatDate(d);
 }
 
 /**
@@ -2105,7 +2023,8 @@ function changeDay(dir) {
 }
 
 function fmtEuro(amount) {
-  return '€\u202F' + Number(amount).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (!window.HKPlannerUtils?.fmtEuro) return 'EUR 0,00';
+  return window.HKPlannerUtils.fmtEuro(amount);
 }
 
 function calcStats() {
@@ -2609,18 +2528,13 @@ function setLastService(id, val) {
 }
 
 function escapePriceAttr(s) {
-  return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  if (!window.HKPlannerUtils?.escapePriceAttr) return '';
+  return window.HKPlannerUtils.escapePriceAttr(s);
 }
 
 function euroDisplay(n) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return '0';
-  const r = Math.round(x * 100) / 100;
-  return r.toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  if (!window.HKPlannerUtils?.euroDisplay) return '0';
+  return window.HKPlannerUtils.euroDisplay(n);
 }
 
 const STANDARD_PRICE_ITEMS = [
@@ -2672,13 +2586,8 @@ function onProductSelect(id) {
 }
 
 function calcTotalPrice(a) {
-  const baseRaw = Number(a?.price);
-  const base = Number.isFinite(baseRaw) ? baseRaw : 0;
-  const extrasTotal = (a.extras || []).reduce((s, e) => {
-    const p = Number(e?.price);
-    return s + (Number.isFinite(p) ? p : 0);
-  }, 0);
-  return Math.round((base + extrasTotal) * 100) / 100;
+  if (!window.HKPlannerPricing?.calcTotalPrice) return 0;
+  return window.HKPlannerPricing.calcTotalPrice(a);
 }
 
 function updateExtraLine(id, idx, desc, price) {
@@ -2695,29 +2604,14 @@ function updateExtraLine(id, idx, desc, price) {
 async function persistPriceLines(id) {
   const a = appointments.find(x => String(x.id) === String(id));
   if (!a || !a.contactId) return;
-  const lines = (a.extras || []).map((e) => ({
-    desc: String(e.desc || '').trim(),
-    price: Math.round((Number(e.price) || 0) * 100) / 100,
-  })).filter((e) => e.desc && e.price > 0 && Number.isFinite(e.price));
-  const total = calcTotalPrice(a);
-  try {
-    const res = await fetch('/api/ghl?action=updatePriceLines', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
-      body: JSON.stringify({
-        contactId: a.contactId,
-        extras: lines,
-        totalPrice: total,
-      }),
-    });
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      console.warn('updatePriceLines mislukt', d.error || res.status);
-      showToast(`⚠ Prijsregels niet opgeslagen in GHL (${res.status})`, 'info');
-    }
-  } catch (e) {
-    console.warn('updatePriceLines netwerkfout', e);
-    showToast('⚠ Prijsregels niet opgeslagen (netwerkfout)', 'info');
+  if (!window.HKPlannerPricing?.persistPriceLines) return;
+  const out = await window.HKPlannerPricing.persistPriceLines({
+    appointment: a,
+    authHeader: hkAuthHeader(),
+  });
+  if (!out.ok) {
+    console.warn('updatePriceLines mislukt', out.error || out.status || out.reason);
+    showToast(`⚠ Prijsregels niet opgeslagen in GHL (${out.status || 'netwerk'})`, 'info');
   }
 }
 
@@ -2753,99 +2647,9 @@ function removeExtra(id, idx) {
 }
 
 async function confirmDone(id) {
-  const a = appointments.find(x => String(x.id) === String(id));
-  if (!a) return;
-  showToast('⏳ Bezig met afronden...', 'loading');
-
-  const total  = calcTotalPrice(a);
-  const lines  = a.extras || [];
-  const contact = a.contact || {};
-
-  // 1. GHL afronden (datum, tags, stage)
-  if (a.contactId) {
-    try {
-      const ghlRes = await fetch('/api/ghl?action=completeAppointment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
-        body: JSON.stringify({
-          contactId:     a.contactId,
-          appointmentId: a.id || undefined,
-          type:          a.jobType,
-          sendReview:    a.review,
-          lastService:   a.lastService || null,
-          totalPrice:    total,
-          extras:        lines,
-          routeDate:     getDateStr(currentDate),
-        })
-      });
-      if (!ghlRes.ok) {
-        console.warn('GHL completeAppointment mislukt:', ghlRes.status);
-        showToast(`⚠ GHL kon niet worden bijgewerkt (${ghlRes.status}) — afspraak wel klaar gezet`, 'info');
-      }
-    } catch(e) {
-      console.warn('GHL niet bereikbaar', e);
-      showToast('⚠ GHL niet bereikbaar — afspraak wel klaar gezet', 'info');
-    }
-  }
-
-  // 2. Betaallink + factuur PDF versturen
-  if (a.contactId && total === 0) {
-    showToast('✓ Klant afgerond — geen betaallink (prijs is €0, vul eerst een prijs in via 💶 Prijs)', 'info');
-  }
-  if (a.contactId && total > 0) {
-    try {
-      const resp = await fetch('/api/create-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
-        body: JSON.stringify({
-          contactId:      a.contactId,
-          contactName:    a.name,
-          contactEmail:   contact.email || '',
-          contactAddress: a.fullAddressLine || a.address,
-          contactCity:    contact.city || a.city || '',
-          lines,
-          basePrice:      a.price || 0,
-          appointmentDesc: a.jobDescription || 'Werkzaamheden',
-        })
-      });
-      const result = await resp.json();
-      if (resp.status === 401) {
-        showToast('⚠ Sessie verlopen — log opnieuw in om betaallink te sturen', 'info');
-      } else if (result.mollieError) {
-        showToast(`✓ Klaar!\n⚠ Mollie kon geen betaallink aanmaken: ${result.mollieError.slice(0, 100)}`, 'info');
-      } else if (result.paymentUrl) {
-        const d = result.ghlDiag || {};
-        if (!d.tagSet) {
-          const tagErr = d.tagError ? ` (${d.tagError})` : '';
-          console.warn('[create-payment] tag mislukt' + tagErr, result.ghlDiag);
-          showPaymentLinkFallback(result.paymentUrl, result.invoiceNumber, result.totalInclBTW);
-        } else {
-          showToast(`✓ Klaar!\n💳 Betaallink verstuurd via WhatsApp\n📄 Factuur ${result.invoiceNumber}`, 'success');
-        }
-      } else {
-        showToast('✓ Klaar! (betaallink kon niet worden aangemaakt)', 'success');
-      }
-    } catch(e) {
-      console.log('create-payment fout', e);
-      showToast('✓ Klaar! (fout bij betaallink, zie console)', 'success');
-    }
-  } else {
-    showToast('✓ Klant afgerond', 'success');
-  }
-
-  a.status = 'klaar';
-  a.priceVisible = false;
-  saveKlaarStatus(a.id, a.contactId, getDateStr(currentDate));
-  render();
-
-  // Groene vloed over de kaart
-  requestAnimationFrame(() => {
-    const card = document.getElementById('card-' + appointmentDomSafeId(id));
-    if (card) {
-      card.classList.add('just-done');
-      card.addEventListener('animationend', () => card.classList.remove('just-done'), { once: true });
-    }
-  });
+  const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
+  if (!window.HKPlannerActions?.confirmDone) return;
+  return window.HKPlannerActions.confirmDone(ctx, id);
 }
 
 /**
@@ -2853,56 +2657,15 @@ async function confirmDone(id) {
  * @returns {Promise<{ ok: boolean, error?: string, workflowTag?: string }>}
  */
 async function sendETA(appt) {
-  if (!appt?.contactId) {
-    return { ok: false, error: 'Geen GHL contactId' };
-  }
-  try {
-    const res = await fetch('/api/ghl?action=sendETA', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
-      body: JSON.stringify({
-        contactId: appt.contactId,
-        eta: appt.timeSlot,
-        name: appt.name,
-      }),
-    });
-    let data = {};
-    try {
-      data = await res.json();
-    } catch (_) {}
-    if (!res.ok) {
-      const msg = data.error || data.message || `Serverfout (${res.status})`;
-      return { ok: false, error: msg, workflowTag: data.workflowTag };
-    }
-    return { ok: true, workflowTag: data.workflowTag };
-  } catch (e) {
-    return { ok: false, error: e.message || 'Netwerkfout' };
-  }
+  const ctx = window.createPlannerCtx ? window.createPlannerCtx() : { hkAuthHeader };
+  if (!window.HKPlannerRoute?.sendETA) return { ok: false, error: 'Route module niet geladen' };
+  return window.HKPlannerRoute.sendETA(ctx, appt);
 }
 
 async function sendMorningMessages() {
-  const appts = appointments.filter(a => a.contactId && a.status === 'ingepland')
-    .map(a => ({ contactId: a.contactId, timeFrom: a.timeSlot, timeTo: a.timeSlot }));
-  if (appts.length === 0) {
-    showToast('Geen ingeplande klanten om te melden', 'info');
-    return;
-  }
-  showToast('☀️ Ochtendmeldingen worden verstuurd...', 'loading');
-  try {
-    const res = await fetch('/api/ghl?action=sendMorningMessages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
-      body: JSON.stringify({ appointments: appts }),
-    });
-    if (res.ok) {
-      showToast(`☀️ Verstuurd naar ${appts.length} klant${appts.length !== 1 ? 'en' : ''}`, 'success');
-    } else {
-      const d = await res.json().catch(() => ({}));
-      showToast(`⚠ Ochtendmeldingen mislukt: ${d.error || res.status}`, 'info');
-    }
-  } catch (e) {
-    showToast('⚠ Ochtendmeldingen niet verstuurd: geen verbinding', 'info');
-  }
+  const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
+  if (!window.HKPlannerRoute?.sendMorningMessages) return;
+  return window.HKPlannerRoute.sendMorningMessages(ctx);
 }
 
 function minsToTime(totalMins) {
@@ -2911,180 +2674,38 @@ function minsToTime(totalMins) {
   return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
 }
 
-function timeToMins(timeStr) {
-  const [h, m] = timeStr.split(':').map(Number);
-  return h * 60 + m;
-}
-
 async function optimizeRoute() {
-  const active = orderRouteMorningFirst(getRouteStopsForSidebar());
-  const done   = appointments.filter(a => !a.fullAddressLine || a.status === 'klaar');
-
-  if (active.length < 2) {
-    showToast('Minimaal 2 adressen nodig om te optimaliseren', 'info');
-    return;
-  }
-
-  showToast('⏳ Route wordt geoptimaliseerd...', 'loading');
-
-  try {
-    const res = await fetch('/api/optimize-route', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        appointments: active.map(a => ({
-          address:     a.fullAddressLine || a.address,
-          timeWindow:  a.timeWindow || null,
-          jobDuration: JOB_DURATION[a.jobType] || 30,
-        }))
-      })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Onbekende fout');
-
-    const orderIdx = data.order;
-    const morningIdx = orderIdx.filter(i => active[i].dayPart === 0);
-    const afternoonIdx = orderIdx.filter(i => active[i].dayPart !== 0);
-    const stableOrder = [...morningIdx, ...afternoonIdx];
-    const optimized = stableOrder.map(i => active[i]);
-
-    optimized.forEach(a => {
-      a.violation = false;
-    });
-
-    await recalculateRouteTimesPreservingOrder(optimized);
-
-    appointments = [...optimized, ...done];
-
-    const totalTravel = (data.legInfo || []).reduce((s, l) => s + (l.durationSeconds || 0), 0);
-    const totalTravelMins = Math.round(totalTravel / 60);
-
-    const vCount = optimized.filter(a => a.violation).length;
-    const violationMsg = vCount > 0
-      ? ` · ⚠️ ${vCount} tijdsvenster${vCount > 1 ? 's' : ''} niet haalbaar`
-      : '';
-
-    routeLocked = false;
-    document.getElementById('btnOptimize').disabled = false;
-    document.getElementById('btnUnlock').style.display = 'none';
-    saveRouteSnapshot(getDateStr(currentDate));
-    showToast(`⚡ Route geoptimaliseerd!\n${active.length} stops · ~${totalTravelMins} min rijden${violationMsg}`, 'success');
-    render();
-  } catch(e) {
-    console.error('Optimalisatie mislukt:', e);
-    showToast('Kon route niet optimaliseren: ' + e.message, 'info');
-  }
+  const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
+  if (!window.HKPlannerScheduling?.optimizeRoute) return;
+  return window.HKPlannerScheduling.optimizeRoute(ctx);
 }
-
-const DEPOT = 'Cornelis Dopperkade, Amsterdam';
 
 function openMaps(e) {
-  e.preventDefault();
-  const sorted = appointments
-    .filter(a => a.status !== 'klaar' && (a.fullAddressLine || a.address))
-    .sort((a, b) => (a.routeStop || 99) - (b.routeStop || 99));
-
-  if (!sorted.length) { showToast('Geen adressen beschikbaar', 'info'); return; }
-
-  // Google Maps waypoints formaat: origin → stops → destination (terug naar depot)
-  const waypoints = sorted.map(a => encodeURIComponent(a.fullAddressLine || a.address)).join('|');
-  const url = `https://www.google.com/maps/dir/?api=1` +
-    `&origin=${encodeURIComponent(DEPOT)}` +
-    `&destination=${encodeURIComponent(DEPOT)}` +
-    `&waypoints=${waypoints}` +
-    `&travelmode=driving`;
-
-  window.open(url, '_blank');
+  if (!window.HKPlannerRouteMaps?.openMaps) return;
+  return window.HKPlannerRouteMaps.openMaps(e, {
+    appointments,
+    showToast,
+  });
 }
 
 function openDaanEditModal(apptId) {
-  if (!isDaanEditor()) {
-    showToast('Alleen Daan kan klantgegevens zo bewerken', 'info');
+  const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
+  if (!window.HKPlannerAdmin?.openDaanEditModal) {
+    showToast('Admin-module niet geladen', 'info');
     return;
   }
-  const a = appointments.find(x => String(x.id) === String(apptId));
-  if (!a || !a.contactId) {
-    showToast('Geen GHL-contact op deze kaart', 'info');
-    return;
-  }
-  document.getElementById('deApptId').value = String(apptId);
-  document.getElementById('deFirstName').value = a.firstName || '';
-  document.getElementById('deLastName').value = a.lastName || '';
-  document.getElementById('dePhone').value = a.phone || '';
-  document.getElementById('deStraat').value = a.straatnaam || '';
-  document.getElementById('deHuisnr').value = a.huisnummer || '';
-  document.getElementById('dePostcode').value = a.postalCode || '';
-  document.getElementById('deWoonplaats').value = a.city || '';
-  document.getElementById('deType').value = (a.jobType === 'installatie' || a.jobType === 'reparatie' || a.jobType === 'onderhoud') ? a.jobType : 'onderhoud';
-  document.getElementById('deDesc').value = a.jobDescription || '';
-  document.getElementById('deTimeWindow').value = a.timeWindow || '';
-  document.getElementById('deNotes').value = a.notes || '';
-  const prijsTxt = a.priceLabel ? a.priceLabel.replace(/^€\s*/, '').trim() : (a.price ? String(a.price) : '');
-  document.getElementById('dePrijs').value = prijsTxt;
-  const tm = normalizeTimeStr(a.timeSlot || '08:00');
-  document.getElementById('deApptTime').value = tm.length >= 5 ? tm : '08:00';
-  document.getElementById('deDuration').value = String(JOB_DURATION[a.jobType] || 30);
-  document.getElementById('daanEditOverlay').classList.add('visible');
+  return window.HKPlannerAdmin.openDaanEditModal(ctx, apptId);
 }
 
 function closeDaanEditModal() {
-  document.getElementById('daanEditOverlay').classList.remove('visible');
+  if (!window.HKPlannerAdmin?.closeDaanEditModal) return;
+  return window.HKPlannerAdmin.closeDaanEditModal();
 }
 
 async function saveDaanEditToGhl() {
-  if (!isDaanEditor()) return;
-  const apptIdRaw = document.getElementById('deApptId').value;
-  const a = appointments.find(x => String(x.id) === String(apptIdRaw));
-  if (!a || !a.contactId) return;
-
-  const btn = document.getElementById('deSaveBtn');
-  btn.disabled = true;
-  btn.textContent = '⏳ Opslaan...';
-
-  const selType = document.getElementById('deType').value;
-  const durVal = parseInt(document.getElementById('deDuration').value, 10);
-  const body = {
-    editedBy: 'daan',
-    contactId: a.contactId,
-    firstName: document.getElementById('deFirstName').value.trim(),
-    lastName: document.getElementById('deLastName').value.trim(),
-    phone: document.getElementById('dePhone').value.trim(),
-    straatnaam: document.getElementById('deStraat').value.trim(),
-    huisnummer: document.getElementById('deHuisnr').value.trim(),
-    postcode: document.getElementById('dePostcode').value.trim(),
-    woonplaats: document.getElementById('deWoonplaats').value.trim(),
-    typeOnderhoud: selType,
-    probleemomschrijving: document.getElementById('deDesc').value.trim(),
-    tijdafspraak: document.getElementById('deTimeWindow').value.trim(),
-    opmerkingen: document.getElementById('deNotes').value.trim(),
-    prijs: document.getElementById('dePrijs').value.trim(),
-    appointmentTime: document.getElementById('deApptTime').value,
-    routeDate: getDateStr(currentDate),
-    ghlAppointmentId: a.id || undefined,
-    durationMin: Number.isFinite(durVal) && durVal > 0 ? durVal : (JOB_DURATION[selType] || 30),
-  };
-
-  try {
-    const res = await fetch('/api/ghl?action=updateContactDashboard', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || data.detail || 'Onbekende fout');
-
-    closeDaanEditModal();
-    let msg = '✓ Contact bijgewerkt in GHL';
-    if (data.calendarSynced) msg += ' · agenda bijgewerkt';
-    if (data.calendarError) msg += ' · agenda: ' + String(data.calendarError).slice(0, 100);
-    showToast(msg, 'success');
-    await loadAppointments(currentDate);
-  } catch (e) {
-    showToast('Opslaan mislukt: ' + e.message, 'info');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Opslaan in GHL';
-  }
+  const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
+  if (!window.HKPlannerAdmin?.saveDaanEditToGhl) return;
+  return window.HKPlannerAdmin.saveDaanEditToGhl({ ...ctx, loadAppointments });
 }
 
 let _rescheduleId = null;
@@ -3112,185 +2733,46 @@ function closeRescheduleModal() {
 }
 
 function showDeleteConfirm() {
-  document.getElementById('btnDeleteFirst').style.display = 'none';
-  document.getElementById('deleteConfirmRow').style.display = 'flex';
+  if (!window.HKPlannerModalUi?.showDeleteConfirm) return;
+  return window.HKPlannerModalUi.showDeleteConfirm();
 }
 
 function hideDeleteConfirm() {
-  const btn = document.getElementById('btnDeleteFirst');
-  const row = document.getElementById('deleteConfirmRow');
-  if (btn) btn.style.display = '';
-  if (row) row.style.display = 'none';
+  if (!window.HKPlannerModalUi?.hideDeleteConfirm) return;
+  return window.HKPlannerModalUi.hideDeleteConfirm();
 }
 
 async function confirmDeleteAppt() {
-  if (_rescheduleId == null) return;
-  const a = appointments.find((x) => String(x.id) === String(_rescheduleId));
-  closeRescheduleModal();
-  if (!a) return;
-  showToast('⏳ Boeking verwijderen en GHL reset…', 'loading');
-
-  if (!a.contactId) {
-    appointments = appointments.filter((x) => String(x.id) !== String(a.id));
-    render();
-    showToast('Rij verwijderd (geen GHL contactId)', 'info');
-    return;
-  }
-
-  try {
-    const res = await fetch('/api/ghl?action=deletePlannerBooking', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
-      body: JSON.stringify({
-        contactId: a.contactId,
-        routeDate: getDateStr(currentDate),
-        rowId: a.id,
-        isSyntheticB1: !!a.isSyntheticBlockBooking,
-        isCalBlock: !!a.isCalBlock,
-      }),
-    });
-    const d = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      showToast(`⚠ ${d.error || res.status}${d.detail ? ': ' + String(d.detail).slice(0, 80) : ''}`, 'info');
-      return;
-    }
-    if (d.ghlAppointment?.attempted && d.ghlAppointment.ok === false) {
-      showToast(
-        '⚠ Boeking vrijgegeven in Redis/contact; GHL-afspraak niet verwijderd — controleer de agenda',
-        'info'
-      );
-    } else {
-      showToast('✓ Boeking verwijderd / ge-reset', 'success');
-    }
-    await loadAppointments(currentDate);
-  } catch (e) {
-    showToast('⚠ Verwijderen mislukt: ' + (e.message || e), 'info');
-  }
-}
-
-function timeToWindow(timeStr, isFirst) {
-  if (isFirst || timeStr === '08:00' || timeStr === '09:00') return timeStr; // eerste afspraak / oude placeholder: exact tijdstip
-  const [h, m] = timeStr.split(':').map(Number);
-  const totalMin = h * 60 + m;
-  const fmt = min => {
-    const hh = Math.max(0, Math.floor(min / 60));
-    const mm = min % 60;
-    return `${String(hh).padStart(2,'0')}:${String(mm < 0 ? 0 : mm).padStart(2,'0')}`;
-  };
-  return `${fmt(totalMin - 60)}-${fmt(totalMin + 60)}`;
+  const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
+  if (!window.HKPlannerActions?.confirmDeleteAppt) return;
+  return window.HKPlannerActions.confirmDeleteAppt(ctx);
 }
 
 async function confirmRoute() {
-  const active = appointments.filter(a => a.contactId && a.timeSlot && a.status !== 'klaar');
-  const routeDate = getDateStr(currentDate);
-  const routeSequence = [...active].sort((a, b) => (a.routeStop || 99) - (b.routeStop || 99));
-  const toSave = routeSequence.map((a, i) => ({
-    contactId: a.contactId,
-    plannedTime: timeToWindow(a.timeSlot, i === 0),
-    ghlAppointmentId: a.id || undefined,
-    routeDate,
-    startTime: a.timeSlot,
-    durationMin: JOB_DURATION[a.jobType] || 30,
-  }));
-
-  if (toSave.length === 0) {
-    showToast('Geen afspraken met GHL contactId om op te slaan', 'info');
-    return;
-  }
-
-  const btn = document.getElementById('btnConfirmRoute');
-  btn.textContent = '⏳ Opslaan...';
-  btn.disabled = true;
-
-  try {
-    const res = await fetch('/api/ghl?action=saveRouteTimes', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
-      body: JSON.stringify({ routeTimes: toSave })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Fout');
-
-    btn.textContent = '✓ Opgeslagen';
-    btn.classList.add('saved');
-    let msg = `✓ ${data.saved} klanten: geplande aankomst opgeslagen`;
-    if (data.calendarSynced > 0) msg += ` · ${data.calendarSynced} afspraak${data.calendarSynced > 1 ? 'en' : ''} in GHL-agenda bijgewerkt`;
-    if (data.calendarErrors?.length) msg += ` · ⚠️ ${data.calendarErrors.length} agenda-update mislukt (zie serverlog)`;
-    showToast(msg, 'success');
-    saveRouteSnapshot(getDateStr(currentDate));
-    setTimeout(() => {
-      btn.textContent = '✓ Bevestig route';
-      btn.classList.remove('saved');
-      btn.disabled = false;
-    }, 3000);
-  } catch (e) {
-    btn.textContent = '✓ Bevestig route';
-    btn.disabled = false;
-    showToast('Opslaan mislukt: ' + e.message, 'info');
-  }
+  const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
+  if (!window.HKPlannerRoute?.confirmRoute) return;
+  return window.HKPlannerRoute.confirmRoute(ctx);
 }
 
 async function confirmReschedule() {
-  const a = appointments.find(x => String(x.id) === String(_rescheduleId));
-  if (!a) return;
-
-  const newDate       = document.getElementById('rDate').value;
-  const newTime       = document.getElementById('rTime').value;
-  const newTimeWindow = document.getElementById('rTimeWindow').value.trim() || null;
-  const todayVal      = getDateStr(currentDate);
-
-  closeRescheduleModal();
-
-  if (newDate && newDate !== todayVal) {
-    appointments = appointments.filter(x => String(x.id) !== String(_rescheduleId));
-  } else {
-    a.timeSlot   = newTime;
-    a.timeWindow = newTimeWindow;
-    a.estimated  = false;
-  }
-  render();
-  showToast('⏳ Afspraak herplannen in GHL...', 'loading');
-
-  if (a.id && !String(a.id).startsWith('local-')) {
-    try {
-      const res = await fetch('/api/ghl?action=rescheduleAppointment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
-        body: JSON.stringify({
-          ghlAppointmentId: a.id,
-          newDate: newDate || todayVal,
-          newTime,
-          type: a.jobType,
-        }),
-      });
-      if (res.ok) {
-        showToast(`✓ ${a.name} verplaatst naar ${newDate !== todayVal ? newDate + ' ' : ''}${newTime} in GHL`, 'success');
-      } else {
-        const d = await res.json().catch(() => ({}));
-        showToast(`⚠ Lokaal bijgewerkt, GHL mislukt: ${d.error || res.status}`, 'info');
-      }
-    } catch (e) {
-      showToast('⚠ Lokaal bijgewerkt, GHL niet bereikbaar', 'info');
-    }
-  } else {
-    showToast(`${a.name} verplaatst naar ${newTime}`, 'success');
-  }
+  const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
+  if (!window.HKPlannerScheduling?.confirmReschedule) return;
+  return window.HKPlannerScheduling.confirmReschedule(ctx);
 }
 
 function openModal() {
-  const today = document.getElementById('dateInput')?.value || new Date().toISOString().split('T')[0];
-  document.getElementById('mDate').value = today;
-  document.getElementById('modalOverlay').classList.add('visible');
+  if (!window.HKPlannerModalUi?.openModal) return;
+  return window.HKPlannerModalUi.openModal();
 }
-function closeModal() { document.getElementById('modalOverlay').classList.remove('visible'); }
+function closeModal() {
+  if (!window.HKPlannerModalUi?.closeModal) return;
+  return window.HKPlannerModalUi.closeModal();
+}
 
 function onBlockDayButtonClick() {
-  const dateStr = getDateStr(currentDate);
-  const blocks = appointments.filter((x) => x.isCalBlock);
-  const dashPending = isDashBlockedPending(dateStr) && blocks.length === 0;
-  const dayIsBlocked = blocks.length > 0 || dashPending;
-  if (dayIsBlocked) unblockCurrentDayInGhl();
-  else blockCurrentDayInGhl();
+  const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
+  if (!window.HKPlannerActions?.onBlockDayButtonClick) return;
+  return window.HKPlannerActions.onBlockDayButtonClick(ctx);
 }
 
 /**
@@ -3342,172 +2824,29 @@ async function bulkDeleteAllGhlBlockedSlots() {
 }
 
 async function unblockCurrentDayInGhl() {
-  const dateStr = getDateStr(currentDate);
-  const label = formatDate(currentDate);
-  const blocks = appointments.filter((a) => a.isCalBlock);
-  const ids = [...new Set(blocks.map((a) => a.id).filter(Boolean))];
-  const onlyPending = blocks.length === 0 && isDashBlockedPending(dateStr);
-
-  if (
-    !confirm(
-      `Weet je het zeker dat je de blokkade wil opheffen en de dag weer wil vrijgeven?\n\n${label}`
-    )
-  ) {
-    return;
-  }
-
-  if (onlyPending) {
-    clearDashBlockedDate(dateStr);
-    showToast('✓ Melding gewist. Er stond nog geen zichtbaar blokslot in het dashboard — controleer zo nodig GHL.', 'success');
-    await loadAppointments(currentDate);
-    return;
-  }
-
-  showToast('⏳ Blokkade opheffen in GHL...', 'loading');
-  try {
-    const res = await fetch('/api/ghl?action=unblockCalendarDay', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
-      body: JSON.stringify({ date: dateStr, ghlBlockEventIds: ids }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      let msg = data.error || `Fout ${res.status}`;
-      if (typeof msg !== 'string') msg = JSON.stringify(msg);
-      throw new Error(msg);
-    }
-    if (data.partial) {
-      showToast(
-        `⚠ Deels opgeheven (${data.deleted || 0} verwijderd). Controleer de GHL-agenda.`,
-        'info'
-      );
-    } else {
-      showToast('✓ Blokkade opgeheven — dag weer vrijgegeven in GHL', 'success');
-    }
-    clearDashBlockedDate(dateStr);
-    await loadAppointments(currentDate);
-  } catch (e) {
-    showToast(String(e.message || e), 'info');
-  }
+  const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
+  if (!window.HKPlannerActions?.unblockCurrentDayInGhl) return;
+  return window.HKPlannerActions.unblockCurrentDayInGhl(ctx);
 }
 
 let hkGhlBlockDayInFlight = false;
 
 async function blockCurrentDayInGhl() {
-  const dateStr = getDateStr(currentDate);
-  const label = formatDate(currentDate);
-  if (!confirm(`Hele kalenderdag blokkeren in GHL voor ${label}?\n\nEr komt een officiële blokslot (hele dag). Online boeken slaat deze datum daarna volledig over — totdat je de blokkade weer opheft of het blok in GHL verwijdert.\n\nLet op: kortere blokken die je alleen in GHL zet kunnen óók de hele datum voor klanten sluiten (overlap met 08–18 Amsterdam).`)) return;
-  if (hkGhlBlockDayInFlight) return;
-  hkGhlBlockDayInFlight = true;
-  const blockBtn = document.getElementById('btnBlockDayGhl');
-  if (blockBtn) blockBtn.disabled = true;
-  showToast('⏳ Blokslot aanmaken in GHL...', 'loading');
-  try {
-    const res = await fetch('/api/ghl?action=blockCalendarDay', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
-      body: JSON.stringify({ date: dateStr, title: 'Dag geblokkeerd' }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      let msg = data.error || data.detail?.message || `Fout ${res.status}`;
-      if (typeof msg !== 'string') msg = JSON.stringify(msg);
-      const ghl = data.ghlDetail != null && String(data.ghlDetail).trim() ? String(data.ghlDetail).trim() : '';
-      if (ghl) msg += '\n\nGHL: ' + ghl;
-      const raw = data.ghlRaw != null && String(data.ghlRaw).trim() ? String(data.ghlRaw).trim() : '';
-      if (raw) msg += '\n\n' + raw;
-      throw new Error(msg);
-    }
-    if (data.alreadyBlocked) {
-      showToast(data.message || 'Deze kalender had al bloktijd — geen extra blokslot geplaatst.', 'info');
-    } else {
-      showToast('✓ Dag geblokkeerd op Planning Jerry in GHL', 'success');
-      markDashBlockedDate(dateStr);
-    }
-    await loadAppointments(currentDate);
-  } catch (e) {
-    showToast(String(e.message || e), 'info');
-  } finally {
-    hkGhlBlockDayInFlight = false;
-    render();
-  }
+  const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
+  if (!window.HKPlannerActions?.blockCurrentDayInGhl) return;
+  return window.HKPlannerActions.blockCurrentDayInGhl(ctx);
 }
 
 /** Bouwt ProposalConstraints voor /api/send-booking-invite (Europe/Amsterdam-dates). */
 function buildPlannerProposalConstraints() {
-  const c = {};
-  if (document.getElementById('hkProposalFridaysOnly')?.checked) {
-    c.allowedWeekdays = [5];
-  }
-  const datesRaw = document.getElementById('hkProposalSpecificDates')?.value?.trim();
-  const datesOnlyMode = document.getElementById('hkProposalDatesOnlyMode')?.checked;
-  if (datesRaw) {
-    const dates = [...new Set(datesRaw.split(/[\s,;]+/).map((s) => s.trim()).filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s)))];
-    if (dates.length) {
-      c.allowedDates = dates;
-      if (datesOnlyMode) c.datesOnly = true;
-    }
-  }
-  const excl = document.getElementById('hkProposalExcludeKeys')?.value?.trim();
-  if (excl) {
-    const keys = [...new Set(excl.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean))];
-    if (keys.length) c.excludedOfferKeys = keys;
-  }
-  const blockPart = document.getElementById('hkProposalBlockPart')?.value;
-  if (blockPart === 'morning' || blockPart === 'afternoon') {
-    c.allowedBlocks = [blockPart];
-  }
-  return Object.keys(c).length ? c : null;
+  if (!window.HKPlannerProposals?.buildPlannerProposalConstraints) return null;
+  return window.HKPlannerProposals.buildPlannerProposalConstraints();
 }
 
 async function sendBookingLink() {
-  const name    = document.getElementById('mName').value.trim();
-  const phone   = document.getElementById('mPhone').value.trim();
-  const address = document.getElementById('mAddress').value.trim();
-  const type    = document.getElementById('mType').value.toLowerCase();
-  const desc    = document.getElementById('mDesc').value.trim();
-  const date    = document.getElementById('mDate')?.value || new Date().toISOString().split('T')[0];
-
-  if (!name) { showToast('Vul de naam in', 'info'); return; }
-  if (!phone) { showToast('Vul het telefoonnummer in voor de boekingslink', 'info'); return; }
-
-  showToast('⏳ Boekingslink aanmaken...', 'loading');
-
-  try {
-    const proposalConstraints = buildPlannerProposalConstraints();
-    const body = { name, phone, address, type, workType: type, desc };
-    if (proposalConstraints) body.proposalConstraints = proposalConstraints;
-    const res = await fetch('/api/send-booking-invite', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    const data = await res.json();
-    if (!data.success) throw new Error(data.message || data.error || 'Fout');
-
-    const bookingUrl = data.bookingUrl;
-
-    // Kopieer link naar klembord
-    try {
-      await navigator.clipboard.writeText(bookingUrl);
-      showToast(`✓ Link gekopieerd!\n${bookingUrl}`, 'success');
-    } catch {
-      showToast(`Boekingslink:\n${bookingUrl}`, 'success');
-    }
-
-    // Open WhatsApp met de link als telefoon bekend is
-    if (phone) {
-      const cleanPhone = phone.replace(/[^0-9+]/g, '').replace(/^0/, '+31');
-      const msg = encodeURIComponent(
-        `Hallo ${name}! Je kunt hier je afspraak inplannen voor ${new Date(date+'T12:00:00+01:00').toLocaleDateString('nl-NL', {weekday:'long', day:'numeric', month:'long'})}: ${bookingUrl}`
-      );
-      window.open(`https://wa.me/${cleanPhone}?text=${msg}`, '_blank');
-    }
-
-    closeModal();
-  } catch(e) {
-    showToast(`Fout: ${e.message}`, 'info');
-  }
+  if (!window.HKPlannerProposals?.sendBookingLink) return;
+  const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
+  return window.HKPlannerProposals.sendBookingLink({ ...ctx, closeModal, showToast });
 }
 
 async function saveModal() {
@@ -3583,14 +2922,9 @@ async function saveModal() {
   }
 }
 
-let toastTimer;
 function showToast(msg, type='info') {
-  const t = document.getElementById('toast');
-  t.style.whiteSpace = 'pre-line';
-  t.textContent = msg;
-  t.className = `toast ${type} show`;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 4000);
+  if (!window.HKPlannerFeedbackUi?.showToast) return;
+  return window.HKPlannerFeedbackUi.showToast(msg, type);
 }
 
 /**
@@ -3598,48 +2932,8 @@ function showToast(msg, type='info') {
  * niet automatisch heeft verstuurd (bijv. workflow niet ingesteld in GHL).
  */
 function showPaymentLinkFallback(url, invoiceNumber, total) {
-  // Verwijder eventuele eerdere fallback
-  const old = document.getElementById('paymentLinkFallback');
-  if (old) old.remove();
-
-  const overlay = document.createElement('div');
-  overlay.id = 'paymentLinkFallback';
-  overlay.style.cssText = [
-    'position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999',
-    'display:flex;align-items:center;justify-content:center;padding:24px',
-  ].join(';');
-
-  const totalStr = total != null ? `€${Number(total).toFixed(2).replace('.', ',')}` : '';
-  overlay.innerHTML = `
-    <div style="background:#1a1a1a;border:1px solid #333;border-radius:16px;padding:28px 24px;max-width:480px;width:100%;">
-      <div style="font-size:18px;font-weight:700;color:#fff;margin-bottom:6px;">✓ Klaar!</div>
-      <div style="font-size:14px;color:#f59e0b;margin-bottom:18px;">
-        ⚠ WhatsApp kon niet automatisch verstuurd worden via GHL.<br>
-        Kopieer de link hieronder en stuur hem handmatig.
-      </div>
-      <div style="font-size:13px;color:#9a9a9a;margin-bottom:4px;">📄 Factuur ${invoiceNumber || ''}${totalStr ? ' — ' + totalStr + ' incl. BTW' : ''}</div>
-      <div style="display:flex;gap:8px;margin-bottom:20px;">
-        <input id="payLinkInput" readonly value="${url}"
-          style="flex:1;background:#111;border:1px solid #333;border-radius:8px;padding:10px 12px;color:#fff;font-size:13px;min-width:0;" />
-        <button onclick="
-          navigator.clipboard.writeText('${url}').then(()=>{
-            this.textContent='✓';
-            setTimeout(()=>this.textContent='Kopieer',1500);
-          }).catch(()=>{
-            document.getElementById('payLinkInput').select();
-            document.execCommand('copy');
-          })
-        " style="background:#ffd000;color:#000;font-weight:700;border:none;border-radius:8px;padding:10px 16px;cursor:pointer;white-space:nowrap;">
-          Kopieer
-        </button>
-      </div>
-      <button onclick="document.getElementById('paymentLinkFallback').remove()"
-        style="width:100%;background:#272727;border:none;border-radius:8px;padding:11px;color:#f0f0f0;font-size:14px;cursor:pointer;">
-        Sluiten
-      </button>
-    </div>
-  `;
-  document.body.appendChild(overlay);
+  if (!window.HKPlannerFeedbackUi?.showPaymentLinkFallback) return;
+  return window.HKPlannerFeedbackUi.showPaymentLinkFallback(url, invoiceNumber, total);
 }
 
 applyLargeTextPref();
@@ -3649,191 +2943,102 @@ document.getElementById('dateLabel').textContent = formatDate(currentDate);
 // Credentials worden gevalideerd door /api/ghl?action=auth tegen env vars (HK_USERS).
 // Na succesvolle login slaan we een HMAC-gesigneerd token op (geldig 24 uur).
 const HK_USER_KEY    = 'hk_user';
-const HK_KLAAR_KEY   = 'hk_klaar_ids';
-
-function klaarStorageKeyContactDate(contactId, routeYmd) {
-  const c = String(contactId || '').trim();
-  const d = String(routeYmd || '').trim();
-  if (!c || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
-  return `cid:${c}:${d}`;
-}
 
 function saveKlaarStatus(ghlId, contactId, routeYmd) {
-  try {
-    const map = JSON.parse(localStorage.getItem(HK_KLAAR_KEY) || '{}');
-    if (ghlId) map[String(ghlId)] = Date.now();
-    const cd = klaarStorageKeyContactDate(contactId, routeYmd);
-    if (cd) map[cd] = Date.now();
-    const cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000;
-    for (const [k, v] of Object.entries(map)) {
-      if (v < cutoff) delete map[k];
-    }
-    localStorage.setItem(HK_KLAAR_KEY, JSON.stringify(map));
-  } catch {}
+  if (!window.HKPlannerStorage?.saveKlaarStatus) return;
+  return window.HKPlannerStorage.saveKlaarStatus(ghlId, contactId, routeYmd);
 }
 
 function isKlaarLocally(ghlId) {
-  if (!ghlId) return false;
-  try {
-    const map = JSON.parse(localStorage.getItem(HK_KLAAR_KEY) || '{}');
-    return !!map[ghlId];
-  } catch {
-    return false;
-  }
+  if (!window.HKPlannerStorage?.isKlaarLocally) return false;
+  return window.HKPlannerStorage.isKlaarLocally(ghlId);
 }
 
 function isKlaarLocallyContactDate(contactId, routeYmd) {
-  const cd = klaarStorageKeyContactDate(contactId, routeYmd);
-  if (!cd) return false;
-  try {
-    const map = JSON.parse(localStorage.getItem(HK_KLAAR_KEY) || '{}');
-    return !!map[cd];
-  } catch {
-    return false;
-  }
+  if (!window.HKPlannerStorage?.isKlaarLocallyContactDate) return false;
+  return window.HKPlannerStorage.isKlaarLocallyContactDate(contactId, routeYmd);
 }
 const HK_SESSION_KEY = 'hk_session_token';
 const HK_COOKIE_MAX  = 86400; // 24 uur in seconden
 
 /** Cookie lezen */
 function getCookieVal(name) {
-  try {
-    const m = document.cookie.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'));
-    return m ? decodeURIComponent(m[1]) : null;
-  } catch { return null; }
+  if (!window.HKPlannerAuthSession?.getCookieVal) return null;
+  return window.HKPlannerAuthSession.getCookieVal(name);
 }
 
 /** Cookie schrijven (24 uur, SameSite=Strict) */
 function setCookieVal(name, value) {
-  try {
-    document.cookie = `${name}=${encodeURIComponent(value)}; max-age=${HK_COOKIE_MAX}; path=/; SameSite=Strict`;
-  } catch {}
+  if (!window.HKPlannerAuthSession?.setCookieVal) return;
+  return window.HKPlannerAuthSession.setCookieVal(name, value, HK_COOKIE_MAX);
 }
 
 /** Cookie wissen */
 function clearCookieVal(name) {
-  try { document.cookie = `${name}=; max-age=0; path=/`; } catch {}
+  if (!window.HKPlannerAuthSession?.clearCookieVal) return;
+  return window.HKPlannerAuthSession.clearCookieVal(name);
 }
 
 /** Decodeer de token-payload en controleer vervaltijd (client-side, zonder geheim). */
 function decodeSessionPayload(token) {
-  try {
-    const rawB64 = token.split('.')[0];
-    if (!rawB64) return null;
-    // base64url → standaard base64 + padding (Safari is strict over ontbrekende =)
-    const std    = rawB64.replace(/-/g, '+').replace(/_/g, '/');
-    const padded = std + '=='.slice(0, (4 - std.length % 4) % 4);
-    const parts  = atob(padded).split('|');
-    if (parts.length < 2) return null;
-    return { user: parts[0], second: parts[1] };
-  } catch { return null; }
+  if (!window.HKPlannerAuthSession?.decodeSessionPayload) return null;
+  return window.HKPlannerAuthSession.decodeSessionPayload(token);
 }
 
 /** Geef de opgeslagen sessie terug als die nog geldig is (< 24u oud), anders null. */
 function getStoredSession() {
-  // Probeer localStorage; als leeg, herstel vanuit cookie (Safari wist soms localStorage)
-  let token = (() => { try { return localStorage.getItem(HK_SESSION_KEY); } catch { return null; } })();
-  let user  = (() => { try { return localStorage.getItem(HK_USER_KEY);    } catch { return null; } })();
-
-  if (!token || !user) {
-    token = getCookieVal(HK_SESSION_KEY);
-    user  = getCookieVal(HK_USER_KEY);
-    if (token && user) {
-      try { localStorage.setItem(HK_SESSION_KEY, token); } catch {}
-      try { localStorage.setItem(HK_USER_KEY, user);     } catch {}
-    }
-  }
-  if (!token || !user) return null;
-
-  const p = decodeSessionPayload(token);
-  if (!p || p.user !== user) return null;
-
-  // Nieuw formaat: second = expiresAtMs timestamp
-  const expiresAt = Number(p.second);
-  if (!isNaN(expiresAt) && expiresAt > 0) {
-    if (Date.now() > expiresAt) return null;
-    return { user, token };
-  }
-  // Oud formaat (YYYY-MM-DD): eenmalig accepteren
-  const today = getDateStr(new Date());
-  if (p.second !== today) return null;
-  return { user, token };
+  if (!window.HKPlannerAuthSession?.getStoredSession) return null;
+  return window.HKPlannerAuthSession.getStoredSession({
+    sessionKey: HK_SESSION_KEY,
+    userKey: HK_USER_KEY,
+    getCookieVal,
+    decodeSessionPayload,
+    getDateStr,
+  });
 }
 
 /** Stuur de sessie-token mee als header bij beveiligde API-aanroepen. */
 function hkAuthHeader() {
-  try { return localStorage.getItem(HK_SESSION_KEY) || getCookieVal(HK_SESSION_KEY) || ''; } catch { return ''; }
+  if (!window.HKPlannerAuthSession?.hkAuthHeader) return '';
+  return window.HKPlannerAuthSession.hkAuthHeader({
+    sessionKey: HK_SESSION_KEY,
+    getCookieVal,
+  });
 }
 
 function clearLoginState() {
-  try { localStorage.removeItem(HK_USER_KEY);  } catch {}
-  try { localStorage.removeItem(HK_SESSION_KEY); } catch {}
-  try { localStorage.removeItem('hk_login_day_amsterdam'); } catch {}
-  try { sessionStorage.removeItem(HK_USER_KEY); } catch {}
-  clearCookieVal(HK_SESSION_KEY);
-  clearCookieVal(HK_USER_KEY);
+  if (!window.HKPlannerLogin?.clearLoginState) return;
+  return window.HKPlannerLogin.clearLoginState({
+    userKey: HK_USER_KEY,
+    sessionKey: HK_SESSION_KEY,
+    clearCookieVal,
+  });
 }
 
 function logoutPlanning() {
-  clearLoginState();
-  const ov = document.getElementById('loginOverlay');
-  if (ov) ov.classList.remove('hidden');
-  const p = document.getElementById('loginPass');
-  if (p) p.value = '';
-  const e = document.getElementById('loginError');
-  if (e) e.classList.remove('visible');
+  if (!window.HKPlannerLogin?.logoutPlanning) return;
+  return window.HKPlannerLogin.logoutPlanning({ clearLoginState });
 }
 
 function checkLogin() {
-  const session = getStoredSession();
-  if (session) {
-    document.getElementById('loginOverlay').classList.add('hidden');
-    render();
-    loadAppointments(currentDate);
-  } else {
-    clearLoginState();
-  }
+  if (!window.HKPlannerLogin?.checkLogin) return;
+  return window.HKPlannerLogin.checkLogin({
+    getStoredSession,
+    render,
+    loadAppointments: () => loadAppointments(currentDate),
+    clearLoginState,
+  });
 }
 
 async function doLogin() {
-  const user = document.getElementById('loginUser').value.trim().toLowerCase();
-  const pass = document.getElementById('loginPass').value;
-  const err  = document.getElementById('loginError');
-  const btn  = document.querySelector('.btn-login');
-  if (btn) btn.disabled = true;
-  err.classList.remove('visible');
-
-  try {
-    const res  = await fetch('/api/ghl?action=auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user, password: pass }),
-    });
-    let data = {};
-    try { data = await res.json(); } catch (_) {}
-    if (res.ok && data.token) {
-      try { localStorage.setItem(HK_USER_KEY, data.user);     } catch (_) {}
-      try { localStorage.setItem(HK_SESSION_KEY, data.token); } catch (_) {}
-      setCookieVal(HK_USER_KEY, data.user);
-      setCookieVal(HK_SESSION_KEY, data.token);
-      document.getElementById('loginOverlay').classList.add('hidden');
-      render();
-      loadAppointments(currentDate);
-    } else {
-      const msg = res.status >= 500
-        ? `Serverfout (${res.status}) — probeer opnieuw of neem contact op met Daan`
-        : (data.error || 'Gebruikersnaam of wachtwoord onjuist');
-      err.textContent = msg;
-      err.classList.add('visible');
-      document.getElementById('loginPass').value = '';
-    }
-  } catch (e) {
-    err.textContent = 'Geen verbinding met de server — controleer je internet';
-    err.classList.add('visible');
-    document.getElementById('loginPass').value = '';
-  } finally {
-    if (btn) btn.disabled = false;
-  }
+  if (!window.HKPlannerLogin?.doLogin) return;
+  return window.HKPlannerLogin.doLogin({
+    userKey: HK_USER_KEY,
+    sessionKey: HK_SESSION_KEY,
+    setCookieVal,
+    render,
+    loadAppointments: () => loadAppointments(currentDate),
+  });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
