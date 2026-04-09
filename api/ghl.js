@@ -263,6 +263,32 @@ function requireAuth(req, res) {
   return true;
 }
 
+function normalizePhoneForGhl(raw) {
+  const input = String(raw || '').trim();
+  if (!input) return '';
+  let cleaned = input.replace(/[\s\-().]/g, '');
+  if (!cleaned) return '';
+  if (cleaned.startsWith('00')) cleaned = `+${cleaned.slice(2)}`;
+  if (cleaned.startsWith('+')) {
+    const digits = cleaned.slice(1).replace(/\D/g, '');
+    if (digits.startsWith('3106') && digits.length >= 11) {
+      return `+31${digits.slice(3)}`;
+    }
+    return `+${digits}`;
+  }
+  const digits = cleaned.replace(/\D/g, '');
+  if (digits.startsWith('06') && digits.length >= 10) {
+    return `+31${digits.slice(1)}`;
+  }
+  if (digits.startsWith('31')) {
+    if (digits.startsWith('3106') && digits.length >= 11) {
+      return `+31${digits.slice(3)}`;
+    }
+    return `+${digits}`;
+  }
+  return digits;
+}
+
 export default async function handler(req, res) {
   applySecurityHeaders(res);
   const requestId = getOrCreateRequestId(req, res);
@@ -880,6 +906,7 @@ export default async function handler(req, res) {
         const nameNorm = String(name || '').trim();
         const emailNorm = String(email || '').trim().toLowerCase();
         const addressNorm = String(address || '').trim();
+        const phoneNorm = normalizePhoneForGhl(phone);
         const dateNorm = normalizeYyyyMmDdInput(String(date || ''));
         const timeNorm = String(time || '').trim();
         if (!nameNorm) return res.status(400).json({ error: 'name verplicht' });
@@ -898,56 +925,79 @@ export default async function handler(req, res) {
           : null;
         const priceNum = priceNumFromLines ?? toPriceNumber(price);
 
-        // Stap 1: contact opzoeken of aanmaken
+        // Stap 1: contact resolven via upsert -> duplicate search -> force create
+        const readResolvedContactId = (payload) =>
+          payload?.contact?.id || payload?.id || payload?.data?.contact?.id || null;
         let contactId = String(existingContactId || '').trim() || null;
+        let contactResolution = contactId ? 'existing_contact_id' : '';
         if (!contactId) {
-          // Zoek bestaand contact op telefoonnummer
-          // Zoek op nummer (GHL duplicate check)
-          const searchPhone = phone ? phone.replace(/\s/g, '') : '';
-          if (searchPhone) {
+          const nameParts = nameNorm.split(' ');
+          const baseContactPayload = {
+            locationId: GHL_LOCATION_ID,
+            firstName: nameParts[0] || nameNorm,
+            lastName: nameParts.slice(1).join(' ') || '',
+            phone: phoneNorm || '',
+            email: emailNorm || '',
+            address1: addressNorm || '',
+          };
+
+          // 1) Upsert op phone/email
+          if (phoneNorm || emailNorm) {
+            const upsertRes = await fetchWithRetry(`${GHL_BASE}/contacts/upsert`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-07-28' },
+              body: JSON.stringify(baseContactPayload),
+            });
+            if (upsertRes.ok) {
+              const upsertData = await upsertRes.json().catch(() => ({}));
+              contactId = readResolvedContactId(upsertData);
+              if (contactId) contactResolution = 'upsert';
+            }
+          }
+
+          // 2) Duplicate search op genormaliseerde phone
+          if (!contactId && phoneNorm) {
             const searchRes = await fetchWithRetry(
-              `${GHL_BASE}/contacts/search/duplicate?locationId=${GHL_LOCATION_ID}&number=${encodeURIComponent(searchPhone)}`,
+              `${GHL_BASE}/contacts/search/duplicate?locationId=${GHL_LOCATION_ID}&number=${encodeURIComponent(phoneNorm)}`,
               { headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-07-28' } }
             );
             if (searchRes.ok) {
-              const searchData = await searchRes.json();
-              contactId = searchData?.contact?.id || null;
+              const searchData = await searchRes.json().catch(() => ({}));
+              contactId = readResolvedContactId(searchData);
+              if (contactId) contactResolution = 'duplicate_search';
             }
           }
-          // Zoek op naam als telefoonnummer niet gevonden
-          if (!contactId && name) {
-            const nameSearch = await fetchWithRetry(
-              `${GHL_BASE}/contacts/?locationId=${GHL_LOCATION_ID}&query=${encodeURIComponent(name)}&limit=1`,
-              { headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-07-28' } }
-            );
-            if (nameSearch.ok) {
-              const nameData = await nameSearch.json();
-              contactId = nameData?.contacts?.[0]?.id || null;
-            }
-          }
-          // Nieuw contact aanmaken als niet gevonden
+
+          // 3) Force create als er nog geen contact is
           if (!contactId) {
-            const nameParts = name.trim().split(' ');
             const createRes = await fetchWithRetry(`${GHL_BASE}/contacts/`, {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-07-28' },
-              body: JSON.stringify({
-                locationId: GHL_LOCATION_ID,
-                firstName: nameParts[0] || nameNorm,
-                lastName: nameParts.slice(1).join(' ') || '',
-                phone: searchPhone || '',
-                email: emailNorm || '',
-                address1: addressNorm || '',
-              })
+              body: JSON.stringify(baseContactPayload),
             });
             if (createRes.ok) {
-              const createData = await createRes.json();
-              contactId = createData?.contact?.id || null;
+              const createData = await createRes.json().catch(() => ({}));
+              contactId = readResolvedContactId(createData);
+              if (contactId) contactResolution = 'created_fallback';
+            } else {
+              const detail = (await createRes.text().catch(() => '')).slice(0, 400);
+              return res.status(502).json({
+                error: `Contact force-create mislukt (${createRes.status})`,
+                detail,
+              });
             }
           }
         }
 
-        if (!contactId) return res.status(400).json({ error: 'Kon geen contact vinden of aanmaken' });
+        if (!contactId) {
+          return res.status(502).json({ error: 'Contact resolven mislukt; afspraak kan niet worden aangemaakt' });
+        }
+        console.log('[createAppointment][contact_resolution]', {
+          contact_resolution: contactResolution || 'created_fallback',
+          contactId,
+          hasPhone: !!phoneNorm,
+          hasEmail: !!emailNorm,
+        });
 
         // Stap 2: canoniek adres (address1 + straat/huis-CF) + type/omschrijving
         if (addressNorm) {
@@ -997,7 +1047,7 @@ export default async function handler(req, res) {
             headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-04-15' },
             body: JSON.stringify({
               address1,
-              phone: phone ? String(phone).trim() : undefined,
+              phone: phoneNorm || undefined,
               email: emailNorm || undefined,
               customFields: bookingCanon.customFields,
             }),
