@@ -31,6 +31,7 @@ import {
   GHL_CONFIG_MISSING_MSG,
   ghlCalendarIdFromEnv,
   ghlLocationIdFromEnv,
+  stripGhlEnvId,
 } from '../lib/ghl-env-ids.js';
 import {
   canonicalGhlEventId,
@@ -65,6 +66,10 @@ import {
 } from '../lib/amsterdam-day-read-cache.js';
 import { deleteConfirmedReservationForContactDate } from '../lib/block-reservation-store.js';
 import { buildCompleteAppointmentPayload } from '../lib/usecases/complete-appointment.js';
+import {
+  fetchGhlFreeSlotsObject,
+  slotsObjectToConcreteList,
+} from '../lib/ghl-free-slots-pipeline.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -287,6 +292,18 @@ function normalizePhoneForGhl(raw) {
     return `+${digits}`;
   }
   return digits;
+}
+
+function manualApptSlotDebugEnabled() {
+  const v = String(process.env.HK_MANUAL_APPT_SLOT_DEBUG || '').toLowerCase();
+  return v === '1' || v === 'true';
+}
+
+function logManualApptSlotDebug(event, payload) {
+  if (!manualApptSlotDebugEnabled()) return;
+  try {
+    console.log(`[manual_appt_slot] ${event}`, payload || {});
+  } catch (_) {}
 }
 
 export default async function handler(req, res) {
@@ -1055,7 +1072,7 @@ export default async function handler(req, res) {
           logCanonicalAddressWrite('createAppointment', { contactId, address1 });
         }
 
-        // Stap 3: agenda-afspraak aanmaken (met retry bij slot-conflict)
+        // Stap 3: agenda-afspraak aanmaken op ACTUEEL beschikbaar GHL-slot
         const [hours, minutes] = (timeNorm || DEFAULT_BOOK_START_MORNING).split(':').map(Number);
         const durationMin = ghlDurationMinutesForType(normalizeWorkType(apptType));
 
@@ -1065,56 +1082,135 @@ export default async function handler(req, res) {
           return res.status(400).json({ error: 'Ongeldige datum of tijd voor afspraak' });
         }
         const baseStartMs = baseStartDt.getTime();
+        const requestedEndMs = baseStartMs + durationMin * 60 * 1000;
+        const calId = effectiveCalendarId();
+        const locId = ghlLocationIdFromEnv();
+        const dayBounds = amsterdamCalendarDayBoundsMs(dateNorm);
+        if (!dayBounds) {
+          return res.status(400).json({ error: 'Ongeldige datum voor beschikbaarheidscheck' });
+        }
+        const slotPart =
+          slotKey === 'afternoon' || slotKey === 'morning'
+            ? slotKey
+            : hours >= 13
+              ? 'afternoon'
+              : 'morning';
+        const assignedUserId = stripGhlEnvId(
+          process.env.GHL_FREE_SLOTS_USER_ID ||
+            process.env.GHL_APPOINTMENT_ASSIGNED_USER_ID ||
+            process.env.GHL_BLOCK_SLOT_USER_ID
+        );
+        logManualApptSlotDebug('requested_start', {
+          requested_start: new Date(baseStartMs).toISOString(),
+          requested_end: new Date(requestedEndMs).toISOString(),
+          assigned_user: assignedUserId || null,
+          calendar_id: calId,
+          timezone_used: 'Europe/Amsterdam',
+          slot_part: slotPart,
+        });
+
+        const freeSlots = await fetchGhlFreeSlotsObject({
+          calendarId: calId,
+          locationId: locId,
+          startMs: dayBounds.startMs,
+          endMs: dayBounds.endMs,
+          apiKey: GHL_API_KEY,
+        });
+        if (!freeSlots.ok) {
+          return res.status(503).json({
+            error: 'Beschikbaarheid tijdelijk niet op te halen. Probeer opnieuw.',
+            detail: freeSlots.error || undefined,
+          });
+        }
+
+        const concreteSlots = slotsObjectToConcreteList(freeSlots.slotsObj || {}, {
+          calendarId: calId,
+          workType: apptType || '',
+        }).filter((s) => s.dateStr === dateNorm && s.block === slotPart);
+
+        if (!concreteSlots.length) {
+          logManualApptSlotDebug('ghl_slot_rejected', {
+            reason: 'no_free_slot_for_daypart',
+            requested_start: new Date(baseStartMs).toISOString(),
+            requested_end: new Date(requestedEndMs).toISOString(),
+            assigned_user: assignedUserId || null,
+            calendar_id: calId,
+            timezone_used: 'Europe/Amsterdam',
+          });
+          return res.status(409).json({
+            error: 'Dit tijdslot is niet meer beschikbaar',
+            contactId,
+            code: 'slot_unavailable',
+          });
+        }
+
+        const attempts = concreteSlots
+          .slice()
+          .sort((a, b) => Math.abs(a.startMs - baseStartMs) - Math.abs(b.startMs - baseStartMs))
+          .slice(0, 4);
 
         let appointmentId = null;
         let lastError = null;
-        // Probeer de gevraagde tijd, dan stapsgewijs eerder (zodat de afspraak op de juiste dag blijft)
-        const offsets = [0, -5, 5, -10, 10, -15, 15, -30, 30];
-        for (const offsetMin of offsets) {
-          const startMs = baseStartMs + offsetMin * 60 * 1000;
-          const startTime = new Date(startMs);
-          const endTime   = new Date(startMs + durationMin * 60 * 1000);
+        for (const slot of attempts) {
+          const payload = {
+            calendarId: calId,
+            locationId: locId,
+            contactId,
+            startTime: new Date(slot.startMs).toISOString(),
+            endTime: new Date(slot.endMs).toISOString(),
+            title: `${nameNorm} – ${apptType || 'afspraak'}`,
+            appointmentStatus: 'confirmed',
+            ignoreLimits: true,
+          };
+          logManualApptSlotDebug('ghl_slot_payload', {
+            requested_start: new Date(baseStartMs).toISOString(),
+            requested_end: new Date(requestedEndMs).toISOString(),
+            payload_start: payload.startTime,
+            payload_end: payload.endTime,
+            assigned_user: assignedUserId || null,
+            calendar_id: calId,
+            timezone_used: 'Europe/Amsterdam',
+          });
 
           const apptRes = await fetch(`${GHL_BASE}/calendars/events/appointments`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-07-28' },
-            body: JSON.stringify({
-              calendarId: effectiveCalendarId(),
-              locationId: ghlLocationIdFromEnv(),
-              contactId,
-              startTime: startTime.toISOString(),
-              endTime: endTime.toISOString(),
-              title: `${nameNorm} – ${apptType || 'afspraak'}`,
-              appointmentStatus: 'confirmed',
-              ignoreLimits: true,
-            })
+            body: JSON.stringify(payload),
           });
 
           if (apptRes.ok) {
-            const apptData = await apptRes.json();
-            appointmentId = apptData?.id;
+            const apptData = await apptRes.json().catch(() => ({}));
+            appointmentId = apptData?.id || null;
             break;
           }
-          const errText = await apptRes.text();
-          lastError = errText;
-          if (!errText.includes('slot') && !errText.includes('available')) break; // ander fout → niet retrien
+          const errText = await apptRes.text().catch(() => '');
+          lastError = errText || `HTTP ${apptRes.status}`;
+          logManualApptSlotDebug('ghl_slot_rejected', {
+            requested_start: new Date(baseStartMs).toISOString(),
+            requested_end: new Date(requestedEndMs).toISOString(),
+            attempted_start: payload.startTime,
+            attempted_end: payload.endTime,
+            assigned_user: assignedUserId || null,
+            calendar_id: calId,
+            timezone_used: 'Europe/Amsterdam',
+            status: apptRes.status,
+            detail: String(errText || '').slice(0, 260),
+          });
+          if (!String(errText || '').toLowerCase().includes('slot')) break;
         }
 
         if (!appointmentId) {
-          console.error('[createAppointment] Alle tijdslots geprobeerd, mislukt:', lastError);
-          invalidateAmsterdamDayGhlReadCachesForDate({
-            locationId: ghlLocationIdFromEnv(),
-            calendarId: effectiveCalendarId(),
-            dateStr: dateNorm,
-            trigger: 'createAppointment_contact_only',
+          return res.status(409).json({
+            error: 'Dit tijdslot is niet meer beschikbaar',
+            contactId,
+            code: 'slot_unavailable',
+            detail: String(lastError || '').slice(0, 260) || undefined,
           });
-          // Contact is wel aangemaakt/gevonden — geef dat terug zodat de afspraak zichtbaar blijft
-          return res.status(200).json({ success: true, contactId, appointmentId: null, warning: 'Kalender-slot niet beschikbaar, alleen contact opgeslagen' });
         }
 
         invalidateAmsterdamDayGhlReadCachesForDate({
-          locationId: ghlLocationIdFromEnv(),
-          calendarId: effectiveCalendarId(),
+          locationId: locId,
+          calendarId: calId,
           dateStr: dateNorm,
           trigger: 'createAppointment',
         });
