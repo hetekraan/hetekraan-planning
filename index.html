@@ -18,6 +18,7 @@
 <script src="/app/planner-auth-session.js"></script>
 <script src="/app/planner-login.js"></script>
 <script src="/app/planner-utils.js"></script>
+<script src="/app/planner-manual-appointment.js"></script>
 <script src="/app/planner-actions.js"></script>
 <script src="/app/planner-route.js"></script>
 <script src="/app/planner-scheduling.js"></script>
@@ -1535,7 +1536,7 @@
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal()">Annuleren</button>
       <button class="btn-send-link" onclick="sendBookingLink()" title="Stuur de klant een boekingslink via WhatsApp">📲 Stuur boekingslink</button>
-      <button class="btn-save" onclick="saveModal()">Toevoegen</button>
+      <button class="btn-save" id="btnModalAddAppt" onclick="saveModal()">Toevoegen</button>
     </div>
   </div>
 </div>
@@ -1578,6 +1579,9 @@ function createPlannerCtx() {
     },
     getAppointmentsRef: () => appointments,
     getCurrentDate: () => currentDate,
+    setCurrentDate: (d) => {
+      currentDate = d;
+    },
     loadAppointments,
     calcTotalPrice,
     showPaymentLinkFallback,
@@ -2850,76 +2854,9 @@ async function sendBookingLink() {
 }
 
 async function saveModal() {
-  const name    = document.getElementById('mName').value.trim();
-  const address = document.getElementById('mAddress').value.trim();
-  if (!name || !address) { showToast('Vul naam en adres in', 'info'); return; }
-
-  await refreshGhlContactBaseUrl();
-
-  const time    = document.getElementById('mTime').value;
-  const type    = document.getElementById('mType').value.toLowerCase();
-  const phone   = document.getElementById('mPhone').value.trim();
-  const price   = parseInt(document.getElementById('mPrice').value) || 0;
-  const desc    = document.getElementById('mDesc').value.trim() || '—';
-  const contactId = document.getElementById('mContactId').value.trim();
-  const date    = document.getElementById('mDate')?.value || document.getElementById('dateInput')?.value || new Date().toISOString().split('T')[0];
-  const mapsLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
-
-  // Lokaal alvast toevoegen
-  const localId = newLocalAppointmentId();
-  appointments.push({
-    id: localId,
-    timeSlot: time,
-    name,
-    address,
-    fullAddressLine: address,
-    postalCode: '',
-    city: '',
-    phone,
-    jobType: type,
-    jobDescription: desc,
-    notes: '',
-    mapsLink,
-    price,
-    priceLabel: price ? `€${price}` : '',
-    status: 'ingepland',
-    review: false,
-    priceVisible: false,
-    contactId,
-    extras: [],
-    ghlUrl: contactId ? `${GHL_BASE_URL}/${contactId}` : '',
-    datumInstallatie: '',
-    datumOnderhoud: '',
-    dayPart: 0,
-    startMs: NaN,
-    isCalBlock: false,
-  });
-  closeModal();
-  render();
-  showToast('⏳ Afspraak opslaan in GHL...', 'loading');
-
-  // Opslaan in GHL
-  try {
-    const res = await fetch('/api/ghl?action=createAppointment', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
-      body: JSON.stringify({ name, phone, address, date, time, type, desc, contactId })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Onbekende fout');
-
-    // Update lokale afspraak met het echte contactId en GHL-url
-    const a = appointments.find(x => String(x.id) === String(localId));
-    if (a) {
-      a.contactId = data.contactId;
-      a.ghlUrl    = `${GHL_BASE_URL}/${data.contactId}`;
-      if (data.appointmentId) a.id = data.appointmentId;
-    }
-    render();
-    showToast('✓ Afspraak opgeslagen in GHL', 'success');
-  } catch(e) {
-    showToast(`Lokaal opgeslagen, GHL mislukt: ${e.message}`, 'info');
-  }
+  if (!window.HKPlannerManualAppointment?.saveModal) return;
+  const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
+  return window.HKPlannerManualAppointment.saveModal(ctx);
 }
 
 function showToast(msg, type='info') {
@@ -3044,6 +2981,9 @@ async function doLogin() {
 document.addEventListener('DOMContentLoaded', () => {
   const lp = document.getElementById('loginPass');
   if (lp) lp.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  if (window.HKPlannerManualAppointment?.bindModalKeyboardSubmit) {
+    window.HKPlannerManualAppointment.bindModalKeyboardSubmit();
+  }
   checkLogin();
 });
 </script>

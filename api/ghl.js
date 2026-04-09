@@ -857,10 +857,29 @@ export default async function handler(req, res) {
       }
 
       case 'createAppointment': {
-        const { name, phone, address, date, time, type: apptType, desc, contactId: existingContactId } = req.body;
+        const {
+          name,
+          phone,
+          address,
+          date,
+          time,
+          type: apptType,
+          desc,
+          contactId: existingContactId,
+          price,
+        } = req.body || {};
+        const nameNorm = String(name || '').trim();
+        const addressNorm = String(address || '').trim();
+        const dateNorm = normalizeYyyyMmDdInput(String(date || ''));
+        const timeNorm = String(time || '').trim();
+        if (!nameNorm) return res.status(400).json({ error: 'name verplicht' });
+        if (!addressNorm) return res.status(400).json({ error: 'address verplicht' });
+        if (!dateNorm) return res.status(400).json({ error: 'date verplicht (YYYY-MM-DD)' });
+        if (!/^\d{2}:\d{2}$/.test(timeNorm)) return res.status(400).json({ error: 'time verplicht (HH:mm)' });
+        const priceNum = toPriceNumber(price);
 
         // Stap 1: contact opzoeken of aanmaken
-        let contactId = existingContactId;
+        let contactId = String(existingContactId || '').trim() || null;
         if (!contactId) {
           // Zoek bestaand contact op telefoonnummer
           // Zoek op nummer (GHL duplicate check)
@@ -894,10 +913,10 @@ export default async function handler(req, res) {
               headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-07-28' },
               body: JSON.stringify({
                 locationId: GHL_LOCATION_ID,
-                firstName: nameParts[0] || name,
+                firstName: nameParts[0] || nameNorm,
                 lastName: nameParts.slice(1).join(' ') || '',
                 phone: searchPhone || '',
-                address1: address || '',
+                address1: addressNorm || '',
               })
             });
             if (createRes.ok) {
@@ -910,17 +929,30 @@ export default async function handler(req, res) {
         if (!contactId) return res.status(400).json({ error: 'Kon geen contact vinden of aanmaken' });
 
         // Stap 2: canoniek adres (address1 + straat/huis-CF) + type/omschrijving
-        if (address) {
-          const { address1, customFields: addrCf } = buildCanonicalAddressWritePayload(address);
+        if (addressNorm) {
+          const { address1, customFields: addrCf } = buildCanonicalAddressWritePayload(addressNorm);
+          const customFields = [
+            ...addrCf,
+            { id: FIELD_IDS.type_onderhoud, field_value: apptType || 'reparatie' },
+            { id: FIELD_IDS.probleemomschrijving, field_value: desc || '' },
+          ];
+          if (priceNum !== null) {
+            customFields.push({ id: FIELD_IDS.prijs, field_value: String(priceNum) });
+            customFields.push({
+              id: FIELD_IDS.prijs_regels,
+              field_value: JSON.stringify([{ desc: desc || 'Handmatige afspraak', price: priceNum }]),
+            });
+          }
           const bookingCanon = appendBookingCanonFields(
-            [
-              ...addrCf,
-              { id: FIELD_IDS.type_onderhoud, field_value: apptType || 'reparatie' },
-              { id: FIELD_IDS.probleemomschrijving, field_value: desc || '' },
-            ],
+            customFields,
             {
               type_onderhoud: apptType || 'reparatie',
               probleemomschrijving: desc || '',
+              prijs_totaal: priceNum,
+              prijs_regels:
+                priceNum !== null
+                  ? formatPriceRulesStructuredString([{ desc: desc || 'Handmatige afspraak', price: priceNum }])
+                  : '',
             }
           );
           console.log('[BOOKING_CANON_WRITE]', {
@@ -932,6 +964,7 @@ export default async function handler(req, res) {
             headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-04-15' },
             body: JSON.stringify({
               address1,
+              phone: phone ? String(phone).trim() : undefined,
               customFields: bookingCanon.customFields,
             }),
           });
@@ -939,11 +972,11 @@ export default async function handler(req, res) {
         }
 
         // Stap 3: agenda-afspraak aanmaken (met retry bij slot-conflict)
-        const [hours, minutes] = (time || DEFAULT_BOOK_START_MORNING).split(':').map(Number);
+        const [hours, minutes] = (timeNorm || DEFAULT_BOOK_START_MORNING).split(':').map(Number);
         const durationMin = ghlDurationMinutesForType(normalizeWorkType(apptType));
 
         // Basisstarttijd via DST-bewuste helper (niet hardgecodeerd +01:00; anders dag-overschrijding in CEST).
-        const baseStartDt = amsterdamWallTimeToDate(date, hours, minutes);
+        const baseStartDt = amsterdamWallTimeToDate(dateNorm, hours, minutes);
         if (!baseStartDt) {
           return res.status(400).json({ error: 'Ongeldige datum of tijd voor afspraak' });
         }
@@ -967,7 +1000,7 @@ export default async function handler(req, res) {
               contactId,
               startTime: startTime.toISOString(),
               endTime: endTime.toISOString(),
-              title: `${name} – ${apptType || 'afspraak'}`,
+              title: `${nameNorm} – ${apptType || 'afspraak'}`,
               appointmentStatus: 'confirmed',
               ignoreLimits: true,
             })
@@ -985,9 +1018,22 @@ export default async function handler(req, res) {
 
         if (!appointmentId) {
           console.error('[createAppointment] Alle tijdslots geprobeerd, mislukt:', lastError);
+          invalidateAmsterdamDayGhlReadCachesForDate({
+            locationId: ghlLocationIdFromEnv(),
+            calendarId: effectiveCalendarId(),
+            dateStr: dateNorm,
+            trigger: 'createAppointment_contact_only',
+          });
           // Contact is wel aangemaakt/gevonden — geef dat terug zodat de afspraak zichtbaar blijft
           return res.status(200).json({ success: true, contactId, appointmentId: null, warning: 'Kalender-slot niet beschikbaar, alleen contact opgeslagen' });
         }
+
+        invalidateAmsterdamDayGhlReadCachesForDate({
+          locationId: ghlLocationIdFromEnv(),
+          calendarId: effectiveCalendarId(),
+          dateStr: dateNorm,
+          trigger: 'createAppointment',
+        });
 
         return res.status(200).json({ success: true, contactId, appointmentId });
       }
