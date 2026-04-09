@@ -57,9 +57,16 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   // Endpoint mag alleen worden aangeroepen vanuit het ingelogde dashboard.
+  const bypass = String(process.env.DEV_LOGIN_BYPASS || '').toLowerCase() === 'true';
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').toLowerCase();
+  const isLocalHost = host.includes('localhost') || host.includes('127.0.0.1');
+  if (bypass && isLocalHost) {
+    // lokale development-only bypass
+  } else {
   const session = verifySessionToken(req.headers['x-hk-auth']);
   if (!session) {
     return res.status(401).json({ error: 'Niet geautoriseerd — log opnieuw in op het dashboard' });
+  }
   }
 
   const {

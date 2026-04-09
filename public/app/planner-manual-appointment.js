@@ -1,5 +1,7 @@
 (function initPlannerManualAppointment(global) {
   let inFlight = false;
+  let totalPriceManual = false;
+  let totalPriceManualValue = null;
 
   function isDebugEnabled() {
     try {
@@ -23,6 +25,36 @@
     return null;
   }
 
+  function roundPrice(v) {
+    return Math.round(Number(v || 0) * 100) / 100;
+  }
+
+  function parseManualPriceInput(raw) {
+    const normalized = String(raw || '').trim().replace(',', '.');
+    if (!normalized) return { empty: true, value: null };
+    const n = Number(normalized);
+    if (!Number.isFinite(n) || n < 0) return { empty: false, invalid: true, value: null };
+    return { empty: false, invalid: false, value: roundPrice(n) };
+  }
+
+  function readAutoTotalFromPriceLines() {
+    const lines = global.HKPlannerCatalogV1?.getModalCatalogLines
+      ? global.HKPlannerCatalogV1.getModalCatalogLines()
+      : [];
+    return roundPrice(lines.reduce((sum, row) => sum + Number(row.price || 0), 0));
+  }
+
+  function calcLinesTotal(lines) {
+    const src = Array.isArray(lines) ? lines : [];
+    return roundPrice(src.reduce((sum, row) => sum + Number(row?.price || 0), 0));
+  }
+
+  function updateManualHint() {
+    const hint = document.getElementById('mPriceManualHint');
+    if (!hint) return;
+    hint.textContent = totalPriceManual ? 'Handmatig aangepast' : '';
+  }
+
   function collectFormValues() {
     const dateInput = document.getElementById('mDate');
     const slotInput = document.getElementById('mSlot');
@@ -42,7 +74,11 @@
     const priceLines = global.HKPlannerCatalogV1?.getModalCatalogLines
       ? global.HKPlannerCatalogV1.getModalCatalogLines()
       : [];
-    const totalPrice = Math.round(priceLines.reduce((sum, row) => sum + Number(row.price || 0), 0) * 100) / 100;
+    const autoTotalPrice = roundPrice(priceLines.reduce((sum, row) => sum + Number(row.price || 0), 0));
+    const totalPrice =
+      totalPriceManual && Number.isFinite(Number(totalPriceManualValue))
+        ? roundPrice(totalPriceManualValue)
+        : autoTotalPrice;
 
     return {
       date:
@@ -61,6 +97,8 @@
       contactId: (contactIdInput?.value || '').trim(),
       priceLines,
       totalPrice,
+      totalPriceAuto: autoTotalPrice,
+      totalPriceManual,
     };
   }
 
@@ -80,8 +118,62 @@
   function updatePricePreview() {
     const totalInput = document.getElementById('mPrice');
     if (!totalInput) return;
-    const form = collectFormValues();
-    totalInput.value = String(form.totalPrice || 0);
+    if (totalPriceManual && Number.isFinite(Number(totalPriceManualValue))) {
+      totalInput.value = String(roundPrice(totalPriceManualValue));
+      updateManualHint();
+      return;
+    }
+    totalInput.value = String(readAutoTotalFromPriceLines());
+    updateManualHint();
+  }
+
+  function onTotalPriceInput(rawValue) {
+    const parsed = parseManualPriceInput(rawValue);
+    if (parsed.empty) {
+      totalPriceManual = false;
+      totalPriceManualValue = null;
+      updatePricePreview();
+      return;
+    }
+    if (parsed.invalid) return;
+    totalPriceManual = true;
+    totalPriceManualValue = parsed.value;
+    updateManualHint();
+  }
+
+  function resetTotalPriceOverride() {
+    totalPriceManual = false;
+    totalPriceManualValue = null;
+    updatePricePreview();
+  }
+
+  function syncTotalPriceModeFromExisting(input = {}) {
+    const backendTotalRaw =
+      input.backendTotal !== undefined ? input.backendTotal : document.getElementById('mPrice')?.value;
+    const backendParsed = parseManualPriceInput(backendTotalRaw);
+    if (backendParsed.empty || backendParsed.invalid) {
+      totalPriceManual = false;
+      totalPriceManualValue = null;
+      updatePricePreview();
+      return { manual: false, backendTotal: null, linesTotal: readAutoTotalFromPriceLines() };
+    }
+
+    const linesTotal =
+      input.priceLines !== undefined
+        ? calcLinesTotal(input.priceLines)
+        : readAutoTotalFromPriceLines();
+    const backendTotal = roundPrice(backendParsed.value);
+    const mismatch = Math.abs(backendTotal - linesTotal) >= 0.01;
+
+    if (mismatch) {
+      totalPriceManual = true;
+      totalPriceManualValue = backendTotal;
+    } else {
+      totalPriceManual = false;
+      totalPriceManualValue = null;
+    }
+    updatePricePreview();
+    return { manual: totalPriceManual, backendTotal, linesTotal };
   }
 
   async function saveModal(ctx) {
@@ -204,6 +296,12 @@
   }
 
   function bindPriceControls() {
+    const totalInput = document.getElementById('mPrice');
+    if (totalInput && totalInput.dataset.hkManualPriceBound !== '1') {
+      totalInput.dataset.hkManualPriceBound = '1';
+      totalInput.addEventListener('input', (e) => onTotalPriceInput(e?.target?.value));
+      totalInput.addEventListener('change', (e) => onTotalPriceInput(e?.target?.value));
+    }
     updatePricePreview();
   }
 
@@ -212,5 +310,7 @@
     bindModalKeyboardSubmit,
     bindPriceControls,
     updatePricePreview,
+    resetTotalPriceOverride,
+    syncTotalPriceModeFromExisting,
   };
 })(window);

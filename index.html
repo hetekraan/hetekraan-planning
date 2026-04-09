@@ -968,6 +968,7 @@
 
   .form-row { margin-bottom: 8px; }
   .form-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; display: block; }
+  .form-hint-subtle { font-size: 11px; color: var(--muted); margin-top: 4px; min-height: 14px; }
   .form-input, .form-select {
     width: 100%;
     background: var(--surface2);
@@ -1066,12 +1067,14 @@
   }
   .btn-add-extra:hover { border-color: var(--accent2); background: rgba(0,212,170,0.1); }
   .catalog-v1-results {
+    display: none;
     border: 1px solid var(--border);
     border-radius: 8px;
     max-height: 170px;
     overflow: auto;
     background: rgba(255,255,255,0.02);
   }
+  .catalog-v1-results.is-open { display: block; }
   .catalog-v1-result {
     width: 100%;
     border: none;
@@ -1547,15 +1550,18 @@
     <div class="form-row">
       <div>
         <label class="form-label">Totaalprijs (€)</label>
-        <input class="form-input" type="number" id="mPrice" placeholder="0" readonly>
+        <input class="form-input" type="number" id="mPrice" placeholder="0" min="0" step="0.01">
+        <div class="form-hint-subtle" id="mPriceManualHint" aria-live="polite"></div>
       </div>
     </div>
-    <div class="form-row">
-      <label class="form-label">Product/prijslijst (V1)</label>
-      <input class="form-input" type="text" id="mCatalogSearch" placeholder="Zoek product of service..." oninput="onModalCatalogSearchInput(this.value)">
-      <div class="catalog-v1-results" id="mCatalogResults"></div>
+    <details class="form-row" id="mCatalogSection" open>
+      <summary class="form-label" style="cursor:pointer;user-select:none">Product/prijslijst (V1)</summary>
+      <div id="mCatalogDropdown" style="margin-top:8px">
+        <input class="form-input" type="text" id="mCatalogSearch" placeholder="Zoek product of service..." oninput="onModalCatalogSearchInput(this.value)">
+        <div class="catalog-v1-results" id="mCatalogResults"></div>
+      </div>
       <div id="mCatalogLines" style="margin-top:8px"></div>
-    </div>
+    </details>
     <div class="form-row">
       <label class="form-label">Omschrijving</label>
       <input class="form-input" type="text" id="mDesc" placeholder="Kort omschrijven">
@@ -2824,6 +2830,9 @@ async function confirmReschedule() {
 function openModal() {
   if (!window.HKPlannerModalUi?.openModal) return;
   const out = window.HKPlannerModalUi.openModal();
+  if (window.HKPlannerManualAppointment?.resetTotalPriceOverride) {
+    window.HKPlannerManualAppointment.resetTotalPriceOverride();
+  }
   if (window.HKPlannerCatalogV1?.clearModalCatalogLines) {
     window.HKPlannerCatalogV1.clearModalCatalogLines();
   }
@@ -2832,7 +2841,18 @@ function openModal() {
   }
   return out;
 }
+
+function syncModalTotalPriceFromExisting(backendTotal, priceLines) {
+  if (!window.HKPlannerManualAppointment?.syncTotalPriceModeFromExisting) return null;
+  return window.HKPlannerManualAppointment.syncTotalPriceModeFromExisting({
+    backendTotal,
+    priceLines,
+  });
+}
 function closeModal() {
+  if (window.HKPlannerCatalogV1?.closeModalDropdown) {
+    window.HKPlannerCatalogV1.closeModalDropdown('modal_close');
+  }
   if (!window.HKPlannerModalUi?.closeModal) return;
   return window.HKPlannerModalUi.closeModal();
 }
@@ -3024,6 +3044,9 @@ function logoutPlanning() {
 function checkLogin() {
   if (!window.HKPlannerLogin?.checkLogin) return;
   return window.HKPlannerLogin.checkLogin({
+    userKey: HK_USER_KEY,
+    sessionKey: HK_SESSION_KEY,
+    setCookieVal,
     getStoredSession,
     render,
     loadAppointments: () => loadAppointments(currentDate),

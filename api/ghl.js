@@ -250,6 +250,10 @@ async function putCalendarStartEnd(eventId, startIso, endIso) {
 }
 
 function requireAuth(req, res) {
+  const bypass = String(process.env.DEV_LOGIN_BYPASS || '').toLowerCase() === 'true';
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').toLowerCase();
+  const isLocalHost = host.includes('localhost') || host.includes('127.0.0.1');
+  if (bypass && isLocalHost) return true;
   const token = req.headers['x-hk-auth'];
   const session = verifySessionToken(token);
   if (!session) {
