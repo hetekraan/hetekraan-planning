@@ -67,7 +67,13 @@ import {
   readCanonicalAddressLine,
   splitAddressLineToStraatHuis,
 } from '../lib/ghl-contact-canonical.js';
-import { appendBookingCanonFields, BOOKING_FORM_FIELD_IDS } from '../lib/booking-canon-fields.js';
+import {
+  appendBookingCanonFields,
+  BOOKING_FORM_FIELD_IDS,
+  formatPriceRulesStructuredString,
+  normalizePriceLineItems,
+  toPriceNumber,
+} from '../lib/booking-canon-fields.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -257,6 +263,9 @@ function buildConfirmPutPayload({
   date,
   block,
   routeStopDay,
+  /** Optioneel: zelfde structuur als planner (catalog), max 50 regels */
+  priceLines,
+  totalPrice,
 }) {
   const putPayload = { email };
   let bookingCanonStreetHouse = '';
@@ -341,6 +350,19 @@ function buildConfirmPutPayload({
     boeking_bevestigd_dagdeel: dagdeel,
     boeking_bevestigd_status: status,
   };
+  const normalizedBookingPriceLines = normalizePriceLineItems(
+    Array.isArray(priceLines) ? priceLines.slice(0, 50) : []
+  );
+  const totalFromLines = normalizedBookingPriceLines.length
+    ? Math.round(
+        normalizedBookingPriceLines.reduce((sum, row) => sum + Number(row.price || 0), 0) * 100
+      ) / 100
+    : null;
+  const priceNum = totalFromLines ?? toPriceNumber(totalPrice);
+  if (normalizedBookingPriceLines.length > 0 && priceNum !== null) {
+    canonValues.prijs_regels = formatPriceRulesStructuredString(normalizedBookingPriceLines);
+    canonValues.prijs_totaal = priceNum;
+  }
   const bookingCanon = appendBookingCanonFields(putPayload.customFields, canonValues);
   const bevestigdIds = [
     BOOKING_FORM_FIELD_IDS.boeking_bevestigd_datum,
@@ -458,6 +480,8 @@ export default async function handler(req, res) {
     addressStreetHouse,
     addressPostcode,
     addressCity,
+    priceLines,
+    totalPrice,
   } = body || {};
   // TEMP DIAG: bewijs server-side parse (geen volledige e-mail loggen)
   console.log('[confirm-booking DIAG] req_body_keys', Object.keys(body || {}), {
@@ -466,6 +490,7 @@ export default async function handler(req, res) {
     hasStructuredAddress: [addressStreetHouse, addressPostcode, addressCity].some(
       (x) => x != null && String(x).trim().length > 0
     ),
+    hasCatalogPriceLines: Array.isArray(priceLines) && priceLines.length > 0,
   });
   if (!token || !slotId) return res.status(400).json({ error: 'token en slotId zijn verplicht' });
 
@@ -885,6 +910,8 @@ export default async function handler(req, res) {
       date,
       block,
       routeStopDay: routeStopDayV2,
+      priceLines,
+      totalPrice,
     });
     console.log('[confirm-booking DEBUG] v2 tijdafspraak_field', { value: bevestigingB1 });
 
@@ -1191,6 +1218,8 @@ export default async function handler(req, res) {
     date,
     block,
     routeStopDay,
+    priceLines,
+    totalPrice,
   });
 
   // Contact-PUT: 2021-07-28 — custom fields + native city/postalCode worden betrouwbaar gemerged (vs 2021-04-15).

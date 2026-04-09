@@ -6,6 +6,11 @@
   let modalDropdownOpen = false;
   let modalListenersBound = false;
 
+  /** Boekingspagina (book.html): zelfde search/dropdown/lijnen als planner-modal. */
+  const bookLines = [];
+  let bookDropdownOpen = false;
+  let bookListenersBound = false;
+
   function isDropdownDebugEnabled() {
     try {
       return localStorage.getItem('hk_debug_catalog_dropdown') === '1';
@@ -83,6 +88,17 @@
       dropdown: document.getElementById('mCatalogDropdown'),
       search: document.getElementById('mCatalogSearch'),
       results: document.getElementById('mCatalogResults'),
+    };
+  }
+
+  function getBookElements() {
+    return {
+      root: document.getElementById('bookingScreen'),
+      dropdown: document.getElementById('bookCatalogDropdown'),
+      search: document.getElementById('bCatalogSearch'),
+      results: document.getElementById('bCatalogResults'),
+      lines: document.getElementById('bCatalogLines'),
+      total: document.getElementById('bCatalogTotal'),
     };
   }
 
@@ -179,6 +195,150 @@
     return modalLines.map((x) => ({ ...x }));
   }
 
+  function setModalLines(lines) {
+    modalLines.length = 0;
+    const src = Array.isArray(lines) ? lines : [];
+    for (const row of src) {
+      const desc = String(row?.desc ?? '').trim();
+      const price = Number(row?.price);
+      if (!desc || !Number.isFinite(price) || price < 0) continue;
+      modalLines.push({
+        desc,
+        price: Math.round(price * 100) / 100,
+        quantity: 1,
+      });
+    }
+    renderModalLines();
+  }
+
+  function setBookResultsOpen(isOpen) {
+    const { results } = getBookElements();
+    if (!results) return;
+    if (isOpen) {
+      results.classList.add('is-open');
+      results.dataset.open = '1';
+    } else {
+      results.classList.remove('is-open');
+      results.dataset.open = '0';
+    }
+  }
+
+  function openBookDropdown(reason) {
+    bookDropdownOpen = true;
+    setBookResultsOpen(true);
+    dropdownDebug('book_dropdown_open', { reason });
+  }
+
+  function closeBookDropdown(reason) {
+    bookDropdownOpen = false;
+    setBookResultsOpen(false);
+    dropdownDebug('book_dropdown_close', { reason });
+  }
+
+  async function onBookingSearchInput(query) {
+    await ensureLoaded();
+    openBookDropdown('input');
+    renderResults('bCatalogResults', search(query), (id) => `addBookingCatalogItem('${id}')`);
+  }
+
+  function renderBookingLines() {
+    const { lines, total } = getBookElements();
+    if (!lines) return;
+    if (!bookLines.length) {
+      lines.innerHTML = '<div class="catalog-v1-empty">Nog geen producten gekozen (optioneel)</div>';
+      if (total) total.textContent = '€0';
+      return;
+    }
+    let sum = 0;
+    lines.innerHTML = bookLines
+      .map((row, idx) => {
+        sum += Number(row.price || 0);
+        return `<div class="catalog-v1-line"><span>${row.desc} — €${euroDisplay(row.price)}</span><button type="button" onclick="removeBookingCatalogLine(${idx})">✕</button></div>`;
+      })
+      .join('');
+    sum = Math.round(sum * 100) / 100;
+    if (total) total.textContent = `€${euroDisplay(sum)}`;
+  }
+
+  function addBookingCatalogItem(itemId) {
+    const row = getItemById(itemId);
+    if (!row) return;
+    if (bookLines.length >= 50) return;
+    bookLines.push({ desc: row.name, price: Math.round(Number(row.price) * 100) / 100, quantity: 1 });
+    renderBookingLines();
+    closeBookDropdown('item_selected');
+    dropdownDebug('book_item_selected', { itemId: String(itemId) });
+  }
+
+  function removeBookingCatalogLine(idx) {
+    if (idx < 0 || idx >= bookLines.length) return;
+    bookLines.splice(idx, 1);
+    renderBookingLines();
+  }
+
+  function getBookingCatalogLines() {
+    return bookLines.map((x) => ({ desc: x.desc, price: x.price, quantity: x.quantity || 1 }));
+  }
+
+  function resetBookingCatalog() {
+    bookLines.length = 0;
+    const { search, results } = getBookElements();
+    if (search) search.value = '';
+    if (results) {
+      results.innerHTML = '';
+      results.classList.remove('is-open');
+    }
+    bookDropdownOpen = false;
+    renderBookingLines();
+  }
+
+  function bindBookingDropdownListeners() {
+    if (bookListenersBound) return;
+    const { root, dropdown, search } = getBookElements();
+    if (!root || !dropdown || !search) return;
+    bookListenersBound = true;
+
+    search.addEventListener('focus', () => {
+      openBookDropdown('focus');
+      if (!search.value.trim()) void onBookingSearchInput('');
+    });
+
+    search.addEventListener('click', () => {
+      openBookDropdown('click');
+      if (!search.value.trim()) void onBookingSearchInput('');
+    });
+
+    search.addEventListener('input', () => {
+      void onBookingSearchInput(search.value);
+    });
+
+    root.addEventListener('click', (e) => {
+      if (!bookDropdownOpen) return;
+      if (dropdown.contains(e.target)) return;
+      closeBookDropdown('outside_click');
+      dropdownDebug('book_outside_click', {});
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (!bookDropdownOpen) return;
+      const screen = document.getElementById('bookingScreen');
+      if (!screen || screen.style.display === 'none') return;
+      closeBookDropdown('escape');
+    });
+  }
+
+  async function initBookingCatalog() {
+    const { search } = getBookElements();
+    if (!search) return;
+    bindBookingDropdownListeners();
+    await ensureLoaded();
+    renderBookingLines();
+  }
+
+  global.addBookingCatalogItem = addBookingCatalogItem;
+  global.removeBookingCatalogLine = removeBookingCatalogLine;
+
   async function onAppointmentSearchInput(appointmentId, query) {
     await ensureLoaded();
     const sid = global.appointmentDomSafeId ? global.appointmentDomSafeId(appointmentId) : String(appointmentId);
@@ -256,8 +416,14 @@
     clearModalCatalogLines,
     resetModal,
     getModalCatalogLines,
+    setModalLines,
     onAppointmentSearchInput,
     addCatalogItemToAppointment,
     closeModalDropdown,
+    initBookingCatalog,
+    onBookingSearchInput,
+    getBookingCatalogLines,
+    resetBookingCatalog,
+    closeBookDropdown,
   };
 })(window);

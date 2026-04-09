@@ -1507,7 +1507,7 @@
 <!-- MODAL -->
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal">
-    <div class="modal-title">Nieuwe afspraak</div>
+    <div class="modal-title" id="mModalTitle">Nieuwe afspraak</div>
     <div class="form-row-2">
       <div>
         <label class="form-label">Datum</label>
@@ -2158,7 +2158,7 @@ function renderApptCard(a, i) {
             ${a.phone ? `<a class="icon-btn" href="tel:${a.phone}" title="Bellen">📞</a>` : ''}
             ${a.mapsLink ? `<a class="icon-btn" href="${a.mapsLink}" target="_blank" title="Maps">📍</a>` : ''}
             ${a.ghlUrl ? `<a class="icon-btn ghl" href="${a.ghlUrl}" target="_blank" title="Open in GHL">🔗</a>` : ''}
-            ${isDaanEditor() && a.contactId ? `<button type="button" class="icon-btn daan-edit" onclick='openDaanEditModal(${idQ})' title="Bewerk klantgegevens in GHL">bewerk</button>` : ''}
+            ${isDaanEditor() && a.contactId ? `<button type="button" class="icon-btn daan-edit" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">bewerk</button>` : ''}
             <button class="icon-btn danger" onclick='deleteAppt(${idQ})' title="Verwijderen">✕</button>
           </div>
         </div>
@@ -2754,6 +2754,17 @@ function openDaanEditModal(apptId) {
   return window.HKPlannerAdmin.openDaanEditModal(ctx, apptId);
 }
 
+function openAppointmentEditModal(apptId) {
+  const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
+  if (!window.HKPlannerManualAppointment?.openForEdit) {
+    showToast('Afspraakmodule niet geladen', 'info');
+    return;
+  }
+  if (!window.HKPlannerModalUi?.openModal) return;
+  window.HKPlannerModalUi.openModal();
+  return window.HKPlannerManualAppointment.openForEdit(ctx, apptId);
+}
+
 function closeDaanEditModal() {
   if (!window.HKPlannerAdmin?.closeDaanEditModal) return;
   return window.HKPlannerAdmin.closeDaanEditModal();
@@ -2831,7 +2842,8 @@ function openModal() {
   if (!window.HKPlannerModalUi?.openModal) return;
   const out = window.HKPlannerModalUi.openModal();
   if (window.HKPlannerManualAppointment?.resetManualAppointmentForm) {
-    window.HKPlannerManualAppointment.resetManualAppointmentForm();
+    const currentDateYmd = getDateStr(currentDate);
+    window.HKPlannerManualAppointment.resetManualAppointmentForm({ dateYmd: currentDateYmd });
   }
   return out;
 }

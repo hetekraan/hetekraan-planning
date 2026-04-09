@@ -2,6 +2,8 @@
   let inFlight = false;
   let totalPriceManual = false;
   let totalPriceManualValue = null;
+  let modalMode = 'create';
+  let editingMeta = null;
 
   function isDebugEnabled() {
     try {
@@ -53,6 +55,14 @@
     const hint = document.getElementById('mPriceManualHint');
     if (!hint) return;
     hint.textContent = totalPriceManual ? 'Handmatig aangepast' : '';
+  }
+
+  function setModalUiMode(mode) {
+    modalMode = mode === 'edit' ? 'edit' : 'create';
+    const titleEl = document.getElementById('mModalTitle');
+    const btn = document.getElementById('btnModalAddAppt');
+    if (titleEl) titleEl.textContent = modalMode === 'edit' ? 'Afspraak bewerken' : 'Nieuwe afspraak';
+    if (btn) btn.textContent = modalMode === 'edit' ? 'Wijzigingen opslaan' : 'Toevoegen';
   }
 
   function collectFormValues() {
@@ -147,7 +157,8 @@
     updatePricePreview();
   }
 
-  function resetManualAppointmentForm() {
+  function resetManualAppointmentForm(input = {}) {
+    const dateYmd = String(input?.dateYmd || '').trim();
     const dateInput = document.getElementById('mDate');
     const slotInput = document.getElementById('mSlot');
     const typeInput = document.getElementById('mType');
@@ -172,9 +183,7 @@
     }
 
     if (dateInput) {
-      dateInput.value =
-        activeDateInput?.value ||
-        new Date().toISOString().split('T')[0];
+      dateInput.value = dateYmd || activeDateInput?.value || new Date().toISOString().split('T')[0];
     }
 
     if (slotInput) {
@@ -185,6 +194,8 @@
 
     totalPriceManual = false;
     totalPriceManualValue = null;
+    editingMeta = null;
+    setModalUiMode('create');
 
     if (global.HKPlannerCatalogV1?.resetModal) {
       global.HKPlannerCatalogV1.resetModal();
@@ -238,6 +249,7 @@
       formatDate,
       closeModal,
     } = ctx;
+    const modeAtSaveStart = modalMode;
 
     const form = collectFormValues();
     const validationError = validateInput(form);
@@ -254,7 +266,7 @@
     }
 
     await refreshGhlContactBaseUrl();
-    showToast('⏳ Afspraak opslaan in GHL...', 'loading');
+    showToast(modalMode === 'edit' ? '⏳ Afspraak bijwerken...' : '⏳ Afspraak opslaan in GHL...', 'loading');
     debug('start', {
       date: form.date,
       slot: form.slotKey,
@@ -267,28 +279,75 @@
     });
 
     try {
-      const payload = {
-        name: form.name,
-        phone: form.phone,
-        email: form.email || '',
-        address: form.address,
-        date: form.date,
-        time: form.time,
-        slotKey: form.slotKey,
-        slotLabel: form.slotLabel,
-        timeWindow: form.slotLabel,
-        type: form.type,
-        desc: form.desc || '—',
-        contactId: form.contactId || '',
-        price: form.totalPrice,
-        priceLines: form.priceLines,
-      };
-      const res = await fetch('/api/ghl?action=createAppointment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json().catch(() => ({}));
+      let data = {};
+      let res = null;
+      if (modalMode === 'edit' && editingMeta?.contactId) {
+        const changedDateOrSlot =
+          String(form.date) !== String(editingMeta.prevDate) ||
+          String(form.slotKey) !== String(editingMeta.prevSlotKey);
+        if (changedDateOrSlot) {
+          const moveRes = await fetch('/api/ghl?action=rescheduleAppointment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
+            body: JSON.stringify({
+              contactId: editingMeta.contactId,
+              prevDate: editingMeta.prevDate,
+              newDate: form.date,
+              newTime: form.time,
+              slotKey: form.slotKey,
+              slotLabel: form.slotLabel,
+              newTimeWindow: form.slotLabel,
+              type: form.type,
+            }),
+          });
+          if (!moveRes.ok) {
+            const moveData = await moveRes.json().catch(() => ({}));
+            throw new Error(moveData.error || moveData.detail || `Verplaatsen mislukt (${moveRes.status})`);
+          }
+        }
+        res = await fetch('/api/ghl?action=updatePlannerBookingDetails', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
+          body: JSON.stringify({
+            contactId: editingMeta.contactId,
+            name: form.name,
+            phone: form.phone,
+            email: form.email || '',
+            address: form.address,
+            date: form.date,
+            slotKey: form.slotKey,
+            slotLabel: form.slotLabel,
+            type: form.type,
+            desc: form.desc || '—',
+            price: form.totalPrice,
+            priceLines: form.priceLines,
+          }),
+        });
+        data = await res.json().catch(() => ({}));
+      } else {
+        const payload = {
+          name: form.name,
+          phone: form.phone,
+          email: form.email || '',
+          address: form.address,
+          date: form.date,
+          time: form.time,
+          slotKey: form.slotKey,
+          slotLabel: form.slotLabel,
+          timeWindow: form.slotLabel,
+          type: form.type,
+          desc: form.desc || '—',
+          contactId: form.contactId || '',
+          price: form.totalPrice,
+          priceLines: form.priceLines,
+        };
+        res = await fetch('/api/ghl?action=createAppointment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
+          body: JSON.stringify(payload),
+        });
+        data = await res.json().catch(() => ({}));
+      }
       debug('response', {
         status: res.status,
         ok: res.ok,
@@ -310,13 +369,18 @@
         if (dateLabel) dateLabel.textContent = formatDate(targetDate);
       }
 
-      resetManualAppointmentForm();
+      resetManualAppointmentForm({ dateYmd: getDateStr(getCurrentDate()) });
       closeModal();
       await loadAppointments(getCurrentDate());
       if (data.warning) {
         showToast(`✓ Contact opgeslagen, maar agenda-slot niet geplaatst: ${data.warning}`, 'info');
       } else {
-        showToast('✓ Afspraak toegevoegd en planner ververst', 'success');
+        showToast(
+          modeAtSaveStart === 'edit'
+            ? '✓ Afspraak bijgewerkt en planner ververst'
+            : '✓ Afspraak toegevoegd en planner ververst',
+          'success'
+        );
       }
       debug('reload_done', { routeDate: getDateStr(getCurrentDate()) });
     } catch (e) {
@@ -355,6 +419,83 @@
     updatePricePreview();
   }
 
+  function openForEdit(ctx, apptId) {
+    const a = ctx?.findAppointmentById ? ctx.findAppointmentById(apptId) : null;
+    if (!a || !a.contactId) {
+      ctx?.showToast?.('Geen bewerkbare afspraak gevonden', 'info');
+      return;
+    }
+    const activeDate = ctx?.getDateStr ? ctx.getDateStr(ctx.getCurrentDate()) : '';
+    const slotKey = global.HKPlannerUtils?.inferPlannerSlotKey
+      ? global.HKPlannerUtils.inferPlannerSlotKey({
+          dayPart: a.dayPart,
+          timeWindow: a.timeWindow,
+          timeSlot: a.timeSlot,
+        })
+      : (a.dayPart === 0 ? 'morning' : 'afternoon');
+    const slotCfg = global.HKPlannerUtils?.getPlannerSlotConfig
+      ? global.HKPlannerUtils.getPlannerSlotConfig(slotKey)
+      : { key: slotKey, label: slotKey === 'afternoon' ? '13:00–17:00' : '09:00–13:00' };
+    const first = String(a.firstName || '').trim();
+    const last = String(a.lastName || '').trim();
+    const fullName = `${first} ${last}`.trim() || String(a.name || '').trim();
+    const baseLineDesc = String(a.jobDescription || 'Werkzaamheden').trim();
+    const lines = [];
+    if (Number(a.price || 0) > 0) {
+      lines.push({ desc: baseLineDesc || 'Werkzaamheden', price: Math.round(Number(a.price) * 100) / 100 });
+    }
+    for (const ex of Array.isArray(a.extras) ? a.extras : []) {
+      const p = Number(ex?.price);
+      const d = String(ex?.desc || '').trim();
+      if (!d || !Number.isFinite(p) || p < 0) continue;
+      lines.push({ desc: d, price: Math.round(p * 100) / 100 });
+    }
+
+    resetManualAppointmentForm({ dateYmd: activeDate });
+    setModalUiMode('edit');
+    editingMeta = {
+      contactId: String(a.contactId),
+      prevDate: activeDate,
+      prevSlotKey: slotCfg.key || slotKey,
+    };
+
+    const dateInput = document.getElementById('mDate');
+    const slotInput = document.getElementById('mSlot');
+    const typeInput = document.getElementById('mType');
+    const nameInput = document.getElementById('mName');
+    const addressInput = document.getElementById('mAddress');
+    const phoneInput = document.getElementById('mPhone');
+    const emailInput = document.getElementById('mEmail');
+    const descInput = document.getElementById('mDesc');
+    const contactIdInput = document.getElementById('mContactId');
+    if (dateInput) dateInput.value = activeDate;
+    if (slotInput) slotInput.value = slotCfg.key || slotKey;
+    if (typeInput) {
+      const rawType = String(a.jobType || 'reparatie').trim().toLowerCase();
+      const typeLabel = rawType ? `${rawType.charAt(0).toUpperCase()}${rawType.slice(1)}` : 'Reparatie';
+      typeInput.value = typeLabel;
+    }
+    if (nameInput) nameInput.value = fullName;
+    if (addressInput) addressInput.value = String(a.fullAddressLine || a.address || '').trim();
+    if (phoneInput) phoneInput.value = String(a.phone || '').trim();
+    if (emailInput) {
+      const emailVal = String(a.email || a.contact?.email || '').trim().toLowerCase();
+      emailInput.value = emailVal;
+    }
+    if (descInput) descInput.value = baseLineDesc;
+    if (contactIdInput) contactIdInput.value = String(a.contactId || '');
+
+    if (global.HKPlannerCatalogV1?.setModalLines) {
+      global.HKPlannerCatalogV1.setModalLines(lines);
+    }
+    const backendTotal = Number(ctx?.calcTotalPrice ? ctx.calcTotalPrice(a) : 0);
+    if (Number.isFinite(backendTotal) && backendTotal >= 0) {
+      syncTotalPriceModeFromExisting({ backendTotal, priceLines: lines });
+    } else {
+      updatePricePreview();
+    }
+  }
+
   global.HKPlannerManualAppointment = {
     saveModal,
     bindModalKeyboardSubmit,
@@ -363,5 +504,6 @@
     resetTotalPriceOverride,
     resetManualAppointmentForm,
     syncTotalPriceModeFromExisting,
+    openForEdit,
   };
 })(window);

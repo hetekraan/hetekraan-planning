@@ -844,6 +844,113 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, savedLines: extrasArr.length, totalPrice: totalNum });
       }
 
+      case 'updatePlannerBookingDetails': {
+        const {
+          contactId,
+          name,
+          phone,
+          email,
+          address,
+          date,
+          slotKey,
+          slotLabel,
+          type,
+          desc,
+          price,
+          priceLines,
+        } = req.body || {};
+        const cid = String(contactId || '').trim();
+        if (!cid) return res.status(400).json({ error: 'contactId vereist' });
+        const dateNorm = normalizeYyyyMmDdInput(String(date || ''));
+        if (!dateNorm) return res.status(400).json({ error: 'date verplicht (YYYY-MM-DD)' });
+
+        const nameNorm = String(name || '').trim() || 'Onbekende klant';
+        const nameParts = nameNorm.split(/\s+/).filter(Boolean);
+        const firstName = nameParts[0] || nameNorm;
+        const lastName = nameParts.slice(1).join(' ');
+        const phoneNorm = normalizePhoneForGhl(phone);
+        const emailNorm = String(email || '').trim().toLowerCase();
+        const addressNorm = String(address || '').trim();
+        const workTypeNorm = normalizeWorkType(type || '');
+        const descNorm = String(desc || '').trim();
+        const slotPart = slotKey === 'afternoon' ? 'afternoon' : 'morning';
+        const slotLabelNorm =
+          String(slotLabel || '').trim() ||
+          (slotPart === 'afternoon' ? SLOT_LABEL_AFTERNOON_NL : SLOT_LABEL_MORNING_NL);
+        const normalizedLines = normalizePriceLineItems(Array.isArray(priceLines) ? priceLines : []);
+        const totalFromLines = normalizedLines.length
+          ? Math.round(normalizedLines.reduce((sum, row) => sum + Number(row.price || 0), 0) * 100) / 100
+          : null;
+        const totalNum = totalFromLines ?? toPriceNumber(price);
+        const linesForCanon = normalizedLines.length
+          ? normalizedLines
+          : totalNum !== null
+            ? [{ desc: descNorm || 'Handmatige afspraak', price: totalNum }]
+            : [];
+        const structuredPriceRules = formatPriceRulesStructuredString(linesForCanon);
+
+        const { address1, customFields: addrCf } = buildCanonicalAddressWritePayload(addressNorm);
+        const customFields = [
+          ...addrCf,
+          { id: FIELD_IDS.type_onderhoud, field_value: workTypeNorm || 'reparatie' },
+          { id: FIELD_IDS.probleemomschrijving, field_value: descNorm || '' },
+          { id: FIELD_IDS.tijdafspraak, field_value: slotLabelNorm || '' },
+          { id: FIELD_IDS.prijs_regels, field_value: JSON.stringify(linesForCanon) },
+        ];
+        if (totalNum !== null) {
+          customFields.push({ id: FIELD_IDS.prijs, field_value: String(totalNum) });
+        }
+        const bookingCanon = appendBookingCanonFields(customFields, {
+          type_onderhoud: workTypeNorm || 'reparatie',
+          probleemomschrijving: descNorm || '',
+          tijdslot: slotLabelNorm || '',
+          prijs_totaal: totalNum,
+          prijs_regels: structuredPriceRules,
+          boeking_bevestigd_datum: dateNorm,
+          boeking_bevestigd_dagdeel: slotPart,
+          boeking_bevestigd_status: 'confirmed',
+        });
+        const payload = {
+          firstName,
+          lastName,
+          customFields: bookingCanon.customFields,
+        };
+        if (phoneNorm) payload.phone = phoneNorm;
+        if (emailNorm) payload.email = emailNorm;
+        if (address1) payload.address1 = address1;
+        logCanonicalAddressWrite('updatePlannerBookingDetails', {
+          contactId: cid,
+          address1: address1 || null,
+        });
+        const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${encodeURIComponent(cid)}`, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${GHL_API_KEY}`,
+            'Content-Type': 'application/json',
+            Version: '2021-04-15',
+          },
+          body: JSON.stringify(payload),
+          _allowPostRetry: false,
+        });
+        if (!putRes.ok) {
+          const detail = (await putRes.text().catch(() => '')).slice(0, 400);
+          return res.status(502).json({ error: 'Contact/boekingsvelden bijwerken mislukt', detail });
+        }
+        invalidateRedisSyntheticsCacheForDate(dateNorm);
+        invalidateAmsterdamDayGhlReadCachesForDate({
+          locationId: ghlLocationIdFromEnv(),
+          calendarId: effectiveCalendarId(),
+          dateStr: dateNorm,
+          trigger: 'updatePlannerBookingDetails',
+        });
+        return res.status(200).json({
+          success: true,
+          contactId: cid,
+          date: dateNorm,
+          slotKey: slotPart,
+        });
+      }
+
       case 'saveRouteTimes': {
         // Custom field geplande aankomst + optioneel GHL-kalender bijwerken
         const { routeTimes } = req.body; // [{ contactId, plannedTime, ghlAppointmentId?, routeDate?, startTime?, durationMin? }]
