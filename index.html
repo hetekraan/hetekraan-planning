@@ -2,7 +2,7 @@
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Hetekraan — Planning</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="/styles/global.css">
@@ -46,29 +46,34 @@
     --klaar-border: #1a4030;
   }
 
+  html {
+    overflow-x: clip;
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
     background: var(--bg);
     color: var(--text);
     font-family: 'DM Sans', sans-serif;
-    min-height: 100vh;
-    overflow-x: hidden;
+    min-height: 100dvh;
+    overflow-x: clip;
   }
 
-  /* HEADER */
+  /* HEADER — mobile-first, wraps on narrow screens */
   header {
     background: var(--surface);
     border-bottom: 1px solid var(--border);
-    padding: 0 16px;
-    height: 56px;
+    padding: 8px max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left));
+    min-height: 56px;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
+    row-gap: 8px;
+    column-gap: 8px;
     position: sticky;
     top: 0;
     z-index: 100;
-    gap: 8px;
   }
 
   .logo {
@@ -93,34 +98,63 @@
     background: none;
     border: none;
     color: var(--muted);
-    padding: 8px 10px;
+    padding: 10px 12px;
+    min-width: 44px;
+    min-height: 44px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 16px;
+    line-height: 1;
     transition: color 0.15s;
     flex-shrink: 0;
+    touch-action: manipulation;
   }
   .date-nav button:hover { color: var(--text); }
-  .date-nav-wrap { display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap; }
+  .date-nav-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
   .date-label {
     font-family: 'Syne', sans-serif;
     font-weight: 700;
-    font-size: 11px;
-    padding: 8px 10px;
+    font-size: 10px;
+    padding: 8px 8px;
     border-left: 1px solid var(--border);
     border-right: 1px solid var(--border);
     letter-spacing: 0.5px;
-    width: 180px;
+    flex: 1;
+    min-width: 0;
     text-align: center;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  .header-stats { display: flex; gap: 12px; align-items: center; flex-shrink: 0; }
+  .header-stats {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    max-width: 100%;
+  }
   .btn-logout {
-    background: transparent; border: 1px solid var(--border); color: var(--muted);
-    font-size: 11px; padding: 6px 10px; border-radius: 6px; cursor: pointer;
-    font-family: inherit; flex-shrink: 0;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 11px;
+    padding: 8px 12px;
+    min-height: 40px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: inherit;
+    flex-shrink: 0;
+    touch-action: manipulation;
   }
   .btn-logout:hover { color: var(--text); border-color: var(--muted); }
   .stat { display: flex; flex-direction: column; align-items: center; }
@@ -129,29 +163,42 @@
   .stat-val.orange { color: var(--accent); }
   .stat-label { font-size: 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
 
-  /* LAYOUT */
+  /* LAYOUT — single column + tabs on small screens; sidebar from 769px */
   .layout {
     display: grid;
-    grid-template-columns: 1fr 280px;
-    height: calc(100vh - 56px);
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr);
+    min-height: calc(100dvh - 56px - 48px);
+    width: 100%;
+    max-width: 100vw;
   }
 
   .appointments {
-    padding: 16px;
+    padding: 12px max(12px, env(safe-area-inset-right)) 16px max(12px, env(safe-area-inset-left));
+    overflow-x: clip;
     overflow-y: auto;
-    border-right: 1px solid var(--border);
+    -webkit-overflow-scrolling: touch;
+    min-width: 0;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
   }
 
   .appointments-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
+    gap: 10px;
+    flex-wrap: wrap;
     margin-bottom: 12px;
   }
   .appointments-header-actions {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    flex: 1;
+    min-width: 0;
   }
 
   .section-title {
@@ -166,16 +213,19 @@
     background: var(--accent);
     color: white;
     border: none;
-    padding: 7px 14px;
-    border-radius: 6px;
+    padding: 10px 14px;
+    min-height: 44px;
+    border-radius: 8px;
     font-family: 'DM Sans', sans-serif;
     font-weight: 500;
-    font-size: 12px;
+    font-size: 13px;
     cursor: pointer;
     transition: opacity 0.15s;
-    display: flex;
+    display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
+    touch-action: manipulation;
   }
   .btn-add:hover { opacity: 0.85; }
 
@@ -299,29 +349,31 @@
     background: var(--surface2);
     border: 1px solid var(--border);
     color: var(--muted);
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 14px;
     transition: all 0.15s;
     text-decoration: none;
     flex-shrink: 0;
+    touch-action: manipulation;
   }
   .icon-btn:hover { color: var(--text); border-color: var(--muted); }
   .icon-btn.danger:hover { color: var(--reparatie); border-color: var(--reparatie); }
   .icon-btn.ghl:hover { color: var(--blue); border-color: var(--blue); }
   .icon-btn.daan-edit {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.02em;
     color: var(--accent);
     border-color: rgba(0, 212, 170, 0.45);
-    min-width: 52px;
-    padding: 0 6px;
+    min-width: 56px;
+    width: auto;
+    padding: 0 8px;
   }
   .icon-btn.daan-edit:hover { color: #00ffc8; border-color: var(--accent); }
   .daan-edit-badge {
@@ -418,16 +470,17 @@
     background: var(--surface3);
     border: 1px solid var(--border);
     color: var(--muted);
-    padding: 5px 10px;
-    border-radius: 6px;
+    padding: 8px 12px;
+    border-radius: 8px;
     font-size: 11px;
     font-family: 'DM Sans', sans-serif;
     cursor: pointer;
     transition: all 0.2s;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 4px;
-    white-space: nowrap;
+    flex-wrap: wrap;
+    touch-action: manipulation;
   }
   .btn-done:hover { background: rgba(0,212,170,0.1); border-color: var(--accent2); color: var(--accent2); }
   .btn-done.active { background: rgba(74,158,255,0.1); border-color: var(--blue); color: var(--blue); }
@@ -536,22 +589,46 @@
 
   /* ROUTE PANEL */
   .route-panel {
-    padding: 16px;
+    padding: 12px max(12px, env(safe-area-inset-right)) 16px max(12px, env(safe-area-inset-left));
+    overflow-x: clip;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     display: flex;
     flex-direction: column;
     gap: 12px;
+    min-width: 0;
+  }
+
+  .route-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: stretch;
+    margin-bottom: 8px;
+  }
+  .route-toolbar .btn-optimize {
+    flex: 1 1 140px;
+    min-width: 0;
+  }
+  .route-toolbar .btn-unlock-route,
+  .route-toolbar .btn-confirm-route {
+    flex: 1 1 auto;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .btn-optimize {
     background: var(--accent);
     color: white;
     border: none;
-    padding: 10px;
+    padding: 12px 10px;
+    min-height: 48px;
     border-radius: 8px;
     font-family: 'Syne', sans-serif;
     font-weight: 700;
-    font-size: 12px;
+    font-size: 13px;
     cursor: pointer;
     width: 100%;
     letter-spacing: 0.5px;
@@ -560,10 +637,21 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
+    touch-action: manipulation;
   }
   .btn-optimize:hover { opacity: 0.85; }
   .btn-optimize:disabled { opacity: 0.35; cursor: not-allowed; }
-  .btn-unlock-route { background: var(--surface3); border: 1px solid var(--border); color: var(--muted); padding: 8px 10px; border-radius: 8px; font-size: 11px; cursor: pointer; white-space: nowrap; }
+  .btn-unlock-route {
+    background: var(--surface3);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 11px;
+    cursor: pointer;
+    text-align: center;
+    line-height: 1.25;
+  }
   .btn-unlock-route:hover { border-color: var(--accent); color: var(--accent); }
 
   .btn-confirm-route {
@@ -576,7 +664,8 @@
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
-    white-space: nowrap;
+    text-align: center;
+    line-height: 1.25;
     transition: background 0.15s;
   }
   .btn-confirm-route:hover { background: rgba(0,212,170,0.2); }
@@ -702,7 +791,7 @@
   .total-label { font-family: 'DM Mono', monospace; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
   .total-amount { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 16px; color: var(--accent2); }
 
-  /* MODAL */
+  /* MODAL — full-width on phone, safe areas, scroll containment */
   .modal-overlay {
     display: none;
     position: fixed;
@@ -711,7 +800,10 @@
     z-index: 200;
     align-items: center;
     justify-content: center;
-    padding: 16px;
+    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    overflow-x: clip;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .modal-overlay.visible { display: flex; }
 
@@ -719,22 +811,105 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 20px;
-    width: 400px;
+    padding: 16px;
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+    width: 100%;
     max-width: 100%;
-    max-height: 90vh;
+    max-height: min(92dvh, calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px));
+    overflow-x: clip;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: auto;
+    box-sizing: border-box;
   }
 
-  .modal-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px; margin-bottom: 14px; }
-  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
-  .btn-cancel { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); padding: 7px 14px; border-radius: 6px; font-family: 'DM Sans', sans-serif; font-size: 12px; cursor: pointer; }
-  .btn-save { background: var(--accent); border: none; color: white; padding: 7px 14px; border-radius: 6px; font-family: 'DM Sans', sans-serif; font-weight: 500; font-size: 12px; cursor: pointer; }
-  .btn-send-link { background: #25D366; border: none; color: white; padding: 7px 14px; border-radius: 6px; font-family: 'DM Sans', sans-serif; font-weight: 500; font-size: 12px; cursor: pointer; }
-  .btn-delete-appt { background: rgba(255,80,80,0.1); border: 1px solid rgba(255,80,80,0.35); color: #ff6060; padding: 7px 14px; border-radius: 6px; font-family: 'DM Sans', sans-serif; font-size: 12px; cursor: pointer; }
+  .modal-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 16px; margin-bottom: 14px; }
+  .modal-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 16px;
+  }
+  .modal-actions > button,
+  .modal-actions > a {
+    width: 100%;
+    min-height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+  }
+  .modal-actions.modal-actions--split {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .modal-actions--split > div {
+    width: 100%;
+  }
+  .modal-actions--split .modal-actions-row {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+  }
+  .modal-actions--split .modal-actions-row > button {
+    width: 100%;
+    min-height: 48px;
+  }
+  .btn-cancel {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .btn-save {
+    background: var(--accent);
+    border: none;
+    color: white;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 500;
+    font-size: 13px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .btn-send-link {
+    background: #25D366;
+    border: none;
+    color: white;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 500;
+    font-size: 13px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .btn-delete-appt {
+    background: rgba(255,80,80,0.1);
+    border: 1px solid rgba(255,80,80,0.35);
+    color: #ff6060;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
   .btn-delete-appt:hover { background: rgba(255,80,80,0.2); }
 
-  /* ── GROTE-TEKST MODUS (voor tablet / slechtzienden) ───────────────────── */
+  /* ── UI-schaal groot = Jerry / toegankelijkheid (class: body.ui-scale-large) ─ */
   .btn-large-text {
     background: transparent;
     border: 1px solid var(--border);
@@ -751,61 +926,71 @@
   .btn-large-text:hover { color: var(--text); border-color: var(--muted); }
   .btn-large-text.active { background: rgba(0,212,170,0.1); border-color: var(--accent2); color: var(--accent2); }
 
-  body.large-text .date-label                { font-size: 15px; width: 210px; }
-  body.large-text .stat-val                  { font-size: 20px; }
-  body.large-text .stat-label                { font-size: 10px; }
-  body.large-text .section-title             { font-size: 13px; }
-  body.large-text .btn-add                   { font-size: 14px; padding: 10px 18px; }
-  body.large-text .btn-dagopgave             { font-size: 17px; padding: 8px 11px; }
-  body.large-text .btn-block-cal             { font-size: 17px; padding: 8px 11px; }
-  body.large-text .btn-bulk-clear-blocks     { font-size: 16px; padding: 8px 11px; }
-  body.large-text .day-blocked-banner       { font-size: 15px; padding: 12px 14px; }
-  body.large-text .appt-number              { font-size: 12px; }
-  body.large-text .appt-time                { font-size: 18px; }
-  body.large-text .slot-daypart-hint         { font-size: 16px; }
-  body.large-text .ghl-cal-time-hint         { font-size: 13px; }
-  body.large-text .time-window-badge         { font-size: 12px; padding: 3px 7px; }
-  body.large-text .appt-name                { font-size: 17px; }
-  body.large-text .appt-address             { font-size: 14px; margin-bottom: 5px; }
-  body.large-text .appt-desc                { font-size: 13px; margin-bottom: 8px; }
-  body.large-text .meta-label               { font-size: 10px; }
-  body.large-text .meta-value               { font-size: 13px; }
-  body.large-text .appt-notes              { font-size: 14px; padding: 6px 10px; }
-  body.large-text .tag                      { font-size: 11px; padding: 4px 9px; }
-  body.large-text .appt-phone               { font-size: 13px; }
-  body.large-text .appt-price               { font-size: 16px; }
-  body.large-text .status-dot               { font-size: 13px; }
-  body.large-text .dot                      { width: 8px; height: 8px; }
-  body.large-text .btn-done                 { font-size: 14px; padding: 8px 14px; }
-  body.large-text .btn-confirm              { font-size: 14px; padding: 9px 18px; }
-  body.large-text .btn-prijs                { font-size: 14px; padding: 9px 14px; }
-  body.large-text .icon-btn                 { width: 38px; height: 38px; font-size: 15px; border-radius: 8px; }
-  body.large-text .icon-btn.daan-edit       { font-size: 12px; min-width: 60px; }
-  body.large-text .complete-row             { font-size: 14px; }
-  body.large-text .service-date-row         { font-size: 14px; }
-  body.large-text .service-date-row input   { font-size: 13px; padding: 7px 10px; }
-  body.large-text .review-toggle            { font-size: 14px; }
-  body.large-text .appt-inner               { padding: 14px 16px 14px 44px; }
-  body.large-text .appt-card                { margin-bottom: 12px; }
-  body.large-text .total-label              { font-size: 13px; }
-  body.large-text .total-amount             { font-size: 22px; }
+  @media (min-width: 769px) {
+    body.ui-scale-large .date-label { font-size: 15px; width: 210px; flex: 0 0 210px; }
+  }
+  @media (max-width: 768px) {
+    body.ui-scale-large .date-label { font-size: 13px; }
+  }
+  body.ui-scale-large .stat-val                  { font-size: 20px; }
+  body.ui-scale-large .stat-label                { font-size: 10px; }
+  body.ui-scale-large .section-title             { font-size: 13px; }
+  body.ui-scale-large .btn-add                   { font-size: 14px; padding: 10px 18px; }
+  body.ui-scale-large .btn-dagopgave             { font-size: 17px; padding: 8px 11px; }
+  body.ui-scale-large .btn-block-cal             { font-size: 17px; padding: 8px 11px; }
+  body.ui-scale-large .btn-bulk-clear-blocks     { font-size: 16px; padding: 8px 11px; }
+  body.ui-scale-large .day-blocked-banner       { font-size: 15px; padding: 12px 14px; }
+  body.ui-scale-large .appt-number              { font-size: 12px; }
+  body.ui-scale-large .appt-time                { font-size: 18px; }
+  body.ui-scale-large .slot-daypart-hint         { font-size: 16px; }
+  body.ui-scale-large .ghl-cal-time-hint         { font-size: 13px; }
+  body.ui-scale-large .time-window-badge         { font-size: 12px; padding: 3px 7px; }
+  body.ui-scale-large .appt-name                { font-size: 17px; }
+  body.ui-scale-large .appt-address             { font-size: 14px; margin-bottom: 5px; }
+  body.ui-scale-large .appt-desc                { font-size: 13px; margin-bottom: 8px; }
+  body.ui-scale-large .meta-label               { font-size: 10px; }
+  body.ui-scale-large .meta-value               { font-size: 13px; }
+  body.ui-scale-large .appt-notes              { font-size: 14px; padding: 6px 10px; }
+  body.ui-scale-large .tag                      { font-size: 11px; padding: 4px 9px; }
+  body.ui-scale-large .appt-phone               { font-size: 13px; }
+  body.ui-scale-large .appt-price               { font-size: 16px; }
+  body.ui-scale-large .status-dot               { font-size: 13px; }
+  body.ui-scale-large .dot                      { width: 8px; height: 8px; }
+  body.ui-scale-large .btn-done                 { font-size: 14px; padding: 8px 14px; }
+  body.ui-scale-large .btn-confirm              { font-size: 14px; padding: 9px 18px; }
+  body.ui-scale-large .btn-prijs                { font-size: 14px; padding: 9px 14px; }
+  body.ui-scale-large .icon-btn                 { width: 38px; height: 38px; font-size: 15px; border-radius: 8px; }
+  body.ui-scale-large .icon-btn.daan-edit       { font-size: 12px; min-width: 60px; }
+  body.ui-scale-large .complete-row             { font-size: 14px; }
+  body.ui-scale-large .service-date-row         { font-size: 14px; }
+  body.ui-scale-large .service-date-row input   { font-size: 13px; padding: 7px 10px; }
+  body.ui-scale-large .review-toggle            { font-size: 14px; }
+  body.ui-scale-large .appt-inner               { padding: 14px 16px 14px 44px; }
+  body.ui-scale-large .appt-card                { margin-bottom: 12px; }
+  body.ui-scale-large .total-label              { font-size: 13px; }
+  body.ui-scale-large .total-amount             { font-size: 22px; }
   /* Route panel */
-  body.large-text .route-name               { font-size: 14px; }
-  body.large-text .route-addr               { font-size: 12px; }
-  body.large-text .route-time               { font-size: 13px; }
-  body.large-text .btn-optimize             { font-size: 14px; padding: 13px; }
-  body.large-text .mobile-tab               { font-size: 12px; padding: 14px 0; }
-  /* ─────────────────────────────────────────────────────────────────────── */
+  body.ui-scale-large .route-name               { font-size: 14px; }
+  body.ui-scale-large .route-addr               { font-size: 12px; }
+  body.ui-scale-large .route-time               { font-size: 13px; }
+  body.ui-scale-large .btn-optimize             { font-size: 14px; padding: 13px; }
+  body.ui-scale-large .mobile-tab               { font-size: 12px; padding: 14px 0; }
 
   .btn-dagopgave {
     background: var(--surface2);
     border: 1px solid var(--border);
     color: var(--muted);
-    padding: 5px 8px;
-    border-radius: 6px;
-    font-size: 14px;
+    padding: 8px 10px;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 8px;
+    font-size: 16px;
     cursor: pointer;
     transition: background 0.15s;
+    touch-action: manipulation;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
   .btn-dagopgave:hover { background: var(--surface3); color: var(--text); }
 
@@ -813,11 +998,16 @@
     background: var(--surface2);
     border: 1px solid var(--border);
     color: var(--muted);
-    padding: 5px 8px;
-    border-radius: 6px;
-    font-size: 14px;
+    padding: 8px 10px;
+    min-height: 44px;
+    border-radius: 8px;
+    font-size: 12px;
     cursor: pointer;
     transition: background 0.15s;
+    touch-action: manipulation;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
   .btn-block-cal:hover { background: rgba(255, 140, 0, 0.12); color: #ffb347; border-color: rgba(255, 140, 0, 0.35); }
   .btn-block-cal.is-day-blocked {
@@ -830,10 +1020,15 @@
     background: rgba(180, 40, 40, 0.12);
     border: 1px solid rgba(220, 80, 80, 0.45);
     color: #e07070;
-    padding: 5px 8px;
-    border-radius: 6px;
-    font-size: 13px;
+    padding: 8px 10px;
+    min-height: 44px;
+    border-radius: 8px;
+    font-size: 12px;
     cursor: pointer;
+    touch-action: manipulation;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
   .btn-bulk-clear-blocks:hover { background: rgba(220, 80, 80, 0.2); color: #ff9090; }
 
@@ -876,16 +1071,32 @@
   .dagopgave-modal {
     max-width: 600px;
     width: 100%;
-    max-height: 90vh;
+    max-height: min(90dvh, calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px));
+    overflow-x: clip;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .dagopgave-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
     margin-bottom: 20px;
     padding-bottom: 14px;
     border-bottom: 1px solid var(--border);
+  }
+  .dagopgave-header > div:first-child {
+    flex: 1 1 200px;
+    min-width: 0;
+  }
+  .dagopgave-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: flex-end;
+    flex: 1 1 auto;
   }
   .dagopgave-row {
     border: 1px solid var(--border);
@@ -983,7 +1194,20 @@
   }
   .form-input:focus, .form-select:focus { border-color: var(--accent); }
   .form-select option { background: var(--surface2); }
-  .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+  .form-input,
+  .form-select {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+  textarea.form-input {
+    min-height: 88px;
+  }
+  .form-row-2 {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
 
   /* TOAST */
   .toast {
@@ -1081,13 +1305,16 @@
     border-bottom: 1px solid rgba(255,255,255,0.06);
     background: transparent;
     color: var(--text);
-    padding: 8px 10px;
+    padding: 12px 12px;
+    min-height: 44px;
     display: flex;
     justify-content: space-between;
+    align-items: center;
     gap: 8px;
     text-align: left;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 13px;
+    touch-action: manipulation;
   }
   .catalog-v1-result:last-child { border-bottom: none; }
   .catalog-v1-result:hover { background: rgba(255,255,255,0.06); }
@@ -1138,7 +1365,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 16px;
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    overflow-x: clip;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .login-overlay.hidden { display: none; }
   .login-box {
@@ -1174,107 +1404,583 @@
     background: var(--accent);
     color: white;
     border: none;
-    padding: 11px;
+    padding: 14px 12px;
+    min-height: 48px;
     border-radius: 8px;
     font-family: 'Syne', sans-serif;
     font-weight: 700;
-    font-size: 13px;
+    font-size: 14px;
     cursor: pointer;
     transition: opacity 0.15s;
     letter-spacing: 0.5px;
     margin-top: 6px;
+    touch-action: manipulation;
   }
   .btn-login:hover { opacity: 0.85; }
   .login-hint { font-size: 11px; color: var(--muted); text-align: center; margin-top: 16px; }
 
-  /* MOBILE */
-  /* Mobile tabs */
+  /* —— Responsive: mobile-first layout + min-width enhancements —— */
   .mobile-tabs {
+    display: flex;
+    flex-shrink: 0;
+    height: 48px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    padding: 0 max(0px, env(safe-area-inset-right)) 0 max(0px, env(safe-area-inset-left));
+  }
+  .mobile-tab {
+    flex: 1;
+    padding: 12px 8px;
+    min-height: 48px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    touch-action: manipulation;
+  }
+  .mobile-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  .appointments.tab-hidden,
+  .route-panel.tab-hidden {
+    display: none !important;
+  }
+
+  .header-stats > .stat:nth-child(2),
+  .header-stats > .stat:nth-child(3) {
     display: none;
   }
-  @media (max-width: 768px) {
-    .mobile-tabs {
+
+  .toast {
+    left: max(12px, env(safe-area-inset-left));
+    right: max(12px, env(safe-area-inset-right));
+    max-width: none;
+    bottom: max(16px, env(safe-area-inset-bottom));
+  }
+
+  @media (min-width: 400px) {
+    .header-stats > .stat:nth-child(2),
+    .header-stats > .stat:nth-child(3) {
       display: flex;
-      background: var(--surface2);
-      border-bottom: 1px solid var(--border);
-    }
-    .mobile-tab {
-      flex: 1;
-      padding: 11px 0;
-      background: none;
-      border: none;
-      border-bottom: 2px solid transparent;
-      font-family: 'DM Mono', monospace;
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-      color: var(--muted);
-      cursor: pointer;
-      transition: color 0.15s, border-color 0.15s;
-    }
-    .mobile-tab.active {
-      color: var(--accent);
-      border-bottom-color: var(--accent);
-    }
-    .layout {
-      display: block;
-    }
-    .appointments.tab-hidden,
-    .route-panel.tab-hidden {
-      display: none;
     }
   }
 
-  @media (max-width: 768px) {
-    header { padding: 0 10px; gap: 6px; }
-    .logo { font-size: 14px; }
-    .date-label { width: 140px; font-size: 10px; padding: 8px 6px; }
-    .header-stats { gap: 8px; }
-    .stat-val { font-size: 14px; }
-    .stat-label { display: none; }
+  @media (min-width: 640px) {
+    .modal {
+      max-width: min(440px, calc(100vw - 32px));
+      padding: 20px;
+      padding-left: max(20px, env(safe-area-inset-left));
+      padding-right: max(20px, env(safe-area-inset-right));
+      padding-bottom: max(20px, env(safe-area-inset-bottom));
+    }
+    .dagopgave-modal {
+      max-width: min(600px, calc(100vw - 32px));
+    }
+
+    .form-row-2 {
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .modal-actions:not(.modal-actions--split) {
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+    }
+    .modal-actions:not(.modal-actions--split) > button,
+    .modal-actions:not(.modal-actions--split) > a {
+      width: auto;
+      min-width: min(100%, 140px);
+    }
+
+    .modal-actions.modal-actions--split {
+      flex-direction: row;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 12px;
+    }
+    .modal-actions.modal-actions--split .modal-actions-row {
+      flex-direction: row;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      width: auto;
+    }
+    .modal-actions.modal-actions--split .modal-actions-row > button {
+      width: auto;
+      min-width: 120px;
+    }
+  }
+
+  @media (min-width: 769px) {
+    .mobile-tabs {
+      display: none;
+    }
+
+    .appointments.tab-hidden {
+      display: block !important;
+    }
+    .route-panel.tab-hidden {
+      display: flex !important;
+      flex-direction: column;
+    }
 
     .layout {
-      grid-template-columns: 1fr;
-      grid-template-rows: 1fr auto;
-      height: auto;
-      min-height: calc(100vh - 56px);
+      grid-template-columns: minmax(0, 1fr) 280px;
+      grid-template-rows: minmax(0, 1fr);
+      height: calc(100dvh - 56px);
+      min-height: calc(100dvh - 56px);
+      max-height: calc(100dvh - 56px);
     }
 
     .appointments {
-      border-right: none;
-      border-bottom: 1px solid var(--border);
-      height: auto;
-      overflow-y: visible;
-      padding: 12px;
+      border-right: 1px solid var(--border);
+      border-bottom: none;
+      padding: 16px;
+      height: 100%;
+      max-height: 100%;
+      overflow-y: auto;
     }
 
     .route-panel {
-      padding: 12px;
-      height: auto;
+      padding: 16px;
+      height: 100%;
+      max-height: 100%;
+      overflow-y: auto;
     }
 
-    .appt-inner { padding: 12px 10px 12px 36px; }
-    .appt-number { left: 10px; font-size: 12px; }
-    .icon-btn { width: 36px; height: 36px; font-size: 16px; }
-    .appt-name { font-size: 17px; }
-    .appt-time { font-size: 20px; }
-    .appt-address { font-size: 15px; }
-    .appt-desc { font-size: 15px; }
-    .tag { font-size: 11px; padding: 4px 9px; }
-    .appt-phone { font-size: 13px; }
-    .appt-price { font-size: 16px; }
-    .btn-done { font-size: 13px; padding: 7px 12px; }
+    .date-nav-wrap {
+      flex: 0 1 auto;
+      justify-content: flex-start;
+    }
 
-    .form-row-2 { grid-template-columns: 1fr; }
+    .date-label {
+      flex: 0 0 auto;
+      width: 180px;
+      font-size: 11px;
+      padding: 8px 10px;
+    }
 
-    .toast { left: 16px; right: 16px; max-width: none; }
+    header {
+      flex-wrap: nowrap;
+      padding: 0 16px;
+      height: 56px;
+      min-height: 56px;
+    }
+
+    .toast {
+      left: auto;
+      right: max(16px, env(safe-area-inset-right));
+      max-width: 360px;
+    }
+
+    .icon-btn {
+      width: 28px;
+      height: 28px;
+      font-size: 12px;
+      border-radius: 6px;
+    }
+    .icon-btn.daan-edit {
+      font-size: 10px;
+      min-width: 52px;
+      width: auto;
+      height: 28px;
+      min-height: 28px;
+      padding: 0 6px;
+    }
+
+    input.form-input,
+    select.form-select {
+      min-height: unset;
+    }
+    textarea.form-input {
+      min-height: 72px;
+    }
+
+    .btn-add {
+      padding: 7px 14px;
+      min-height: unset;
+      font-size: 12px;
+      border-radius: 6px;
+    }
+
+    .btn-optimize {
+      padding: 10px;
+      min-height: unset;
+      font-size: 12px;
+    }
+
+    .route-toolbar .btn-unlock-route,
+    .route-toolbar .btn-confirm-route {
+      min-height: unset;
+    }
+
+    .btn-logout {
+      min-height: unset;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+
+    .date-nav button {
+      padding: 8px 10px;
+      min-width: 0;
+      min-height: 0;
+      font-size: 14px;
+    }
+
+    .btn-dagopgave {
+      padding: 5px 8px;
+      min-width: 0;
+      min-height: 0;
+      font-size: 14px;
+      border-radius: 6px;
+    }
+    .btn-block-cal {
+      padding: 5px 8px;
+      min-height: 0;
+      font-size: 14px;
+      border-radius: 6px;
+    }
+    .btn-bulk-clear-blocks {
+      padding: 5px 8px;
+      min-height: 0;
+      font-size: 13px;
+      border-radius: 6px;
+    }
+
+    .btn-done {
+      padding: 5px 10px;
+      border-radius: 6px;
+    }
   }
 
-  @media (max-width: 480px) {
-    .date-label { width: 120px; font-size: 9px; }
-    .stat { display: none; }
-    .stat:first-child { display: flex; }
+  /* Phones / small tablets: slightly larger card type for readability */
+  @media (max-width: 768px) {
+    .appt-inner { padding: 12px 10px 12px 38px; }
+    .appt-number { left: 10px; font-size: 12px; }
+    .appt-name { font-size: 16px; }
+    .appt-time { font-size: 18px; }
+    .appt-address { font-size: 14px; }
+    .appt-desc { font-size: 13px; }
+    .tag { font-size: 10px; padding: 4px 8px; }
+    .appt-phone { font-size: 12px; }
+    .appt-price { font-size: 15px; }
+    .btn-done { font-size: 12px; padding: 8px 12px; min-height: 40px; }
+    .stat-label { display: none; }
+  }
+
+  @media (min-width: 769px) {
+    .stat-label { display: block; }
+  }
+
+  /* ═══ Jerry mode: extra laag (touch, formulieren, catalogus, modals) — alleen met body.ui-scale-large ═══ */
+  body.ui-scale-large {
+    --jerry-focus: 0 0 0 3px rgba(0, 212, 170, 0.4);
+  }
+  body.ui-scale-large .logo {
+    font-size: 18px;
+  }
+  @media (min-width: 769px) {
+    body.ui-scale-large .logo {
+      font-size: 17px;
+    }
+  }
+
+  body.ui-scale-large .appt-inner {
+    padding-top: 16px;
+    padding-bottom: 16px;
+    line-height: 1.45;
+  }
+  body.ui-scale-large .appt-name {
+    font-size: clamp(17px, 4.4vw, 20px);
+    font-weight: 800;
+    line-height: 1.25;
+  }
+  body.ui-scale-large .appt-time {
+    font-size: clamp(19px, 5vw, 24px);
+  }
+  body.ui-scale-large .appt-address {
+    font-size: clamp(14px, 3.9vw, 16px);
+    line-height: 1.45;
+    font-style: normal;
+    color: var(--text);
+    opacity: 0.92;
+    word-break: break-word;
+  }
+  body.ui-scale-large .appt-desc {
+    line-height: 1.45;
+    word-break: break-word;
+  }
+  body.ui-scale-large .appt-card {
+    margin-bottom: 14px;
+  }
+
+  body.ui-scale-large .section-title {
+    line-height: 1.3;
+    word-break: break-word;
+  }
+  body.ui-scale-large .route-name,
+  body.ui-scale-large .route-addr {
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.35;
+  }
+
+  body.ui-scale-large .form-row {
+    margin-bottom: 14px;
+  }
+  body.ui-scale-large .form-label {
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    margin-bottom: 6px;
+    line-height: 1.3;
+  }
+  body.ui-scale-large .form-input:focus,
+  body.ui-scale-large .form-select:focus {
+    box-shadow: var(--jerry-focus);
+    border-color: var(--accent2);
+  }
+  body.ui-scale-large textarea.form-input {
+    min-height: 104px;
+    line-height: 1.45;
+    font-size: 16px;
+    padding: 12px 14px;
+  }
+
+  body.ui-scale-large .catalog-v1-results {
+    max-height: min(50dvh, 280px);
+  }
+  body.ui-scale-large .catalog-v1-result {
+    min-height: 52px;
+    padding: 14px 14px;
+    font-size: 15px;
+    line-height: 1.35;
+  }
+  body.ui-scale-large .catalog-v1-empty {
+    font-size: 14px;
+    padding: 12px 14px;
+  }
+  body.ui-scale-large .catalog-v1-line {
+    font-size: 14px;
+    margin-top: 8px;
+    line-height: 1.35;
+  }
+  body.ui-scale-large .catalog-v1-line button {
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  body.ui-scale-large .modal-title {
+    font-size: 18px;
+    line-height: 1.3;
+  }
+  body.ui-scale-large .modal {
+    padding: 20px;
+    padding-left: max(20px, env(safe-area-inset-left));
+    padding-right: max(20px, env(safe-area-inset-right));
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+  body.ui-scale-large .modal-actions {
+    gap: 14px;
+    margin-top: 18px;
+  }
+  body.ui-scale-large .modal-actions > button,
+  body.ui-scale-large .modal-actions > a {
+    min-height: 58px;
+    font-size: 16px;
+  }
+  body.ui-scale-large .modal-actions--split .modal-actions-row > button {
+    min-height: 58px;
+  }
+
+  body.ui-scale-large .btn-large-text {
+    font-size: 13px;
+    padding: 10px 14px;
+    min-height: 52px;
+    border-radius: 10px;
+    touch-action: manipulation;
+  }
+
+  body.ui-scale-large .dagopgave-header-actions .btn-save,
+  body.ui-scale-large .dagopgave-header-actions .btn-cancel {
+    min-height: 56px;
+  }
+
+  /* Mobiel Jerry: maximale tikdoelen */
+  @media (max-width: 768px) {
+    body.ui-scale-large .form-input,
+    body.ui-scale-large .form-select {
+      min-height: 56px;
+      padding: 14px 16px;
+      font-size: 16px;
+    }
+    body.ui-scale-large .stat-val {
+      font-size: 26px;
+    }
+    body.ui-scale-large .stat-label {
+      display: block;
+      font-size: 9px;
+      margin-top: 4px;
+    }
+    body.ui-scale-large .btn-add {
+      min-height: 60px;
+      padding: 14px 18px;
+      font-size: 16px;
+    }
+    body.ui-scale-large .btn-dagopgave,
+    body.ui-scale-large .btn-block-cal,
+    body.ui-scale-large .btn-bulk-clear-blocks {
+      min-height: 56px;
+      padding: 12px 14px;
+      font-size: 15px;
+    }
+    body.ui-scale-large .btn-optimize {
+      min-height: 58px;
+      font-size: 15px;
+      padding: 14px 12px;
+    }
+    body.ui-scale-large .route-toolbar .btn-unlock-route,
+    body.ui-scale-large .route-toolbar .btn-confirm-route {
+      min-height: 56px;
+      padding: 12px 14px;
+      font-size: 14px;
+    }
+    body.ui-scale-large .btn-maps,
+    body.ui-scale-large .btn-morning {
+      min-height: 56px;
+      padding: 14px 12px;
+      font-size: 15px;
+    }
+    body.ui-scale-large .btn-logout {
+      min-height: 52px;
+      padding: 12px 14px;
+      font-size: 12px;
+    }
+    body.ui-scale-large .date-nav button {
+      min-width: 52px;
+      min-height: 56px;
+      font-size: 20px;
+      padding: 12px 14px;
+    }
+    body.ui-scale-large .mobile-tab {
+      font-size: 12px;
+      padding: 14px 8px;
+      min-height: 52px;
+    }
+    body.ui-scale-large .icon-btn {
+      width: 52px;
+      height: 52px;
+      font-size: 17px;
+      border-radius: 10px;
+    }
+    body.ui-scale-large .icon-btn.daan-edit {
+      min-width: 68px;
+      height: 52px;
+      min-height: 52px;
+      font-size: 13px;
+    }
+    body.ui-scale-large .btn-done {
+      min-height: 52px;
+      padding: 12px 16px;
+      font-size: 15px;
+    }
+    body.ui-scale-large .btn-confirm,
+    body.ui-scale-large .btn-prijs {
+      min-height: 52px;
+      padding: 12px 16px;
+      font-size: 15px;
+    }
+    body.ui-scale-large .modal-actions > button,
+    body.ui-scale-large .modal-actions > a {
+      min-height: 60px;
+      font-size: 16px;
+    }
+  }
+
+  /* Desktop Jerry: groter leesbaar, layout blijft compact */
+  @media (min-width: 769px) {
+    body.ui-scale-large .form-input,
+    body.ui-scale-large .form-select {
+      min-height: 50px;
+      padding: 11px 14px;
+      font-size: 15px;
+    }
+    body.ui-scale-large textarea.form-input {
+      min-height: 96px;
+      font-size: 15px;
+    }
+    body.ui-scale-large .btn-add {
+      min-height: 48px;
+      padding: 10px 16px;
+      font-size: 14px;
+      border-radius: 8px;
+    }
+    body.ui-scale-large .btn-dagopgave,
+    body.ui-scale-large .btn-block-cal,
+    body.ui-scale-large .btn-bulk-clear-blocks {
+      min-height: 48px;
+      padding: 10px 12px;
+      font-size: 14px;
+    }
+    body.ui-scale-large .btn-optimize {
+      min-height: 50px;
+      font-size: 14px;
+    }
+    body.ui-scale-large .route-toolbar .btn-unlock-route,
+    body.ui-scale-large .route-toolbar .btn-confirm-route {
+      min-height: 48px;
+    }
+    body.ui-scale-large .btn-logout {
+      min-height: 40px;
+      padding: 8px 12px;
+    }
+    body.ui-scale-large .date-nav button {
+      min-height: 44px;
+      min-width: 40px;
+      font-size: 15px;
+    }
+    body.ui-scale-large .modal-actions > button,
+    body.ui-scale-large .modal-actions > a {
+      min-height: 50px;
+      font-weight: 500;
+    }
+    body.ui-scale-large .modal-actions--split .modal-actions-row > button {
+      min-height: 50px;
+    }
+    body.ui-scale-large .btn-large-text {
+      min-height: 44px;
+      padding: 8px 12px;
+      font-size: 12px;
+    }
+    body.ui-scale-large .icon-btn {
+      width: 40px;
+      height: 40px;
+      font-size: 15px;
+    }
+    body.ui-scale-large .icon-btn.daan-edit {
+      font-size: 12px;
+      min-width: 60px;
+      height: 40px;
+      min-height: 40px;
+    }
+    body.ui-scale-large .modal {
+      padding: 22px;
+      max-width: min(480px, calc(100vw - 32px));
+    }
+    body.ui-scale-large .dagopgave-modal {
+      max-width: min(640px, calc(100vw - 32px));
+    }
   }
 </style>
 </head>
@@ -1305,12 +2011,12 @@
       <div class="stat-val orange" id="totalOmzet">€0</div>
       <div class="stat-label">Omzet dag</div>
     </div>
-    <button type="button" id="btnLargeText" class="btn-large-text" onclick="toggleLargeText()" title="Grote tekst aan/uit (handig op tablet)">Aa</button>
+    <button type="button" id="btnLargeText" class="btn-large-text" onclick="toggleUiScale()" title="Grotere tekst en knoppen (Jerry-modus)">Aa</button>
     <button type="button" class="btn-logout" onclick="logoutPlanning()" title="Vandaag opnieuw inloggen of andere gebruiker">Uitloggen</button>
   </div>
 </header>
 
-<!-- MOBILE TABS (alleen zichtbaar op ≤768px) -->
+<!-- Tab-bar: standaard (mobiel); verborgen vanaf 769px waar route naast agenda staat -->
 <div class="mobile-tabs" id="mobileTabs">
   <button class="mobile-tab active" id="tabAfspraken" onclick="switchMobileTab('afspraken')">⬛ Afspraken</button>
   <button class="mobile-tab" id="tabRoute" onclick="switchMobileTab('route')">⚡ Route</button>
@@ -1337,8 +2043,8 @@
 
   <div class="route-panel" id="panelRoute">
     <div class="section-title">⚡ Routevolgorde</div>
-    <div style="display:flex;gap:8px;margin-bottom:8px">
-      <button class="btn-optimize" id="btnOptimize" style="flex:1" onclick="optimizeRoute()">⚡ OPTIMALISEER</button>
+    <div class="route-toolbar">
+      <button class="btn-optimize" id="btnOptimize" onclick="optimizeRoute()">⚡ OPTIMALISEER</button>
       <button class="btn-unlock-route" id="btnUnlock" style="display:none" onclick="unlockRoute()" title="Handmatige volgorde verwijderen en opnieuw optimaliseren">🔓 Ontgrendel</button>
       <button class="btn-confirm-route" id="btnConfirmRoute" onclick="confirmRoute()" title="Sla geplande tijden op in GHL zodat ochtendmeldingen de juiste aankomsttijd sturen">✓ Bevestig route</button>
     </div>
@@ -1390,16 +2096,16 @@
       <input class="form-input" type="text" id="rTimeWindow" placeholder="bijv. 09:00-12:00 of ochtend">
     </div>
 
-    <div class="modal-actions" style="justify-content:space-between;margin-top:16px">
+    <div class="modal-actions modal-actions--split" style="margin-top:16px">
       <div id="deleteConfirmStep" style="display:flex;flex-direction:column;gap:6px;align-items:flex-start">
         <button class="btn-delete-appt" id="btnDeleteFirst" onclick="showDeleteConfirm()" style="opacity:0.6">🗑 Verwijderen</button>
-        <div id="deleteConfirmRow" style="display:none;gap:6px;align-items:center">
+        <div id="deleteConfirmRow" style="display:none;gap:6px;align-items:center;flex-wrap:wrap">
           <span style="font-size:11px;color:#ff6060">Zeker weten?</span>
           <button class="btn-delete-appt" onclick="confirmDeleteAppt()" style="padding:5px 10px;font-size:11px">Ja, verwijder</button>
           <button class="btn-cancel" onclick="hideDeleteConfirm()" style="padding:5px 10px;font-size:11px">Nee</button>
         </div>
       </div>
-      <div style="display:flex;gap:8px">
+      <div class="modal-actions-row">
         <button class="btn-cancel" onclick="closeRescheduleModal()">Annuleren</button>
         <button class="btn-save" onclick="confirmReschedule()">↗ Verplaatsen</button>
       </div>
@@ -1415,9 +2121,9 @@
         <div class="modal-title" style="margin:0" id="dagopgaveTitle">Dagopgave</div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px" id="dagopgaveSubtitle"></div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button class="btn-save" style="padding:8px 14px;font-size:12px" onclick="printDagopgave()">🖨 Print</button>
-        <button class="btn-cancel" style="padding:8px 12px" onclick="closeDagopgave()">✕</button>
+      <div class="dagopgave-header-actions">
+        <button class="btn-save" style="padding:8px 14px;font-size:12px;min-height:44px" onclick="printDagopgave()">🖨 Print</button>
+        <button class="btn-cancel" style="padding:8px 12px;min-height:44px" onclick="closeDagopgave()">✕</button>
       </div>
     </div>
     <div id="dagopgaveBody"></div>
@@ -1906,8 +2612,33 @@ async function resetLocalRouteTimes() {
   });
 }
 
-// ─── Grote-tekst modus ───────────────────────────────────────────────────────
-const HK_LARGE_TEXT_KEY = 'hk_large_text';
+// ─── UI-schaal / Jerry-modus (body.ui-scale-large, localStorage ui_scale) ───
+const HK_UI_SCALE_KEY = 'ui_scale';
+/** @deprecated alleen migratie; nieuwe code gebruikt HK_UI_SCALE_KEY */
+const HK_LARGE_TEXT_LEGACY = 'hk_large_text';
+
+function readUiScaleLarge() {
+  try {
+    const v = localStorage.getItem(HK_UI_SCALE_KEY);
+    if (v === 'large') return true;
+    if (v === 'normal') return false;
+    if (localStorage.getItem(HK_LARGE_TEXT_LEGACY) === '1') return true;
+  } catch (_) {}
+  return false;
+}
+
+function setUiScaleLarge(on) {
+  try {
+    localStorage.setItem(HK_UI_SCALE_KEY, on ? 'large' : 'normal');
+    localStorage.removeItem(HK_LARGE_TEXT_LEGACY);
+  } catch (_) {}
+}
+
+/** Profiel / externe hook: setPlannerUiScale('large' | 'normal') */
+function setPlannerUiScale(mode) {
+  setUiScaleLarge(mode === 'large');
+  applyUiScalePref();
+}
 
 function switchMobileTab(tab) {
   const afspraken = document.getElementById('panelAfspraken');
@@ -1928,24 +2659,28 @@ function switchMobileTab(tab) {
   }
 }
 
-function applyLargeTextPref() {
-  const on = localStorage.getItem(HK_LARGE_TEXT_KEY) === '1';
-  document.body.classList.toggle('large-text', on);
+function applyUiScalePref() {
+  const on = readUiScaleLarge();
+  if (on) setUiScaleLarge(true);
+  document.body.classList.toggle('ui-scale-large', on);
   const btn = document.getElementById('btnLargeText');
   if (btn) {
     btn.classList.toggle('active', on);
-    btn.title = on ? 'Grote tekst uitschakelen' : 'Grote tekst inschakelen (handig op tablet)';
+    btn.title = on
+      ? 'Standaard weergave (UI-schaal uit)'
+      : 'Grotere tekst en knoppen — Jerry-modus / toegankelijkheid';
   }
 }
 
-function toggleLargeText() {
-  try {
-    const on = localStorage.getItem(HK_LARGE_TEXT_KEY) === '1';
-    localStorage.setItem(HK_LARGE_TEXT_KEY, on ? '0' : '1');
-  } catch (_) {}
-  applyLargeTextPref();
-  showToast(document.body.classList.contains('large-text') ? 'Grote tekst aan' : 'Grote tekst uit', 'info');
+function toggleUiScale() {
+  const on = readUiScaleLarge();
+  setUiScaleLarge(!on);
+  applyUiScalePref();
+  showToast(readUiScaleLarge() ? 'Grotere weergave aan (Jerry-modus)' : 'Standaard weergave', 'info');
 }
+
+window.setPlannerUiScale = setPlannerUiScale;
+window.readUiScaleLarge = readUiScaleLarge;
 // ─────────────────────────────────────────────────────────────────────────────
 
 function openDagopgave() {
@@ -2473,7 +3208,7 @@ function initRouteDrag(list) {
           console.error(err);
           let mins = 9 * 60;
           active.forEach((a, i) => {
-            a.timeSlot  = i === 0 ? '08:00' : minsToTime(mins);
+            a.timeSlot  = i === 0 ? '09:00' : minsToTime(mins);
             a.estimated = true;
             const jobMins    = JOB_DURATION[a.jobType] || 30;
             const travelMins = 15;
@@ -2963,7 +3698,7 @@ function showPaymentLinkFallback(url, invoiceNumber, total) {
   return window.HKPlannerFeedbackUi.showPaymentLinkFallback(url, invoiceNumber, total);
 }
 
-applyLargeTextPref();
+applyUiScalePref();
 document.getElementById('dateLabel').textContent = formatDate(currentDate);
 
 // LOGIN — wachtwoorden staan NIET meer in de browser-code.

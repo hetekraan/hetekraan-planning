@@ -1,4 +1,9 @@
 (function initPlannerScheduling(global) {
+  /**
+   * Dagdelen blijven strikt gescheiden: alleen ochtendstops worden onderling geoptimaliseerd,
+   * alleen middagstops onderling. Middag-run start vanaf het adres van de laatste ochtendstop
+   * (body.origin) zodat de eerste middagstop dichter bij de overgang ligt; daarna volledige dag-ETAs.
+   */
   async function optimizeRoute(ctx) {
     const active = ctx.orderRouteMorningFirst(ctx.getRouteStopsForSidebar());
     const done = ctx.getAppointmentsRef().filter((a) => !a.fullAddressLine || a.status === 'klaar');
@@ -6,35 +11,62 @@
       ctx.showToast('Minimaal 2 adressen nodig om te optimaliseren', 'info');
       return;
     }
-    ctx.showToast('⏳ Route wordt geoptimaliseerd...', 'loading');
-    try {
+
+    const morning = active.filter((a) => a.dayPart === 0);
+    const afternoon = active.filter((a) => a.dayPart !== 0);
+
+    function apptPayload(a) {
+      return {
+        address: a.fullAddressLine || a.address,
+        timeWindow: a.timeWindow || null,
+        jobDuration: ctx.jobDurationForType(a.jobType),
+      };
+    }
+
+    async function runOptimizeSubset(apps, originAddress) {
+      const body = { appointments: apps.map(apptPayload) };
+      if (originAddress) body.origin = originAddress;
       const res = await fetch('/api/optimize-route', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          appointments: active.map((a) => ({
-            address: a.fullAddressLine || a.address,
-            timeWindow: a.timeWindow || null,
-            jobDuration: ctx.jobDurationForType(a.jobType),
-          })),
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Onbekende fout');
+      if (!res.ok) throw new Error(data.error || data.message || 'Onbekende fout');
+      const ordered = data.order.map((i) => apps[i]);
+      const travel = (data.legInfo || []).reduce((s, l) => s + (l.durationSeconds || 0), 0);
+      return { ordered, travel };
+    }
 
-      const orderIdx = data.order;
-      const morningIdx = orderIdx.filter((i) => active[i].dayPart === 0);
-      const afternoonIdx = orderIdx.filter((i) => active[i].dayPart !== 0);
-      const stableOrder = [...morningIdx, ...afternoonIdx];
-      const optimized = stableOrder.map((i) => active[i]);
+    ctx.showToast('⏳ Route wordt geoptimaliseerd...', 'loading');
+    try {
+      let totalTravelSecs = 0;
+      let orderedM = [...morning];
+      let orderedA = [...afternoon];
+
+      if (morning.length >= 2) {
+        const r = await runOptimizeSubset(morning, null);
+        orderedM = r.ordered;
+        totalTravelSecs += r.travel;
+      }
+      if (afternoon.length >= 2) {
+        const lastMorningAddr =
+          orderedM.length > 0
+            ? String(orderedM[orderedM.length - 1].fullAddressLine || orderedM[orderedM.length - 1].address || '').trim()
+            : '';
+        const r = await runOptimizeSubset(afternoon, lastMorningAddr || undefined);
+        orderedA = r.ordered;
+        totalTravelSecs += r.travel;
+      }
+
+      const optimized = [...orderedM, ...orderedA];
       optimized.forEach((a) => {
         a.violation = false;
       });
       await ctx.recalculateRouteTimesPreservingOrder(optimized);
       ctx.setAppointments([...optimized, ...done]);
 
-      const totalTravel = (data.legInfo || []).reduce((s, l) => s + (l.durationSeconds || 0), 0);
-      const totalTravelMins = Math.round(totalTravel / 60);
+      const totalTravelMins = Math.round(totalTravelSecs / 60);
       const vCount = optimized.filter((a) => a.violation).length;
       const violationMsg = vCount > 0 ? ` · ⚠️ ${vCount} tijdsvenster${vCount > 1 ? 's' : ''} niet haalbaar` : '';
 
@@ -43,7 +75,10 @@
       if (btn) btn.disabled = false;
       if (unlock) unlock.style.display = 'none';
       ctx.saveRouteSnapshot(ctx.getDateStr(ctx.getCurrentDate()));
-      ctx.showToast(`⚡ Route geoptimaliseerd!\n${active.length} stops · ~${totalTravelMins} min rijden${violationMsg}`, 'success');
+      ctx.showToast(
+        `⚡ Route geoptimaliseerd (ochtend/middag apart)\n${active.length} stops · ~${totalTravelMins} min rijden (deelroutes)${violationMsg}`,
+        'success'
+      );
       ctx.render();
     } catch (e) {
       console.error('Optimalisatie mislukt:', e);

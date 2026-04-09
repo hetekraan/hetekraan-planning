@@ -3,8 +3,8 @@
 // Valt terug op Directions API (optimize:true) als Distance Matrix niet beschikbaar is.
 
 const DEPOT      = 'Cornelis Dopperkade, Amsterdam';
-/** Eerste stop-baseline (minuten vanaf middernacht); intern, zie WORK_DAY_START_HOUR — niet het klantblok 09:00. */
-const START_TIME = 8 * 60;
+/** Eerste geplande aankomst-baseline (minuten vanaf middernacht). Bedrijfsregel: eerste ochtendstop op 09:00, niet 08:00. */
+const START_TIME = 9 * 60;
 
 function parseTimeWindow(str) {
   if (!str || str === 'null') return null;
@@ -114,7 +114,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { appointments, preserveOrder } = req.body;
+  const { appointments, preserveOrder, origin: originRaw } = req.body;
   if (!appointments || appointments.length < 1) {
     return res.status(400).json({ error: 'Geen afspraken' });
   }
@@ -122,10 +122,13 @@ export default async function handler(req, res) {
   const key = process.env.GOOGLE_MAPS_API_KEY;
   if (!key) return res.status(500).json({ error: 'GOOGLE_MAPS_API_KEY ontbreekt' });
 
+  const origin =
+    typeof originRaw === 'string' && originRaw.trim() ? originRaw.trim() : DEPOT;
+
   const n            = appointments.length;
   const timeWindows  = appointments.map(a => parseTimeWindow(a.timeWindow));
   const jobDurations = appointments.map(a => a.jobDuration || 30);
-  const allLocations = [DEPOT, ...appointments.map(a => a.address)];
+  const allLocations = [origin, ...appointments.map(a => a.address)];
   /** Vaste volgorde (bv. na slepen): indices 0..n-1 */
   const fixedOrder   = preserveOrder === true ? appointments.map((_, i) => i) : null;
 
@@ -164,7 +167,7 @@ export default async function handler(req, res) {
       ? addrJoined
       : `optimize:true|${addrJoined}`;
     const url = `https://maps.googleapis.com/maps/api/directions/json` +
-      `?origin=${encodeURIComponent(DEPOT)}` +
+      `?origin=${encodeURIComponent(origin)}` +
       `&destination=${encodeURIComponent(DEPOT)}` +
       `&waypoints=${encodeURIComponent(waypoints)}` +
       `&region=nl&language=nl&key=${key}`;
@@ -237,11 +240,14 @@ export default async function handler(req, res) {
     ? (fixedOrder ? 'distance-matrix+fixed-order' : 'distance-matrix')
     : (fixedOrder ? 'directions+fixed-order' : 'directions-fallback');
 
+  const originTag = origin === DEPOT ? 'depot' : 'custom';
+
   return res.status(200).json({
     order,
     etas: etas.map(minutesToTime),
     violations,
     legInfo,
     method: methodTag,
+    originUsed: originTag,
   });
 }
