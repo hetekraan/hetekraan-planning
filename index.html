@@ -2830,14 +2830,8 @@ async function confirmReschedule() {
 function openModal() {
   if (!window.HKPlannerModalUi?.openModal) return;
   const out = window.HKPlannerModalUi.openModal();
-  if (window.HKPlannerManualAppointment?.resetTotalPriceOverride) {
-    window.HKPlannerManualAppointment.resetTotalPriceOverride();
-  }
-  if (window.HKPlannerCatalogV1?.clearModalCatalogLines) {
-    window.HKPlannerCatalogV1.clearModalCatalogLines();
-  }
-  if (window.HKPlannerManualAppointment?.updatePricePreview) {
-    window.HKPlannerManualAppointment.updatePricePreview();
+  if (window.HKPlannerManualAppointment?.resetManualAppointmentForm) {
+    window.HKPlannerManualAppointment.resetManualAppointmentForm();
   }
   return out;
 }

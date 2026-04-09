@@ -147,6 +147,55 @@
     updatePricePreview();
   }
 
+  function resetManualAppointmentForm() {
+    const dateInput = document.getElementById('mDate');
+    const slotInput = document.getElementById('mSlot');
+    const typeInput = document.getElementById('mType');
+    const nameInput = document.getElementById('mName');
+    const addressInput = document.getElementById('mAddress');
+    const phoneInput = document.getElementById('mPhone');
+    const emailInput = document.getElementById('mEmail');
+    const descInput = document.getElementById('mDesc');
+    const contactIdInput = document.getElementById('mContactId');
+    const activeDateInput = document.getElementById('dateInput');
+
+    if (nameInput) nameInput.value = '';
+    if (phoneInput) phoneInput.value = '';
+    if (emailInput) emailInput.value = '';
+    if (addressInput) addressInput.value = '';
+    if (descInput) descInput.value = '';
+    if (contactIdInput) contactIdInput.value = '';
+
+    if (typeInput) {
+      typeInput.selectedIndex = 0;
+      if (!typeInput.value && typeInput.options.length > 0) typeInput.value = typeInput.options[0].value;
+    }
+
+    if (dateInput) {
+      dateInput.value =
+        activeDateInput?.value ||
+        new Date().toISOString().split('T')[0];
+    }
+
+    if (slotInput) {
+      // Geen "hangen" in vorige keuze: eerst leeg, daarna default eerste optie als fallback.
+      slotInput.value = '';
+      if (!slotInput.value && slotInput.options.length > 0) slotInput.selectedIndex = 0;
+    }
+
+    totalPriceManual = false;
+    totalPriceManualValue = null;
+
+    if (global.HKPlannerCatalogV1?.resetModal) {
+      global.HKPlannerCatalogV1.resetModal();
+    } else if (global.HKPlannerCatalogV1?.clearModalCatalogLines) {
+      global.HKPlannerCatalogV1.clearModalCatalogLines();
+      global.HKPlannerCatalogV1.closeModalDropdown?.('form_reset');
+    }
+
+    updatePricePreview();
+  }
+
   function syncTotalPriceModeFromExisting(input = {}) {
     const backendTotalRaw =
       input.backendTotal !== undefined ? input.backendTotal : document.getElementById('mPrice')?.value;
@@ -261,6 +310,7 @@
         if (dateLabel) dateLabel.textContent = formatDate(targetDate);
       }
 
+      resetManualAppointmentForm();
       closeModal();
       await loadAppointments(getCurrentDate());
       if (data.warning) {
@@ -311,6 +361,7 @@
     bindPriceControls,
     updatePricePreview,
     resetTotalPriceOverride,
+    resetManualAppointmentForm,
     syncTotalPriceModeFromExisting,
   };
 })(window);

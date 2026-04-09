@@ -170,6 +170,11 @@
     renderModalLines();
   }
 
+  function resetModal() {
+    clearModalCatalogLines();
+    closeModalDropdown('form_reset');
+  }
+
   function getModalCatalogLines() {
     return modalLines.map((x) => ({ ...x }));
   }
@@ -249,6 +254,7 @@
     addModalCatalogItem,
     removeModalLine,
     clearModalCatalogLines,
+    resetModal,
     getModalCatalogLines,
     onAppointmentSearchInput,
     addCatalogItemToAppointment,
