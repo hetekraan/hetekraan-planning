@@ -1463,8 +1463,11 @@
         <input class="form-input" type="date" id="mDate">
       </div>
       <div>
-        <label class="form-label">Tijd</label>
-        <input class="form-input" type="time" id="mTime" value="08:00">
+        <label class="form-label">Tijdslot</label>
+        <select class="form-select" id="mSlot">
+          <option value="morning">Ochtend (09:00–13:00)</option>
+          <option value="afternoon">Middag (13:00–17:00)</option>
+        </select>
       </div>
     </div>
     <div class="form-row">
@@ -1489,8 +1492,28 @@
         <input class="form-input" type="text" id="mPhone" placeholder="06-...">
       </div>
       <div>
-        <label class="form-label">Prijs (€)</label>
-        <input class="form-input" type="number" id="mPrice" placeholder="0">
+        <label class="form-label">Totaalprijs (€)</label>
+        <input class="form-input" type="number" id="mPrice" placeholder="0" readonly>
+      </div>
+    </div>
+    <div class="form-row">
+      <label class="form-label">Prijscomponenten</label>
+      <div style="display:flex;gap:14px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text)">
+          <input type="checkbox" id="mPriceOnderhoud">
+          onderhoud (€195)
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text)">
+          <input type="checkbox" id="mPriceVoorrijkosten">
+          voorrijkosten (€50)
+        </label>
+      </div>
+      <div style="margin-top:8px">
+        <label class="form-label">Extra regel (optioneel)</label>
+        <div style="display:flex;gap:8px">
+          <input class="form-input" type="text" id="mPriceExtraDesc" placeholder="Bijv. mengventiel" style="flex:1">
+          <input class="form-input" type="number" id="mPriceExtraAmount" placeholder="€" min="0" style="width:110px">
+        </div>
       </div>
     </div>
     <div class="form-row">
@@ -2766,7 +2789,11 @@ async function confirmReschedule() {
 
 function openModal() {
   if (!window.HKPlannerModalUi?.openModal) return;
-  return window.HKPlannerModalUi.openModal();
+  const out = window.HKPlannerModalUi.openModal();
+  if (window.HKPlannerManualAppointment?.updatePricePreview) {
+    window.HKPlannerManualAppointment.updatePricePreview();
+  }
+  return out;
 }
 function closeModal() {
   if (!window.HKPlannerModalUi?.closeModal) return;
@@ -2983,6 +3010,9 @@ document.addEventListener('DOMContentLoaded', () => {
   if (lp) lp.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
   if (window.HKPlannerManualAppointment?.bindModalKeyboardSubmit) {
     window.HKPlannerManualAppointment.bindModalKeyboardSubmit();
+  }
+  if (window.HKPlannerManualAppointment?.bindPriceControls) {
+    window.HKPlannerManualAppointment.bindPriceControls();
   }
   checkLogin();
 });

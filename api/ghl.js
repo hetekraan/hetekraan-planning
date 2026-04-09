@@ -867,6 +867,10 @@ export default async function handler(req, res) {
           desc,
           contactId: existingContactId,
           price,
+          priceLines,
+          slotKey,
+          slotLabel,
+          timeWindow,
         } = req.body || {};
         const nameNorm = String(name || '').trim();
         const addressNorm = String(address || '').trim();
@@ -876,7 +880,17 @@ export default async function handler(req, res) {
         if (!addressNorm) return res.status(400).json({ error: 'address verplicht' });
         if (!dateNorm) return res.status(400).json({ error: 'date verplicht (YYYY-MM-DD)' });
         if (!/^\d{2}:\d{2}$/.test(timeNorm)) return res.status(400).json({ error: 'time verplicht (HH:mm)' });
-        const priceNum = toPriceNumber(price);
+        const normalizedLines = normalizePriceLineItems(Array.isArray(priceLines) ? priceLines : []);
+        const slotLabelNorm =
+          slotKey === 'afternoon'
+            ? SLOT_LABEL_AFTERNOON_NL
+            : slotKey === 'morning'
+              ? SLOT_LABEL_MORNING_NL
+              : String(slotLabel || timeWindow || '').trim();
+        const priceNumFromLines = normalizedLines.length
+          ? Math.round(normalizedLines.reduce((sum, row) => sum + Number(row.price || 0), 0) * 100) / 100
+          : null;
+        const priceNum = priceNumFromLines ?? toPriceNumber(price);
 
         // Stap 1: contact opzoeken of aanmaken
         let contactId = String(existingContactId || '').trim() || null;
@@ -936,23 +950,35 @@ export default async function handler(req, res) {
             { id: FIELD_IDS.type_onderhoud, field_value: apptType || 'reparatie' },
             { id: FIELD_IDS.probleemomschrijving, field_value: desc || '' },
           ];
+          if (slotLabelNorm) {
+            customFields.push({ id: FIELD_IDS.tijdafspraak, field_value: slotLabelNorm });
+          }
           if (priceNum !== null) {
             customFields.push({ id: FIELD_IDS.prijs, field_value: String(priceNum) });
             customFields.push({
               id: FIELD_IDS.prijs_regels,
-              field_value: JSON.stringify([{ desc: desc || 'Handmatige afspraak', price: priceNum }]),
+              field_value: JSON.stringify(
+                normalizedLines.length
+                  ? normalizedLines
+                  : [{ desc: desc || 'Handmatige afspraak', price: priceNum }]
+              ),
             });
           }
+          const structuredPriceRules = formatPriceRulesStructuredString(
+            normalizedLines.length
+              ? normalizedLines
+              : priceNum !== null
+                ? [{ desc: desc || 'Handmatige afspraak', price: priceNum }]
+                : []
+          );
           const bookingCanon = appendBookingCanonFields(
             customFields,
             {
               type_onderhoud: apptType || 'reparatie',
               probleemomschrijving: desc || '',
+              tijdslot: slotLabelNorm || '',
               prijs_totaal: priceNum,
-              prijs_regels:
-                priceNum !== null
-                  ? formatPriceRulesStructuredString([{ desc: desc || 'Handmatige afspraak', price: priceNum }])
-                  : '',
+              prijs_regels: structuredPriceRules,
             }
           );
           console.log('[BOOKING_CANON_WRITE]', {
