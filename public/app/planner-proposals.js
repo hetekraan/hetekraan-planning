@@ -1,4 +1,20 @@
 (function initPlannerProposals(global) {
+  /** Zelfde keys als suggest.html → /api/send-booking-invite (normalizePriceLineItems ondersteunt desc|label). */
+  function pricePayloadFromModalCatalog() {
+    const raw = global.HKPlannerCatalogV1?.getModalCatalogLines?.() || [];
+    if (!Array.isArray(raw) || !raw.length) return null;
+    const priceRules = raw
+      .map((r) => ({
+        desc: String(r.desc || r.label || '').trim(),
+        price: Number(r.price),
+      }))
+      .filter((x) => x.desc && Number.isFinite(x.price) && x.price >= 0);
+    if (!priceRules.length) return null;
+    const priceTotal =
+      Math.round(priceRules.reduce((s, r) => s + r.price, 0) * 100) / 100;
+    return { priceRules, priceTotal };
+  }
+
   function buildPlannerProposalConstraints() {
     const c = {};
     if (document.getElementById('hkProposalFridaysOnly')?.checked) c.allowedWeekdays = [5];
@@ -48,6 +64,11 @@
       const proposalConstraints = buildPlannerProposalConstraints();
       const body = { name, phone, address, type, workType: type, desc };
       if (proposalConstraints) body.proposalConstraints = proposalConstraints;
+      const pricePayload = pricePayloadFromModalCatalog();
+      if (pricePayload) {
+        body.priceRules = pricePayload.priceRules;
+        body.priceTotal = pricePayload.priceTotal;
+      }
       const res = await fetch('/api/send-booking-invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -427,29 +427,6 @@
         <p class="email-hint" id="addressHint">Verplicht als we je adres nog niet hebben. We slaan dit op in GHL.</p>
       </div>
 
-      <div class="email-block" id="bookCatalogBlock">
-        <span class="email-label">Producten / services (optioneel)</span>
-        <p class="email-hint" style="margin-bottom:8px;">Zoek in onze prijslijst en tik een regel om toe te voegen. Je ziet het totaal hieronder.</p>
-        <div id="bookCatalogDropdown" style="position:relative;">
-          <input
-            type="text"
-            id="bCatalogSearch"
-            class="email-input"
-            autocomplete="off"
-            placeholder="Zoek product of service..."
-            aria-label="Zoek product of service"
-          />
-          <div class="catalog-v1-results" id="bCatalogResults"></div>
-        </div>
-        <div id="bCatalogLines" style="margin-top:10px;"></div>
-        <div
-          style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:12px;border-top:1px solid #333333;font-size:15px;font-weight:700;color:#fff;"
-        >
-          <span>Totaal</span>
-          <span id="bCatalogTotal">€0</span>
-        </div>
-      </div>
-
       <button type="button" class="confirm-btn" id="confirmBtn" disabled style="display:block;width:100%;background-color:#ffd000;color:#111111;border:none;border-radius:12px;padding:16px;font-size:16px;font-weight:700;margin-top:20px;box-sizing:border-box;">
         Bevestig afspraak
       </button>
@@ -475,7 +452,6 @@
     </div>
   </div>
 
-  <script src="/app/planner-catalog-v1.js"></script>
   <script>
     const SLOT_LABELS = { morning: 'Ochtend', afternoon: 'Middag' };
 
@@ -570,9 +546,6 @@
       document.getElementById('emailBlock').hidden = true;
       document.getElementById('phoneBlock').hidden = true;
       document.getElementById('addressBlock').hidden = true;
-      if (window.HKPlannerCatalogV1?.resetBookingCatalog) {
-        window.HKPlannerCatalogV1.resetBookingCatalog();
-      }
       document.getElementById('bookingPhone').value = '';
       document.getElementById('bookingPhone').classList.remove('invalid');
       ['bookingStreetHouse', 'bookingPostcode', 'bookingCity'].forEach((id) => {
@@ -620,10 +593,6 @@
         slotContainer.appendChild(btn);
       });
 
-      const emailEl = document.getElementById('bookingEmail');
-      if (window.HKPlannerCatalogV1?.initBookingCatalog) {
-        void window.HKPlannerCatalogV1.initBookingCatalog();
-      }
       queueMicrotask(() => updateConfirmButtonState());
     }
 
@@ -749,16 +718,6 @@
       document.getElementById('loadingScreen').style.display = 'block';
 
       try {
-        const catalogLines = window.HKPlannerCatalogV1?.getBookingCatalogLines?.() || [];
-        const priceLines =
-          Array.isArray(catalogLines) && catalogLines.length > 0
-            ? catalogLines.map((r) => ({ desc: String(r.desc || '').trim(), price: Number(r.price) }))
-            : [];
-        const totalPrice =
-          priceLines.length > 0
-            ? Math.round(priceLines.reduce((s, r) => s + (Number.isFinite(r.price) ? r.price : 0), 0) * 100) / 100
-            : undefined;
-
         const confirmBody = knownAddressFromToken
           ? { token, slotId: selectedSlot, email, phone, address: knownAddressFromToken }
           : {
@@ -770,12 +729,6 @@
               addressPostcode: postcode,
               addressCity: city,
             };
-        if (priceLines.length > 0 && totalPrice !== undefined) {
-          confirmBody.priceLines = priceLines;
-          confirmBody.totalPrice = totalPrice;
-        }
-        // TEMP DIAG: verwijder na onderzoek — bewijs welke velden echt naar de API gaan
-        console.log('[book DIAG] POST /api/confirm-booking body', JSON.stringify(confirmBody));
         const res = await fetch('/api/confirm-booking', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
