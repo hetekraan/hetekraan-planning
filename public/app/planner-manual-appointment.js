@@ -1,13 +1,5 @@
 (function initPlannerManualAppointment(global) {
   let inFlight = false;
-  const SLOT_MAP = {
-    morning: { label: '09:00–13:00', startTime: '09:00' },
-    afternoon: { label: '13:00–17:00', startTime: '13:00' },
-  };
-  const BASE_PRICE_COMPONENTS = [
-    { key: 'onderhoud', amount: 195, checkboxId: 'mPriceOnderhoud' },
-    { key: 'voorrijkosten', amount: 50, checkboxId: 'mPriceVoorrijkosten' },
-  ];
 
   function isDebugEnabled() {
     try {
@@ -25,12 +17,10 @@
   }
 
   function normalizeYmdToDate(ymd) {
-    const m = String(ymd || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (!m) return null;
-    const y = Number(m[1]);
-    const mo = Number(m[2]);
-    const d = Number(m[3]);
-    return new Date(Date.UTC(y, mo - 1, d, 12, 0, 0));
+    if (global.HKPlannerUtils?.plannerDateFromYmd) {
+      return global.HKPlannerUtils.plannerDateFromYmd(ymd);
+    }
+    return null;
   }
 
   function collectFormValues() {
@@ -43,23 +33,14 @@
     const descInput = document.getElementById('mDesc');
     const contactIdInput = document.getElementById('mContactId');
     const activeDateInput = document.getElementById('dateInput');
-    const extraDescInput = document.getElementById('mPriceExtraDesc');
-    const extraAmountInput = document.getElementById('mPriceExtraAmount');
     const slotKey = (slotInput?.value || 'morning').trim();
-    const slot = SLOT_MAP[slotKey] || SLOT_MAP.morning;
+    const slot = global.HKPlannerUtils?.getPlannerSlotConfig
+      ? global.HKPlannerUtils.getPlannerSlotConfig(slotKey)
+      : { key: 'morning', label: '09:00–13:00', startTime: '09:00' };
 
-    const priceLines = [];
-    for (const item of BASE_PRICE_COMPONENTS) {
-      const checked = !!document.getElementById(item.checkboxId)?.checked;
-      if (!checked) continue;
-      priceLines.push({ desc: item.key, price: item.amount });
-    }
-    const extraDesc = (extraDescInput?.value || '').trim();
-    const extraAmountRaw = Number(extraAmountInput?.value || 0);
-    const extraAmount = Number.isFinite(extraAmountRaw) ? Math.round(extraAmountRaw * 100) / 100 : 0;
-    if (extraDesc && extraAmount > 0) {
-      priceLines.push({ desc: extraDesc, price: extraAmount });
-    }
+    const priceLines = global.HKPlannerCatalogV1?.getModalCatalogLines
+      ? global.HKPlannerCatalogV1.getModalCatalogLines()
+      : [];
     const totalPrice = Math.round(priceLines.reduce((sum, row) => sum + Number(row.price || 0), 0) * 100) / 100;
 
     return {
@@ -86,7 +67,7 @@
     if (!form.address) return 'Vul adres in';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(form.date)) return 'Vul een geldige datum in';
     if (!/^\d{2}:\d{2}$/.test(form.time)) return 'Vul een geldige tijd in';
-    if (!SLOT_MAP[form.slotKey]) return 'Kies een geldig tijdslot';
+    if (!global.HKPlannerUtils?.getPlannerSlotConfig) return 'Tijdslot helper niet geladen';
     if (!Number.isFinite(form.totalPrice) || form.totalPrice < 0) return 'Prijs moet 0 of hoger zijn';
     return null;
   }
@@ -216,15 +197,6 @@
   }
 
   function bindPriceControls() {
-    if (document.body?.dataset.hkModalPriceBound === '1') return;
-    document.body.dataset.hkModalPriceBound = '1';
-    const ids = ['mPriceOnderhoud', 'mPriceVoorrijkosten', 'mPriceExtraDesc', 'mPriceExtraAmount'];
-    for (const id of ids) {
-      const el = document.getElementById(id);
-      if (!el) continue;
-      const evt = el.tagName === 'INPUT' && (el.type === 'text' || el.type === 'number') ? 'input' : 'change';
-      el.addEventListener(evt, updatePricePreview);
-    }
     updatePricePreview();
   }
 

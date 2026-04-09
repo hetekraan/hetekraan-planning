@@ -1266,7 +1266,17 @@ export default async function handler(req, res) {
       }
 
       case 'rescheduleAppointment': {
-        const { ghlAppointmentId: rescId, newDate, newTime, type: rescType } = req.body;
+        const {
+          ghlAppointmentId: rescId,
+          contactId,
+          prevDate,
+          newDate,
+          newTime,
+          newTimeWindow,
+          slotKey,
+          slotLabel,
+          type: rescType,
+        } = req.body || {};
         if (!rescId || !newDate || !newTime) {
           return res.status(400).json({ error: 'ghlAppointmentId, newDate en newTime vereist' });
         }
@@ -1283,8 +1293,57 @@ export default async function handler(req, res) {
           console.warn('[rescheduleAppointment] mislukt:', result.err);
           return res.status(500).json({ error: 'GHL herplannen mislukt', detail: result.err });
         }
+        const windowLabel =
+          String(newTimeWindow || '').trim() ||
+          (slotKey === 'afternoon'
+            ? SLOT_LABEL_AFTERNOON_NL
+            : slotKey === 'morning'
+              ? SLOT_LABEL_MORNING_NL
+              : String(slotLabel || '').trim());
+        if (contactId) {
+          const bookingCanon = appendBookingCanonFields(
+            [
+              { id: FIELD_IDS.tijdafspraak, field_value: windowLabel || '' },
+              { id: BOOKING_FORM_FIELD_IDS.tijdslot, field_value: windowLabel || '' },
+            ],
+            {
+              tijdslot: windowLabel || '',
+            }
+          );
+          const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${encodeURIComponent(contactId)}`, {
+            method: 'PUT',
+            headers: {
+              Authorization: `Bearer ${GHL_API_KEY}`,
+              'Content-Type': 'application/json',
+              Version: '2021-04-15',
+            },
+            body: JSON.stringify({ customFields: bookingCanon.customFields }),
+          });
+          if (!putRes.ok) {
+            const detail = (await putRes.text().catch(() => '')).slice(0, 400);
+            return res.status(502).json({ error: 'Contact tijdslot bijwerken mislukt', detail });
+          }
+        }
+        const calId = effectiveCalendarId();
+        const locId = ghlLocationIdFromEnv();
+        if (prevDate && /^\d{4}-\d{2}-\d{2}$/.test(String(prevDate))) {
+          invalidateAmsterdamDayGhlReadCachesForDate({
+            locationId: locId,
+            calendarId: calId,
+            dateStr: String(prevDate),
+            trigger: 'rescheduleAppointment_prevDate',
+          });
+        }
+        if (newDate && /^\d{4}-\d{2}-\d{2}$/.test(String(newDate))) {
+          invalidateAmsterdamDayGhlReadCachesForDate({
+            locationId: locId,
+            calendarId: calId,
+            dateStr: String(newDate),
+            trigger: 'rescheduleAppointment_newDate',
+          });
+        }
         console.log('[rescheduleAppointment] bijgewerkt:', rescId, startIso);
-        return res.status(200).json({ success: true });
+        return res.status(200).json({ success: true, slotLabel: windowLabel || null });
       }
 
       case 'sendMorningMessages': {

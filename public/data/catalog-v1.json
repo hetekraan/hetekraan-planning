@@ -1,0 +1,1490 @@
+{
+  "version": 1,
+  "sourceFile": "/Users/daanklein/Documents/HETEKRAAN/prijslijst_bewerkt.xlsx",
+  "generatedAt": "2026-04-09T11:15:15.751Z",
+  "itemCount": 114,
+  "items": [
+    {
+      "id": "kraan-fusion-round-chroom-2",
+      "category": "kraan",
+      "name": "Fusion Round chroom",
+      "price": 600,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "fusion round chroom",
+        "kraan"
+      ],
+      "searchText": "fusion round chroom kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-fusion-round-gold-3",
+      "category": "kraan",
+      "name": "Fusion Round gold",
+      "price": 1500,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "fusion round gold",
+        "kraan"
+      ],
+      "searchText": "fusion round gold kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-fusion-round-black-4",
+      "category": "kraan",
+      "name": "Fusion Round black",
+      "price": 950,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "fusion round black",
+        "kraan"
+      ],
+      "searchText": "fusion round black kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-fusion-square-chroom-5",
+      "category": "kraan",
+      "name": "Fusion Square chroom",
+      "price": 600,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "fusion square chroom",
+        "kraan"
+      ],
+      "searchText": "fusion square chroom kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-fusion-square-gold-6",
+      "category": "kraan",
+      "name": "Fusion Square gold",
+      "price": 1500,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "fusion square gold",
+        "kraan"
+      ],
+      "searchText": "fusion square gold kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-fusion-square-black-7",
+      "category": "kraan",
+      "name": "Fusion Square black",
+      "price": 950,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "fusion square black",
+        "kraan"
+      ],
+      "searchText": "fusion square black kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-classic-fusion-round-chroom-8",
+      "category": "kraan",
+      "name": "Classic Fusion Round chroom",
+      "price": 800,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "classic fusion round chroom",
+        "kraan"
+      ],
+      "searchText": "classic fusion round chroom kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-classic-fusion-square-chroom-9",
+      "category": "kraan",
+      "name": "Classic Fusion Square chroom",
+      "price": 800,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "classic fusion square chroom",
+        "kraan"
+      ],
+      "searchText": "classic fusion square chroom kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-fusion-round-gun-metal-10",
+      "category": "kraan",
+      "name": "Fusion Round gun metal",
+      "price": 950,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "fusion round gun metal",
+        "kraan"
+      ],
+      "searchText": "fusion round gun metal kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-fusion-round-rco-11",
+      "category": "kraan",
+      "name": "Fusion Round RCO",
+      "price": 950,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "fusion round rco",
+        "kraan"
+      ],
+      "searchText": "fusion round rco kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-fusion-square-gme-12",
+      "category": "kraan",
+      "name": "Fusion Square GME",
+      "price": 950,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "fusion square gme",
+        "kraan"
+      ],
+      "searchText": "fusion square gme kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-fusion-square-rco-13",
+      "category": "kraan",
+      "name": "Fusion Square RCO",
+      "price": 950,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "fusion square rco",
+        "kraan"
+      ],
+      "searchText": "fusion square rco kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-front-blk-14",
+      "category": "kraan",
+      "name": "Front BLK",
+      "price": 950,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "front blk",
+        "kraan"
+      ],
+      "searchText": "front blk kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-nordic-round-chroom-15",
+      "category": "kraan",
+      "name": "Nordic Round chroom",
+      "price": 400,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "nordic round chroom",
+        "kraan"
+      ],
+      "searchText": "nordic round chroom kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-nordic-square-chroom-16",
+      "category": "kraan",
+      "name": "Nordic Square chroom",
+      "price": 400,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "nordic square chroom",
+        "kraan"
+      ],
+      "searchText": "nordic square chroom kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-classic-nordic-round-chroom-17",
+      "category": "kraan",
+      "name": "Classic Nordic Round chroom",
+      "price": 600,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "classic nordic round chroom",
+        "kraan"
+      ],
+      "searchText": "classic nordic round chroom kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-classic-nordic-square-chroom-18",
+      "category": "kraan",
+      "name": "Classic Nordic Square chroom",
+      "price": 600,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "classic nordic square chroom",
+        "kraan"
+      ],
+      "searchText": "classic nordic square chroom kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-nordic-round-rvs-19",
+      "category": "kraan",
+      "name": "Nordic Round RVS",
+      "price": 550,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "nordic round rvs",
+        "kraan"
+      ],
+      "searchText": "nordic round rvs kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-nordic-square-rvs-20",
+      "category": "kraan",
+      "name": "Nordic Square RVS",
+      "price": 550,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "nordic square rvs",
+        "kraan"
+      ],
+      "searchText": "nordic square rvs kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-mengkraan-nordic-square-chroom-21",
+      "category": "kraan",
+      "name": "Mengkraan Nordic Square chroom",
+      "price": 255,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "mengkraan nordic square chroom",
+        "kraan"
+      ],
+      "searchText": "mengkraan nordic square chroom kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-mengkraan-nordic-square-rvs-22",
+      "category": "kraan",
+      "name": "Mengkraan Nordic Square RVS",
+      "price": 350,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "mengkraan nordic square rvs",
+        "kraan"
+      ],
+      "searchText": "mengkraan nordic square rvs kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-mengkraan-nordic-round-chroom-23",
+      "category": "kraan",
+      "name": "Mengkraan Nordic Round chroom",
+      "price": 255,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "mengkraan nordic round chroom",
+        "kraan"
+      ],
+      "searchText": "mengkraan nordic round chroom kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-mengkraan-nordic-round-rvs-24",
+      "category": "kraan",
+      "name": "Mengkraan Nordic Round RVS",
+      "price": 350,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "mengkraan nordic round rvs",
+        "kraan"
+      ],
+      "searchText": "mengkraan nordic round rvs kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-fusion-square-rvs-25",
+      "category": "kraan",
+      "name": "Fusion Square RVS",
+      "price": 750,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "fusion square rvs",
+        "kraan"
+      ],
+      "searchText": "fusion square rvs kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-fusion-square-messing-patina-26",
+      "category": "kraan",
+      "name": "Fusion Square messing patina",
+      "price": 1050,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "fusion square messing patina",
+        "kraan"
+      ],
+      "searchText": "fusion square messing patina kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-fusion-round-rvs-27",
+      "category": "kraan",
+      "name": "Fusion Round RVS",
+      "price": 750,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "fusion round rvs",
+        "kraan"
+      ],
+      "searchText": "fusion round rvs kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-fusion-round-messing-patina-28",
+      "category": "kraan",
+      "name": "Fusion Round messing patina",
+      "price": 1050,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "fusion round messing patina",
+        "kraan"
+      ],
+      "searchText": "fusion round messing patina kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-classic-nordic-round-rvs-29",
+      "category": "kraan",
+      "name": "Classic Nordic Round RVS",
+      "price": 750,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "classic nordic round rvs",
+        "kraan"
+      ],
+      "searchText": "classic nordic round rvs kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-classic-nordic-square-rvs-30",
+      "category": "kraan",
+      "name": "Classic Nordic Square RVS",
+      "price": 750,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "classic nordic square rvs",
+        "kraan"
+      ],
+      "searchText": "classic nordic square rvs kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-classic-fusion-round-rvs-31",
+      "category": "kraan",
+      "name": "Classic Fusion Round RVS",
+      "price": 950,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "classic fusion round rvs",
+        "kraan"
+      ],
+      "searchText": "classic fusion round rvs kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-classic-fusion-round-messing-patina-32",
+      "category": "kraan",
+      "name": "Classic Fusion Round messing patina",
+      "price": 1250,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "classic fusion round messing patina",
+        "kraan"
+      ],
+      "searchText": "classic fusion round messing patina kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-classic-fusion-square-rvs-33",
+      "category": "kraan",
+      "name": "Classic Fusion Square RVS",
+      "price": 950,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "classic fusion square rvs",
+        "kraan"
+      ],
+      "searchText": "classic fusion square rvs kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-classic-fusion-square-messing-patina-34",
+      "category": "kraan",
+      "name": "Classic Fusion Square messing patina",
+      "price": 1250,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "classic fusion square messing patina",
+        "kraan"
+      ],
+      "searchText": "classic fusion square messing patina kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-front-rvs-35",
+      "category": "kraan",
+      "name": "Front RVS",
+      "price": 750,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "front rvs",
+        "kraan"
+      ],
+      "searchText": "front rvs kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-front-gun-metal-36",
+      "category": "kraan",
+      "name": "Front gun metal",
+      "price": 950,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "front gun metal",
+        "kraan"
+      ],
+      "searchText": "front gun metal kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-front-rose-kope-37",
+      "category": "kraan",
+      "name": "Front rose kope",
+      "price": 950,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "front rose kope",
+        "kraan"
+      ],
+      "searchText": "front rose kope kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-flex-round-chroom-38",
+      "category": "kraan",
+      "name": "Flex Round chroom",
+      "price": 600,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "flex round chroom",
+        "kraan"
+      ],
+      "searchText": "flex round chroom kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-flex-round-rvs-39",
+      "category": "kraan",
+      "name": "Flex Round RVS",
+      "price": 750,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "flex round rvs",
+        "kraan"
+      ],
+      "searchText": "flex round rvs kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-flex-round-zwart-40",
+      "category": "kraan",
+      "name": "Flex Round zwart",
+      "price": 950,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "flex round zwart",
+        "kraan"
+      ],
+      "searchText": "flex round zwart kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-flex-round-gun-metal-41",
+      "category": "kraan",
+      "name": "Flex Round gun metal",
+      "price": 950,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "flex round gun metal",
+        "kraan"
+      ],
+      "searchText": "flex round gun metal kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-flex-round-rose-koper-42",
+      "category": "kraan",
+      "name": "Flex Round rose koper",
+      "price": 950,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "flex round rose koper",
+        "kraan"
+      ],
+      "searchText": "flex round rose koper kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-flex-square-chroom-43",
+      "category": "kraan",
+      "name": "Flex Square chroom",
+      "price": 600,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "flex square chroom",
+        "kraan"
+      ],
+      "searchText": "flex square chroom kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-flex-square-rvs-44",
+      "category": "kraan",
+      "name": "Flex Square RVS",
+      "price": 750,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "flex square rvs",
+        "kraan"
+      ],
+      "searchText": "flex square rvs kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-flex-square-zwart-45",
+      "category": "kraan",
+      "name": "Flex Square zwart",
+      "price": 950,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "flex square zwart",
+        "kraan"
+      ],
+      "searchText": "flex square zwart kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-flex-square-gun-metal-46",
+      "category": "kraan",
+      "name": "Flex Square gun metal",
+      "price": 950,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "flex square gun metal",
+        "kraan"
+      ],
+      "searchText": "flex square gun metal kraan kranen",
+      "active": true
+    },
+    {
+      "id": "kraan-flex-square-rose-koper-47",
+      "category": "kraan",
+      "name": "Flex Square rose koper",
+      "price": 950,
+      "sourceSheet": "kranen",
+      "aliases": [
+        "flex square rose koper",
+        "kraan"
+      ],
+      "searchText": "flex square rose koper kraan kranen",
+      "active": true
+    },
+    {
+      "id": "quooker-pro3-eq-b-nl-2",
+      "category": "quooker",
+      "name": "PRO3 EQ B NL",
+      "price": 695,
+      "sourceSheet": "Quookers",
+      "aliases": [
+        "pro3 eq b nl",
+        "quooker"
+      ],
+      "searchText": "pro3 eq b nl quooker quookers",
+      "active": true
+    },
+    {
+      "id": "quooker-combi-b-nl-3",
+      "category": "quooker",
+      "name": "COMBI B NL",
+      "price": 995,
+      "sourceSheet": "Quookers",
+      "aliases": [
+        "combi b nl",
+        "quooker"
+      ],
+      "searchText": "combi b nl quooker quookers",
+      "active": true
+    },
+    {
+      "id": "quooker-combi-b-nl-4",
+      "category": "quooker",
+      "name": "COMBI+ B NL",
+      "price": 995,
+      "sourceSheet": "Quookers",
+      "aliases": [
+        "combi+ b nl",
+        "quooker"
+      ],
+      "searchText": "combi+ b nl quooker quookers",
+      "active": true
+    },
+    {
+      "id": "quooker-cube-5",
+      "category": "quooker",
+      "name": "CUBE",
+      "price": 1100,
+      "sourceSheet": "Quookers",
+      "aliases": [
+        "cube",
+        "quooker"
+      ],
+      "searchText": "cube quooker quookers",
+      "active": true
+    },
+    {
+      "id": "quooker-set-van-4-co2-flessen-6",
+      "category": "quooker",
+      "name": "Set van 4 CO2 flessen",
+      "price": 67,
+      "sourceSheet": "Quookers",
+      "aliases": [
+        "set van 4 co2 flessen",
+        "quooker"
+      ],
+      "searchText": "set van 4 co2 flessen quooker quookers",
+      "active": true
+    },
+    {
+      "id": "quooker-cube-filter-cartridge-7",
+      "category": "quooker",
+      "name": "CUBE filter cartridge",
+      "price": 80,
+      "sourceSheet": "Quookers",
+      "aliases": [
+        "cube filter cartridge",
+        "quooker"
+      ],
+      "searchText": "cube filter cartridge quooker quookers",
+      "active": true
+    },
+    {
+      "id": "quooker-hf-filter-cube-8",
+      "category": "quooker",
+      "name": "HF filter Cube",
+      "price": 60,
+      "sourceSheet": "Quookers",
+      "aliases": [
+        "hf filter cube",
+        "quooker"
+      ],
+      "searchText": "hf filter cube quooker quookers",
+      "active": true
+    },
+    {
+      "id": "quooker-zeeppomp-nordic-chroom-9",
+      "category": "quooker",
+      "name": "Zeeppomp Nordic chroom",
+      "price": 200,
+      "sourceSheet": "Quookers",
+      "aliases": [
+        "zeeppomp nordic chroom",
+        "quooker"
+      ],
+      "searchText": "zeeppomp nordic chroom quooker quookers",
+      "active": true
+    },
+    {
+      "id": "quooker-zeeppomp-nordic-gold-10",
+      "category": "quooker",
+      "name": "Zeeppomp Nordic gold",
+      "price": 395,
+      "sourceSheet": "Quookers",
+      "aliases": [
+        "zeeppomp nordic gold",
+        "quooker"
+      ],
+      "searchText": "zeeppomp nordic gold quooker quookers",
+      "active": true
+    },
+    {
+      "id": "quooker-zeeppomp-nordic-zwart-11",
+      "category": "quooker",
+      "name": "Zeeppomp Nordic zwart",
+      "price": 145,
+      "sourceSheet": "Quookers",
+      "aliases": [
+        "zeeppomp nordic zwart",
+        "quooker"
+      ],
+      "searchText": "zeeppomp nordic zwart quooker quookers",
+      "active": true
+    },
+    {
+      "id": "quooker-zeeppomp-nordic-gun-metal-12",
+      "category": "quooker",
+      "name": "Zeeppomp Nordic gun metal",
+      "price": 145,
+      "sourceSheet": "Quookers",
+      "aliases": [
+        "zeeppomp nordic gun metal",
+        "quooker"
+      ],
+      "searchText": "zeeppomp nordic gun metal quooker quookers",
+      "active": true
+    },
+    {
+      "id": "quooker-zeeppomp-nordic-rose-koper-13",
+      "category": "quooker",
+      "name": "Zeeppomp Nordic rose koper",
+      "price": 145,
+      "sourceSheet": "Quookers",
+      "aliases": [
+        "zeeppomp nordic rose koper",
+        "quooker"
+      ],
+      "searchText": "zeeppomp nordic rose koper quooker quookers",
+      "active": true
+    },
+    {
+      "id": "quooker-energieverdeler-cube-eu-14",
+      "category": "quooker",
+      "name": "Energieverdeler CUBE EU",
+      "price": 150,
+      "sourceSheet": "Quookers",
+      "aliases": [
+        "energieverdeler cube eu",
+        "quooker"
+      ],
+      "searchText": "energieverdeler cube eu quooker quookers",
+      "active": true
+    },
+    {
+      "id": "quooker-ophangbeugel-pro3-3l-15",
+      "category": "quooker",
+      "name": "Ophangbeugel PRO3 3L",
+      "price": 100,
+      "sourceSheet": "Quookers",
+      "aliases": [
+        "ophangbeugel pro3 3l",
+        "quooker"
+      ],
+      "searchText": "ophangbeugel pro3 3l quooker quookers",
+      "active": true
+    },
+    {
+      "id": "quooker-ophangbeugel-combi-7l-16",
+      "category": "quooker",
+      "name": "Ophangbeugel Combi(+) 7L",
+      "price": 100,
+      "sourceSheet": "Quookers",
+      "aliases": [
+        "ophangbeugel combi(+) 7l",
+        "quooker"
+      ],
+      "searchText": "ophangbeugel combi(+) 7l quooker quookers",
+      "active": true
+    },
+    {
+      "id": "quooker-zeeppomp-nordic-rvs-17",
+      "category": "quooker",
+      "name": "Zeeppomp Nordic RVS",
+      "price": 250,
+      "sourceSheet": "Quookers",
+      "aliases": [
+        "zeeppomp nordic rvs",
+        "quooker"
+      ],
+      "searchText": "zeeppomp nordic rvs quooker quookers",
+      "active": true
+    },
+    {
+      "id": "quooker-zeeppomp-nordic-messing-patina-18",
+      "category": "quooker",
+      "name": "Zeeppomp Nordic messing patina",
+      "price": 250,
+      "sourceSheet": "Quookers",
+      "aliases": [
+        "zeeppomp nordic messing patina",
+        "quooker"
+      ],
+      "searchText": "zeeppomp nordic messing patina quooker quookers",
+      "active": true
+    },
+    {
+      "id": "quooker-cube-filter-incl-aansluitset-19",
+      "category": "quooker",
+      "name": "CUBE filter incl. aansluitset",
+      "price": 365,
+      "sourceSheet": "Quookers",
+      "aliases": [
+        "cube filter incl. aansluitset",
+        "quooker"
+      ],
+      "searchText": "cube filter incl. aansluitset quooker quookers",
+      "active": true
+    },
+    {
+      "id": "quooker-appendage-kit-co2-3kg-cb-20",
+      "category": "quooker",
+      "name": "Appendage kit CO2 3kg CB",
+      "price": 155,
+      "sourceSheet": "Quookers",
+      "aliases": [
+        "appendage kit co2 3kg cb",
+        "quooker"
+      ],
+      "searchText": "appendage kit co2 3kg cb quooker quookers",
+      "active": true
+    },
+    {
+      "id": "service-perlatorhuls-fx-2",
+      "category": "service",
+      "name": "Perlatorhuls FX",
+      "price": 10,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "perlatorhuls fx",
+        "service"
+      ],
+      "searchText": "perlatorhuls fx service service producten",
+      "active": true
+    },
+    {
+      "id": "service-aansluitmateriaal-nf-3",
+      "category": "service",
+      "name": "Aansluitmateriaal NF",
+      "price": 19,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "aansluitmateriaal nf",
+        "service"
+      ],
+      "searchText": "aansluitmateriaal nf service service producten",
+      "active": true
+    },
+    {
+      "id": "service-aansluitmateriaal-nqk-4",
+      "category": "service",
+      "name": "Aansluitmateriaal NQK",
+      "price": 19,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "aansluitmateriaal nqk",
+        "service"
+      ],
+      "searchText": "aansluitmateriaal nqk service service producten",
+      "active": true
+    },
+    {
+      "id": "service-aansluitmateriaal-fx-5",
+      "category": "service",
+      "name": "Aansluitmateriaal FX",
+      "price": 19,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "aansluitmateriaal fx",
+        "service"
+      ],
+      "searchText": "aansluitmateriaal fx service service producten",
+      "active": true
+    },
+    {
+      "id": "service-supplementkit-fx-6",
+      "category": "service",
+      "name": "Supplementkit FX",
+      "price": 19,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "supplementkit fx",
+        "service"
+      ],
+      "searchText": "supplementkit fx service service producten",
+      "active": true
+    },
+    {
+      "id": "service-supplement-kit-ft-7",
+      "category": "service",
+      "name": "Supplement Kit FT",
+      "price": 37,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "supplement kit ft",
+        "service"
+      ],
+      "searchText": "supplement kit ft service service producten",
+      "active": true
+    },
+    {
+      "id": "service-pvc-nippel-8",
+      "category": "service",
+      "name": "PVC-nippel",
+      "price": 10,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "pvc-nippel",
+        "service"
+      ],
+      "searchText": "pvc-nippel service service producten",
+      "active": true
+    },
+    {
+      "id": "service-mengventiel-9",
+      "category": "service",
+      "name": "Mengventiel",
+      "price": 185,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "mengventiel",
+        "service"
+      ],
+      "searchText": "mengventiel service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-afvoer-boorsetje-10",
+      "category": "service",
+      "name": "Serviceset Afvoer/Boorsetje",
+      "price": 39,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset afvoer/boorsetje",
+        "service"
+      ],
+      "searchText": "serviceset afvoer/boorsetje service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-ombouw-combi-11",
+      "category": "service",
+      "name": "Serviceset ombouw Combi+",
+      "price": 38,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset ombouw combi+",
+        "service"
+      ],
+      "searchText": "serviceset ombouw combi+ service service producten",
+      "active": true
+    },
+    {
+      "id": "service-supplements-kit-2-combi-eq-12",
+      "category": "service",
+      "name": "Supplements kit 2: Combi EQ",
+      "price": 75,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "supplements kit 2: combi eq",
+        "service"
+      ],
+      "searchText": "supplements kit 2: combi eq service service producten",
+      "active": true
+    },
+    {
+      "id": "service-supplements-kit-3-combi-eq-13",
+      "category": "service",
+      "name": "Supplements kit 3: Combi+ EQ",
+      "price": 75,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "supplements kit 3: combi+ eq",
+        "service"
+      ],
+      "searchText": "supplements kit 3: combi+ eq service service producten",
+      "active": true
+    },
+    {
+      "id": "service-mengventiel-combi-14",
+      "category": "service",
+      "name": "Mengventiel Combi+",
+      "price": 185,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "mengventiel combi+",
+        "service"
+      ],
+      "searchText": "mengventiel combi+ service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-keramische-afsluiter-15",
+      "category": "service",
+      "name": "Serviceset Keramische Afsluiter",
+      "price": 84,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset keramische afsluiter",
+        "service"
+      ],
+      "searchText": "serviceset keramische afsluiter service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-afdekplaat-chr-16",
+      "category": "service",
+      "name": "Serviceset afdekplaat CHR",
+      "price": 47,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset afdekplaat chr",
+        "service"
+      ],
+      "searchText": "serviceset afdekplaat chr service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-afdekplaat-sst-17",
+      "category": "service",
+      "name": "Serviceset afdekplaat SST",
+      "price": 65,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset afdekplaat sst",
+        "service"
+      ],
+      "searchText": "serviceset afdekplaat sst service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-afdekplaat-ptn-18",
+      "category": "service",
+      "name": "Serviceset Afdekplaat PTN",
+      "price": 93,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset afdekplaat ptn",
+        "service"
+      ],
+      "searchText": "serviceset afdekplaat ptn service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-afdekplaat-blk-19",
+      "category": "service",
+      "name": "Serviceset afdekplaat BLK",
+      "price": 93,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset afdekplaat blk",
+        "service"
+      ],
+      "searchText": "serviceset afdekplaat blk service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-afdekplaat-gme-20",
+      "category": "service",
+      "name": "Serviceset afdekplaat GME",
+      "price": 93,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset afdekplaat gme",
+        "service"
+      ],
+      "searchText": "serviceset afdekplaat gme service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-afdekplaat-rco-21",
+      "category": "service",
+      "name": "Serviceset afdekplaat RCO",
+      "price": 93,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset afdekplaat rco",
+        "service"
+      ],
+      "searchText": "serviceset afdekplaat rco service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-perlator-nordic-fusion-22",
+      "category": "service",
+      "name": "Serviceset Perlator Nordic Fusion",
+      "price": 30,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset perlator nordic fusion",
+        "service"
+      ],
+      "searchText": "serviceset perlator nordic fusion service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-perlator-nordic-fusion-chr-23",
+      "category": "service",
+      "name": "Serviceset Perlator Nordic Fusion CHR",
+      "price": 40,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset perlator nordic fusion chr",
+        "service"
+      ],
+      "searchText": "serviceset perlator nordic fusion chr service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-perlator-nordic-fusion-sst-24",
+      "category": "service",
+      "name": "Serviceset Perlator Nordic Fusion SST",
+      "price": 40,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset perlator nordic fusion sst",
+        "service"
+      ],
+      "searchText": "serviceset perlator nordic fusion sst service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-perlator-nordic-fusion-gld-25",
+      "category": "service",
+      "name": "Serviceset Perlator Nordic Fusion GLD",
+      "price": 40,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset perlator nordic fusion gld",
+        "service"
+      ],
+      "searchText": "serviceset perlator nordic fusion gld service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-perlator-nordic-fusion-ptb-26",
+      "category": "service",
+      "name": "Serviceset Perlator Nordic Fusion PTB",
+      "price": 40,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset perlator nordic fusion ptb",
+        "service"
+      ],
+      "searchText": "serviceset perlator nordic fusion ptb service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-perlator-nordic-fusion-blk-27",
+      "category": "service",
+      "name": "Serviceset Perlator Nordic Fusion BLK",
+      "price": 40,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset perlator nordic fusion blk",
+        "service"
+      ],
+      "searchText": "serviceset perlator nordic fusion blk service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-perlator-nordic-fusion-gme-28",
+      "category": "service",
+      "name": "Serviceset Perlator Nordic Fusion GME",
+      "price": 40,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset perlator nordic fusion gme",
+        "service"
+      ],
+      "searchText": "serviceset perlator nordic fusion gme service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-perlator-nordic-fusion-rco-29",
+      "category": "service",
+      "name": "Serviceset Perlator Nordic Fusion RCO",
+      "price": 40,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset perlator nordic fusion rco",
+        "service"
+      ],
+      "searchText": "serviceset perlator nordic fusion rco service service producten",
+      "active": true
+    },
+    {
+      "id": "service-inlaatcombinatie-8-bar-30",
+      "category": "service",
+      "name": "Inlaatcombinatie 8 bar",
+      "price": 80,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "inlaatcombinatie 8 bar",
+        "service"
+      ],
+      "searchText": "inlaatcombinatie 8 bar service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-perlator-nordic-quooker-kraan-chr-31",
+      "category": "service",
+      "name": "Serviceset Perlator Nordic Quooker kraan CHR",
+      "price": 40,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset perlator nordic quooker kraan chr",
+        "service"
+      ],
+      "searchText": "serviceset perlator nordic quooker kraan chr service service producten",
+      "active": true
+    },
+    {
+      "id": "service-perlator-mk-chr-32",
+      "category": "service",
+      "name": "Perlator MK CHR",
+      "price": 40,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "perlator mk chr",
+        "service"
+      ],
+      "searchText": "perlator mk chr service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-kap-7l-eq-eu-33",
+      "category": "service",
+      "name": "Serviceset kap 7L EQ EU",
+      "price": 195,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset kap 7l eq eu",
+        "service"
+      ],
+      "searchText": "serviceset kap 7l eq eu service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-binnenwerk-combi-eq-34",
+      "category": "service",
+      "name": "Serviceset Binnenwerk Combi EQ",
+      "price": 335,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset binnenwerk combi eq",
+        "service"
+      ],
+      "searchText": "serviceset binnenwerk combi eq service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-binnenwerk-pro3-eq-35",
+      "category": "service",
+      "name": "Serviceset Binnenwerk PRO3 EQ",
+      "price": 280,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset binnenwerk pro3 eq",
+        "service"
+      ],
+      "searchText": "serviceset binnenwerk pro3 eq service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-binnenwerk-pro3-eq-b-36",
+      "category": "service",
+      "name": "Serviceset Binnenwerk PRO3 EQ B",
+      "price": 280,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset binnenwerk pro3 eq b",
+        "service"
+      ],
+      "searchText": "serviceset binnenwerk pro3 eq b service service producten",
+      "active": true
+    },
+    {
+      "id": "service-serviceset-binnenwerk-pro7-eq-37",
+      "category": "service",
+      "name": "Serviceset Binnenwerk PRO7 EQ",
+      "price": 320,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "serviceset binnenwerk pro7 eq",
+        "service"
+      ],
+      "searchText": "serviceset binnenwerk pro7 eq service service producten",
+      "active": true
+    },
+    {
+      "id": "service-flex-cartridge-38",
+      "category": "service",
+      "name": "flex cartridge",
+      "price": 195,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "flex cartridge",
+        "service"
+      ],
+      "searchText": "flex cartridge service service producten",
+      "active": true
+    },
+    {
+      "id": "service-slang-flex-39",
+      "category": "service",
+      "name": "Slang FLEX",
+      "price": 70,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "slang flex",
+        "service"
+      ],
+      "searchText": "slang flex service service producten",
+      "active": true
+    },
+    {
+      "id": "service-software-kap-pro-3-40",
+      "category": "service",
+      "name": "software kap pro 3",
+      "price": 125,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "software kap pro 3",
+        "service"
+      ],
+      "searchText": "software kap pro 3 service service producten",
+      "active": true
+    },
+    {
+      "id": "service-hitac-filter-41",
+      "category": "service",
+      "name": "Hitac filter",
+      "price": 115,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "hitac filter",
+        "service"
+      ],
+      "searchText": "hitac filter service service producten",
+      "active": true
+    },
+    {
+      "id": "service-reduceerventiel-42",
+      "category": "service",
+      "name": "reduceerventiel",
+      "price": 145,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "reduceerventiel",
+        "service"
+      ],
+      "searchText": "reduceerventiel service service producten",
+      "active": true
+    },
+    {
+      "id": "service-led-module-flex-43",
+      "category": "service",
+      "name": "Led module FLEX",
+      "price": 195,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "led module flex",
+        "service"
+      ],
+      "searchText": "led module flex service service producten",
+      "active": true
+    },
+    {
+      "id": "service-drukknop-flex-44",
+      "category": "service",
+      "name": "Drukknop FLEX",
+      "price": 195,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "drukknop flex",
+        "service"
+      ],
+      "searchText": "drukknop flex service service producten",
+      "active": true
+    },
+    {
+      "id": "service-filter-cube-1-45",
+      "category": "service",
+      "name": "Filter Cube 1",
+      "price": 80,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "filter cube 1",
+        "service"
+      ],
+      "searchText": "filter cube 1 service service producten",
+      "active": true
+    },
+    {
+      "id": "service-montage-kosten-46",
+      "category": "service",
+      "name": "montage kosten",
+      "price": 105,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "montage kosten",
+        "service"
+      ],
+      "searchText": "montage kosten service service producten",
+      "active": true
+    },
+    {
+      "id": "service-verdeler-47",
+      "category": "service",
+      "name": "Verdeler",
+      "price": 150,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "verdeler",
+        "service"
+      ],
+      "searchText": "verdeler service service producten",
+      "active": true
+    },
+    {
+      "id": "service-perlator-48",
+      "category": "service",
+      "name": "perlator",
+      "price": 30,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "perlator",
+        "service"
+      ],
+      "searchText": "perlator service service producten",
+      "active": true
+    },
+    {
+      "id": "service-standaard-onderhoud-49",
+      "category": "service",
+      "name": "standaard onderhoud",
+      "price": 195,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "standaard onderhoud",
+        "service"
+      ],
+      "searchText": "standaard onderhoud service service producten",
+      "active": true
+    },
+    {
+      "id": "service-voorrijkosten-50",
+      "category": "service",
+      "name": "voorrijkosten",
+      "price": 50,
+      "sourceSheet": "Service producten",
+      "aliases": [
+        "voorrijkosten",
+        "service"
+      ],
+      "searchText": "voorrijkosten service service producten",
+      "active": true
+    }
+  ]
+}

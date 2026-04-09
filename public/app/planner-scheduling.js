@@ -52,45 +52,69 @@
   }
 
   async function confirmReschedule(ctx) {
+    if (confirmReschedule._inFlight) return;
     const a = ctx.findAppointmentById(ctx.getRescheduleId());
     if (!a) return;
     const newDate = document.getElementById('rDate')?.value;
-    const newTime = document.getElementById('rTime')?.value;
-    const newTimeWindow = document.getElementById('rTimeWindow')?.value?.trim() || null;
+    const slotKeyRaw = document.getElementById('rSlot')?.value;
+    const slotConfig = window.HKPlannerUtils?.getPlannerSlotConfig
+      ? window.HKPlannerUtils.getPlannerSlotConfig(slotKeyRaw)
+      : { key: 'morning', label: '09:00–13:00', startTime: '09:00', dayPart: 0 };
+    const newTime = slotConfig.startTime;
+    const newTimeWindow = document.getElementById('rTimeWindow')?.value?.trim() || slotConfig.label || null;
     const todayVal = ctx.getDateStr(ctx.getCurrentDate());
-    ctx.closeRescheduleModal();
-    if (newDate && newDate !== todayVal) {
-      ctx.setAppointments(ctx.getAppointmentsRef().filter((x) => String(x.id) !== String(ctx.getRescheduleId())));
-    } else {
-      a.timeSlot = newTime;
-      a.timeWindow = newTimeWindow;
-      a.estimated = false;
+    const prevDate = todayVal;
+    const moveBtn = document.querySelector('#rescheduleOverlay .btn-save');
+    confirmReschedule._inFlight = true;
+    if (moveBtn) {
+      moveBtn.disabled = true;
+      moveBtn.textContent = '⏳ Verplaatsen...';
     }
-    ctx.render();
+    ctx.closeRescheduleModal();
     ctx.showToast('⏳ Afspraak herplannen in GHL...', 'loading');
-    if (a.id && !String(a.id).startsWith('local-')) {
-      try {
+    try {
+      if (a.id && !String(a.id).startsWith('local-')) {
         const res = await fetch('/api/ghl?action=rescheduleAppointment', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-HK-Auth': ctx.hkAuthHeader() },
           body: JSON.stringify({
             ghlAppointmentId: a.id,
+            contactId: a.contactId || '',
             newDate: newDate || todayVal,
+            prevDate,
             newTime,
+            slotKey: slotConfig.key,
+            slotLabel: slotConfig.label,
+            newTimeWindow,
             type: a.jobType,
           }),
         });
-        if (res.ok) {
-          ctx.showToast(`✓ ${a.name} verplaatst naar ${newDate !== todayVal ? newDate + ' ' : ''}${newTime} in GHL`, 'success');
-        } else {
+        if (!res.ok) {
           const d = await res.json().catch(() => ({}));
-          ctx.showToast(`⚠ Lokaal bijgewerkt, GHL mislukt: ${d.error || res.status}`, 'info');
+          throw new Error(d.error || d.detail || `Herplannen mislukt (${res.status})`);
         }
-      } catch {
-        ctx.showToast('⚠ Lokaal bijgewerkt, GHL niet bereikbaar', 'info');
       }
-    } else {
-      ctx.showToast(`${a.name} verplaatst naar ${newTime}`, 'success');
+
+      const targetDate = window.HKPlannerUtils?.plannerDateFromYmd
+        ? window.HKPlannerUtils.plannerDateFromYmd(newDate || todayVal)
+        : null;
+      if (targetDate && typeof ctx.setCurrentDate === 'function') {
+        ctx.setCurrentDate(targetDate);
+      }
+      const nextCurrentDate = ctx.getCurrentDate();
+      await ctx.loadAppointments(nextCurrentDate);
+      ctx.showToast(
+        `✓ ${a.name} verplaatst naar ${newDate !== todayVal ? `${newDate} ` : ''}${slotConfig.label}`,
+        'success'
+      );
+    } catch (e) {
+      ctx.showToast(`⚠ Verplaatsen mislukt: ${e.message || e}`, 'info');
+    } finally {
+      confirmReschedule._inFlight = false;
+      if (moveBtn) {
+        moveBtn.disabled = false;
+        moveBtn.textContent = '↗ Verplaatsen';
+      }
     }
   }
 

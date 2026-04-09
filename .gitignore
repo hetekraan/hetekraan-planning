@@ -10,6 +10,8 @@ public/*
 public/*.html
 !public/app/
 !public/app/**
+!public/data/
+!public/data/**
 !public/styles/
 !public/styles/**
 .DS_Store

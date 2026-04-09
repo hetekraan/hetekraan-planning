@@ -18,6 +18,7 @@
 <script src="/app/planner-auth-session.js"></script>
 <script src="/app/planner-login.js"></script>
 <script src="/app/planner-utils.js"></script>
+<script src="/app/planner-catalog-v1.js"></script>
 <script src="/app/planner-manual-appointment.js"></script>
 <script src="/app/planner-actions.js"></script>
 <script src="/app/planner-route.js"></script>
@@ -1064,6 +1065,50 @@
     transition: all 0.15s;
   }
   .btn-add-extra:hover { border-color: var(--accent2); background: rgba(0,212,170,0.1); }
+  .catalog-v1-results {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    max-height: 170px;
+    overflow: auto;
+    background: rgba(255,255,255,0.02);
+  }
+  .catalog-v1-result {
+    width: 100%;
+    border: none;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    background: transparent;
+    color: var(--text);
+    padding: 8px 10px;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    text-align: left;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .catalog-v1-result:last-child { border-bottom: none; }
+  .catalog-v1-result:hover { background: rgba(255,255,255,0.06); }
+  .catalog-v1-empty {
+    color: var(--muted);
+    font-size: 12px;
+    padding: 8px 10px;
+  }
+  .catalog-v1-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text);
+    margin-top: 4px;
+  }
+  .catalog-v1-line button {
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 12px;
+  }
   .price-total-row {
     display: flex;
     justify-content: space-between;
@@ -1330,8 +1375,11 @@
         <input class="form-input" type="date" id="rDate">
       </div>
       <div>
-        <label class="form-label">Nieuwe tijd</label>
-        <input class="form-input" type="time" id="rTime">
+        <label class="form-label">Tijdslot</label>
+        <select class="form-select" id="rSlot">
+          <option value="morning">Ochtend (09:00–13:00)</option>
+          <option value="afternoon">Middag (13:00–17:00)</option>
+        </select>
       </div>
     </div>
     <div class="form-row" style="margin-bottom:4px">
@@ -1497,24 +1545,10 @@
       </div>
     </div>
     <div class="form-row">
-      <label class="form-label">Prijscomponenten</label>
-      <div style="display:flex;gap:14px;flex-wrap:wrap">
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text)">
-          <input type="checkbox" id="mPriceOnderhoud">
-          onderhoud (€195)
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text)">
-          <input type="checkbox" id="mPriceVoorrijkosten">
-          voorrijkosten (€50)
-        </label>
-      </div>
-      <div style="margin-top:8px">
-        <label class="form-label">Extra regel (optioneel)</label>
-        <div style="display:flex;gap:8px">
-          <input class="form-input" type="text" id="mPriceExtraDesc" placeholder="Bijv. mengventiel" style="flex:1">
-          <input class="form-input" type="number" id="mPriceExtraAmount" placeholder="€" min="0" style="width:110px">
-        </div>
-      </div>
+      <label class="form-label">Product/prijslijst (V1)</label>
+      <input class="form-input" type="text" id="mCatalogSearch" placeholder="Zoek product of service..." oninput="onModalCatalogSearchInput(this.value)">
+      <div class="catalog-v1-results" id="mCatalogResults"></div>
+      <div id="mCatalogLines" style="margin-top:8px"></div>
     </div>
     <div class="form-row">
       <label class="form-label">Omschrijving</label>
@@ -2168,11 +2202,8 @@ function renderApptCard(a, i) {
               </div>
             </div>`).join('')}
           <div class="add-extra-row" style="flex-direction:column;gap:5px">
-            <select class="form-select" id="extra-select-${domId}" onchange='onProductSelect(${idQ})'>
-              <option value="">— Kies product / onderdeel —</option>
-              ${PRODUCTS.map(p => `<option value="${p.desc}|${p.price}">${p.desc} — €${p.price}</option>`).join('')}
-              <option value="eigen|0">Eigen omschrijving...</option>
-            </select>
+            <input class="form-input" type="text" id="catalog-search-${domId}" placeholder="Zoek product of service..." oninput='onCatalogSearchInput(${idQ}, this.value)'>
+            <div class="catalog-v1-results" id="catalog-results-${domId}"></div>
             <div style="display:flex;gap:6px">
               <input class="form-input" type="text" id="extra-desc-${domId}" placeholder="Omschrijving" style="flex:1">
               <input class="form-input price-input" type="number" id="extra-price-${domId}" placeholder="€" min="0">
@@ -2564,52 +2595,29 @@ function euroDisplay(n) {
   return window.HKPlannerUtils.euroDisplay(n);
 }
 
-const STANDARD_PRICE_ITEMS = [
-  { label: 'onderhoud', price: 195 },
-  { label: 'voorrijkosten', price: 50 },
-];
+async function onModalCatalogSearchInput(query) {
+  if (!window.HKPlannerCatalogV1?.onModalSearchInput) return;
+  return window.HKPlannerCatalogV1.onModalSearchInput(query);
+}
 
-const PRODUCTS = [
-  ...STANDARD_PRICE_ITEMS.map((x) => ({ desc: x.label, price: x.price })),
-  { desc: 'Slang FLEX',        price: 70  },
-  { desc: 'Cartridge FLEX',    price: 195 },
-  { desc: 'Reduceerventiel',   price: 125 },
-  { desc: 'Mengventiel',       price: 195 },
-  { desc: 'Knop FLEX',         price: 110 },
-  { desc: 'Perlator',          price: 30  },
-  { desc: 'Binnenwerk Pro 3',  price: 280 },
-  { desc: 'Binnenwerk COMBI',  price: 320 },
-  { desc: 'Montagekosten',     price: 105 },
-];
+function addModalCatalogItem(itemId) {
+  if (!window.HKPlannerCatalogV1?.addModalCatalogItem) return;
+  return window.HKPlannerCatalogV1.addModalCatalogItem(itemId);
+}
 
-function onProductSelect(id) {
-  const a = appointments.find((x) => String(x.id) === String(id));
-  if (!a) return;
-  const sid = appointmentDomSafeId(id);
-  const selectEl = document.getElementById(`extra-select-${sid}`);
-  const val = selectEl?.value;
-  if (!val) return;
-  const pipe = val.indexOf('|');
-  const desc = pipe >= 0 ? val.slice(0, pipe) : val;
-  const priceStr = pipe >= 0 ? val.slice(pipe + 1) : '';
-  const price = parseFloat(priceStr);
-  const descEl = document.getElementById(`extra-desc-${sid}`);
-  const priceEl = document.getElementById(`extra-price-${sid}`);
-  if (desc === 'eigen') {
-    if (descEl) descEl.value = '';
-    if (priceEl) priceEl.value = '';
-    if (selectEl) selectEl.value = '';
-    return;
-  }
-  if (!desc || !Number.isFinite(price) || price <= 0) {
-    if (selectEl) selectEl.value = '';
-    return;
-  }
-  if (!a.extras) a.extras = [];
-  a.extras.push({ desc: String(desc).trim(), price: Math.round(price * 100) / 100 });
-  if (selectEl) selectEl.value = '';
-  render();
-  void persistPriceLines(id);
+function removeModalCatalogLine(idx) {
+  if (!window.HKPlannerCatalogV1?.removeModalLine) return;
+  return window.HKPlannerCatalogV1.removeModalLine(idx);
+}
+
+async function onCatalogSearchInput(id, query) {
+  if (!window.HKPlannerCatalogV1?.onAppointmentSearchInput) return;
+  return window.HKPlannerCatalogV1.onAppointmentSearchInput(id, query);
+}
+
+function addCatalogItemToAppointment(id, itemId) {
+  if (!window.HKPlannerCatalogV1?.addCatalogItemToAppointment) return;
+  return window.HKPlannerCatalogV1.addCatalogItemToAppointment(id, itemId);
 }
 
 function calcTotalPrice(a) {
@@ -2648,7 +2656,6 @@ function addExtra(id) {
   const sid = appointmentDomSafeId(id);
   const descEl   = document.getElementById(`extra-desc-${sid}`);
   const priceEl  = document.getElementById(`extra-price-${sid}`);
-  const selectEl = document.getElementById(`extra-select-${sid}`);
   const desc  = descEl?.value?.trim();
   const price = parseFloat(priceEl?.value);
   if (!desc || isNaN(price) || price <= 0) {
@@ -2660,7 +2667,18 @@ function addExtra(id) {
   // Reset velden
   if (descEl)   descEl.value  = '';
   if (priceEl)  priceEl.value = '';
-  if (selectEl) selectEl.value = '';
+  render();
+  void persistPriceLines(id);
+}
+
+function addExtraFromCatalog(id, item) {
+  const a = appointments.find((x) => String(x.id) === String(id));
+  if (!a || !item) return;
+  const desc = String(item.desc || '').trim();
+  const price = Number(item.price);
+  if (!desc || !Number.isFinite(price) || price <= 0) return;
+  if (!a.extras) a.extras = [];
+  a.extras.push({ desc, price: Math.round(price * 100) / 100 });
   render();
   void persistPriceLines(id);
 }
@@ -2746,9 +2764,19 @@ function deleteAppt(id) {
 
   // Vul huidige datum en tijd in als startpunt
   const todayVal = document.getElementById('dateInput')?.value || new Date().toISOString().split('T')[0];
+  const slotKey = window.HKPlannerUtils?.inferPlannerSlotKey
+    ? window.HKPlannerUtils.inferPlannerSlotKey({ dayPart: a.dayPart, timeWindow: a.timeWindow, timeSlot: a.timeSlot })
+    : ((a.dayPart ?? 1) === 0 ? 'morning' : 'afternoon');
+  const slotCfg = window.HKPlannerUtils?.getPlannerSlotConfig
+    ? window.HKPlannerUtils.getPlannerSlotConfig(slotKey)
+    : { startTime: '09:00' };
   document.getElementById('rDate').value       = todayVal;
-  document.getElementById('rTime').value       = a.timeSlot || '08:00';
+  const rSlotEl = document.getElementById('rSlot');
+  if (rSlotEl) rSlotEl.value = slotKey;
   document.getElementById('rTimeWindow').value = a.timeWindow || '';
+  if (!document.getElementById('rTimeWindow').value) {
+    document.getElementById('rTimeWindow').value = slotCfg.label || '';
+  }
 
   document.getElementById('rescheduleOverlay').classList.add('visible');
 }
@@ -2790,6 +2818,9 @@ async function confirmReschedule() {
 function openModal() {
   if (!window.HKPlannerModalUi?.openModal) return;
   const out = window.HKPlannerModalUi.openModal();
+  if (window.HKPlannerCatalogV1?.clearModalCatalogLines) {
+    window.HKPlannerCatalogV1.clearModalCatalogLines();
+  }
   if (window.HKPlannerManualAppointment?.updatePricePreview) {
     window.HKPlannerManualAppointment.updatePricePreview();
   }
@@ -3008,6 +3039,9 @@ async function doLogin() {
 document.addEventListener('DOMContentLoaded', () => {
   const lp = document.getElementById('loginPass');
   if (lp) lp.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  if (window.HKPlannerCatalogV1?.init) {
+    void window.HKPlannerCatalogV1.init();
+  }
   if (window.HKPlannerManualAppointment?.bindModalKeyboardSubmit) {
     window.HKPlannerManualAppointment.bindModalKeyboardSubmit();
   }
