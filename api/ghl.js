@@ -290,6 +290,19 @@ function normalizePhoneForGhl(raw) {
   return digits;
 }
 
+function fallbackContactName(input = {}) {
+  const name = String(input.name || '').trim();
+  if (name) return name;
+  const email = String(input.email || '').trim().toLowerCase();
+  if (email.includes('@')) {
+    const local = email.split('@')[0].replace(/[._-]+/g, ' ').trim();
+    if (local) return local;
+  }
+  const phone = String(input.phone || '').trim();
+  if (phone) return phone;
+  return 'Onbekende klant';
+}
+
 export default async function handler(req, res) {
   applySecurityHeaders(res);
   const requestId = getOrCreateRequestId(req, res);
@@ -904,13 +917,17 @@ export default async function handler(req, res) {
           slotLabel,
           timeWindow,
         } = req.body || {};
-        const nameNorm = String(name || '').trim();
+        const nameNormRaw = String(name || '').trim();
         const emailNorm = String(email || '').trim().toLowerCase();
         const addressNorm = String(address || '').trim();
         const phoneNorm = normalizePhoneForGhl(phone);
+        const nameNorm = fallbackContactName({
+          name: nameNormRaw,
+          email: emailNorm,
+          phone: phoneNorm,
+        });
         const dateNorm = normalizeYyyyMmDdInput(String(date || ''));
         const timeNorm = String(time || '').trim();
-        if (!nameNorm) return res.status(400).json({ error: 'name verplicht' });
         if (!addressNorm) return res.status(400).json({ error: 'address verplicht' });
         if (!dateNorm) return res.status(400).json({ error: 'date verplicht (YYYY-MM-DD)' });
         if (!/^\d{2}:\d{2}$/.test(timeNorm)) return res.status(400).json({ error: 'time verplicht (HH:mm)' });
@@ -939,21 +956,26 @@ export default async function handler(req, res) {
         let contactResolution = contactId ? 'existing_contact_id' : '';
         if (!contactId) {
           const nameParts = nameNorm.split(' ');
-          const baseContactPayload = {
+          const upsertPayload = {
             locationId: GHL_LOCATION_ID,
             firstName: nameParts[0] || nameNorm,
             lastName: nameParts.slice(1).join(' ') || '',
-            phone: phoneNorm || '',
-            email: emailNorm || '',
-            address1: addressNorm || '',
           };
+          if (phoneNorm) upsertPayload.phone = phoneNorm;
+          if (emailNorm) upsertPayload.email = emailNorm;
+          if (addressNorm) upsertPayload.address1 = addressNorm;
+          // city alleen meesturen als afleidbaar uit adresregel (laatste segment na komma).
+          const cityFromAddress = addressNorm.includes(',')
+            ? String(addressNorm.split(',').pop() || '').trim()
+            : '';
+          if (cityFromAddress) upsertPayload.city = cityFromAddress;
 
           // 1) Upsert op phone/email
           if (phoneNorm || emailNorm) {
             const upsertRes = await fetchWithRetry(`${GHL_BASE}/contacts/upsert`, {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-07-28' },
-              body: JSON.stringify(baseContactPayload),
+              body: JSON.stringify(upsertPayload),
             });
             if (upsertRes.ok) {
               const upsertData = await upsertRes.json().catch(() => ({}));
@@ -977,10 +999,29 @@ export default async function handler(req, res) {
 
           // 3) Force create als er nog geen contact is
           if (!contactId) {
+            const createPayload = {
+              locationId: GHL_LOCATION_ID,
+              firstName: nameParts[0] || nameNorm || 'Onbekend',
+            };
+            const createLastName = nameParts.slice(1).join(' ').trim();
+            if (createLastName) createPayload.lastName = createLastName;
+            if (phoneNorm) createPayload.phone = phoneNorm;
+            if (emailNorm) createPayload.email = emailNorm;
+            if (addressNorm) createPayload.address1 = addressNorm;
+            if (cityFromAddress) createPayload.city = cityFromAddress;
+
+            console.log('[createAppointment][contact_create_payload]', {
+              hasPhone: !!createPayload.phone,
+              hasEmail: !!createPayload.email,
+              hasAddress1: !!createPayload.address1,
+              hasCity: !!createPayload.city,
+              firstName: createPayload.firstName,
+              lastName: createPayload.lastName || '',
+            });
             const createRes = await fetchWithRetry(`${GHL_BASE}/contacts/`, {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-07-28' },
-              body: JSON.stringify(baseContactPayload),
+              body: JSON.stringify(createPayload),
             });
             if (createRes.ok) {
               const createData = await createRes.json().catch(() => ({}));
@@ -988,6 +1029,14 @@ export default async function handler(req, res) {
               if (contactId) contactResolution = 'created_fallback';
             } else {
               const detail = (await createRes.text().catch(() => '')).slice(0, 400);
+              console.error('[createAppointment][contact_create_error]', {
+                status: createRes.status,
+                detail: detail.slice(0, 300),
+                hasPhone: !!createPayload.phone,
+                hasEmail: !!createPayload.email,
+                hasAddress1: !!createPayload.address1,
+                hasCity: !!createPayload.city,
+              });
               return res.status(502).json({
                 error: `Contact force-create mislukt (${createRes.status})`,
                 detail,
