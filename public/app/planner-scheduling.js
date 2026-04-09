@@ -20,6 +20,7 @@
         address: a.fullAddressLine || a.address,
         timeWindow: a.timeWindow || null,
         jobDuration: ctx.jobDurationForType(a.jobType),
+        dayPart: a.dayPart,
       };
     }
 

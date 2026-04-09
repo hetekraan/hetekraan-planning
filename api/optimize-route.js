@@ -3,8 +3,32 @@
 // Valt terug op Directions API (optimize:true) als Distance Matrix niet beschikbaar is.
 
 const DEPOT      = 'Cornelis Dopperkade, Amsterdam';
-/** Eerste geplande aankomst-baseline (minuten vanaf middernacht). Bedrijfsregel: eerste ochtendstop op 09:00, niet 08:00. */
+/**
+ * Eerste **ochtendklant** arriveert om dit tijdstip (minuten sinds middernacht), ongeacht rijtijd vanaf depot.
+ * (Niet: om 09:00 vertrekken bij depot — de interne klok startte daarvoor impliciet op depot+rit.)
+ */
 const START_TIME = 9 * 60;
+
+/** Ochtendvenster (o.a. "ochtend" in parseTimeWindow eindigt 13:00). Alleen als fallback zonder dayPart. */
+function isMorningTimeWindow(tw) {
+  return tw != null && tw.end <= 13 * 60;
+}
+
+/**
+ * Eerste-klant-09:00-pin: primair `dayPart === 0` van de client; anders fallback op timeWindow.
+ */
+function isMorningStopForFirstCustomerPin(appointment, tw) {
+  const dp = appointment?.dayPart;
+  if (dp !== null && dp !== undefined) return Number(dp) === 0;
+  return isMorningTimeWindow(tw);
+}
+
+/** Vaste aankomst eerste ochtendstop; wacht tot venster opent indien nodig. */
+function firstMorningCustomerArrivalMinutes(tw) {
+  let eta = START_TIME;
+  if (tw && eta < tw.start) eta = tw.start;
+  return eta;
+}
 
 function parseTimeWindow(str) {
   if (!str || str === 'null') return null;
@@ -44,18 +68,24 @@ function roundUpQuarter(m) {
 }
 
 // Bereken ETAs voor een gegeven volgorde met reistijdenmatrix (in minuten)
-function calcETAs(order, travel, timeWindows, jobDurations) {
+function calcETAs(order, travel, timeWindows, jobDurations, appointments) {
   const etas = [];
   let currentIdx  = 0; // depot
   let currentTime = START_TIME;
 
   for (let step = 0; step < order.length; step++) {
-    const i        = order[step];
+    const i         = order[step];
     const travelMin = travel[currentIdx][i + 1];
-    let arrival    = currentTime + travelMin;
-    const tw       = timeWindows[i];
-    if (tw && arrival < tw.start) arrival = tw.start; // wachten
-    const eta = step === 0 && arrival === START_TIME ? START_TIME : roundUpQuarter(arrival);
+    const tw        = timeWindows[i];
+
+    let eta;
+    if (step === 0 && isMorningStopForFirstCustomerPin(appointments[i], tw)) {
+      eta = firstMorningCustomerArrivalMinutes(tw);
+    } else {
+      let arrival = currentTime + travelMin;
+      if (tw && arrival < tw.start) arrival = tw.start;
+      eta = roundUpQuarter(arrival);
+    }
     etas.push(eta);
     currentTime = eta + jobDurations[i];
     currentIdx  = i + 1;
@@ -64,7 +94,7 @@ function calcETAs(order, travel, timeWindows, jobDurations) {
 }
 
 // Greedy algoritme met volledige reistijdenmatrix
-function greedySchedule(n, travel, timeWindows, jobDurations) {
+function greedySchedule(n, travel, timeWindows, jobDurations, appointments) {
   const visited = new Array(n).fill(false);
   const order   = [];
   let currentIdx  = 0;
@@ -77,8 +107,11 @@ function greedySchedule(n, travel, timeWindows, jobDurations) {
     for (let i = 0; i < n; i++) {
       if (visited[i]) continue;
       const travelMin = travel[currentIdx][i + 1];
-      let arrival     = currentTime + travelMin;
       const tw        = timeWindows[i];
+      let arrival     = currentTime + travelMin;
+      if (step === 0 && isMorningStopForFirstCustomerPin(appointments[i], tw)) {
+        arrival = firstMorningCustomerArrivalMinutes(tw);
+      }
       let score       = travelMin;
 
       if (tw) {
@@ -98,11 +131,18 @@ function greedySchedule(n, travel, timeWindows, jobDurations) {
 
     visited[bestCandidate] = true;
     order.push(bestCandidate);
-    const tw       = timeWindows[bestCandidate];
-    let arrival    = currentTime + travel[currentIdx][bestCandidate + 1];
-    if (tw && arrival < tw.start) arrival = tw.start;
-    currentTime    = roundUpQuarter(arrival) + jobDurations[bestCandidate];
-    currentIdx     = bestCandidate + 1;
+    const twPick = timeWindows[bestCandidate];
+    let arrival  = currentTime + travel[currentIdx][bestCandidate + 1];
+    if (step === 0 && isMorningStopForFirstCustomerPin(appointments[bestCandidate], twPick)) {
+      arrival = firstMorningCustomerArrivalMinutes(twPick);
+    } else if (twPick && arrival < twPick.start) {
+      arrival = twPick.start;
+    }
+    const etaPick = step === 0 && isMorningStopForFirstCustomerPin(appointments[bestCandidate], twPick)
+      ? arrival
+      : roundUpQuarter(arrival);
+    currentTime = etaPick + jobDurations[bestCandidate];
+    currentIdx  = bestCandidate + 1;
   }
   return order;
 }
@@ -150,8 +190,8 @@ export default async function handler(req, res) {
         row.elements.map(el => el.status === 'OK' ? Math.ceil((el.duration?.value || 0) / 60) : 60)
       );
 
-      order    = fixedOrder || greedySchedule(n, travel, timeWindows, jobDurations);
-      etas     = calcETAs(order, travel, timeWindows, jobDurations);
+      order    = fixedOrder || greedySchedule(n, travel, timeWindows, jobDurations, appointments);
+      etas     = calcETAs(order, travel, timeWindows, jobDurations, appointments);
       legInfo  = order.map((apptIdx, i) => {
         const fromIdx = i === 0 ? 0 : order[i - 1] + 1;
         return { durationSeconds: travel[fromIdx][apptIdx + 1] * 60 };
@@ -190,10 +230,15 @@ export default async function handler(req, res) {
       for (let step = 0; step < n; step++) {
         const apptIdx = step;
         const travelMin = legDurMin[step] || 0;
-        let arrival     = currentTime + travelMin;
         const tw        = timeWindows[apptIdx];
-        if (tw && arrival < tw.start) arrival = tw.start;
-        const eta = step === 0 && arrival === START_TIME ? START_TIME : roundUpQuarter(arrival);
+        let eta;
+        if (step === 0 && isMorningStopForFirstCustomerPin(appointments[apptIdx], tw)) {
+          eta = firstMorningCustomerArrivalMinutes(tw);
+        } else {
+          let arrival = currentTime + travelMin;
+          if (tw && arrival < tw.start) arrival = tw.start;
+          eta = roundUpQuarter(arrival);
+        }
         etas.push(eta);
         currentTime = eta + jobDurations[apptIdx];
         legInfo.push({ durationSeconds: travelMin * 60 });
@@ -209,10 +254,15 @@ export default async function handler(req, res) {
 
       gmOrder.forEach((apptIdx, step) => {
         const travelMin = legDurMin[step] || 0;
-        let arrival     = currentTime + travelMin;
         const tw        = timeWindows[apptIdx];
-        if (tw && arrival < tw.start) arrival = tw.start;
-        const eta = step === 0 && arrival === START_TIME ? START_TIME : roundUpQuarter(arrival);
+        let eta;
+        if (step === 0 && isMorningStopForFirstCustomerPin(appointments[apptIdx], tw)) {
+          eta = firstMorningCustomerArrivalMinutes(tw);
+        } else {
+          let arrival = currentTime + travelMin;
+          if (tw && arrival < tw.start) arrival = tw.start;
+          eta = roundUpQuarter(arrival);
+        }
         etas.push(eta);
         currentTime = eta + jobDurations[apptIdx];
         legInfo.push({ durationSeconds: travelMin * 60 });

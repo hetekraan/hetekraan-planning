@@ -3108,6 +3108,7 @@ async function recalculateRouteTimesPreservingOrder(active) {
         address:     a.fullAddressLine || a.address,
         timeWindow:  a.timeWindow || null,
         jobDuration: JOB_DURATION[a.jobType] || 30,
+        dayPart:     a.dayPart,
       })),
       preserveOrder: true,
     }),
@@ -3206,13 +3207,23 @@ function initRouteDrag(list) {
           showToast('Volgorde aangepast met echte reistijden · 🔓 om opnieuw te optimaliseren', 'success');
         } catch (err) {
           console.error(err);
-          let mins = 9 * 60;
+          // Zelfde regel als optimize-route: dayPart === 0 => eerste stop 09:00 aankomst; anders geen 09:00-pin.
+          let cursor = 9 * 60;
           active.forEach((a, i) => {
-            a.timeSlot  = i === 0 ? '09:00' : minsToTime(mins);
-            a.estimated = true;
             const jobMins    = JOB_DURATION[a.jobType] || 30;
             const travelMins = 15;
-            mins = Math.ceil((mins + jobMins + travelMins) / 15) * 15;
+            const morning    = a.dayPart !== null && a.dayPart !== undefined && Number(a.dayPart) === 0;
+            if (i === 0 && morning) {
+              a.timeSlot = '09:00';
+              cursor = Math.ceil((9 * 60 + jobMins + travelMins) / 15) * 15;
+            } else if (i === 0) {
+              cursor = Math.ceil((13 * 60 + jobMins + travelMins) / 15) * 15;
+              a.timeSlot = minsToTime(13 * 60);
+            } else {
+              a.timeSlot = minsToTime(cursor);
+              cursor = Math.ceil((cursor + jobMins + travelMins) / 15) * 15;
+            }
+            a.estimated = true;
           });
           saveRouteSnapshot(getDateStr(currentDate));
           render();
