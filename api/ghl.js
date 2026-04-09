@@ -860,6 +860,7 @@ export default async function handler(req, res) {
         const {
           name,
           phone,
+          email,
           address,
           date,
           time,
@@ -873,6 +874,7 @@ export default async function handler(req, res) {
           timeWindow,
         } = req.body || {};
         const nameNorm = String(name || '').trim();
+        const emailNorm = String(email || '').trim().toLowerCase();
         const addressNorm = String(address || '').trim();
         const dateNorm = normalizeYyyyMmDdInput(String(date || ''));
         const timeNorm = String(time || '').trim();
@@ -930,6 +932,7 @@ export default async function handler(req, res) {
                 firstName: nameParts[0] || nameNorm,
                 lastName: nameParts.slice(1).join(' ') || '',
                 phone: searchPhone || '',
+                email: emailNorm || '',
                 address1: addressNorm || '',
               })
             });
@@ -991,6 +994,7 @@ export default async function handler(req, res) {
             body: JSON.stringify({
               address1,
               phone: phone ? String(phone).trim() : undefined,
+              email: emailNorm || undefined,
               customFields: bookingCanon.customFields,
             }),
           });

@@ -30,6 +30,7 @@
     const nameInput = document.getElementById('mName');
     const addressInput = document.getElementById('mAddress');
     const phoneInput = document.getElementById('mPhone');
+    const emailInput = document.getElementById('mEmail');
     const descInput = document.getElementById('mDesc');
     const contactIdInput = document.getElementById('mContactId');
     const activeDateInput = document.getElementById('dateInput');
@@ -55,6 +56,7 @@
       name: (nameInput?.value || '').trim(),
       address: (addressInput?.value || '').trim(),
       phone: (phoneInput?.value || '').trim(),
+      email: (emailInput?.value || '').trim().toLowerCase(),
       desc: (descInput?.value || '').trim(),
       contactId: (contactIdInput?.value || '').trim(),
       priceLines,
@@ -69,6 +71,9 @@
     if (!/^\d{2}:\d{2}$/.test(form.time)) return 'Vul een geldige tijd in';
     if (!global.HKPlannerUtils?.getPlannerSlotConfig) return 'Tijdslot helper niet geladen';
     if (!Number.isFinite(form.totalPrice) || form.totalPrice < 0) return 'Prijs moet 0 of hoger zijn';
+    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+      return 'Vul een geldig e-mailadres in';
+    }
     return null;
   }
 
@@ -116,6 +121,7 @@
       time: form.time,
       type: form.type,
       hasContactId: !!form.contactId,
+      hasEmail: !!form.email,
       hasPrice: form.totalPrice > 0,
     });
 
@@ -123,6 +129,7 @@
       const payload = {
         name: form.name,
         phone: form.phone,
+        email: form.email || '',
         address: form.address,
         date: form.date,
         time: form.time,
