@@ -66,6 +66,7 @@ import {
 import { deleteConfirmedReservationForContactDate } from '../lib/block-reservation-store.js';
 import { createConfirmedReservation } from '../lib/block-reservation-store.js';
 import { buildCompleteAppointmentPayload } from '../lib/usecases/complete-appointment.js';
+import { resolveContactCustomFieldId } from '../lib/ghl-custom-fields.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -190,6 +191,8 @@ const FIELD_IDS = {
   /** Zelfde ID als api/cron/morning-messages.js — voor ETA/ochtend-template in workflow */
   geplande_aankomst:   'XELcOSdWq3tqRtpLE5x8',
   opmerkingen:         'LCIFALarX3WZI5jsBbDA',
+  /** Niet hardcoded: runtime resolve via key `planner_notities` (optioneel env override). */
+  planner_notities:    String(process.env.GHL_FIELD_ID_PLANNER_NOTITIES || '').trim(),
 };
 
 function getField(contact, fieldId) {
@@ -200,6 +203,17 @@ function getField(contact, fieldId) {
   );
   const raw = field?.value ?? field?.field_value;
   return raw != null && raw !== '' ? String(raw) : '';
+}
+
+async function resolvePlannerNotitiesFieldId() {
+  return resolveContactCustomFieldId({
+    baseUrl: GHL_BASE,
+    apiKey: GHL_API_KEY,
+    locationId: ghlLocationIdFromEnv(),
+    fieldKey: 'planner_notities',
+    objectType: 'contact',
+    envOverride: FIELD_IDS.planner_notities,
+  });
 }
 
 /**
@@ -365,6 +379,7 @@ export default async function handler(req, res) {
     switch (action) {
 
       case 'getAppointments': {
+        const plannerNotitiesFieldId = await resolvePlannerNotitiesFieldId();
         const gaT0 = Date.now();
         const gaPerf = { route: 'getAppointments', ghl_calendar_events_ms: 0, blocked_slots_ms: 0, redis_b1_synthetic_ms: 0, contact_fetch_sum_ms: 0, filter_dedupe_map_ms: 0 };
 
@@ -530,7 +545,10 @@ export default async function handler(req, res) {
           }
           const canonPriceTotal = getField(contact, BOOKING_FORM_FIELD_IDS.prijs_totaal);
           e.parsedPrice      = canonPriceTotal || getField(contact, FIELD_IDS.prijs);
-          e.parsedNotes      = getField(contact, FIELD_IDS.opmerkingen);
+          const plannerNotities = plannerNotitiesFieldId
+            ? getField(contact, plannerNotitiesFieldId)
+            : '';
+          e.parsedNotes      = plannerNotities || getField(contact, FIELD_IDS.opmerkingen);
           e.parsedTimeWindow =
             getField(contact, BOOKING_FORM_FIELD_IDS.tijdslot) ||
             getField(contact, FIELD_IDS.tijdafspraak) ||
@@ -899,6 +917,9 @@ export default async function handler(req, res) {
             ? [{ desc: descNorm || 'Handmatige afspraak', price: totalNum }]
             : [];
         const structuredPriceRules = formatPriceRulesStructuredString(linesForCanon);
+        const plannerNotitiesFieldId = await resolvePlannerNotitiesFieldId();
+        const plannerNotitiesRaw = req.body?.notities ?? req.body?.plannerNotities ?? descNorm ?? '';
+        const plannerNotitiesNorm = String(plannerNotitiesRaw).trim();
         console.log('[updatePlannerBookingDetails][normalized]', {
           contactId: cid,
           dateNorm,
@@ -918,6 +939,9 @@ export default async function handler(req, res) {
           { id: FIELD_IDS.tijdafspraak, field_value: slotLabelNorm || '' },
           { id: FIELD_IDS.prijs_regels, field_value: JSON.stringify(linesForCanon) },
         ];
+        if (plannerNotitiesFieldId && plannerNotitiesNorm) {
+          customFields.push({ id: plannerNotitiesFieldId, field_value: plannerNotitiesNorm });
+        }
         if (totalNum !== null) {
           customFields.push({ id: FIELD_IDS.prijs, field_value: String(totalNum) });
         }
@@ -1158,6 +1182,9 @@ export default async function handler(req, res) {
           ? Math.round(normalizedLines.reduce((sum, row) => sum + Number(row.price || 0), 0) * 100) / 100
           : null;
         const priceNum = priceNumFromLines ?? toPriceNumber(price);
+        const plannerNotitiesFieldId = await resolvePlannerNotitiesFieldId();
+        const plannerNotitiesRaw = req.body?.notities ?? req.body?.plannerNotities ?? desc ?? '';
+        const plannerNotitiesNorm = String(plannerNotitiesRaw).trim();
 
         // Stap 1: contact resolven via upsert -> duplicate search -> force create
         const readResolvedContactId = (payload) =>
@@ -1273,6 +1300,9 @@ export default async function handler(req, res) {
             { id: FIELD_IDS.type_onderhoud, field_value: apptType || 'reparatie' },
             { id: FIELD_IDS.probleemomschrijving, field_value: desc || '' },
           ];
+          if (plannerNotitiesFieldId && plannerNotitiesNorm) {
+            customFields.push({ id: plannerNotitiesFieldId, field_value: plannerNotitiesNorm });
+          }
           if (slotLabelNorm) {
             customFields.push({ id: FIELD_IDS.tijdafspraak, field_value: slotLabelNorm });
           }
