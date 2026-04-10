@@ -1464,7 +1464,7 @@
 
   /* —— Responsive: mobile-first layout + min-width enhancements —— */
   .mobile-tabs {
-    display: flex;
+    display: none;
     flex-shrink: 0;
     height: 48px;
     background: var(--surface2);
@@ -1491,6 +1491,86 @@
   .mobile-tab.active {
     color: var(--accent);
     border-bottom-color: var(--accent);
+  }
+  .hamburger-btn {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .mobile-bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 120;
+    display: none;
+    background: rgba(20, 20, 20, 0.96);
+    border-top: 1px solid var(--border);
+    backdrop-filter: blur(8px);
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  }
+  .mobile-bottom-nav .mobile-tab {
+    border-bottom: none;
+    border-radius: 8px;
+    min-height: 44px;
+    height: 44px;
+    padding: 6px 8px;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+  }
+  .mobile-bottom-nav .mobile-tab.active {
+    background: rgba(255, 107, 53, 0.14);
+    color: var(--accent);
+  }
+  .mobile-menu-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 130;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease;
+  }
+  .mobile-menu-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+  }
+  .mobile-menu-panel {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: min(84vw, 320px);
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    transform: translateX(-102%);
+    transition: transform 0.24s ease;
+    padding: max(12px, env(safe-area-inset-top)) 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .mobile-menu-overlay.visible .mobile-menu-panel {
+    transform: translateX(0);
+  }
+  @media (max-width: 768px) {
+    body {
+      padding-bottom: calc(66px + env(safe-area-inset-bottom));
+    }
+    .hamburger-btn {
+      display: inline-flex;
+    }
+    .mobile-bottom-nav {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+    }
   }
   .global-search {
     width: 100%;
@@ -2082,6 +2162,7 @@
 
 <header>
   <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">
+    <button type="button" class="hamburger-btn" id="mobileMenuBtn" title="Menu" onclick="toggleMobileMenu(true)">☰</button>
     <div class="logo">HET<span>EKRAAN</span></div>
     <span id="daanEditBadge" class="daan-edit-badge" style="display:none" title="Je ziet de groene GHL-bewerkknop op elke kaart">GHL bewerken</span>
   </div>
@@ -2110,10 +2191,21 @@
   </div>
 </header>
 
-<!-- Tab-bar: standaard (mobiel); verborgen vanaf 769px waar route naast agenda staat -->
-<div class="mobile-tabs" id="mobileTabs">
+<!-- PWA mobile bottom nav -->
+<div class="mobile-tabs mobile-bottom-nav" id="mobileTabs">
   <button class="mobile-tab active" id="tabAfspraken" onclick="switchMobileTab('afspraken')">⬛ Afspraken</button>
   <button class="mobile-tab" id="tabRoute" onclick="switchMobileTab('route')">⚡ Route</button>
+  <button class="mobile-tab" id="tabZoeken" onclick="focusGlobalSearch()">🔎 Zoeken</button>
+  <button class="mobile-tab" id="tabMenu" onclick="toggleMobileMenu(true)">☰ Menu</button>
+</div>
+<div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="if(event.target===this)toggleMobileMenu(false)">
+  <div class="mobile-menu-panel">
+    <div class="section-title" style="margin-bottom:4px">Menu</div>
+    <button class="btn-add" type="button" onclick="toggleMobileMenu(false);openModal()">+ Afspraak</button>
+    <button class="btn-dagopgave" type="button" onclick="toggleMobileMenu(false);openDagopgave()">📋 Dagopgave</button>
+    <button class="btn-block-cal" type="button" onclick="toggleMobileMenu(false);onBlockDayButtonClick()">🚫 Blokkeer dag</button>
+    <button class="btn-logout" type="button" onclick="toggleMobileMenu(false);logoutPlanning()">Uitloggen</button>
+  </div>
 </div>
 <div class="global-search" id="globalSearchWrap">
   <input
@@ -2855,17 +2947,65 @@ function switchMobileTab(tab) {
   const route     = document.getElementById('panelRoute');
   const tabA      = document.getElementById('tabAfspraken');
   const tabR      = document.getElementById('tabRoute');
+  const tabZ      = document.getElementById('tabZoeken');
+  const tabM      = document.getElementById('tabMenu');
   if (!afspraken || !route) return;
   if (tab === 'afspraken') {
     afspraken.classList.remove('tab-hidden');
     route.classList.add('tab-hidden');
     tabA.classList.add('active');
     tabR.classList.remove('active');
+    if (tabZ) tabZ.classList.remove('active');
+    if (tabM) tabM.classList.remove('active');
   } else {
     route.classList.remove('tab-hidden');
     afspraken.classList.add('tab-hidden');
     tabR.classList.add('active');
     tabA.classList.remove('active');
+    if (tabZ) tabZ.classList.remove('active');
+    if (tabM) tabM.classList.remove('active');
+  }
+}
+
+function focusGlobalSearch() {
+  const input = document.getElementById('globalSearchInput');
+  switchMobileTab('afspraken');
+  const tabZ = document.getElementById('tabZoeken');
+  const tabA = document.getElementById('tabAfspraken');
+  const tabR = document.getElementById('tabRoute');
+  const tabM = document.getElementById('tabMenu');
+  if (tabZ) tabZ.classList.add('active');
+  if (tabA) tabA.classList.remove('active');
+  if (tabR) tabR.classList.remove('active');
+  if (tabM) tabM.classList.remove('active');
+  if (input) {
+    input.focus();
+    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
+function toggleMobileMenu(open) {
+  const overlay = document.getElementById('mobileMenuOverlay');
+  const tabM = document.getElementById('tabMenu');
+  const tabA = document.getElementById('tabAfspraken');
+  const tabR = document.getElementById('tabRoute');
+  const tabZ = document.getElementById('tabZoeken');
+  if (!overlay) return;
+  const shouldOpen = typeof open === 'boolean' ? open : !overlay.classList.contains('visible');
+  overlay.classList.toggle('visible', shouldOpen);
+  if (tabM) tabM.classList.toggle('active', shouldOpen);
+  if (shouldOpen) {
+    if (tabA) tabA.classList.remove('active');
+    if (tabR) tabR.classList.remove('active');
+    if (tabZ) tabZ.classList.remove('active');
+  } else {
+    const panelA = document.getElementById('panelAfspraken');
+    const panelR = document.getElementById('panelRoute');
+    if (panelR && !panelR.classList.contains('tab-hidden')) {
+      if (tabR) tabR.classList.add('active');
+    } else if (panelA && !panelA.classList.contains('tab-hidden')) {
+      if (tabA) tabA.classList.add('active');
+    }
   }
 }
 
@@ -4121,6 +4261,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const wrap = document.getElementById('globalSearchWrap');
     if (!wrap || wrap.contains(e.target)) return;
     closeGlobalSearchResults();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') toggleMobileMenu(false);
   });
   checkLogin();
 });
