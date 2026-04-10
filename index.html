@@ -1492,6 +1492,57 @@
     color: var(--accent);
     border-bottom-color: var(--accent);
   }
+  .global-search {
+    width: 100%;
+    max-width: 1180px;
+    margin: 10px auto 12px;
+    position: relative;
+    padding: 0 12px;
+  }
+  .global-search-input {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    min-height: 42px;
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+  .global-search-results {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 12px;
+    right: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    z-index: 140;
+    max-height: 340px;
+    overflow: auto;
+    display: none;
+  }
+  .global-search-results.open { display: block; }
+  .global-search-item {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .global-search-item:last-child { border-bottom: none; }
+  .global-search-item:hover { background: rgba(255,255,255,0.04); }
+  .global-search-meta {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    color: var(--muted);
+    font-size: 11px;
+    margin-top: 2px;
+  }
 
   .appointments.tab-hidden,
   .route-panel.tab-hidden {
@@ -2064,6 +2115,16 @@
   <button class="mobile-tab active" id="tabAfspraken" onclick="switchMobileTab('afspraken')">⬛ Afspraken</button>
   <button class="mobile-tab" id="tabRoute" onclick="switchMobileTab('route')">⚡ Route</button>
 </div>
+<div class="global-search" id="globalSearchWrap">
+  <input
+    id="globalSearchInput"
+    class="global-search-input"
+    type="text"
+    placeholder="Zoek afspraak op naam, adres, telefoon, notitie..."
+    autocomplete="off"
+  >
+  <div id="globalSearchResults" class="global-search-results"></div>
+</div>
 
 <div class="layout">
   <div class="appointments" id="panelAfspraken">
@@ -2390,6 +2451,101 @@ async function refreshGhlContactBaseUrl() {
 
 let currentDate = new Date();
 let appointments = [];
+let globalSearchTimer = null;
+let globalSearchResultsCache = [];
+
+function escapeHtml(s) {
+  return String(s || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function closeGlobalSearchResults() {
+  const box = document.getElementById('globalSearchResults');
+  if (!box) return;
+  box.classList.remove('open');
+}
+
+function renderGlobalSearchResults(rows) {
+  const box = document.getElementById('globalSearchResults');
+  if (!box) return;
+  if (!rows.length) {
+    box.innerHTML = '<div class="global-search-item" style="cursor:default;color:var(--muted)">Geen resultaten</div>';
+    box.classList.add('open');
+    return;
+  }
+  box.innerHTML = rows
+    .map((r, i) => {
+      const meta = [r.date || '', r.timeSlot || '', r.status || '', r.type || ''].filter(Boolean).join(' · ');
+      return `
+        <button type="button" class="global-search-item" onclick='openGlobalSearchResult(${i})'>
+          <div><strong>${escapeHtml(r.name || 'Klant')}</strong></div>
+          <div style="font-size:12px;color:var(--muted)">${escapeHtml(r.address || '')}</div>
+          <div class="global-search-meta">${escapeHtml(meta)}</div>
+        </button>
+      `;
+    })
+    .join('');
+  box.classList.add('open');
+}
+
+async function runGlobalSearch() {
+  const input = document.getElementById('globalSearchInput');
+  if (!input) return;
+  const q = String(input.value || '').trim();
+  if (q.length < 2) {
+    globalSearchResultsCache = [];
+    closeGlobalSearchResults();
+    return;
+  }
+  try {
+    const res = await fetch(`/api/ghl?action=searchAppointments&q=${encodeURIComponent(q)}`, {
+      headers: { 'X-HK-Auth': hkAuthHeader() },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return;
+    globalSearchResultsCache = Array.isArray(data?.results) ? data.results : [];
+    renderGlobalSearchResults(globalSearchResultsCache);
+  } catch (_) {}
+}
+
+function onGlobalSearchInput() {
+  if (globalSearchTimer) clearTimeout(globalSearchTimer);
+  globalSearchTimer = setTimeout(() => {
+    void runGlobalSearch();
+  }, 220);
+}
+
+async function openGlobalSearchResult(idx) {
+  const row = globalSearchResultsCache[idx];
+  if (!row) return;
+  closeGlobalSearchResults();
+  const input = document.getElementById('globalSearchInput');
+  if (input) input.value = '';
+  const targetDate = window.HKPlannerUtils?.plannerDateFromYmd
+    ? window.HKPlannerUtils.plannerDateFromYmd(row.date)
+    : null;
+  if (!targetDate) return;
+  currentDate = targetDate;
+  document.getElementById('dateLabel').textContent = formatDate(currentDate);
+  await loadAppointments(currentDate);
+  const byId = appointments.find((a) => String(a.id) === String(row.id));
+  const byContact = !byId && row.contactId
+    ? appointments.find((a) => String(a.contactId || '') === String(row.contactId || ''))
+    : null;
+  const hit = byId || byContact;
+  if (!hit) return;
+  scrollToCard(hit.id);
+  const domId = appointmentDomSafeId(hit.id);
+  const el = document.getElementById(`card-${domId}`);
+  if (el) {
+    el.classList.add('drag-over');
+    setTimeout(() => el.classList.remove('drag-over'), 1600);
+  }
+}
 
 function createPlannerCtx() {
   return {
@@ -3014,7 +3170,7 @@ function renderApptCard(a, i) {
             ${a.phone ? `<a class="icon-btn" href="tel:${a.phone}" title="Bellen">📞</a>` : ''}
             ${a.mapsLink ? `<a class="icon-btn" href="${a.mapsLink}" target="_blank" title="Maps">📍</a>` : ''}
             ${a.ghlUrl ? `<a class="icon-btn ghl" href="${a.ghlUrl}" target="_blank" title="Open in GHL">🔗</a>` : ''}
-            <button type="button" class="icon-btn edit-action" onclick='openAppointmentDetailsModal(${idQ})' title="Bekijk details">👁 Bekijk</button>
+            ${isDone ? `<button type="button" class="icon-btn edit-action" onclick='openAppointmentDetailsModal(${idQ})' title="Bekijk details">👁 Bekijk</button>` : ''}
             <button type="button" class="icon-btn edit-action" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">✏ Bewerk</button>
             <button class="icon-btn danger" onclick='deleteAppt(${idQ})' title="Verwijderen">✕</button>
           </div>
@@ -3951,6 +4107,21 @@ document.addEventListener('DOMContentLoaded', () => {
   if (window.HKPlannerManualAppointment?.bindPriceControls) {
     window.HKPlannerManualAppointment.bindPriceControls();
   }
+  const globalSearchInputEl = document.getElementById('globalSearchInput');
+  if (globalSearchInputEl) {
+    globalSearchInputEl.addEventListener('input', onGlobalSearchInput);
+    globalSearchInputEl.addEventListener('focus', () => {
+      if (globalSearchResultsCache.length) renderGlobalSearchResults(globalSearchResultsCache);
+    });
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeGlobalSearchResults();
+  });
+  document.addEventListener('click', (e) => {
+    const wrap = document.getElementById('globalSearchWrap');
+    if (!wrap || wrap.contains(e.target)) return;
+    closeGlobalSearchResults();
+  });
   checkLogin();
 });
 </script>

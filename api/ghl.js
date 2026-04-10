@@ -38,7 +38,10 @@ import {
   eventStartMsGhl,
   getEventStartDayAmsterdam,
 } from '../lib/planning/ghl-event-core.js';
-import { mapEnrichedGhlEventToAppointment } from '../lib/planning/appointment.js';
+import {
+  mapEnrichedGhlEventToAppointment,
+  plannerServiceMarkedCompleteOnRouteDay,
+} from '../lib/planning/appointment.js';
 import {
   buildCanonicalAddressWritePayload,
   logCanonicalAddressRead,
@@ -633,6 +636,160 @@ export default async function handler(req, res) {
           })
         );
         return res.status(200).json({ appointments });
+      }
+
+      case 'searchAppointments': {
+        const qRaw = String(req.query?.q || '').trim();
+        const q = qRaw.toLowerCase();
+        if (q.length < 2) return res.status(200).json({ results: [] });
+
+        const today = formatYyyyMmDdInAmsterdam(new Date());
+        const startDate =
+          normalizeYyyyMmDdInput(String(req.query?.startDate || '')) ||
+          addAmsterdamCalendarDays(today, -180) ||
+          today;
+        const endDate =
+          normalizeYyyyMmDdInput(String(req.query?.endDate || '')) ||
+          addAmsterdamCalendarDays(today, 180) ||
+          today;
+        const startBounds = amsterdamCalendarDayBoundsMs(startDate);
+        const endBounds = amsterdamCalendarDayBoundsMs(endDate);
+        if (!startBounds || !endBounds) {
+          return res.status(400).json({ error: 'Ongeldig datumbereik' });
+        }
+        const locationId = ghlLocationIdFromEnv();
+        const calendarId = effectiveCalendarId();
+
+        const plannerNotitiesFieldId = await resolvePlannerNotitiesFieldId();
+        const url = `${GHL_BASE}/calendars/events?locationId=${encodeURIComponent(locationId)}&calendarId=${encodeURIComponent(calendarId)}&startTime=${startBounds.startMs}&endTime=${endBounds.endMs}`;
+        const eventsRes = await fetchWithRetry(url, {
+          headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' },
+        });
+        const eventsData = await eventsRes.json().catch(() => ({}));
+        if (!eventsRes.ok) {
+          return res.status(502).json({ error: 'Afspraken zoeken mislukt', detail: eventsData });
+        }
+        let events = Array.isArray(eventsData?.events) ? eventsData.events : [];
+        markBlockLikeOnCalendarEvents(events);
+
+        // Neem ook B1-reserveringen mee (geen GHL timed appointment).
+        let cursor = startDate;
+        for (let i = 0; i < 500; i++) {
+          if (!cursor) break;
+          if (cursor > endDate) break;
+          try {
+            const syntheticRows = await cachedListConfirmedSyntheticEventsForDate(cursor);
+            for (const ev of syntheticRows || []) {
+              const blk = ev?._hkSyntheticBlock === 'afternoon' ? 'afternoon' : 'morning';
+              const startD = amsterdamWallTimeToDate(cursor, blk === 'afternoon' ? 13 : 9, 0);
+              events.push({
+                ...ev,
+                id: `hk-b1:${String(ev.contactId || '').trim()}:${cursor}`,
+                startTime: startD ? startD.toISOString() : undefined,
+                contactId: String(ev.contactId || '').trim(),
+                _hkBlockReservationSynthetic: true,
+              });
+            }
+          } catch (_) {}
+          cursor = addAmsterdamCalendarDays(cursor, 1);
+        }
+
+        const contactIdKey = (id) => (id == null ? '' : String(id).trim());
+        const uniqueCids = [
+          ...new Set(
+            events
+              .map((e) => contactIdKey(e.contactId || e.contact_id || e.contact?.id))
+              .filter(Boolean)
+          ),
+        ];
+        const contactMap = {};
+        await Promise.all(
+          uniqueCids.map(async (cidKey) => {
+            try {
+              const cr = await fetchWithRetry(`${GHL_BASE}/contacts/${encodeURIComponent(cidKey)}`, {
+                headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' },
+              });
+              if (!cr.ok) return;
+              const cd = await cr.json().catch(() => ({}));
+              contactMap[cidKey] = cd?.contact || cd;
+            } catch (_) {}
+          })
+        );
+
+        const out = [];
+        for (const e of events) {
+          const cid = contactIdKey(e.contactId || e.contact_id || e.contact?.id);
+          const contact = cid ? contactMap[cid] : null;
+          if (!contact && !e._hkBlockReservationSynthetic) continue;
+          const canonicalAddr = contact ? readCanonicalAddressLine(contact) : '';
+          const firstName = String(contact?.firstName || '').trim();
+          const lastName = String(contact?.lastName || '').trim();
+          const name = `${firstName} ${lastName}`.trim() || String(e.title || '').trim() || 'Klant';
+          const phone = String(contact?.phone || '').trim();
+          const email = String(contact?.email || '').trim().toLowerCase();
+          const bedrijfsnaam = String(contact?.companyName || contact?.company || '').trim();
+          const omschrijving =
+            String(getField(contact, BOOKING_FORM_FIELD_IDS.probleemomschrijving) || getField(contact, FIELD_IDS.probleemomschrijving) || e.title || '').trim();
+          const notesLegacy = String(getField(contact, FIELD_IDS.opmerkingen) || '').trim();
+          const notesPlanner = plannerNotitiesFieldId ? String(getField(contact, plannerNotitiesFieldId) || '').trim() : '';
+          const notes = notesPlanner || notesLegacy;
+          const prijsRegels =
+            String(getField(contact, BOOKING_FORM_FIELD_IDS.prijs_regels) || getField(contact, FIELD_IDS.prijs_regels) || '').trim();
+          const prijsTotaal = String(getField(contact, BOOKING_FORM_FIELD_IDS.prijs_totaal) || getField(contact, FIELD_IDS.prijs) || '').trim();
+          const startMs = eventStartMsGhl(e);
+          const dateStr = getEventStartDayAmsterdam(e) || String(e?.dateStr || '').trim();
+          if (!dateStr) continue;
+          const timeSlot = Number.isNaN(startMs)
+            ? (e?._hkSyntheticBlock === 'afternoon' ? '13:00' : '09:00')
+            : new Date(startMs).toLocaleTimeString('nl-NL', {
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: 'Europe/Amsterdam',
+              });
+          const status = plannerServiceMarkedCompleteOnRouteDay(
+            getField(contact, 'hiTe3Yi5TlxheJq4bLzy'),
+            dateStr
+          )
+            ? 'klaar'
+            : 'ingepland';
+          const type = String(
+            getField(contact, BOOKING_FORM_FIELD_IDS.type_onderhoud) ||
+              getField(contact, FIELD_IDS.type_onderhoud) ||
+              ''
+          ).trim();
+
+          const haystack = [
+            name,
+            bedrijfsnaam,
+            canonicalAddr,
+            phone,
+            email,
+            omschrijving,
+            notes,
+            prijsRegels,
+            prijsTotaal,
+            type,
+            timeSlot,
+          ]
+            .join(' ')
+            .toLowerCase();
+          if (!haystack.includes(q)) continue;
+
+          out.push({
+            id:
+              String(e.id || '').trim() ||
+              `search:${cid || 'na'}:${dateStr}:${e?._hkSyntheticBlock || 'na'}`,
+            contactId: cid || null,
+            name,
+            address: canonicalAddr,
+            date: dateStr,
+            timeSlot,
+            status,
+            type: type || null,
+          });
+        }
+        out.sort((a, b) => `${b.date} ${b.timeSlot}`.localeCompare(`${a.date} ${a.timeSlot}`));
+        return res.status(200).json({ results: out.slice(0, 80) });
       }
 
       case 'updateContactDashboard': {
