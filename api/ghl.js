@@ -859,6 +859,17 @@ export default async function handler(req, res) {
           price,
           priceLines,
         } = req.body || {};
+        console.log('[updatePlannerBookingDetails][start]', {
+          hasBody: !!req.body,
+          contactId: contactId != null ? String(contactId) : null,
+          date: date != null ? String(date) : null,
+          slotKey: slotKey != null ? String(slotKey) : null,
+          hasName: !!String(name || '').trim(),
+          hasPhone: !!String(phone || '').trim(),
+          hasEmail: !!String(email || '').trim(),
+          hasAddress: !!String(address || '').trim(),
+          hasPriceLines: Array.isArray(priceLines) && priceLines.length > 0,
+        });
         const cid = String(contactId || '').trim();
         if (!cid) return res.status(400).json({ error: 'contactId vereist' });
         const dateNorm = normalizeYyyyMmDdInput(String(date || ''));
@@ -888,6 +899,16 @@ export default async function handler(req, res) {
             ? [{ desc: descNorm || 'Handmatige afspraak', price: totalNum }]
             : [];
         const structuredPriceRules = formatPriceRulesStructuredString(linesForCanon);
+        console.log('[updatePlannerBookingDetails][normalized]', {
+          contactId: cid,
+          dateNorm,
+          slotPart,
+          slotLabelNorm,
+          workTypeNorm,
+          normalizedLines: normalizedLines.length,
+          totalNum,
+          structuredPriceRulesLen: structuredPriceRules.length,
+        });
 
         const { address1, customFields: addrCf } = buildCanonicalAddressWritePayload(addressNorm);
         const customFields = [
@@ -900,6 +921,10 @@ export default async function handler(req, res) {
         if (totalNum !== null) {
           customFields.push({ id: FIELD_IDS.prijs, field_value: String(totalNum) });
         }
+        console.log('[updatePlannerBookingDetails][booking_fields_ok]', {
+          contactId: cid,
+          customFieldCountBeforeCanon: customFields.length,
+        });
         const bookingCanon = appendBookingCanonFields(customFields, {
           type_onderhoud: workTypeNorm || 'reparatie',
           probleemomschrijving: descNorm || '',
@@ -918,6 +943,13 @@ export default async function handler(req, res) {
         if (phoneNorm) payload.phone = phoneNorm;
         if (emailNorm) payload.email = emailNorm;
         if (address1) payload.address1 = address1;
+        console.log('[updatePlannerBookingDetails][contact_update_start]', {
+          contactId: cid,
+          hasPhone: !!payload.phone,
+          hasEmail: !!payload.email,
+          hasAddress1: !!payload.address1,
+          customFieldCount: bookingCanon.customFields.length,
+        });
         logCanonicalAddressWrite('updatePlannerBookingDetails', {
           contactId: cid,
           address1: address1 || null,
@@ -934,14 +966,85 @@ export default async function handler(req, res) {
         });
         if (!putRes.ok) {
           const detail = (await putRes.text().catch(() => '')).slice(0, 400);
-          return res.status(502).json({ error: 'Contact/boekingsvelden bijwerken mislukt', detail });
+          console.error('[updatePlannerBookingDetails][contact_update_fail]', {
+            contactId: cid,
+            status: putRes.status,
+            detail,
+          });
+          // Concrete hardening: fallback zonder phone/email wanneer GHL deze payloadvelden afkeurt.
+          const fallbackPayload = {
+            firstName,
+            lastName,
+            customFields: bookingCanon.customFields,
+            ...(address1 ? { address1 } : {}),
+          };
+          console.log('[updatePlannerBookingDetails][contact_update_retry_start]', {
+            contactId: cid,
+            customFieldCount: bookingCanon.customFields.length,
+            hasAddress1: !!address1,
+          });
+          const retryRes = await fetchWithRetry(`${GHL_BASE}/contacts/${encodeURIComponent(cid)}`, {
+            method: 'PUT',
+            headers: {
+              Authorization: `Bearer ${GHL_API_KEY}`,
+              'Content-Type': 'application/json',
+              Version: '2021-04-15',
+            },
+            body: JSON.stringify(fallbackPayload),
+            _allowPostRetry: false,
+          });
+          if (!retryRes.ok) {
+            const retryDetail = (await retryRes.text().catch(() => '')).slice(0, 400);
+            console.error('[updatePlannerBookingDetails][booking_fields_fail]', {
+              contactId: cid,
+              status: retryRes.status,
+              detail: retryDetail,
+            });
+            return res.status(502).json({
+              error: 'Contact/boekingsvelden bijwerken mislukt',
+              detail: retryDetail || detail,
+            });
+          }
+          console.log('[updatePlannerBookingDetails][contact_update_ok]', {
+            contactId: cid,
+            mode: 'fallback_without_phone_email',
+          });
+          invalidateRedisSyntheticsCacheForDate(dateNorm);
+          invalidateAmsterdamDayGhlReadCachesForDate({
+            locationId: ghlLocationIdFromEnv(),
+            calendarId: effectiveCalendarId(),
+            dateStr: dateNorm,
+            trigger: 'updatePlannerBookingDetails',
+          });
+          console.log('[updatePlannerBookingDetails][done]', {
+            contactId: cid,
+            date: dateNorm,
+            slotKey: slotPart,
+            warning: 'phone/email omitted in fallback',
+          });
+          return res.status(200).json({
+            success: true,
+            contactId: cid,
+            date: dateNorm,
+            slotKey: slotPart,
+            warning: 'Contactvelden opgeslagen zonder phone/email (fallback na GHL validatie).',
+          });
         }
+        console.log('[updatePlannerBookingDetails][contact_update_ok]', {
+          contactId: cid,
+          mode: 'primary',
+        });
         invalidateRedisSyntheticsCacheForDate(dateNorm);
         invalidateAmsterdamDayGhlReadCachesForDate({
           locationId: ghlLocationIdFromEnv(),
           calendarId: effectiveCalendarId(),
           dateStr: dateNorm,
           trigger: 'updatePlannerBookingDetails',
+        });
+        console.log('[updatePlannerBookingDetails][done]', {
+          contactId: cid,
+          date: dateNorm,
+          slotKey: slotPart,
         });
         return res.status(200).json({
           success: true,
