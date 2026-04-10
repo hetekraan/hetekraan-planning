@@ -1861,6 +1861,81 @@
   body.ui-scale-large {
     --jerry-focus: 0 0 0 3px rgba(0, 212, 170, 0.4);
   }
+
+  /* ── Explicit Jerry mode alias + stronger readability targets ── */
+  body.jerry-mode {
+    font-size: 18px;
+  }
+  body.jerry-mode .appt-name { font-size: 22px; line-height: 1.3; }
+  body.jerry-mode .appt-desc,
+  body.jerry-mode .appt-address,
+  body.jerry-mode .appt-notes,
+  body.jerry-mode .route-name,
+  body.jerry-mode .route-addr,
+  body.jerry-mode .route-time,
+  body.jerry-mode .details-line { font-size: 20px; line-height: 1.45; }
+  body.jerry-mode button,
+  body.jerry-mode .btn-add,
+  body.jerry-mode .btn-save,
+  body.jerry-mode .btn-cancel,
+  body.jerry-mode .btn-done,
+  body.jerry-mode .btn-prijs,
+  body.jerry-mode .btn-optimize,
+  body.jerry-mode .btn-confirm-route,
+  body.jerry-mode .btn-unlock-route,
+  body.jerry-mode .btn-maps,
+  body.jerry-mode .btn-morning,
+  body.jerry-mode .icon-btn,
+  body.jerry-mode .mobile-tab {
+    min-height: 56px !important;
+    padding: 10px 14px;
+    font-size: 18px;
+  }
+  body.jerry-mode .icon-btn {
+    width: auto;
+    min-width: 56px;
+    border-radius: 10px;
+  }
+  body.jerry-mode .appt-card {
+    margin-bottom: 18px;
+    border-radius: 14px;
+  }
+  body.jerry-mode .appt-inner {
+    padding: 18px 18px 18px 52px;
+  }
+  body.jerry-mode .appointments,
+  body.jerry-mode .route-panel {
+    padding: 18px;
+    gap: 14px;
+  }
+  @media (max-width: 1100px) {
+    body.jerry-mode .layout {
+      grid-template-columns: 1fr !important;
+      grid-template-rows: auto;
+      height: auto;
+      min-height: auto;
+      max-height: none;
+    }
+    body.jerry-mode .appointments,
+    body.jerry-mode .route-panel {
+      height: auto;
+      max-height: none;
+      overflow: visible;
+      border-right: none;
+      border-bottom: 1px solid var(--border);
+    }
+    body.jerry-mode .mobile-bottom-nav {
+      display: grid !important;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+    body.jerry-mode .hamburger-btn {
+      display: inline-flex !important;
+      width: 48px;
+      height: 48px;
+      font-size: 20px;
+    }
+  }
   body.ui-scale-large .logo {
     font-size: 18px;
   }
@@ -2201,6 +2276,7 @@
 <div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="if(event.target===this)toggleMobileMenu(false)">
   <div class="mobile-menu-panel">
     <div class="section-title" style="margin-bottom:4px">Menu</div>
+    <button class="btn-maps" type="button" id="btnJerryModeMenu" onclick="toggleJerryMode()">🧓 Grote weergave</button>
     <button class="btn-add" type="button" onclick="toggleMobileMenu(false);openModal()">+ Afspraak</button>
     <button class="btn-dagopgave" type="button" onclick="toggleMobileMenu(false);openDagopgave()">📋 Dagopgave</button>
     <button class="btn-block-cal" type="button" onclick="toggleMobileMenu(false);onBlockDayButtonClick()">🚫 Blokkeer dag</button>
@@ -3013,12 +3089,17 @@ function applyUiScalePref() {
   const on = readUiScaleLarge();
   if (on) setUiScaleLarge(true);
   document.body.classList.toggle('ui-scale-large', on);
+  document.body.classList.toggle('jerry-mode', on);
   const btn = document.getElementById('btnLargeText');
   if (btn) {
     btn.classList.toggle('active', on);
     btn.title = on
       ? 'Standaard weergave (UI-schaal uit)'
       : 'Grotere tekst en knoppen — Jerry-modus / toegankelijkheid';
+  }
+  const menuBtn = document.getElementById('btnJerryModeMenu');
+  if (menuBtn) {
+    menuBtn.textContent = on ? '🧓 Standaard weergave' : '🧓 Grote weergave';
   }
 }
 
@@ -3027,6 +3108,10 @@ function toggleUiScale() {
   setUiScaleLarge(!on);
   applyUiScalePref();
   showToast(readUiScaleLarge() ? 'Grotere weergave aan (Jerry-modus)' : 'Standaard weergave', 'info');
+}
+
+function toggleJerryMode() {
+  toggleUiScale();
 }
 
 window.setPlannerUiScale = setPlannerUiScale;
