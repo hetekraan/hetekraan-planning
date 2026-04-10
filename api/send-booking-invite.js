@@ -64,7 +64,7 @@ function publicBaseUrl() {
   if (fromEnv) return fromEnv.replace(/\/$/, '');
   return 'https://planning.hetekraan.nl';
 }
-const DAYS_AHEAD      = 7;
+const DAYS_AHEAD      = 21;
 
 const FIELD_IDS = {
   straatnaam:     'ZwIMY4VPelG5rKROb5NR',
