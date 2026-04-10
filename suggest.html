@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tijdsloten sturen – Hetekraan</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="/app/planner-catalog-v1.js"></script>
   <link rel="stylesheet" href="/styles/global.css" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -91,40 +92,54 @@
       resize: vertical;
       line-height: 1.45;
     }
-    .price-rule-list {
-      display: grid;
-      gap: 8px;
-      margin-top: 2px;
+    .catalog-v1-results {
+      display: none;
+      width: 100%;
+      max-height: 240px;
+      overflow: auto;
+      border: 1px solid #333;
+      border-radius: 10px;
+      margin-top: 8px;
+      background: #111;
     }
-    .price-rule-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
+    .catalog-v1-results.is-open { display: block; }
+    .catalog-v1-result {
+      width: 100%;
+      text-align: left;
+      border: 0;
+      border-bottom: 1px solid #2a2a2a;
+      background: transparent;
+      color: #eee;
       padding: 10px 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .catalog-v1-result:last-child { border-bottom: none; }
+    .catalog-v1-result:hover { background: rgba(255,255,255,0.06); }
+    .catalog-v1-empty { color: #666; font-size: 12px; padding: 10px 12px; }
+    .catalog-v1-line {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
       border: 1px solid #333;
       border-radius: 9px;
-      background: #111;
-      cursor: pointer;
-      user-select: none;
-    }
-    .price-rule-item input {
-      accent-color: #ffd000;
-      width: 16px;
-      height: 16px;
-      margin-right: 8px;
-    }
-    .price-rule-left {
-      display: flex;
-      align-items: center;
+      padding: 10px 12px;
+      font-size: 13px;
       color: #ddd;
-      font-size: 13px;
+      background: #111;
     }
-    .price-rule-amount {
-      color: #ffd000;
-      font-size: 13px;
-      font-weight: 700;
-      white-space: nowrap;
+    .catalog-v1-line button {
+      border: none;
+      background: transparent;
+      color: #999;
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
     }
     .field-help {
       margin-top: 6px;
@@ -320,22 +335,11 @@
   </div>
   <div class="field-row">
     <label class="field-label">Prijsregels</label>
-    <div class="price-rule-list">
-      <label class="price-rule-item">
-        <span class="price-rule-left">
-          <input type="checkbox" class="price-rule-checkbox" data-label="standaard onderhoud" data-price="195">
-          standaard onderhoud
-        </span>
-        <span class="price-rule-amount">€195</span>
-      </label>
-      <label class="price-rule-item">
-        <span class="price-rule-left">
-          <input type="checkbox" class="price-rule-checkbox" data-label="voorrijkosten" data-price="50">
-          voorrijkosten
-        </span>
-        <span class="price-rule-amount">€50</span>
-      </label>
+    <div id="suggestCatalogDropdown">
+      <input class="field-input" type="text" id="suggestCatalogSearch" placeholder="Zoek in catalogus...">
+      <div class="catalog-v1-results" id="suggestCatalogResults"></div>
     </div>
+    <div id="suggestCatalogLines" style="margin-top:8px"></div>
     <div class="field-help">Geselecteerde regels worden meegestuurd als planner intakedata.</div>
   </div>
   <div class="field-row">
@@ -398,11 +402,9 @@
   let resolvedContactId = null;
   let loadedSlots       = [];
   let sendInviteInFlight = false;
-  /** Zelfde shape als dashboard: { label, price } — API kan ook amount tot normalizePriceLineItems. */
-  const STANDARD_PRICE_ITEMS = [
-    { label: 'standaard onderhoud', price: 195 },
-    { label: 'voorrijkosten', price: 50 },
-  ];
+  /** Zelfde shape als dashboard/GHL: { desc, price }. */
+  const suggestPriceLines = [];
+  let suggestCatalogDropdownOpen = false;
   /** Zelfde als bij laatste geslaagde preview — gebruikt bij send zodat link = preview. */
   let pendingProposalConstraints = null;
   /** UI-snapshot (modus + weekdagen + datums-tekst) bij laatste geslaagde preview; null = nog geen preview. */
@@ -509,16 +511,62 @@
   function getParam(p) { return new URLSearchParams(window.location.search).get(p); }
   function capitalize(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
 
+  function euroDisplay(n) {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return '0';
+    return v.toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  }
+
+  function closeSuggestCatalogDropdown() {
+    suggestCatalogDropdownOpen = false;
+    const results = document.getElementById('suggestCatalogResults');
+    if (!results) return;
+    results.classList.remove('is-open');
+    results.innerHTML = '';
+  }
+
+  function renderSuggestCatalogResults(rows) {
+    const container = document.getElementById('suggestCatalogResults');
+    if (!container) return;
+    suggestCatalogDropdownOpen = true;
+    container.classList.add('is-open');
+    if (!rows.length) {
+      container.innerHTML = '<div class="catalog-v1-empty">Geen resultaten</div>';
+      return;
+    }
+    container.innerHTML = rows
+      .map(
+        (row) =>
+          `<button type="button" class="catalog-v1-result" data-catalog-id="${String(row.id).replace(/"/g, '&quot;')}"><span>${row.name}</span><span>€${euroDisplay(row.price)}</span></button>`
+      )
+      .join('');
+  }
+
+  function renderSuggestPriceLines() {
+    const el = document.getElementById('suggestCatalogLines');
+    if (!el) return;
+    if (!suggestPriceLines.length) {
+      el.innerHTML = '<div class="catalog-v1-empty">Nog geen prijsregels gekozen</div>';
+      return;
+    }
+    el.innerHTML = suggestPriceLines
+      .map(
+        (row, idx) =>
+          `<div class="catalog-v1-line"><span>${row.desc} — €${euroDisplay(row.price)}</span><button type="button" data-remove-line="${idx}" aria-label="Verwijder prijsregel">✕</button></div>`
+      )
+      .join('');
+  }
+
+  async function onSuggestCatalogSearchInput() {
+    if (!window.HKPlannerCatalogV1?.ensureLoaded || !window.HKPlannerCatalogV1?.search) return;
+    await window.HKPlannerCatalogV1.ensureLoaded();
+    const query = document.getElementById('suggestCatalogSearch')?.value || '';
+    const rows = window.HKPlannerCatalogV1.search(query, { limit: 20 });
+    renderSuggestCatalogResults(rows);
+  }
+
   function getSelectedPriceItems() {
-    return [...document.querySelectorAll('.price-rule-checkbox:checked')]
-      .map((el) => {
-        const p = Number(el.dataset.price ?? el.dataset.amount ?? 0);
-        return {
-          label: String(el.dataset.label || '').trim(),
-          price: p,
-        };
-      })
-      .filter((x) => x.label && Number.isFinite(x.price) && x.price > 0);
+    return suggestPriceLines.map((x) => ({ desc: x.desc, price: x.price }));
   }
 
   function getPriceTotal(items) {
@@ -577,9 +625,54 @@
     // Delegatie + pointer: betrouwbaarder dan één listener op de knop (WebKit / webviews).
     const msgCard = document.getElementById('messageCard');
     if (msgCard) msgCard.addEventListener('click', onSendBtnClick);
-    document.querySelectorAll('.price-rule-checkbox').forEach((el) => {
-      el.addEventListener('change', updatePriceTotalUi);
+    const catalogSearch = document.getElementById('suggestCatalogSearch');
+    if (catalogSearch) {
+      catalogSearch.addEventListener('focus', () => { void onSuggestCatalogSearchInput(); });
+      catalogSearch.addEventListener('click', () => { void onSuggestCatalogSearchInput(); });
+      catalogSearch.addEventListener('input', () => { void onSuggestCatalogSearchInput(); });
+      catalogSearch.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeSuggestCatalogDropdown();
+      });
+    }
+    const catalogResults = document.getElementById('suggestCatalogResults');
+    if (catalogResults) {
+      catalogResults.addEventListener('click', async (ev) => {
+        const btn = ev.target?.closest?.('[data-catalog-id]');
+        if (!btn) return;
+        if (!window.HKPlannerCatalogV1?.ensureLoaded || !window.HKPlannerCatalogV1?.search) return;
+        await window.HKPlannerCatalogV1.ensureLoaded();
+        const itemId = btn.getAttribute('data-catalog-id');
+        const match = window.HKPlannerCatalogV1.search('', { limit: 10000 }).find((x) => String(x.id) === String(itemId));
+        if (!match) return;
+        suggestPriceLines.push({
+          desc: String(match.name),
+          price: Math.round(Number(match.price) * 100) / 100,
+        });
+        renderSuggestPriceLines();
+        updatePriceTotalUi();
+        if (catalogSearch) catalogSearch.value = '';
+        closeSuggestCatalogDropdown();
+      });
+    }
+    const dropdownWrap = document.getElementById('suggestCatalogDropdown');
+    document.addEventListener('click', (ev) => {
+      if (!suggestCatalogDropdownOpen || !dropdownWrap) return;
+      if (dropdownWrap.contains(ev.target)) return;
+      closeSuggestCatalogDropdown();
     });
+    const linesWrap = document.getElementById('suggestCatalogLines');
+    if (linesWrap) {
+      linesWrap.addEventListener('click', (ev) => {
+        const btn = ev.target?.closest?.('[data-remove-line]');
+        if (!btn) return;
+        const idx = Number(btn.getAttribute('data-remove-line'));
+        if (!Number.isInteger(idx) || idx < 0 || idx >= suggestPriceLines.length) return;
+        suggestPriceLines.splice(idx, 1);
+        renderSuggestPriceLines();
+        updatePriceTotalUi();
+      });
+    }
+    renderSuggestPriceLines();
     updatePriceTotalUi();
 
     const cid   = getParam('contactId');
@@ -834,9 +927,11 @@
     if (typeSel) typeSel.value = 'onderhoud';
     const descEl = document.getElementById('inputProbleemomschrijving');
     if (descEl) descEl.value = '';
-    document.querySelectorAll('.price-rule-checkbox').forEach((el) => {
-      el.checked = false;
-    });
+    suggestPriceLines.length = 0;
+    const searchInput = document.getElementById('suggestCatalogSearch');
+    if (searchInput) searchInput.value = '';
+    closeSuggestCatalogDropdown();
+    renderSuggestPriceLines();
     updatePriceTotalUi();
     hide('resultCard'); hide('messageCard'); hide('successCard'); hide('errorCard'); hide('loadingCard');
     show('searchCard');
