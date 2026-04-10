@@ -386,6 +386,49 @@
     border: 1px solid rgba(0, 212, 170, 0.35);
     white-space: nowrap;
   }
+  .details-section {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface2);
+    padding: 10px 12px;
+    margin-bottom: 10px;
+  }
+  .details-section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .details-line {
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.5;
+    margin-bottom: 4px;
+  }
+  .details-line:last-child { margin-bottom: 0; }
+  .details-empty {
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .details-price-line {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text);
+    padding: 4px 0;
+  }
+  .details-total {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    font-weight: 700;
+    color: var(--yellow);
+  }
 
   .appt-name {
     font-family: 'Syne', sans-serif;
@@ -2316,6 +2359,17 @@
   </div>
 </div>
 
+<!-- DETAILS (read-only) -->
+<div class="modal-overlay" id="detailsOverlay" onclick="if(event.target===this)closeAppointmentDetailsModal()">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-title">Afspraak details</div>
+    <div id="detailsBody"></div>
+    <div class="modal-actions" style="margin-top:14px">
+      <button class="btn-cancel" onclick="closeAppointmentDetailsModal()">Sluiten</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -2835,6 +2889,73 @@ function fmtEuro(amount) {
   return window.HKPlannerUtils.fmtEuro(amount);
 }
 
+function parsePriceRulesText(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return [];
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const idx = line.indexOf('|');
+      if (idx < 0) return null;
+      const desc = line.slice(0, idx).trim();
+      const rawPrice = line.slice(idx + 1).trim().replace(',', '.');
+      const n = Number(rawPrice);
+      if (!desc || !Number.isFinite(n) || n < 0) return null;
+      return { desc, price: Math.round(n * 100) / 100 };
+    })
+    .filter(Boolean);
+}
+
+function openAppointmentDetailsModal(apptId) {
+  const a = appointments.find((x) => String(x.id) === String(apptId));
+  if (!a) return;
+  const body = document.getElementById('detailsBody');
+  if (!body) return;
+
+  const headerName = String(a.name || 'Klant').trim();
+  const headerAddress = String(a.fullAddressLine || a.address || '').trim();
+  const omschrijving = String(a.jobDescription || '').trim();
+  const plannerNotities = String(a.notes || '').trim();
+  const rawRules = String(a.prijsRegels || a.priceRules || '').trim();
+  const parsedFromRaw = parsePriceRulesText(rawRules);
+  const lines = parsedFromRaw.length
+    ? parsedFromRaw
+    : (Array.isArray(a.extras) ? a.extras : []).map((x) => ({
+        desc: String(x?.desc || '').trim(),
+        price: Math.round((Number(x?.price) || 0) * 100) / 100,
+      })).filter((x) => x.desc && Number.isFinite(x.price));
+  const basePrice = Math.round((Number(a.price) || 0) * 100) / 100;
+  const total = Math.round(calcTotalPrice(a) * 100) / 100;
+
+  body.innerHTML = `
+    <div class="details-section">
+      <div class="details-section-title">Klant</div>
+      <div class="details-line"><strong>${headerName}</strong></div>
+      <div class="details-line">${headerAddress || '<span class="details-empty">Geen adres</span>'}</div>
+    </div>
+    <div class="details-section">
+      <div class="details-section-title">Werk / omschrijving</div>
+      <div class="details-line">${omschrijving || '<span class="details-empty">Geen omschrijving</span>'}</div>
+      <div class="details-line"><strong>Planner notities:</strong> ${plannerNotities || '<span class="details-empty">Geen notities</span>'}</div>
+    </div>
+    <div class="details-section">
+      <div class="details-section-title">Prijs</div>
+      ${basePrice > 0 ? `<div class="details-price-line"><span>Basis</span><span>€${euroDisplay(basePrice)}</span></div>` : ''}
+      ${lines.length ? lines.map((row) => `<div class="details-price-line"><span>${row.desc}</span><span>€${euroDisplay(row.price)}</span></div>`).join('') : '<div class="details-empty">Geen prijsregels</div>'}
+      <div class="details-total"><span>Totaal</span><span>€${euroDisplay(total)}</span></div>
+    </div>
+  `;
+  const overlay = document.getElementById('detailsOverlay');
+  if (overlay) overlay.classList.add('visible');
+}
+
+function closeAppointmentDetailsModal() {
+  const overlay = document.getElementById('detailsOverlay');
+  if (overlay) overlay.classList.remove('visible');
+}
+
 function calcStats() {
   const clients = appointments.filter((a) => !a.isCalBlock);
   const klaar   = clients.filter(a => a.status === 'klaar').length;
@@ -2893,6 +3014,7 @@ function renderApptCard(a, i) {
             ${a.phone ? `<a class="icon-btn" href="tel:${a.phone}" title="Bellen">📞</a>` : ''}
             ${a.mapsLink ? `<a class="icon-btn" href="${a.mapsLink}" target="_blank" title="Maps">📍</a>` : ''}
             ${a.ghlUrl ? `<a class="icon-btn ghl" href="${a.ghlUrl}" target="_blank" title="Open in GHL">🔗</a>` : ''}
+            <button type="button" class="icon-btn edit-action" onclick='openAppointmentDetailsModal(${idQ})' title="Bekijk details">👁 Bekijk</button>
             <button type="button" class="icon-btn edit-action" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">✏ Bewerk</button>
             <button class="icon-btn danger" onclick='deleteAppt(${idQ})' title="Verwijderen">✕</button>
           </div>
