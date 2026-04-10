@@ -365,17 +365,17 @@
   .icon-btn:hover { color: var(--text); border-color: var(--muted); }
   .icon-btn.danger:hover { color: var(--reparatie); border-color: var(--reparatie); }
   .icon-btn.ghl:hover { color: var(--blue); border-color: var(--blue); }
-  .icon-btn.daan-edit {
-    font-size: 11px;
+  .icon-btn.edit-action {
+    font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.02em;
-    color: var(--accent);
-    border-color: rgba(0, 212, 170, 0.45);
-    min-width: 56px;
+    letter-spacing: 0.01em;
+    color: #cfd3dc;
+    border-color: #3a404d;
+    min-width: 78px;
     width: auto;
-    padding: 0 8px;
+    padding: 0 10px;
   }
-  .icon-btn.daan-edit:hover { color: #00ffc8; border-color: var(--accent); }
+  .icon-btn.edit-action:hover { color: #ffffff; border-color: #586070; }
   .daan-edit-badge {
     font-size: 10px;
     font-weight: 600;
@@ -960,7 +960,7 @@
   body.ui-scale-large .btn-confirm              { font-size: 14px; padding: 9px 18px; }
   body.ui-scale-large .btn-prijs                { font-size: 14px; padding: 9px 14px; }
   body.ui-scale-large .icon-btn                 { width: 38px; height: 38px; font-size: 15px; border-radius: 8px; }
-  body.ui-scale-large .icon-btn.daan-edit       { font-size: 12px; min-width: 60px; }
+  body.ui-scale-large .icon-btn.edit-action     { font-size: 12px; min-width: 82px; }
   body.ui-scale-large .complete-row             { font-size: 14px; }
   body.ui-scale-large .service-date-row         { font-size: 14px; }
   body.ui-scale-large .service-date-row input   { font-size: 13px; padding: 7px 10px; }
@@ -1590,9 +1590,9 @@
       font-size: 12px;
       border-radius: 6px;
     }
-    .icon-btn.daan-edit {
+    .icon-btn.edit-action {
       font-size: 10px;
-      min-width: 52px;
+      min-width: 76px;
       width: auto;
       height: 28px;
       min-height: 28px;
@@ -1884,8 +1884,8 @@
       font-size: 17px;
       border-radius: 10px;
     }
-    body.ui-scale-large .icon-btn.daan-edit {
-      min-width: 68px;
+    body.ui-scale-large .icon-btn.edit-action {
+      min-width: 90px;
       height: 52px;
       min-height: 52px;
       font-size: 13px;
@@ -1968,9 +1968,9 @@
       height: 40px;
       font-size: 15px;
     }
-    body.ui-scale-large .icon-btn.daan-edit {
+    body.ui-scale-large .icon-btn.edit-action {
       font-size: 12px;
-      min-width: 60px;
+      min-width: 84px;
       height: 40px;
       min-height: 40px;
     }
@@ -2893,7 +2893,7 @@ function renderApptCard(a, i) {
             ${a.phone ? `<a class="icon-btn" href="tel:${a.phone}" title="Bellen">📞</a>` : ''}
             ${a.mapsLink ? `<a class="icon-btn" href="${a.mapsLink}" target="_blank" title="Maps">📍</a>` : ''}
             ${a.ghlUrl ? `<a class="icon-btn ghl" href="${a.ghlUrl}" target="_blank" title="Open in GHL">🔗</a>` : ''}
-            ${isDaanEditor() && a.contactId ? `<button type="button" class="icon-btn daan-edit" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">bewerk</button>` : ''}
+            <button type="button" class="icon-btn edit-action" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">✏ Bewerk</button>
             <button class="icon-btn danger" onclick='deleteAppt(${idQ})' title="Verwijderen">✕</button>
           </div>
         </div>
