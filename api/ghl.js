@@ -333,7 +333,8 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-HK-Auth');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { action } = req.query;
+  const rawAction = req.query?.action;
+  const action = Array.isArray(rawAction) ? rawAction[0] : rawAction;
   logEvent('api_ghl_request', { action, method: req.method, request_id: requestId });
 
   // ─── Diagnose (geen auth vereist) ─────────────────────────────────────────
@@ -623,6 +624,20 @@ export default async function handler(req, res) {
         gaPerf.total_ms = Date.now() - gaT0;
         gaPerf.unique_contact_fetches = uniqueCids.length;
         gaPerf.event_count_before_filter = enriched.length;
+        if (process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
+          const traceRaw = req.query?.traceContactId;
+          const traceCid = String(Array.isArray(traceRaw) ? traceRaw[0] : traceRaw || '').trim();
+          if (traceCid) {
+            const hit = appointments.find((a) => String(a.contactId || '') === traceCid);
+            console.log('[getAppointments][mapped_address_after_edit]', {
+              date,
+              traceContactId: traceCid,
+              found: !!hit,
+              fullAddressLine: hit?.fullAddressLine ?? null,
+              address: hit?.address ?? null,
+            });
+          }
+        }
         const clientRows = appointments.filter((a) => !a.isCalBlock);
         const nKlaarFromContact = clientRows.filter((a) => a.status === 'klaar').length;
         console.log('[timing getAppointments]', JSON.stringify(gaPerf));
@@ -1035,6 +1050,14 @@ export default async function handler(req, res) {
           price,
           priceLines,
         } = req.body || {};
+        if (process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
+          console.log('[updatePlannerBookingDetails][request_body]', {
+            keys: req.body && typeof req.body === 'object' ? Object.keys(req.body) : [],
+            contactId: contactId != null ? String(contactId) : null,
+            addressLen: String(address || '').trim().length,
+            date: date != null ? String(date) : null,
+          });
+        }
         console.log('[updatePlannerBookingDetails][start]', {
           hasBody: !!req.body,
           contactId: contactId != null ? String(contactId) : null,
@@ -1058,6 +1081,12 @@ export default async function handler(req, res) {
         const phoneNorm = normalizePhoneForGhl(phone);
         const emailNorm = String(email || '').trim().toLowerCase();
         const addressNorm = String(address || '').trim();
+        if (process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
+          console.log('[updatePlannerBookingDetails][normalized_address]', {
+            contactId: cid,
+            addressNorm: addressNorm.slice(0, 200),
+          });
+        }
         const workTypeNorm = normalizeWorkType(type || '');
         const descNorm = String(desc || '').trim();
         const slotPart = slotKey === 'afternoon' ? 'afternoon' : 'morning';
@@ -1200,6 +1229,7 @@ export default async function handler(req, res) {
             customFields: bookingCanon.customFields,
             ...(address1 ? { address1 } : {}),
           };
+          if (addressNorm) mergeGhlNativeAddressFromParts(fallbackPayload, parts);
           console.log('[updatePlannerBookingDetails][contact_update_retry_start]', {
             contactId: cid,
             customFieldCount: bookingCanon.customFields.length,
@@ -1492,7 +1522,15 @@ export default async function handler(req, res) {
 
         // Stap 2: canoniek adres (address1 + straat/huis-CF) + type/omschrijving
         if (addressNorm) {
-          const { address1, customFields: addrCf } = buildCanonicalAddressWritePayload(addressNorm);
+          const { address1, customFields: addrCf, parts } = buildCanonicalAddressWritePayload(addressNorm);
+          const streetHouseLine = [parts.straatnaam, parts.huisnummer]
+            .filter(Boolean)
+            .join(' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+          const bookingStraatHuis =
+            streetHouseLine ||
+            (addressNorm ? String(address1 || addressNorm).replace(/\s+/g, ' ').trim() : '');
           const customFields = [
             ...addrCf,
             { id: FIELD_IDS.type_onderhoud, field_value: apptType || 'reparatie' },
@@ -1525,6 +1563,9 @@ export default async function handler(req, res) {
           const bookingCanon = appendBookingCanonFields(
             customFields,
             {
+              straat_huisnummer: bookingStraatHuis,
+              postcode: parts.postcode || '',
+              woonplaats: parts.woonplaats || '',
               type_onderhoud: apptType || 'reparatie',
               probleemomschrijving: desc || '',
               tijdslot: slotLabelNorm || '',
@@ -1535,19 +1576,37 @@ export default async function handler(req, res) {
               boeking_bevestigd_status: 'confirmed',
             }
           );
+          if (addressNorm) {
+            if (!String(parts.postcode || '').trim()) {
+              bookingCanon.customFields.push({
+                id: BOOKING_FORM_FIELD_IDS.postcode,
+                value: '',
+                field_value: '',
+              });
+            }
+            if (!String(parts.woonplaats || '').trim()) {
+              bookingCanon.customFields.push({
+                id: BOOKING_FORM_FIELD_IDS.woonplaats,
+                value: '',
+                field_value: '',
+              });
+            }
+          }
           console.log('[BOOKING_CANON_WRITE]', {
             typeOnderhoud: bookingCanon.written.type_onderhoud || '',
             probleemomschrijving: bookingCanon.written.probleemomschrijving || '',
           });
+          const createPutPayload = {
+            address1,
+            phone: phoneNorm || undefined,
+            email: emailNorm || undefined,
+            customFields: bookingCanon.customFields,
+          };
+          mergeGhlNativeAddressFromParts(createPutPayload, parts);
           await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
             method: 'PUT',
             headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', 'Version': '2021-04-15' },
-            body: JSON.stringify({
-              address1,
-              phone: phoneNorm || undefined,
-              email: emailNorm || undefined,
-              customFields: bookingCanon.customFields,
-            }),
+            body: JSON.stringify(createPutPayload),
           });
           logCanonicalAddressWrite('createAppointment', { contactId, address1 });
         }

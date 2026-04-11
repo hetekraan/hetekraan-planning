@@ -20,6 +20,14 @@
     } catch (_) {}
   }
 
+  /** Zet in console: localStorage.setItem('hk_trace_edit_address','1') — adres-flow end-to-end. */
+  function traceEditAddress(tag, payload) {
+    try {
+      if (localStorage.getItem('hk_trace_edit_address') !== '1') return;
+      console.info(`[edit_modal] ${tag}`, payload ?? {});
+    } catch (_) {}
+  }
+
   function normalizeYmdToDate(ymd) {
     if (global.HKPlannerUtils?.plannerDateFromYmd) {
       return global.HKPlannerUtils.plannerDateFromYmd(ymd);
@@ -196,6 +204,12 @@
     totalPriceManualValue = null;
     editingMeta = null;
     setModalUiMode('create');
+    const overlayReset = document.getElementById('modalOverlay');
+    if (overlayReset) {
+      delete overlayReset.dataset.hkEditContactId;
+      delete overlayReset.dataset.hkEditPrevDate;
+      delete overlayReset.dataset.hkEditPrevSlot;
+    }
 
     if (global.HKPlannerCatalogV1?.resetModal) {
       global.HKPlannerCatalogV1.resetModal();
@@ -258,15 +272,39 @@
       return;
     }
 
+    const overlay = document.getElementById('modalOverlay');
+    const addrInputEl = document.getElementById('mAddress');
+    const editMeta =
+      editingMeta ||
+      (overlay?.dataset?.hkEditContactId
+        ? {
+            contactId: String(overlay.dataset.hkEditContactId).trim(),
+            prevDate: String(overlay.dataset.hkEditPrevDate || '').trim(),
+            prevSlotKey: String(overlay.dataset.hkEditPrevSlot || 'morning').trim(),
+          }
+        : null);
+    traceEditAddress('[save_address_input]', {
+      modalMode,
+      mAddressValue: addrInputEl ? String(addrInputEl.value || '').trim() : null,
+      formAddress: form.address,
+      editMetaFromMemory: !!editingMeta,
+      editMetaFromDom: !!overlay?.dataset?.hkEditContactId,
+      contactId: editMeta?.contactId || null,
+    });
+
+    const willUpdateExisting =
+      Boolean(editMeta?.contactId) &&
+      (modalMode === 'edit' || Boolean(overlay?.dataset?.hkEditContactId));
+
     const addBtn = document.getElementById('btnModalAddAppt');
     inFlight = true;
     if (addBtn) {
       addBtn.disabled = true;
-      addBtn.textContent = '⏳ Toevoegen...';
+      addBtn.textContent = modeAtSaveStart === 'edit' ? '⏳ Opslaan...' : '⏳ Toevoegen...';
     }
 
     await refreshGhlContactBaseUrl();
-    showToast(modalMode === 'edit' ? '⏳ Afspraak bijwerken...' : '⏳ Afspraak opslaan in GHL...', 'loading');
+    showToast(willUpdateExisting ? '⏳ Afspraak bijwerken...' : '⏳ Afspraak opslaan in GHL...', 'loading');
     debug('start', {
       date: form.date,
       slot: form.slotKey,
@@ -281,17 +319,17 @@
     try {
       let data = {};
       let res = null;
-      if (modalMode === 'edit' && editingMeta?.contactId) {
+      if (willUpdateExisting) {
         const changedDateOrSlot =
-          String(form.date) !== String(editingMeta.prevDate) ||
-          String(form.slotKey) !== String(editingMeta.prevSlotKey);
+          String(form.date) !== String(editMeta.prevDate) ||
+          String(form.slotKey) !== String(editMeta.prevSlotKey);
         if (changedDateOrSlot) {
           const moveRes = await fetch('/api/ghl?action=rescheduleAppointment', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
             body: JSON.stringify({
-              contactId: editingMeta.contactId,
-              prevDate: editingMeta.prevDate,
+              contactId: editMeta.contactId,
+              prevDate: editMeta.prevDate,
               newDate: form.date,
               newTime: form.time,
               slotKey: form.slotKey,
@@ -305,29 +343,31 @@
             throw new Error(moveData.error || moveData.detail || `Verplaatsen mislukt (${moveRes.status})`);
           }
         }
+        const updateBody = {
+          contactId: editMeta.contactId,
+          name: form.name,
+          phone: form.phone,
+          email: form.email || '',
+          address: form.address,
+          date: form.date,
+          slotKey: form.slotKey,
+          slotLabel: form.slotLabel,
+          type: form.type,
+          desc: form.desc || '—',
+          price: form.totalPrice,
+          priceLines: form.priceLines,
+        };
         debug('edit_save_address_payload', {
-          contactId: editingMeta.contactId,
+          contactId: editMeta.contactId,
           address: form.address,
           date: form.date,
           slotKey: form.slotKey,
         });
+        traceEditAddress('[payload]', { body: updateBody, json: JSON.stringify(updateBody) });
         res = await fetch('/api/ghl?action=updatePlannerBookingDetails', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
-          body: JSON.stringify({
-            contactId: editingMeta.contactId,
-            name: form.name,
-            phone: form.phone,
-            email: form.email || '',
-            address: form.address,
-            date: form.date,
-            slotKey: form.slotKey,
-            slotLabel: form.slotLabel,
-            type: form.type,
-            desc: form.desc || '—',
-            price: form.totalPrice,
-            priceLines: form.priceLines,
-          }),
+          body: JSON.stringify(updateBody),
         });
         data = await res.json().catch(() => ({}));
       } else {
@@ -396,7 +436,7 @@
       inFlight = false;
       if (addBtn) {
         addBtn.disabled = false;
-        addBtn.textContent = 'Toevoegen';
+        addBtn.textContent = modeAtSaveStart === 'edit' ? 'Wijzigingen opslaan' : 'Toevoegen';
       }
     }
   }
@@ -464,6 +504,18 @@
       prevDate: activeDate,
       prevSlotKey: slotCfg.key || slotKey,
     };
+
+    const overlayOpen = document.getElementById('modalOverlay');
+    if (overlayOpen) {
+      overlayOpen.dataset.hkEditContactId = String(a.contactId);
+      overlayOpen.dataset.hkEditPrevDate = activeDate;
+      overlayOpen.dataset.hkEditPrevSlot = String(slotCfg.key || slotKey);
+    }
+    traceEditAddress('[open_address]', {
+      apptId,
+      contactId: a.contactId,
+      fullAddressLine: String(a.fullAddressLine || a.address || '').trim(),
+    });
 
     const dateInput = document.getElementById('mDate');
     const slotInput = document.getElementById('mSlot');
