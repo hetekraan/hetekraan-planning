@@ -130,12 +130,31 @@
     });
   }
 
-  function onBlockDayButtonClick(ctx) {
+  function dayIsBlockedForCtx(ctx) {
     const dateStr = ctx.getDateStr(ctx.getCurrentDate());
     const blocks = ctx.getAppointmentsRef().filter((x) => x.isCalBlock);
     const dashPending = ctx.isDashBlockedPending(dateStr) && blocks.length === 0;
-    if (blocks.length > 0 || dashPending) unblockCurrentDayInGhl(ctx);
-    else blockCurrentDayInGhl(ctx);
+    return blocks.length > 0 || dashPending;
+  }
+
+  function onBlockDayButtonClick(ctx) {
+    if (dayIsBlockedForCtx(ctx)) unblockCurrentDayInGhl(ctx);
+    else openDayBlockChoiceModal(ctx);
+  }
+
+  function openDayBlockChoiceModal(ctx) {
+    const labelEl = document.getElementById('dayBlockChoiceDateLabel');
+    if (labelEl) labelEl.textContent = ctx.formatDate(ctx.getCurrentDate());
+    document.getElementById('dayBlockChoiceOverlay')?.classList.add('visible');
+  }
+
+  function closeDayBlockChoiceModal() {
+    document.getElementById('dayBlockChoiceOverlay')?.classList.remove('visible');
+  }
+
+  async function applyDayBlockChoice(dayPart, ctx) {
+    closeDayBlockChoiceModal();
+    return blockCurrentDayInGhl(ctx, { dayPart, skipConfirm: true });
   }
 
   async function unblockCurrentDayInGhl(ctx) {
@@ -167,20 +186,34 @@
     }
   }
 
-  async function blockCurrentDayInGhl(ctx) {
+  async function blockCurrentDayInGhl(ctx, opts) {
+    const options = opts && typeof opts === 'object' ? opts : {};
+    const skipConfirm = options.skipConfirm === true;
+    const rawPart = String(options.dayPart || 'full').toLowerCase();
+    const dayPart = rawPart === 'morning' || rawPart === 'afternoon' ? rawPart : 'full';
     const dateStr = ctx.getDateStr(ctx.getCurrentDate());
     const label = ctx.formatDate(ctx.getCurrentDate());
-    if (!confirm(`Hele kalenderdag blokkeren in GHL voor ${label}?\n\nEr komt een officiële blokslot (hele dag). Online boeken slaat deze datum daarna volledig over — totdat je de blokkade weer opheft of het blok in GHL verwijdert.\n\nLet op: kortere blokken die je alleen in GHL zet kunnen óók de hele datum voor klanten sluiten (overlap met 08–18 Amsterdam).`)) return;
+    if (!skipConfirm) {
+      if (
+        !confirm(
+          `Hele kalenderdag blokkeren in GHL voor ${label}?\n\nEr komt een officiële blokslot (hele dag). Online boeken slaat deze datum daarna volledig over — totdat je de blokkade weer opheft of het blok in GHL verwijdert.\n\nLet op: kortere blokken die je alleen in GHL zet kunnen óók de hele datum voor klanten sluiten (overlap met 08–18 Amsterdam).`
+        )
+      ) {
+        return;
+      }
+    }
     if (hkGhlBlockDayInFlight) return;
     hkGhlBlockDayInFlight = true;
     const blockBtn = document.getElementById('btnBlockDayGhl');
     if (blockBtn) blockBtn.disabled = true;
     ctx.showToast('⏳ Blokslot aanmaken in GHL...', 'loading');
     try {
+      const body = { date: dateStr, dayPart };
+      if (dayPart === 'full') body.title = 'Dag geblokkeerd';
       const res = await fetch('/api/ghl?action=blockCalendarDay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-HK-Auth': ctx.hkAuthHeader() },
-        body: JSON.stringify({ date: dateStr, title: 'Dag geblokkeerd' }),
+        body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `Fout ${res.status}`);
@@ -198,6 +231,10 @@
     confirmDeleteAppt,
     confirmDone,
     onBlockDayButtonClick,
+    dayIsBlockedForCtx,
+    openDayBlockChoiceModal,
+    closeDayBlockChoiceModal,
+    applyDayBlockChoice,
     blockCurrentDayInGhl,
     unblockCurrentDayInGhl,
   };

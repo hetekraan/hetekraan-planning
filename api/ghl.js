@@ -19,6 +19,7 @@ import {
   listDeletableBlockIdsForAmsterdamDay,
   listDeletableBlockIdsForMsRange,
   markBlockLikeOnCalendarEvents,
+  postAmsterdamWallBlockWindow,
   postFullDayBlockSlot,
   resolveBlockSlotAssignedUserId,
 } from '../lib/ghl-calendar-blocks.js';
@@ -2050,7 +2051,21 @@ export default async function handler(req, res) {
         const locationId = locConfigured;
         const calendarId = calConfigured;
         const titleRaw = req.body?.title;
-        const title = titleRaw != null && String(titleRaw).trim() ? String(titleRaw).trim().slice(0, 120) : 'Dag geblokkeerd';
+        const dayPartRaw = String(req.body?.dayPart || 'full').toLowerCase().trim();
+        const dayPart = dayPartRaw === 'morning' || dayPartRaw === 'afternoon' ? dayPartRaw : 'full';
+        let defaultTitle = 'Dag geblokkeerd';
+        let wall = null;
+        if (dayPart === 'morning') {
+          defaultTitle = 'Ochtend geblokkeerd (09:00–13:00)';
+          wall = { startHour: 9, startMinute: 0, endHour: 13, endMinute: 0 };
+        } else if (dayPart === 'afternoon') {
+          defaultTitle = 'Middag geblokkeerd (13:00–17:00)';
+          wall = { startHour: 13, startMinute: 0, endHour: 17, endMinute: 0 };
+        }
+        const title =
+          titleRaw != null && String(titleRaw).trim()
+            ? String(titleRaw).trim().slice(0, 120)
+            : defaultTitle;
         const assignedUserId = await resolveBlockSlotAssignedUserId(
           GHL_BASE,
           GHL_API_KEY,
@@ -2066,16 +2081,31 @@ export default async function handler(req, res) {
             locationId,
             assignedUserId,
             usingDefaultBlockUser: assignedUserId === HK_DEFAULT_BLOCK_SLOT_USER_ID,
+            dayPart,
           })
         );
-        const r = await postFullDayBlockSlot(GHL_BASE, {
-          locationId,
-          calendarId,
-          dateStr: date,
-          title,
-          apiKey: GHL_API_KEY,
-          assignedUserId,
-        });
+        const r =
+          wall != null
+            ? await postAmsterdamWallBlockWindow(GHL_BASE, {
+                locationId,
+                calendarId,
+                dateStr: date,
+                title,
+                apiKey: GHL_API_KEY,
+                assignedUserId,
+                startHour: wall.startHour,
+                startMinute: wall.startMinute,
+                endHour: wall.endHour,
+                endMinute: wall.endMinute,
+              })
+            : await postFullDayBlockSlot(GHL_BASE, {
+                locationId,
+                calendarId,
+                dateStr: date,
+                title,
+                apiKey: GHL_API_KEY,
+                assignedUserId,
+              });
         if (r.error && !r.status) {
           return res.status(400).json({ error: r.error });
         }

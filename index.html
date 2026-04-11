@@ -68,13 +68,13 @@
   header {
     background: var(--surface);
     border-bottom: 1px solid var(--border);
-    padding: 8px max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left));
-    min-height: 56px;
+    padding: 6px max(12px, env(safe-area-inset-right)) 6px max(12px, env(safe-area-inset-left));
+    min-height: 52px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
-    row-gap: 8px;
+    row-gap: 4px;
     column-gap: 8px;
     position: sticky;
     top: 0;
@@ -93,8 +93,11 @@
   .planner-header-brand-row {
     display: flex;
     align-items: center;
+    justify-content: center;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 6px;
+    flex: 1 1 auto;
+    min-width: 0;
   }
   .planner-brand-mark {
     display: flex;
@@ -104,9 +107,9 @@
   }
   .planner-brand-logo {
     display: block;
-    height: 34px;
+    height: 36px;
     width: auto;
-    max-width: min(200px, 52vw);
+    max-width: min(220px, 50vw);
     object-fit: contain;
     object-position: center;
   }
@@ -194,7 +197,7 @@
     display: grid;
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 1fr);
-    min-height: calc(100dvh - 56px - 48px);
+    min-height: calc(100dvh - 52px - 48px);
     width: 100%;
     max-width: 100vw;
   }
@@ -268,11 +271,11 @@
   .appt-card:hover { border-color: var(--surface3); transform: translateY(-1px); }
   .appt-card.done {
     background: var(--klaar-bg);
-    border-color: #22c55e;
-    border-left: 3px solid #22c55e;
+    border-color: var(--accent2);
+    border-left: 3px solid var(--accent2);
     opacity: 0.88;
   }
-  .appt-card.done:hover { transform: none; border-color: #22c55e; }
+  .appt-card.done:hover { transform: none; border-color: var(--accent2); }
 
   /* Groen vinkje badge rechtsboven */
   .appt-card.done::after {
@@ -280,9 +283,9 @@
     position: absolute;
     top: 8px;
     right: 8px;
-    background: rgba(34,197,94,0.12);
-    color: #22c55e;
-    border: 1px solid rgba(34,197,94,0.35);
+    background: rgba(0, 212, 170, 0.14);
+    color: var(--accent2);
+    border: 1px solid rgba(0, 212, 170, 0.4);
     border-radius: 4px;
     font-size: 10px;
     font-weight: 700;
@@ -293,15 +296,15 @@
 
   /* Groene vloed-animatie bij afronding */
   @keyframes greenFlood {
-    0%   { background: var(--surface); box-shadow: inset 0 0 0 0 rgba(34,197,94,0); }
-    20%  { background: rgba(34,197,94,0.18); box-shadow: inset 0 0 0 2px rgba(34,197,94,0.5); }
-    60%  { background: rgba(34,197,94,0.10); box-shadow: inset 0 0 0 1px rgba(34,197,94,0.3); }
+    0%   { background: var(--surface); box-shadow: inset 0 0 0 0 rgba(0, 212, 170, 0); }
+    20%  { background: rgba(0, 212, 170, 0.18); box-shadow: inset 0 0 0 2px rgba(0, 212, 170, 0.45); }
+    60%  { background: rgba(0, 212, 170, 0.1); box-shadow: inset 0 0 0 1px rgba(0, 212, 170, 0.28); }
     100% { background: var(--klaar-bg); box-shadow: none; }
   }
   .appt-card.just-done {
     animation: greenFlood 1.4s ease-out forwards;
-    border-color: #22c55e !important;
-    border-left: 3px solid #22c55e !important;
+    border-color: var(--accent2) !important;
+    border-left: 3px solid var(--accent2) !important;
   }
   .appt-card.onderweg { border-color: var(--blue); }
 
@@ -402,16 +405,6 @@
     padding: 0 10px;
   }
   .icon-btn.edit-action:hover { color: #ffffff; border-color: #586070; }
-  .daan-edit-badge {
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--accent);
-    margin-left: 10px;
-    padding: 4px 8px;
-    border-radius: 6px;
-    border: 1px solid rgba(0, 212, 170, 0.35);
-    white-space: nowrap;
-  }
   .details-section {
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -1001,21 +994,6 @@
   .btn-delete-appt:hover { background: rgba(255,80,80,0.2); }
 
   /* ── UI-schaal groot = Jerry / toegankelijkheid (class: body.ui-scale-large) ─ */
-  .btn-large-text {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--muted);
-    font-family: 'Syne', sans-serif;
-    font-size: 11px;
-    font-weight: 700;
-    padding: 5px 9px;
-    border-radius: 6px;
-    cursor: pointer;
-    flex-shrink: 0;
-    transition: all 0.15s;
-  }
-  .btn-large-text:hover { color: var(--text); border-color: var(--muted); }
-  .btn-large-text.active { background: rgba(0,212,170,0.1); border-color: var(--accent2); color: var(--accent2); }
 
   @media (min-width: 1180px) {
     body.ui-scale-large .date-label { font-size: 15px; width: 210px; flex: 0 0 210px; }
@@ -1028,8 +1006,8 @@
   body.ui-scale-large .section-title             { font-size: 13px; }
   body.ui-scale-large .btn-add                   { font-size: 14px; padding: 10px 18px; }
   body.ui-scale-large .btn-dagopgave             { font-size: 17px; padding: 8px 11px; }
-  body.ui-scale-large .btn-block-cal             { font-size: 17px; padding: 8px 11px; }
-  body.ui-scale-large .btn-bulk-clear-blocks     { font-size: 16px; padding: 8px 11px; }
+  body.ui-scale-large .btn-day-block             { font-size: 14px; padding: 8px 11px; }
+  body.ui-scale-large .btn-day-block .btn-day-block-ic { font-size: 17px; }
   body.ui-scale-large .day-blocked-banner       { font-size: 15px; padding: 12px 14px; }
   body.ui-scale-large .appt-number              { font-size: 12px; }
   body.ui-scale-large .appt-time                { font-size: 18px; }
@@ -1085,43 +1063,53 @@
   }
   .btn-dagopgave:hover { background: var(--surface3); color: var(--text); }
 
-  .btn-block-cal {
+  .btn-day-block {
     background: var(--surface2);
     border: 1px solid var(--border);
     color: var(--muted);
-    padding: 8px 10px;
+    min-width: 44px;
     min-height: 44px;
+    padding: 8px 10px;
     border-radius: 8px;
     font-size: 12px;
+    font-weight: 600;
     cursor: pointer;
-    transition: background 0.15s;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
     touch-action: manipulation;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    gap: 6px;
   }
-  .btn-block-cal:hover { background: rgba(255, 140, 0, 0.12); color: #ffb347; border-color: rgba(255, 140, 0, 0.35); }
-  .btn-block-cal.is-day-blocked {
+  .btn-day-block .btn-day-block-ic {
+    font-size: 16px;
+    line-height: 1;
+  }
+  .btn-day-block .btn-day-block-txt {
+    white-space: nowrap;
+    letter-spacing: 0.01em;
+  }
+  .btn-day-block:hover {
+    background: rgba(255, 140, 0, 0.12);
+    color: #ffb347;
+    border-color: rgba(255, 140, 0, 0.35);
+  }
+  .btn-day-block.is-day-blocked {
     background: rgba(255, 140, 0, 0.18);
     color: #ffb347;
     border-color: rgba(255, 140, 0, 0.45);
-    cursor: default;
-  }
-  .btn-bulk-clear-blocks {
-    background: rgba(180, 40, 40, 0.12);
-    border: 1px solid rgba(220, 80, 80, 0.45);
-    color: #e07070;
-    padding: 8px 10px;
-    min-height: 44px;
-    border-radius: 8px;
-    font-size: 12px;
     cursor: pointer;
-    touch-action: manipulation;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
   }
-  .btn-bulk-clear-blocks:hover { background: rgba(220, 80, 80, 0.2); color: #ff9090; }
+  .btn-day-block.is-day-blocked:hover {
+    background: rgba(255, 140, 0, 0.24);
+    border-color: rgba(255, 140, 0, 0.55);
+  }
+  .btn-day-block--menu {
+    width: 100%;
+    justify-content: flex-start;
+    text-align: left;
+    font-weight: 600;
+  }
 
   .appt-card.cal-block {
     border-color: rgba(255, 140, 0, 0.45);
@@ -1319,7 +1307,10 @@
     line-height: 1.5;
   }
   .toast.show { transform: translateY(0); opacity: 1; }
-  .toast.success { border-color: var(--accent2); }
+  .toast.success {
+    border-color: var(--accent2);
+    color: var(--accent2);
+  }
   .toast.info { border-color: var(--blue); }
   .toast.loading { border-color: var(--accent); }
 
@@ -1610,6 +1601,7 @@
   @media (max-width: 1179px) {
     body {
       padding-bottom: calc(66px + env(safe-area-inset-bottom));
+      font-size: 15px;
     }
     .hamburger-btn {
       display: inline-flex;
@@ -1760,9 +1752,9 @@
     .layout {
       grid-template-columns: minmax(0, 1fr) 280px;
       grid-template-rows: minmax(0, 1fr);
-      height: calc(100dvh - 56px);
-      min-height: calc(100dvh - 56px);
-      max-height: calc(100dvh - 56px);
+      height: calc(100dvh - 52px);
+      min-height: calc(100dvh - 52px);
+      max-height: calc(100dvh - 52px);
     }
 
     .appointments {
@@ -1795,9 +1787,13 @@
 
     header {
       flex-wrap: nowrap;
-      padding: 0 16px;
-      height: 56px;
-      min-height: 56px;
+      padding: 0 14px;
+      height: 52px;
+      min-height: 52px;
+    }
+    .planner-header-brand-row {
+      flex: 0 1 auto;
+      justify-content: flex-start;
     }
 
     .toast {
@@ -1867,18 +1863,14 @@
       font-size: 14px;
       border-radius: 6px;
     }
-    .btn-block-cal {
+    .btn-day-block {
       padding: 5px 8px;
       min-height: 0;
-      font-size: 14px;
+      font-size: 12px;
       border-radius: 6px;
+      gap: 4px;
     }
-    .btn-bulk-clear-blocks {
-      padding: 5px 8px;
-      min-height: 0;
-      font-size: 13px;
-      border-radius: 6px;
-    }
+    .btn-day-block .btn-day-block-ic { font-size: 14px; }
 
     .btn-done {
       padding: 5px 10px;
@@ -1893,8 +1885,8 @@
       display: inline-flex;
     }
     .planner-brand-logo {
-      height: 30px;
-      max-width: min(180px, 38vw);
+      height: 38px;
+      max-width: min(200px, 36vw);
     }
     .btn-klaar-scroll {
       display: none !important;
@@ -2019,14 +2011,10 @@
       font-size: 20px;
     }
   }
-  body.ui-scale-large .planner-brand-logo {
-    height: 38px;
-    max-width: min(220px, 50vw);
-  }
   @media (min-width: 1180px) {
     body.ui-scale-large .planner-brand-logo {
-      height: 34px;
-      max-width: min(200px, 40vw);
+      height: 42px;
+      max-width: min(220px, 42vw);
     }
   }
 
@@ -2138,14 +2126,6 @@
     min-height: 58px;
   }
 
-  body.ui-scale-large .btn-large-text {
-    font-size: 13px;
-    padding: 10px 14px;
-    min-height: 52px;
-    border-radius: 10px;
-    touch-action: manipulation;
-  }
-
   body.ui-scale-large .dagopgave-header-actions .btn-save,
   body.ui-scale-large .dagopgave-header-actions .btn-cancel {
     min-height: 56px;
@@ -2173,11 +2153,10 @@
       font-size: 16px;
     }
     body.ui-scale-large .btn-dagopgave,
-    body.ui-scale-large .btn-block-cal,
-    body.ui-scale-large .btn-bulk-clear-blocks {
+    body.ui-scale-large .btn-day-block {
       min-height: 56px;
       padding: 12px 14px;
-      font-size: 15px;
+      font-size: 14px;
     }
     body.ui-scale-large .btn-optimize {
       min-height: 58px;
@@ -2261,11 +2240,10 @@
       border-radius: 8px;
     }
     body.ui-scale-large .btn-dagopgave,
-    body.ui-scale-large .btn-block-cal,
-    body.ui-scale-large .btn-bulk-clear-blocks {
+    body.ui-scale-large .btn-day-block {
       min-height: 48px;
       padding: 10px 12px;
-      font-size: 14px;
+      font-size: 13px;
     }
     body.ui-scale-large .btn-optimize {
       min-height: 50px;
@@ -2291,11 +2269,6 @@
     }
     body.ui-scale-large .modal-actions--split .modal-actions-row > button {
       min-height: 50px;
-    }
-    body.ui-scale-large .btn-large-text {
-      min-height: 44px;
-      padding: 8px 12px;
-      font-size: 12px;
     }
     body.ui-scale-large .icon-btn {
       width: 40px;
@@ -2497,8 +2470,8 @@
     header {
       position: relative;
       flex-wrap: wrap;
-      padding-bottom: 14px;
-      row-gap: 12px;
+      padding-bottom: 8px;
+      row-gap: 6px;
     }
     header > div:first-child {
       flex: 1 1 100%;
@@ -2511,7 +2484,7 @@
     .planner-app-tools {
       display: flex;
       position: absolute;
-      top: max(8px, env(safe-area-inset-top));
+      top: max(6px, env(safe-area-inset-top));
       right: max(10px, env(safe-area-inset-right));
       order: 2;
     }
@@ -2525,25 +2498,21 @@
       width: 100%;
       min-width: 0;
     }
-    .planner-brand-logo {
-      height: 42px;
-      max-width: min(240px, 58vw);
-    }
     .header-stats {
       order: 3;
       width: 100%;
       justify-content: stretch;
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
+      gap: 8px;
       max-width: none;
     }
     .header-stats .stat {
       background: var(--surface2);
       border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 14px 10px;
-      min-height: 76px;
+      border-radius: 12px;
+      padding: 10px 8px;
+      min-height: 58px;
       justify-content: center;
     }
     .header-stats .stat-val {
@@ -2551,23 +2520,14 @@
     }
     .header-stats .stat-label {
       font-size: 10px;
-      margin-top: 6px;
-      letter-spacing: 0.08em;
-    }
-    .header-stats .btn-large-text,
-    .header-stats .btn-logout {
-      grid-column: 1 / -1;
-      justify-self: end;
-      display: inline-flex;
-      align-self: center;
-      gap: 8px;
       margin-top: 4px;
+      letter-spacing: 0.08em;
     }
 
     .layout {
       grid-template-columns: 1fr !important;
       grid-template-rows: minmax(0, 1fr) !important;
-      min-height: calc(100dvh - 56px - 88px) !important;
+      min-height: calc(100dvh - 48px - 76px) !important;
       height: auto !important;
       max-height: none !important;
     }
@@ -2831,6 +2791,19 @@
       font-size: 14px;
     }
   }
+
+  @media (max-width: 600px) {
+    .planner-brand-logo {
+      height: 48px;
+      max-width: min(300px, 86vw);
+    }
+  }
+  @media (min-width: 601px) and (max-width: 1179px) {
+    .planner-brand-logo {
+      height: 40px;
+      max-width: min(280px, 58vw);
+    }
+  }
 </style>
 </head>
 <body>
@@ -2839,9 +2812,8 @@
   <div class="planner-header-brand-row">
     <button type="button" class="hamburger-btn" id="mobileMenuBtn" title="Menu" onclick="toggleMobileMenu(true)">☰</button>
     <div class="planner-brand-mark">
-      <img src="/logo.png" alt="Hetekraan" class="planner-brand-logo" width="200" height="56" decoding="async" />
+      <img src="/logo.png" alt="Hetekraan" class="planner-brand-logo" width="240" height="64" decoding="async" />
     </div>
-    <span id="daanEditBadge" class="daan-edit-badge" style="display:none" title="Je ziet de groene GHL-bewerkknop op elke kaart">GHL bewerken</span>
   </div>
   <div class="planner-app-tools" aria-label="Zoeken en menu">
     <button type="button" class="planner-app-icon-btn" onclick="focusGlobalSearch()" title="Zoeken">🔎</button>
@@ -2864,11 +2836,9 @@
       <div class="stat-label">Klaar</div>
     </div>
     <div class="stat">
-      <div class="stat-val orange" id="totalOmzet">€0</div>
+      <div class="stat-val green" id="totalOmzet">€0</div>
       <div class="stat-label">Omzet dag</div>
     </div>
-    <button type="button" id="btnLargeText" class="btn-large-text" onclick="toggleUiScale()" title="Grotere tekst en knoppen (Jerry-modus)">Aa</button>
-    <button type="button" class="btn-logout" onclick="logoutPlanning()" title="Vandaag opnieuw inloggen of andere gebruiker">Uitloggen</button>
   </div>
   <div class="planner-week-nav" id="plannerWeekNav" aria-label="Week navigatie">
     <div class="planner-week-nav-strip">
@@ -2895,10 +2865,12 @@
 <div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="if(event.target===this)toggleMobileMenu(false)">
   <div class="mobile-menu-panel">
     <div class="section-title" style="margin-bottom:4px">Menu</div>
-    <button class="btn-maps" type="button" id="btnJerryModeMenu" onclick="toggleJerryMode()">🧓 Grote weergave</button>
     <button class="btn-add" type="button" onclick="toggleMobileMenu(false);openModal()">+ Afspraak</button>
     <button class="btn-dagopgave" type="button" onclick="toggleMobileMenu(false);openDagopgave()">📋 Dagopgave</button>
-    <button class="btn-block-cal" type="button" onclick="toggleMobileMenu(false);onBlockDayButtonClick()">🚫 Blokkeer dag</button>
+    <button type="button" class="btn-day-block btn-day-block--menu" id="btnBlockDayGhlMobile" onclick="toggleMobileMenu(false);onBlockDayButtonClick()">
+      <span class="btn-day-block-ic" aria-hidden="true">📅</span>
+      <span class="btn-day-block-txt" id="btnBlockDayGhlMobileLabel">Blokkeer dag</span>
+    </button>
     <button class="btn-logout" type="button" onclick="toggleMobileMenu(false);logoutPlanning()">Uitloggen</button>
   </div>
 </div>
@@ -2919,8 +2891,10 @@
       <div class="section-title">⬛ Afspraken van de dag</div>
       <div class="appointments-header-actions">
         <button class="btn-dagopgave" onclick="openDagopgave()" title="Dagopgave voor Tellow">📋</button>
-        <button class="btn-block-cal" id="btnBlockDayGhl" type="button" onclick="onBlockDayButtonClick()" title="Hele-dag GHL-blokslot (00:00–23:59) zetten of blokkade opheffen. Online boeken sluit de hele kalenderdatum uit; kortere GHL-blokken kunnen dat ook (zie banner, 08–18 Amsterdam).">🚫 Blokkeer dag</button>
-        <button class="btn-bulk-clear-blocks" id="btnBulkClearGhlBlocks" type="button" onclick="bulkDeleteAllGhlBlockedSlots()" title="Alleen daan: verwijder alle blokslots in GHL in een breed datumbereik via de API" style="display:none">⚠ Opruimen blokslots</button>
+        <button type="button" class="btn-day-block" id="btnBlockDayGhl" onclick="onBlockDayButtonClick()" aria-labelledby="btnBlockDayGhlLabel" title="Blokkeer of deblokkeer deze dag in GHL">
+          <span class="btn-day-block-ic" aria-hidden="true">📅</span>
+          <span class="btn-day-block-txt" id="btnBlockDayGhlLabel">Blokkeer dag</span>
+        </button>
         <button class="btn-add" onclick="openModal()">+ Afspraak</button>
       </div>
     </div>
@@ -2944,6 +2918,20 @@
     <div class="route-list" id="routeList"></div>
     <a class="btn-maps" href="#" onclick="openMaps(event)">🗺 Open volledige route in Maps</a>
     <button class="btn-morning" onclick="sendMorningMessages()">☀️ Stuur ochtendmeldingen</button>
+  </div>
+</div>
+
+<!-- DAG BLOKKEREN: keuze venster -->
+<div class="modal-overlay" id="dayBlockChoiceOverlay" onclick="if(event.target===this)closeDayBlockChoiceModal()">
+  <div class="modal" style="max-width:360px" role="dialog" aria-modal="true" aria-labelledby="dayBlockChoiceTitle" onclick="event.stopPropagation()">
+    <div class="modal-title" id="dayBlockChoiceTitle">Dag blokkeren</div>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.45">Kies hoe je <strong id="dayBlockChoiceDateLabel"></strong> wilt blokkeren in GHL.</p>
+    <div class="modal-actions" style="flex-direction:column;gap:8px;align-items:stretch">
+      <button type="button" class="btn-save" style="width:100%;padding:10px" onclick="applyDayBlockChoice('full')">Hele dag blokkeren</button>
+      <button type="button" class="btn-save" style="width:100%;padding:10px" onclick="applyDayBlockChoice('morning')">Ochtend blokkeren (09:00–13:00)</button>
+      <button type="button" class="btn-save" style="width:100%;padding:10px" onclick="applyDayBlockChoice('afternoon')">Middag blokkeren (13:00–17:00)</button>
+      <button type="button" class="btn-cancel" style="width:100%;padding:10px;text-align:center" onclick="closeDayBlockChoiceModal()">Annuleren</button>
+    </div>
   </div>
 </div>
 
@@ -3710,28 +3698,6 @@ function applyUiScalePref() {
   if (on) setUiScaleLarge(true);
   document.body.classList.toggle('ui-scale-large', on);
   document.body.classList.toggle('jerry-mode', on);
-  const btn = document.getElementById('btnLargeText');
-  if (btn) {
-    btn.classList.toggle('active', on);
-    btn.title = on
-      ? 'Standaard weergave (UI-schaal uit)'
-      : 'Grotere tekst en knoppen — Jerry-modus / toegankelijkheid';
-  }
-  const menuBtn = document.getElementById('btnJerryModeMenu');
-  if (menuBtn) {
-    menuBtn.textContent = on ? '🧓 Standaard weergave' : '🧓 Grote weergave';
-  }
-}
-
-function toggleUiScale() {
-  const on = readUiScaleLarge();
-  setUiScaleLarge(!on);
-  applyUiScalePref();
-  showToast(readUiScaleLarge() ? 'Grotere weergave aan (Jerry-modus)' : 'Standaard weergave', 'info');
-}
-
-function toggleJerryMode() {
-  toggleUiScale();
 }
 
 window.setPlannerUiScale = setPlannerUiScale;
@@ -4279,14 +4245,23 @@ function render() {
   }
 
   const blockBtn = document.getElementById('btnBlockDayGhl');
+  const blockLabel = document.getElementById('btnBlockDayGhlLabel');
+  const blockBtnMobile = document.getElementById('btnBlockDayGhlMobile');
+  const blockLabelMobile = document.getElementById('btnBlockDayGhlMobileLabel');
+  const dayIsBlocked = blocks.length > 0 || dashBlockedPending;
+  const blockLabelText = dayIsBlocked ? 'Deblokkeer dag' : 'Blokkeer dag';
   if (blockBtn) {
-    const dayIsBlocked = blocks.length > 0 || dashBlockedPending;
     blockBtn.classList.toggle('is-day-blocked', dayIsBlocked);
-    blockBtn.textContent = dayIsBlocked ? '🔓 Blokkade opheffen' : '🚫 Blokkeer dag';
     blockBtn.disabled = false;
+    if (blockLabel) blockLabel.textContent = blockLabelText;
     blockBtn.title = dayIsBlocked
       ? 'Heft de GHL-blokkade voor deze dag op — daarna kan online boeken deze datum weer voorstellen (als er verder geen blok in 08–18 Ams valt).'
-      : 'Zet in GHL een officiële blokslot voor deze hele kalenderdag (00–24). Online boeken sluit deze datum dan volledig uit. Kortere blokken alleen in GHL kunnen ook de hele dag voor klanten sluiten (08–18-overlap).';
+      : 'Blokkeer deze dag in GHL (hele dag, ochtend of middag). Online boeken sluit de hele datum uit zodra er bloktijd in 08–18 Amsterdam valt.';
+  }
+  if (blockBtnMobile) {
+    blockBtnMobile.classList.toggle('is-day-blocked', dayIsBlocked);
+    if (blockLabelMobile) blockLabelMobile.textContent = blockLabelText;
+    blockBtnMobile.title = blockBtn ? blockBtn.title : '';
   }
 
   const parts = [];
@@ -4332,10 +4307,6 @@ function render() {
   renderRoute(getRouteStopsForSidebar());
   calcStats();
   updateRouteLocalUi();
-  const badge = document.getElementById('daanEditBadge');
-  if (badge) badge.style.display = isDaanEditor() ? 'inline-flex' : 'none';
-  const bulkClear = document.getElementById('btnBulkClearGhlBlocks');
-  if (bulkClear) bulkClear.style.display = isDaanEditor() ? 'inline-block' : 'none';
   renderPlannerWeekStrip();
 }
 
@@ -4895,52 +4866,15 @@ function onBlockDayButtonClick() {
   return window.HKPlannerActions.onBlockDayButtonClick(ctx);
 }
 
-/**
- * Bulk: GHL blocked-slots in breed bereik verwijderen (alleen daan + API confirm).
- * Werkt alleen als GHL de slots via de API teruggeeft; read-only/sync kan alsnog in UI blijven.
- */
-async function bulkDeleteAllGhlBlockedSlots() {
-  if (!isDaanEditor()) {
-    showToast('Alleen beschikbaar voor gebruiker daan.', 'info');
-    return;
-  }
-  if (
-    !confirm(
-      'ALLE blokslots verwijderen die de API vindt (standaard ca. 3 weken terug t/m 12 weken vooruit; breder kan via API met startDate/endDate)?\n\nOok agenda-events die als blok gelden + blocked-slots. Doorgaan?'
-    )
-  ) {
-    return;
-  }
-  const typed = prompt(
-    'Typ exact (hoofdletters, onderstreping):\nVERWIJDER_ALLE_BLOKJES'
-  );
-  if (typed !== 'VERWIJDER_ALLE_BLOKJES') {
-    showToast('Geannuleerd — tekst kwam niet overeen.', 'info');
-    return;
-  }
-  showToast('⏳ GHL-blokslots ophalen en verwijderen...', 'loading');
-  try {
-    const res = await fetch('/api/ghl?action=bulkDeleteBlockedSlots', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
-      body: JSON.stringify({ confirm: 'VERWIJDER_ALLE_BLOKJES' }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(data.error || `Fout ${res.status}`);
-    }
-    let msg = `Klaar: ${data.deleted ?? 0} verwijderd van ${data.attempted ?? 0} geprobeerd.`;
-    if (data.totalFound != null && data.truncated) {
-      msg += ` (nog ${data.totalFound - data.attempted} over — nog een keer uitvoeren)`;
-    }
-    if ((data.failed || []).length) {
-      msg += `\n${data.failed.length} mislukt (zie console/network).`;
-    }
-    showToast(msg, data.deleted > 0 ? 'success' : 'info');
-    await loadAppointments(currentDate);
-  } catch (e) {
-    showToast(String(e.message || e), 'info');
-  }
+function closeDayBlockChoiceModal() {
+  if (!window.HKPlannerActions?.closeDayBlockChoiceModal) return;
+  return window.HKPlannerActions.closeDayBlockChoiceModal();
+}
+
+async function applyDayBlockChoice(dayPart) {
+  const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
+  if (!window.HKPlannerActions?.applyDayBlockChoice) return;
+  return window.HKPlannerActions.applyDayBlockChoice(dayPart, ctx);
 }
 
 async function unblockCurrentDayInGhl() {
@@ -4948,8 +4882,6 @@ async function unblockCurrentDayInGhl() {
   if (!window.HKPlannerActions?.unblockCurrentDayInGhl) return;
   return window.HKPlannerActions.unblockCurrentDayInGhl(ctx);
 }
-
-let hkGhlBlockDayInFlight = false;
 
 async function blockCurrentDayInGhl() {
   const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
