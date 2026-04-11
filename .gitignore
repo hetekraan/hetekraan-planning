@@ -7,6 +7,9 @@ node_modules/
 public/
 !public/
 public/*
+!public/manifest.webmanifest
+!public/icons/
+!public/icons/**
 public/*.html
 !public/app/
 !public/app/**
