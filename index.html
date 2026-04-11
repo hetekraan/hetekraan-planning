@@ -322,8 +322,9 @@
   .appt-top {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
+    align-items: center;
     margin-bottom: 4px;
+    gap: 8px;
   }
 
   .appt-time {
@@ -331,6 +332,8 @@
     font-size: 14px;
     font-weight: 500;
     color: var(--yellow);
+    min-width: 0;
+    flex: 1 1 auto;
   }
   .appt-card.done .appt-time { color: var(--muted); }
   .appt-card.done .btn-done,
@@ -372,7 +375,42 @@
   }
   .appt-card.violation { border-color: rgba(255,80,80,0.4); }
 
-  .appt-actions { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+  .appt-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    flex-shrink: 0;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .appt-actions .icon-btn.appt-action-icon {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    max-width: 40px;
+    padding: 0;
+    font-size: 15px;
+    line-height: 1;
+    font-weight: 600;
+    color: var(--muted);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .appt-actions .icon-btn.appt-action-icon:hover {
+    color: var(--text);
+    border-color: rgba(255, 255, 255, 0.16);
+    background: var(--surface3);
+  }
+  .appt-actions a.icon-btn.appt-action-icon {
+    -webkit-tap-highlight-color: transparent;
+  }
 
   .icon-btn {
     background: var(--surface2);
@@ -524,6 +562,28 @@
     flex-wrap: wrap;
   }
 
+  .appt-footer-cta-row {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+  }
+  .appt-footer-cta-row .btn-prijs,
+  .appt-footer-cta-row .btn-done {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 40px;
+    padding: 7px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 8px;
+    justify-content: center;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
   .appt-tags { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 
   .tag {
@@ -566,8 +626,16 @@
     flex-wrap: wrap;
     touch-action: manipulation;
   }
-  .btn-done:hover { background: rgba(0,212,170,0.1); border-color: var(--accent2); color: var(--accent2); }
-  .btn-done.active { background: rgba(74,158,255,0.1); border-color: var(--blue); color: var(--blue); }
+  .btn-done:hover {
+    color: var(--text);
+    border-color: rgba(255, 255, 255, 0.14);
+    background: var(--surface3);
+  }
+  .btn-done.active {
+    color: var(--text);
+    border-color: rgba(255, 255, 255, 0.2);
+    background: var(--surface3);
+  }
 
   /* COMPLETE BAR */
   .complete-bar {
@@ -669,7 +737,16 @@
     cursor: pointer;
     transition: background 0.15s;
   }
-  .btn-prijs:hover, .btn-prijs.active { background: rgba(255,208,0,0.1); border-color: var(--yellow); color: var(--yellow); }
+  .btn-prijs:hover {
+    color: var(--text);
+    border-color: rgba(255, 255, 255, 0.14);
+    background: var(--surface3);
+  }
+  .btn-prijs.active {
+    color: var(--text);
+    border-color: rgba(255, 255, 255, 0.2);
+    background: var(--surface3);
+  }
 
   /* ROUTE PANEL */
   .route-panel {
@@ -1029,6 +1106,19 @@
   body.ui-scale-large .btn-confirm              { font-size: 14px; padding: 9px 18px; }
   body.ui-scale-large .btn-prijs                { font-size: 14px; padding: 9px 14px; }
   body.ui-scale-large .icon-btn                 { width: 38px; height: 38px; font-size: 15px; border-radius: 8px; }
+  body.ui-scale-large .appt-actions .icon-btn.appt-action-icon {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    max-width: 40px;
+    font-size: 15px;
+  }
+  body.ui-scale-large .appt-footer-cta-row .btn-prijs,
+  body.ui-scale-large .appt-footer-cta-row .btn-done {
+    font-size: 12px;
+    padding: 8px 12px;
+    min-height: 42px;
+  }
   body.ui-scale-large .icon-btn.edit-action     { font-size: 12px; min-width: 82px; }
   body.ui-scale-large .complete-row             { font-size: 14px; }
   body.ui-scale-large .service-date-row         { font-size: 14px; }
@@ -1888,14 +1978,6 @@
       height: 38px;
       max-width: min(200px, 36vw);
     }
-    .btn-klaar-scroll {
-      display: none !important;
-    }
-    .appt-footer-actions-touch .btn-row-primary {
-      display: inline-flex;
-      flex-direction: row;
-      gap: 8px;
-    }
     .appt-footer-actions-touch {
       display: inline-flex;
       flex-direction: row;
@@ -1903,14 +1985,20 @@
       align-items: center;
       gap: 8px;
     }
-    .appt-footer-actions-touch .btn-prijs {
-      order: 1;
-      width: auto;
-      min-height: unset;
-      font-weight: 600;
+    .appt-footer-cta-row {
+      display: inline-flex;
+      flex-direction: row;
+      gap: 8px;
+      flex: 1 1 auto;
+      min-width: 0;
     }
-    .appt-footer-actions-touch .btn-row-primary {
-      order: 2;
+    .appt-footer-cta-row .btn-prijs,
+    .appt-footer-cta-row .btn-done {
+      flex: 1 1 0;
+      min-width: 0;
+      min-height: 36px;
+      padding: 6px 10px;
+      font-size: 11px;
     }
   }
 
@@ -2197,19 +2285,26 @@
       font-size: 17px;
       border-radius: 10px;
     }
+    body.ui-scale-large .appt-actions .icon-btn.appt-action-icon {
+      width: 48px;
+      height: 48px;
+      min-width: 48px;
+      max-width: 48px;
+      font-size: 18px;
+    }
     body.ui-scale-large .icon-btn.edit-action {
       min-width: 90px;
       height: 52px;
       min-height: 52px;
       font-size: 13px;
     }
-    body.ui-scale-large .btn-done {
-      min-height: 52px;
-      padding: 12px 16px;
-      font-size: 15px;
+    body.ui-scale-large .appt-footer-cta-row .btn-done,
+    body.ui-scale-large .appt-footer-cta-row .btn-prijs {
+      min-height: 50px;
+      padding: 10px 14px;
+      font-size: 14px;
     }
-    body.ui-scale-large .btn-confirm,
-    body.ui-scale-large .btn-prijs {
+    body.ui-scale-large .btn-confirm {
       min-height: 52px;
       padding: 12px 16px;
       font-size: 15px;
@@ -2273,6 +2368,13 @@
     body.ui-scale-large .icon-btn {
       width: 40px;
       height: 40px;
+      font-size: 15px;
+    }
+    body.ui-scale-large .appt-actions .icon-btn.appt-action-icon {
+      width: 40px;
+      height: 40px;
+      min-width: 40px;
+      max-width: 40px;
       font-size: 15px;
     }
     body.ui-scale-large .icon-btn.edit-action {
@@ -2462,10 +2564,6 @@
   .planner-week-day.is-active .planner-week-day-num {
     color: var(--accent);
   }
-  .btn-klaar-scroll {
-    display: none;
-  }
-
   @media (max-width: 1179px) {
     header {
       position: relative;
@@ -2475,26 +2573,37 @@
     }
     header > div:first-child {
       flex: 1 1 100%;
-      justify-content: center;
       order: 1;
+      min-height: 72px;
     }
     header > div:first-child .hamburger-btn {
       display: none !important;
     }
     .planner-header-brand-row {
-      gap: 4px;
+      gap: 0;
       min-height: 0;
+      width: 100%;
+      justify-content: center;
     }
     .planner-brand-mark {
-      flex: 1 1 auto;
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      top: max(4px, env(safe-area-inset-top));
+      z-index: 1;
+      display: flex;
+      align-items: center;
       justify-content: center;
-      min-width: 0;
+      width: max-content;
+      max-width: calc(100vw - 132px);
+      margin: 0;
+      pointer-events: auto;
     }
     .planner-brand-logo {
       display: block;
-      height: clamp(64px, 18vw, 80px);
+      height: 64px;
       width: auto;
-      max-width: min(94vw, 520px);
+      max-width: min(420px, calc(100vw - 132px));
       object-fit: contain;
       object-position: center;
     }
@@ -2504,6 +2613,7 @@
       top: max(6px, env(safe-area-inset-top));
       right: max(10px, env(safe-area-inset-right));
       order: 2;
+      z-index: 2;
     }
     .date-nav-wrap {
       display: none !important;
@@ -2653,7 +2763,7 @@
     .appt-top {
       justify-content: space-between;
       margin-bottom: 0;
-      align-items: flex-start;
+      align-items: center;
       gap: 8px;
     }
     .appt-top .appt-time {
@@ -2663,22 +2773,13 @@
       gap: 8px;
       flex-shrink: 0;
     }
-    .appt-card .icon-btn {
-      width: 48px;
-      height: 48px;
-      font-size: 18px;
-      border-radius: 12px;
-    }
-    .icon-btn.edit-action.edit-action--primary {
-      min-width: auto;
-      width: auto;
-      height: 48px;
-      padding: 0 12px;
-      font-size: 12px;
-      color: var(--text);
-    }
-    .icon-btn.edit-action.edit-action--primary::before {
-      content: none;
+    .appt-actions .icon-btn.appt-action-icon {
+      width: 44px;
+      height: 44px;
+      min-width: 44px;
+      max-width: 44px;
+      font-size: 17px;
+      border-radius: 10px;
     }
 
     .appt-address {
@@ -2746,48 +2847,16 @@
       gap: 10px;
       width: 100%;
     }
-    .appt-footer-actions-touch .btn-row-primary {
-      display: flex;
-      gap: 10px;
+    .appt-footer-cta-row {
       width: 100%;
     }
-    .appt-footer-actions-touch .btn-row-primary .btn-done,
-    .appt-footer-actions-touch .btn-row-primary .btn-klaar-scroll {
-      flex: 1;
-      min-width: 0;
-    }
-    .appt-footer-actions-touch .btn-prijs {
-      width: 100%;
-    }
-    .btn-prijs,
-    .btn-done {
-      min-height: 56px;
-      padding: 12px 10px;
-      font-size: 14px;
-      font-weight: 700;
-      border-radius: 12px;
-      justify-content: center;
-    }
-    .btn-klaar-scroll {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 56px;
-      padding: 12px 10px;
-      font-size: 14px;
-      font-weight: 700;
-      border-radius: 12px;
-      width: 100%;
-      background: rgba(0, 212, 170, 0.12);
-      border: 2px solid var(--accent2);
-      color: var(--accent2);
-      font-family: 'DM Sans', sans-serif;
-      cursor: pointer;
-      touch-action: manipulation;
-    }
-    .btn-klaar-scroll:disabled {
-      opacity: 0.45;
-      cursor: not-allowed;
+    .appt-footer-cta-row .btn-prijs,
+    .appt-footer-cta-row .btn-done {
+      min-height: 48px;
+      padding: 10px 8px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 10px;
     }
 
     .complete-bar {
@@ -4132,12 +4201,12 @@ function renderApptCard(a, i) {
             <span class="ghl-cal-time-hint" title="Starttijd in GHL-agenda (ter referentie)">· agenda ${a.estimated ? '~' : ''}${a.timeSlot}</span>
           </div>
           <div class="appt-actions">
-            ${a.phone ? `<a class="icon-btn" href="tel:${a.phone}" title="Bellen">📞</a>` : ''}
-            ${a.mapsLink ? `<a class="icon-btn" href="${a.mapsLink}" target="_blank" title="Maps">📍</a>` : ''}
-            ${a.ghlUrl ? `<a class="icon-btn ghl" href="${a.ghlUrl}" target="_blank" title="Open in GHL">🔗</a>` : ''}
-            ${isDone ? `<button type="button" class="icon-btn edit-action" onclick='openAppointmentDetailsModal(${idQ})' title="Bekijk details">👁 Bekijk</button>` : ''}
-            <button type="button" class="icon-btn edit-action edit-action--primary" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">✏ Bewerk</button>
-            <button class="icon-btn danger" onclick='deleteAppt(${idQ})' title="Verwijderen">✕</button>
+            ${a.phone ? `<a class="icon-btn appt-action-icon" href="tel:${a.phone}" title="Bellen">📞</a>` : ''}
+            ${a.mapsLink ? `<a class="icon-btn appt-action-icon" href="${a.mapsLink}" target="_blank" rel="noopener noreferrer" title="Maps">📍</a>` : ''}
+            ${a.ghlUrl ? `<a class="icon-btn appt-action-icon" href="${a.ghlUrl}" target="_blank" rel="noopener noreferrer" title="Open in GHL">🔗</a>` : ''}
+            ${isDone ? `<button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentDetailsModal(${idQ})' title="Bekijk details">👁</button>` : ''}
+            <button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">✏</button>
+            <button type="button" class="icon-btn appt-action-icon" onclick='deleteAppt(${idQ})' title="Verwijderen">✕</button>
           </div>
         </div>
         <div class="appt-name">${a.name.toUpperCase()}</div>
@@ -4159,13 +4228,10 @@ function renderApptCard(a, i) {
               </div>
             </div>
             ${!isDone ? `<div class="appt-footer-actions-touch">
-              <div class="btn-row-primary">
-                <button class="btn-done ${isOnderweg?'active':''}" onclick='${isOnderweg ? `scrollToPrijs(${idQ})` : `askOnderweg(${idQ})`}'>
-                  ${isOnderweg ? '💳 Afrekenen' : '→ Onderweg'}
-                </button>
-                <button type="button" class="btn-klaar-scroll" onclick='scrollToKlaarConfirm(${idQ})' title="Afronden: spring naar bevestigen">Klaar</button>
+              <div class="appt-footer-cta-row">
+                <button type="button" class="btn-prijs ${barVisible&&!isOnderweg?'active':''}" onclick='togglePrijs(${idQ})' title="Prijsoverzicht bekijken">💶 Prijs</button>
+                <button type="button" class="btn-done ${isOnderweg?'active':''}" onclick='${isOnderweg ? `scrollToPrijs(${idQ})` : `askOnderweg(${idQ})`}' title="${isOnderweg ? 'Naar prijs en afronden' : 'Markeer onderweg'}">${isOnderweg ? '💳 Afrekenen' : '→ Onderweg'}</button>
               </div>
-              <button class="btn-prijs ${barVisible&&!isOnderweg?'active':''}" onclick='togglePrijs(${idQ})' title="Prijsoverzicht bekijken">💶 Prijs</button>
             </div>` : ''}
           </div>
         </div>
