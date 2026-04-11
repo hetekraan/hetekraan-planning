@@ -63,6 +63,14 @@
     } catch (_) {}
   }
 
+  /** Zet: localStorage.setItem('hk_trace_login','1') */
+  function traceLogin(tag, payload) {
+    try {
+      if (localStorage.getItem('hk_trace_login') !== '1') return;
+      console.info(tag, payload || {});
+    } catch (_) {}
+  }
+
   function clearLoginState(input) {
     const userKey = input?.userKey;
     const sessionKey = input?.sessionKey;
@@ -107,6 +115,11 @@
     const setCookieVal = input?.setCookieVal;
     if (!getStoredSession || !render || !loadAppointments || !clearLoginState) return;
 
+    traceLogin('[LOGIN_TRACE][checkLogin]', {
+      hasDeps: true,
+      devBypassOn: isDevLoginBypassEnabled(),
+    });
+
     if (applyDevBypassLogin({ userKey, sessionKey, setCookieVal })) {
       const overlay = document.getElementById('loginOverlay');
       if (overlay) overlay.classList.add('hidden');
@@ -142,6 +155,7 @@
     const user = String(userEl?.value || '').trim().toLowerCase();
     const pass = String(passEl?.value || '');
     loginDebug('doLogin_start', { hasUser: !!user, hasPass: !!pass });
+    traceLogin('[LOGIN_TRACE][submit]', { user, hasPass: !!pass });
 
     if (applyDevBypassLogin({ userKey, sessionKey, setCookieVal })) {
       const overlay = document.getElementById('loginOverlay');
@@ -165,6 +179,13 @@
         data = await res.json();
       } catch (_) {}
       loginDebug('doLogin_response', { status: res.status, ok: res.ok, hasToken: !!data?.token, user: data?.user || null });
+      traceLogin('[LOGIN_TRACE][response]', {
+        status: res.status,
+        ok: res.ok,
+        hasToken: !!data?.token,
+        user: data?.user || null,
+        error: data?.error || null,
+      });
       if (res.ok && data?.token) {
         try {
           localStorage.setItem(userKey, data.user);
@@ -174,6 +195,12 @@
         } catch (_) {}
         setCookieVal(userKey, data.user);
         setCookieVal(sessionKey, data.token);
+        traceLogin('[LOGIN_TRACE][session_saved]', {
+          userKey,
+          sessionKey,
+          user: data.user,
+          tokenLen: String(data.token || '').length,
+        });
         const overlay = document.getElementById('loginOverlay');
         if (overlay) overlay.classList.add('hidden');
         render();

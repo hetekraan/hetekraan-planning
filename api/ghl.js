@@ -361,16 +361,32 @@ export default async function handler(req, res) {
   if (action === 'auth') {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
     const body = req.body || {};
+    const authTrace = process.env.HK_TRACE_AUTH === '1';
+    if (authTrace) {
+      console.log('[AUTH_TRACE][request]', {
+        user: String(body.user || '').trim().toLowerCase() || null,
+        hasPassword: !!String(body.password || ''),
+      });
+    }
     const u = String(body.user || '').trim().toLowerCase();
     const p = String(body.password || '');
     await new Promise((r) => setTimeout(r, 300));
     const users = parseUsers();
+    if (authTrace) {
+      console.log('[AUTH_TRACE][env_present]', {
+        hasSessionSecret: !!process.env.SESSION_SECRET,
+        hkUsersLen: String(process.env.HK_USERS || '').length,
+        userKeys: Object.keys(users),
+      });
+    }
     if (!u || !users[u] || users[u] !== p) {
+      if (authTrace) console.log('[AUTH_TRACE][fail]', { reason: 'bad_credentials' });
       return res.status(401).json({ error: 'Gebruikersnaam of wachtwoord onjuist' });
     }
     const token = signSessionToken(u);
     // `day` meesturen voor backward-compat met gecachte clients die nog de dagcheck doen
     const day = formatYyyyMmDdInAmsterdam(new Date()) || '';
+    if (authTrace) console.log('[AUTH_TRACE][success]', { user: u, tokenLen: token?.length || 0 });
     return res.status(200).json({ token, user: u, day });
   }
   // ────────────────────────────────────────────────────────────────────────

@@ -168,7 +168,7 @@
   .stat-val.orange { color: var(--accent); }
   .stat-label { font-size: 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
 
-  /* LAYOUT — single column + tabs on small screens; sidebar from 769px */
+  /* LAYOUT — app shell (<1180px); side-by-side planner from 1180px */
   .layout {
     display: grid;
     grid-template-columns: 1fr;
@@ -486,6 +486,28 @@
     align-items: center;
     flex-wrap: wrap;
     gap: 6px;
+  }
+
+  .appt-footer-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    flex: 1;
+    min-width: 0;
+  }
+  .appt-footer-actions-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .appt-footer-actions-touch {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
   }
 
   .appt-tags { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
@@ -974,10 +996,10 @@
   .btn-large-text:hover { color: var(--text); border-color: var(--muted); }
   .btn-large-text.active { background: rgba(0,212,170,0.1); border-color: var(--accent2); color: var(--accent2); }
 
-  @media (min-width: 769px) {
+  @media (min-width: 1180px) {
     body.ui-scale-large .date-label { font-size: 15px; width: 210px; flex: 0 0 210px; }
   }
-  @media (max-width: 768px) {
+  @media (max-width: 1179px) {
     body.ui-scale-large .date-label { font-size: 13px; }
   }
   body.ui-scale-large .stat-val                  { font-size: 20px; }
@@ -1564,7 +1586,7 @@
   .mobile-menu-overlay.visible .mobile-menu-panel {
     transform: translateX(0);
   }
-  @media (max-width: 768px) {
+  @media (max-width: 1179px) {
     body {
       padding-bottom: calc(66px + env(safe-area-inset-bottom));
     }
@@ -1701,7 +1723,7 @@
     }
   }
 
-  @media (min-width: 769px) {
+  @media (min-width: 1180px) {
     .mobile-tabs {
       display: none;
     }
@@ -1841,10 +1863,42 @@
       padding: 5px 10px;
       border-radius: 6px;
     }
+
+    .planner-app-tools,
+    .planner-week-strip {
+      display: none !important;
+    }
+    header > div:first-child .hamburger-btn {
+      display: inline-flex;
+    }
+    .btn-klaar-scroll {
+      display: none !important;
+    }
+    .appt-footer-actions-touch .btn-row-primary {
+      display: inline-flex;
+      flex-direction: row;
+      gap: 8px;
+    }
+    .appt-footer-actions-touch {
+      display: inline-flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+    .appt-footer-actions-touch .btn-prijs {
+      order: 1;
+      width: auto;
+      min-height: unset;
+      font-weight: 600;
+    }
+    .appt-footer-actions-touch .btn-row-primary {
+      order: 2;
+    }
   }
 
-  /* Phones / small tablets: slightly larger card type for readability */
-  @media (max-width: 768px) {
+  /* App widths: comfortable card type when not using full desktop card density */
+  @media (max-width: 1179px) {
     .appt-inner { padding: 12px 10px 12px 38px; }
     .appt-number { left: 10px; font-size: 12px; }
     .appt-name { font-size: 16px; }
@@ -1855,10 +1909,9 @@
     .appt-phone { font-size: 12px; }
     .appt-price { font-size: 15px; }
     .btn-done { font-size: 12px; padding: 8px 12px; min-height: 40px; }
-    .stat-label { display: none; }
   }
 
-  @media (min-width: 769px) {
+  @media (min-width: 1180px) {
     .stat-label { display: block; }
   }
 
@@ -1913,7 +1966,7 @@
     padding: 18px;
     gap: 14px;
   }
-  @media (max-width: 1100px) {
+  @media (max-width: 1179px) {
     body.jerry-mode .layout {
       grid-template-columns: 1fr !important;
       grid-template-rows: auto;
@@ -1944,7 +1997,7 @@
   body.ui-scale-large .logo {
     font-size: 18px;
   }
-  @media (min-width: 769px) {
+  @media (min-width: 1180px) {
     body.ui-scale-large .logo {
       font-size: 17px;
     }
@@ -2072,7 +2125,7 @@
   }
 
   /* Mobiel Jerry: maximale tikdoelen */
-  @media (max-width: 768px) {
+  @media (max-width: 1179px) {
     body.ui-scale-large .form-input,
     body.ui-scale-large .form-select {
       min-height: 56px;
@@ -2163,7 +2216,7 @@
   }
 
   /* Desktop Jerry: groter leesbaar, layout blijft compact */
-  @media (min-width: 769px) {
+  @media (min-width: 1180px) {
     body.ui-scale-large .form-input,
     body.ui-scale-large .form-select {
       min-height: 50px;
@@ -2236,6 +2289,415 @@
       max-width: min(640px, calc(100vw - 32px));
     }
   }
+
+  /* ── App shell (width < 1180px): week strip, tabs, touch-first cards ── */
+  .planner-app-tools {
+    display: none;
+    align-items: center;
+    gap: 10px;
+  }
+  .planner-app-icon-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 20px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+  }
+  .planner-app-icon-btn:hover {
+    border-color: var(--muted);
+    color: var(--accent);
+  }
+  .planner-week-strip {
+    display: none;
+    width: 100%;
+    gap: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 4px 0 2px;
+    scrollbar-width: none;
+  }
+  .planner-week-strip::-webkit-scrollbar {
+    display: none;
+  }
+  .planner-week-day {
+    flex: 0 0 auto;
+    min-width: 56px;
+    padding: 10px 8px 12px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--muted);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    line-height: 1.1;
+    touch-action: manipulation;
+  }
+  .planner-week-day .planner-week-day-num {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 18px;
+    color: var(--text);
+  }
+  .planner-week-day.is-active {
+    background: rgba(255, 107, 53, 0.22);
+    border-color: var(--accent);
+    color: var(--text);
+    box-shadow: 0 0 0 1px rgba(255, 107, 53, 0.35);
+  }
+  .planner-week-day.is-active .planner-week-day-num {
+    color: var(--accent);
+  }
+  .btn-klaar-scroll {
+    display: none;
+  }
+
+  @media (max-width: 1179px) {
+    header {
+      position: relative;
+      flex-wrap: wrap;
+      padding-bottom: 14px;
+      row-gap: 12px;
+    }
+    header > div:first-child {
+      flex: 1 1 100%;
+      justify-content: center;
+      order: 1;
+    }
+    header > div:first-child .hamburger-btn {
+      display: none !important;
+    }
+    .planner-app-tools {
+      display: flex;
+      position: absolute;
+      top: max(8px, env(safe-area-inset-top));
+      right: max(10px, env(safe-area-inset-right));
+      order: 2;
+    }
+    .date-nav-wrap {
+      display: none !important;
+    }
+    .planner-week-strip {
+      display: flex;
+      order: 4;
+      flex: 1 1 100%;
+      width: 100%;
+      min-width: 0;
+    }
+    .header-stats {
+      order: 3;
+      width: 100%;
+      justify-content: stretch;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      max-width: none;
+    }
+    .header-stats .stat {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 10px;
+      min-height: 76px;
+      justify-content: center;
+    }
+    .header-stats .stat-val {
+      font-size: 28px;
+    }
+    .header-stats .stat-label {
+      font-size: 10px;
+      margin-top: 6px;
+      letter-spacing: 0.08em;
+    }
+    .header-stats .btn-large-text,
+    .header-stats .btn-logout {
+      grid-column: 1 / -1;
+      justify-self: end;
+      display: inline-flex;
+      align-self: center;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .layout {
+      grid-template-columns: 1fr !important;
+      grid-template-rows: minmax(0, 1fr) !important;
+      min-height: calc(100dvh - 56px - 88px) !important;
+      height: auto !important;
+      max-height: none !important;
+    }
+    .appointments {
+      border-right: none !important;
+      max-height: none !important;
+      height: auto !important;
+      padding: 16px max(16px, env(safe-area-inset-right)) 24px max(16px, env(safe-area-inset-left));
+    }
+    .route-panel {
+      display: none !important;
+    }
+    .route-panel:not(.tab-hidden) {
+      display: flex !important;
+    }
+    .appointments.tab-hidden {
+      display: none !important;
+    }
+
+    .global-search {
+      margin-top: 6px;
+      margin-bottom: 8px;
+    }
+    .global-search-input {
+      min-height: 48px;
+      font-size: 15px;
+      border-radius: 12px;
+    }
+
+    .planning-section {
+      margin-bottom: 28px;
+    }
+    .planning-section-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--accent);
+      border-bottom: 2px solid rgba(255, 107, 53, 0.55);
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+    }
+
+    .appt-card {
+      border-radius: 16px;
+      margin-bottom: 20px;
+      display: grid;
+      grid-template-columns: 48px 1fr;
+      grid-template-rows: auto auto;
+      align-items: start;
+      column-gap: 4px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.14);
+    }
+    .appt-card.done::after {
+      top: 14px;
+      right: 14px;
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 8px;
+    }
+    .appt-number {
+      position: static;
+      grid-column: 1;
+      grid-row: 1;
+      padding: 18px 0 0 8px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+    .appt-inner {
+      grid-column: 2;
+      grid-row: 1;
+      padding: 16px 16px 16px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      min-width: 0;
+    }
+    .appt-inner > .appt-address {
+      order: -2;
+    }
+    .appt-inner > .appt-name {
+      order: -1;
+      margin-top: 6px;
+    }
+    .appt-inner > .appt-desc {
+      order: 0;
+    }
+    .appt-inner > .appt-top {
+      order: -3;
+      margin-bottom: 8px;
+    }
+    .appt-inner > .appt-meta,
+    .appt-inner > .appt-notes {
+      order: 1;
+    }
+    .appt-inner > .appt-footer {
+      order: 2;
+    }
+    .appt-card > .complete-bar {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+
+    .appt-top {
+      justify-content: space-between;
+      margin-bottom: 0;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .appt-top .appt-time {
+      font-size: 12px;
+    }
+    .appt-actions {
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .appt-card .icon-btn {
+      width: 48px;
+      height: 48px;
+      font-size: 18px;
+      border-radius: 12px;
+    }
+    .icon-btn.edit-action.edit-action--primary {
+      min-width: auto;
+      width: auto;
+      height: 48px;
+      padding: 0 12px;
+      font-size: 12px;
+      color: var(--text);
+    }
+    .icon-btn.edit-action.edit-action--primary::before {
+      content: none;
+    }
+
+    .appt-address {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(16px, 4.2vw, 20px);
+      font-weight: 800;
+      font-style: normal;
+      color: var(--text);
+      line-height: 1.2;
+      margin-bottom: 0;
+    }
+    .appt-name {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: none;
+      letter-spacing: 0;
+      margin-bottom: 8px;
+    }
+    .appt-desc {
+      font-size: 14px;
+      line-height: 1.45;
+      color: var(--text);
+      margin-bottom: 12px;
+    }
+    .tag {
+      font-size: 11px;
+      padding: 6px 12px;
+      border-radius: 999px;
+    }
+    .appt-price {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .appt-footer {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+      margin-top: 4px;
+    }
+    .appt-tags {
+      width: 100%;
+      align-items: center;
+    }
+    .appt-footer-actions {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      gap: 12px;
+    }
+    .appt-footer-actions-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+    }
+    .appt-footer-actions .status-dot {
+      display: none;
+    }
+    .appt-footer-actions-touch {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 100%;
+    }
+    .appt-footer-actions-touch .btn-row-primary {
+      display: flex;
+      gap: 10px;
+      width: 100%;
+    }
+    .appt-footer-actions-touch .btn-row-primary .btn-done,
+    .appt-footer-actions-touch .btn-row-primary .btn-klaar-scroll {
+      flex: 1;
+      min-width: 0;
+    }
+    .appt-footer-actions-touch .btn-prijs {
+      width: 100%;
+    }
+    .btn-prijs,
+    .btn-done {
+      min-height: 56px;
+      padding: 12px 10px;
+      font-size: 14px;
+      font-weight: 700;
+      border-radius: 12px;
+      justify-content: center;
+    }
+    .btn-klaar-scroll {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 56px;
+      padding: 12px 10px;
+      font-size: 14px;
+      font-weight: 700;
+      border-radius: 12px;
+      width: 100%;
+      background: rgba(0, 212, 170, 0.12);
+      border: 2px solid var(--accent2);
+      color: var(--accent2);
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .btn-klaar-scroll:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .complete-bar {
+      padding: 16px;
+      padding-left: 16px;
+      border-radius: 0 0 14px 14px;
+    }
+    .btn-confirm {
+      min-height: 52px;
+      padding: 12px 18px;
+      font-size: 15px;
+      font-weight: 700;
+      border-radius: 10px;
+    }
+    .btn-cancel {
+      min-height: 48px;
+      padding: 10px 14px;
+      font-size: 14px;
+    }
+  }
 </style>
 </head>
 <body>
@@ -2245,6 +2707,10 @@
     <button type="button" class="hamburger-btn" id="mobileMenuBtn" title="Menu" onclick="toggleMobileMenu(true)">☰</button>
     <div class="logo">HET<span>EKRAAN</span></div>
     <span id="daanEditBadge" class="daan-edit-badge" style="display:none" title="Je ziet de groene GHL-bewerkknop op elke kaart">GHL bewerken</span>
+  </div>
+  <div class="planner-app-tools" aria-label="Zoeken en menu">
+    <button type="button" class="planner-app-icon-btn" onclick="focusGlobalSearch()" title="Zoeken">🔎</button>
+    <button type="button" class="planner-app-icon-btn" onclick="toggleMobileMenu(true)" title="Menu">☰</button>
   </div>
   <div class="date-nav-wrap">
     <div class="date-nav">
@@ -2269,6 +2735,7 @@
     <button type="button" id="btnLargeText" class="btn-large-text" onclick="toggleUiScale()" title="Grotere tekst en knoppen (Jerry-modus)">Aa</button>
     <button type="button" class="btn-logout" onclick="logoutPlanning()" title="Vandaag opnieuw inloggen of andere gebruiker">Uitloggen</button>
   </div>
+  <div class="planner-week-strip" id="plannerWeekStrip" role="tablist" aria-label="Week"></div>
 </header>
 
 <!-- PWA mobile bottom nav -->
@@ -2318,7 +2785,7 @@
     </div>
   </div>
 
-  <div class="route-panel" id="panelRoute">
+  <div class="route-panel tab-hidden" id="panelRoute">
     <div class="section-title">⚡ Routevolgorde</div>
     <div class="route-toolbar">
       <button class="btn-optimize" id="btnOptimize" onclick="optimizeRoute()">⚡ OPTIMALISEER</button>
@@ -3267,7 +3734,94 @@ function changeDay(dir) {
   const [y, m, d] = parts;
   currentDate = new Date(Date.UTC(y, m - 1, d + dir, 12, 0, 0));
   document.getElementById('dateLabel').textContent = formatDate(currentDate);
+  renderPlannerWeekStrip();
   loadAppointments(currentDate);
+}
+
+/** Spring naar kalenderdag (Amsterdam) — weekstrip app layout */
+function goToDateStr(ymd) {
+  const parts = String(ymd || '').split('-').map((x) => parseInt(x, 10));
+  if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return;
+  currentDate = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12, 0, 0));
+  const dl = document.getElementById('dateLabel');
+  if (dl) dl.textContent = formatDate(currentDate);
+  renderPlannerWeekStrip();
+  loadAppointments(currentDate);
+}
+
+/** App layout: scroll naar afronden na “onderweg” */
+function scrollToKlaarConfirm(id) {
+  const a = appointments.find((x) => String(x.id) === String(id));
+  if (!a || a.status === 'klaar') return;
+  if (a.status !== 'onderweg') {
+    showToast('Markeer eerst onderweg.', 'info');
+    return;
+  }
+  const domId = appointmentDomSafeId(id);
+  const bar = document.getElementById('bar-' + domId);
+  if (bar) {
+    bar.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    setTimeout(() => {
+      document.querySelector('#card-' + domId + ' .btn-confirm')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 200);
+  }
+}
+
+function renderPlannerWeekStrip() {
+  const el = document.getElementById('plannerWeekStrip');
+  if (!el) return;
+  const curStr = getDateStr(currentDate);
+  const partsYmd = curStr.split('-').map((x) => parseInt(x, 10));
+  if (partsYmd.length !== 3 || partsYmd.some((n) => Number.isNaN(n))) return;
+  const [Y, M, D] = partsYmd;
+  const start = new Date(Date.UTC(Y, M - 1, D, 12, 0, 0));
+  const wdShort = (dt) =>
+    new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'Europe/Amsterdam' }).format(dt);
+  let g = 0;
+  while (wdShort(start) !== 'Mon' && g++ < 14) {
+    start.setUTCDate(start.getUTCDate() - 1);
+  }
+  const fmtWd = new Intl.DateTimeFormat('nl-NL', { weekday: 'short', timeZone: 'Europe/Amsterdam' });
+  const nums = [];
+  for (let i = 0; i < 7; i++) {
+    const day = new Date(start.getTime());
+    day.setUTCDate(start.getUTCDate() + i);
+    const ds = getDateStr(day);
+    const wd = fmtWd.format(day).replace(/\.$/, '');
+    const dayNum = new Intl.DateTimeFormat('nl-NL', { day: 'numeric', timeZone: 'Europe/Amsterdam' }).format(day);
+    const active = ds === curStr;
+    nums.push(
+      `<button type="button" class="planner-week-day${active ? ' is-active' : ''}" data-planner-ymd="${ds}" role="tab" aria-selected="${active ? 'true' : 'false'}">` +
+        `<span>${wd}</span>` +
+        `<span class="planner-week-day-num">${dayNum}</span>` +
+      `</button>`
+    );
+  }
+  el.innerHTML = nums.join('');
+  el.querySelectorAll('[data-planner-ymd]').forEach((btn) => {
+    btn.onclick = () => goToDateStr(btn.getAttribute('data-planner-ymd'));
+  });
+  requestAnimationFrame(() => {
+    el.querySelector('.planner-week-day.is-active')?.scrollIntoView({
+      inline: 'center',
+      block: 'nearest',
+      behavior: 'smooth',
+    });
+  });
+}
+
+/** Bij brede desktop: beide panelen tonen (CSS verbergt route-tab op smal). */
+function wireDesktopWideLayout() {
+  const wide = window.matchMedia('(min-width: 1180px)');
+  const apply = () => {
+    if (wide.matches) {
+      document.getElementById('panelRoute')?.classList.remove('tab-hidden');
+      document.getElementById('panelAfspraken')?.classList.remove('tab-hidden');
+    }
+  };
+  if (wide.addEventListener) wide.addEventListener('change', apply);
+  else if (wide.addListener) wide.addListener(apply);
+  apply();
 }
 
 function fmtEuro(amount) {
@@ -3401,7 +3955,7 @@ function renderApptCard(a, i) {
             ${a.mapsLink ? `<a class="icon-btn" href="${a.mapsLink}" target="_blank" title="Maps">📍</a>` : ''}
             ${a.ghlUrl ? `<a class="icon-btn ghl" href="${a.ghlUrl}" target="_blank" title="Open in GHL">🔗</a>` : ''}
             ${isDone ? `<button type="button" class="icon-btn edit-action" onclick='openAppointmentDetailsModal(${idQ})' title="Bekijk details">👁 Bekijk</button>` : ''}
-            <button type="button" class="icon-btn edit-action" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">✏ Bewerk</button>
+            <button type="button" class="icon-btn edit-action edit-action--primary" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">✏ Bewerk</button>
             <button class="icon-btn danger" onclick='deleteAppt(${idQ})' title="Verwijderen">✕</button>
           </div>
         </div>
@@ -3415,16 +3969,23 @@ function renderApptCard(a, i) {
             <span class="tag ${a.jobType}">${a.jobType}</span>
             ${a.phone ? `<span class="appt-phone">${a.phone}</span>` : ''}
           </div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-            ${a.priceLabel ? `<span class="appt-price">${a.priceLabel}</span>` : ''}
-            <div class="status-dot">
-              <div class="dot ${a.status}"></div>
-              <span style="color:var(--muted);font-size:10px">${a.status}</span>
+          <div class="appt-footer-actions">
+            <div class="appt-footer-actions-row">
+              ${a.priceLabel ? `<span class="appt-price">${a.priceLabel}</span>` : ''}
+              <div class="status-dot">
+                <div class="dot ${a.status}"></div>
+                <span style="color:var(--muted);font-size:10px">${a.status}</span>
+              </div>
             </div>
-            ${!isDone ? `<button class="btn-prijs ${barVisible&&!isOnderweg?'active':''}" onclick='togglePrijs(${idQ})' title="Prijsoverzicht bekijken">💶 Prijs</button>` : ''}
-            ${!isDone ? `<button class="btn-done ${isOnderweg?'active':''}" onclick='${isOnderweg ? `scrollToPrijs(${idQ})` : `askOnderweg(${idQ})`}'>
-              ${isOnderweg ? '💳 Afrekenen' : '→ Onderweg'}
-            </button>` : ''}
+            ${!isDone ? `<div class="appt-footer-actions-touch">
+              <div class="btn-row-primary">
+                <button class="btn-done ${isOnderweg?'active':''}" onclick='${isOnderweg ? `scrollToPrijs(${idQ})` : `askOnderweg(${idQ})`}'>
+                  ${isOnderweg ? '💳 Afrekenen' : '→ Onderweg'}
+                </button>
+                <button type="button" class="btn-klaar-scroll" onclick='scrollToKlaarConfirm(${idQ})' title="Afronden: spring naar bevestigen">Klaar</button>
+              </div>
+              <button class="btn-prijs ${barVisible&&!isOnderweg?'active':''}" onclick='togglePrijs(${idQ})' title="Prijsoverzicht bekijken">💶 Prijs</button>
+            </div>` : ''}
           </div>
         </div>
       </div>
@@ -3565,6 +4126,7 @@ function render() {
   if (badge) badge.style.display = isDaanEditor() ? 'inline-flex' : 'none';
   const bulkClear = document.getElementById('btnBulkClearGhlBlocks');
   if (bulkClear) bulkClear.style.display = isDaanEditor() ? 'inline-block' : 'none';
+  renderPlannerWeekStrip();
 }
 
 function renderRouteItemHtml(a) {
@@ -4219,6 +4781,8 @@ function showPaymentLinkFallback(url, invoiceNumber, total) {
 
 applyUiScalePref();
 document.getElementById('dateLabel').textContent = formatDate(currentDate);
+wireDesktopWideLayout();
+renderPlannerWeekStrip();
 
 // LOGIN — wachtwoorden staan NIET meer in de browser-code.
 // Credentials worden gevalideerd door /api/ghl?action=auth tegen env vars (HK_USERS).
@@ -4315,7 +4879,15 @@ function checkLogin() {
 }
 
 async function doLogin() {
-  if (!window.HKPlannerLogin?.doLogin) return;
+  if (!window.HKPlannerLogin?.doLogin) {
+    const err = document.getElementById('loginError');
+    if (err) {
+      err.textContent =
+        'Planner-scripts niet geladen (404 op /app/…). Start opnieuw met: npm run dev (vanaf projectroot). Voor inlog + API: npm run dev:vercel.';
+      err.classList.add('visible');
+    }
+    return;
+  }
   return window.HKPlannerLogin.doLogin({
     userKey: HK_USER_KEY,
     sessionKey: HK_SESSION_KEY,
