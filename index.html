@@ -90,6 +90,27 @@
   }
   .logo span { color: var(--accent); }
 
+  .planner-header-brand-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .planner-brand-mark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .planner-brand-logo {
+    display: block;
+    height: 34px;
+    width: auto;
+    max-width: min(200px, 52vw);
+    object-fit: contain;
+    object-position: center;
+  }
+
   .date-nav {
     display: flex;
     align-items: center;
@@ -1865,11 +1886,15 @@
     }
 
     .planner-app-tools,
-    .planner-week-strip {
+    .planner-week-nav {
       display: none !important;
     }
     header > div:first-child .hamburger-btn {
       display: inline-flex;
+    }
+    .planner-brand-logo {
+      height: 30px;
+      max-width: min(180px, 38vw);
     }
     .btn-klaar-scroll {
       display: none !important;
@@ -1994,12 +2019,14 @@
       font-size: 20px;
     }
   }
-  body.ui-scale-large .logo {
-    font-size: 18px;
+  body.ui-scale-large .planner-brand-logo {
+    height: 38px;
+    max-width: min(220px, 50vw);
   }
   @media (min-width: 1180px) {
-    body.ui-scale-large .logo {
-      font-size: 17px;
+    body.ui-scale-large .planner-brand-logo {
+      height: 34px;
+      max-width: min(200px, 40vw);
     }
   }
 
@@ -2314,8 +2341,110 @@
     border-color: var(--muted);
     color: var(--accent);
   }
-  .planner-week-strip {
+  .planner-week-nav {
     display: none;
+    width: 100%;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .planner-week-nav-strip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+  }
+  .planner-week-edge {
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .planner-week-edge:hover {
+    border-color: var(--muted);
+    color: var(--accent);
+  }
+  .planner-week-nav-meta {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+  }
+  .planner-month-label-btn {
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--text);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 16px;
+    cursor: pointer;
+    touch-action: manipulation;
+    max-width: 100%;
+  }
+  .planner-month-label-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .planner-week-icon-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    touch-action: manipulation;
+    flex-shrink: 0;
+  }
+  .planner-week-icon-btn:hover {
+    border-color: var(--muted);
+  }
+  .planner-today-btn {
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 10px 16px;
+    border-radius: 12px;
+    border: 1px solid var(--accent);
+    background: rgba(255, 107, 53, 0.1);
+    color: var(--accent);
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .planner-today-btn:hover {
+    background: rgba(255, 107, 53, 0.18);
+  }
+  .planner-date-input-hidden {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+    opacity: 0.01;
+  }
+  .planner-week-strip {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
     width: 100%;
     gap: 8px;
     overflow-x: auto;
@@ -2389,12 +2518,16 @@
     .date-nav-wrap {
       display: none !important;
     }
-    .planner-week-strip {
+    .planner-week-nav {
       display: flex;
       order: 4;
       flex: 1 1 100%;
       width: 100%;
       min-width: 0;
+    }
+    .planner-brand-logo {
+      height: 42px;
+      max-width: min(240px, 58vw);
     }
     .header-stats {
       order: 3;
@@ -2703,9 +2836,11 @@
 <body>
 
 <header>
-  <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px">
+  <div class="planner-header-brand-row">
     <button type="button" class="hamburger-btn" id="mobileMenuBtn" title="Menu" onclick="toggleMobileMenu(true)">☰</button>
-    <div class="logo">HET<span>EKRAAN</span></div>
+    <div class="planner-brand-mark">
+      <img src="/logo.png" alt="Hetekraan" class="planner-brand-logo" width="200" height="56" decoding="async" />
+    </div>
     <span id="daanEditBadge" class="daan-edit-badge" style="display:none" title="Je ziet de groene GHL-bewerkknop op elke kaart">GHL bewerken</span>
   </div>
   <div class="planner-app-tools" aria-label="Zoeken en menu">
@@ -2735,8 +2870,20 @@
     <button type="button" id="btnLargeText" class="btn-large-text" onclick="toggleUiScale()" title="Grotere tekst en knoppen (Jerry-modus)">Aa</button>
     <button type="button" class="btn-logout" onclick="logoutPlanning()" title="Vandaag opnieuw inloggen of andere gebruiker">Uitloggen</button>
   </div>
-  <div class="planner-week-strip" id="plannerWeekStrip" role="tablist" aria-label="Week"></div>
+  <div class="planner-week-nav" id="plannerWeekNav" aria-label="Week navigatie">
+    <div class="planner-week-nav-strip">
+      <button type="button" class="planner-week-edge" onclick="shiftPlannerWeek(-1)" title="Vorige week">‹</button>
+      <div class="planner-week-strip" id="plannerWeekStrip" role="tablist" aria-label="Dagen in deze week"></div>
+      <button type="button" class="planner-week-edge" onclick="shiftPlannerWeek(1)" title="Volgende week">›</button>
+    </div>
+    <div class="planner-week-nav-meta">
+      <button type="button" class="planner-month-label-btn" id="plannerMonthLabel" onclick="openPlannerDatePicker()" title="Datum kiezen"></button>
+      <button type="button" class="planner-week-icon-btn" onclick="openPlannerDatePicker()" title="Kalender — datum kiezen" aria-label="Kalender">📅</button>
+      <button type="button" class="planner-today-btn" onclick="goToTodayPlanner()">Vandaag</button>
+    </div>
+  </div>
 </header>
+<input type="date" id="plannerDatePicker" class="planner-date-input-hidden" autocomplete="off" title="Datum kiezen" />
 
 <!-- PWA mobile bottom nav -->
 <div class="mobile-tabs mobile-bottom-nav" id="mobileTabs">
@@ -3171,6 +3318,7 @@ async function openGlobalSearchResult(idx) {
   if (!targetDate) return;
   currentDate = targetDate;
   document.getElementById('dateLabel').textContent = formatDate(currentDate);
+  renderPlannerWeekStrip();
   await loadAppointments(currentDate);
   const byId = appointments.find((a) => String(a.id) === String(row.id));
   const byContact = !byId && row.contactId
@@ -3724,6 +3872,66 @@ function formatDate(d) {
   return window.HKPlannerUtils.formatDate(d);
 }
 
+function syncPlannerDatePickerValue() {
+  const inp = document.getElementById('plannerDatePicker');
+  if (inp) inp.value = getDateStr(currentDate);
+}
+
+function updatePlannerMonthLabel() {
+  const el = document.getElementById('plannerMonthLabel');
+  if (!el) return;
+  try {
+    el.textContent = new Intl.DateTimeFormat('nl-NL', {
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'Europe/Amsterdam',
+    }).format(currentDate);
+  } catch (_) {
+    el.textContent = '';
+  }
+}
+
+function shiftPlannerWeek(deltaWeeks) {
+  const ds = getDateStr(currentDate);
+  const parts = ds.split('-').map((x) => parseInt(x, 10));
+  if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return;
+  const [y, m, d] = parts;
+  currentDate = new Date(Date.UTC(y, m - 1, d + deltaWeeks * 7, 12, 0, 0));
+  const dl = document.getElementById('dateLabel');
+  if (dl) dl.textContent = formatDate(currentDate);
+  syncPlannerDatePickerValue();
+  updatePlannerMonthLabel();
+  renderPlannerWeekStrip();
+  loadAppointments(currentDate);
+}
+
+function goToTodayPlanner() {
+  goToDateStr(getDateStr(new Date()));
+}
+
+function openPlannerDatePicker() {
+  const inp = document.getElementById('plannerDatePicker');
+  if (!inp) return;
+  inp.value = getDateStr(currentDate);
+  if (typeof inp.showPicker === 'function') {
+    try {
+      inp.showPicker();
+      return;
+    } catch (_) {}
+  }
+  inp.focus();
+  inp.click();
+}
+
+function wirePlannerDatePickerInput() {
+  const inp = document.getElementById('plannerDatePicker');
+  if (!inp || inp.dataset.hkWired === '1') return;
+  inp.dataset.hkWired = '1';
+  inp.addEventListener('change', () => {
+    if (inp.value) goToDateStr(inp.value);
+  });
+}
+
 /**
  * Vorige/volgende kalenderdag in Europe/Amsterdam (niet blind +24u op Date — voorkomt dubbele dagen bij GHL/tijdzone).
  */
@@ -3801,6 +4009,8 @@ function renderPlannerWeekStrip() {
   el.querySelectorAll('[data-planner-ymd]').forEach((btn) => {
     btn.onclick = () => goToDateStr(btn.getAttribute('data-planner-ymd'));
   });
+  updatePlannerMonthLabel();
+  syncPlannerDatePickerValue();
   requestAnimationFrame(() => {
     el.querySelector('.planner-week-day.is-active')?.scrollIntoView({
       inline: 'center',
@@ -4781,6 +4991,7 @@ function showPaymentLinkFallback(url, invoiceNumber, total) {
 
 applyUiScalePref();
 document.getElementById('dateLabel').textContent = formatDate(currentDate);
+wirePlannerDatePickerInput();
 wireDesktopWideLayout();
 renderPlannerWeekStrip();
 
