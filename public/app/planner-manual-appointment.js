@@ -364,6 +364,12 @@
           slotKey: form.slotKey,
         });
         traceEditAddress('[payload]', { body: updateBody, json: JSON.stringify(updateBody) });
+        console.log('[TRACE][payload]', JSON.stringify(updateBody));
+        console.log('[TRACE][modal_input]', {
+          addressInput: document.querySelector('#mAddress')?.value,
+          modalMode,
+          editingMeta,
+        });
         res = await fetch('/api/ghl?action=updatePlannerBookingDetails', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },

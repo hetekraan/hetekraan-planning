@@ -76,6 +76,9 @@ const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 
+/** Alleen diagnostiek: laatste contactId na succesvolle updatePlannerBookingDetails PUT (voor [TRACE][mapped_address_after_edit]). */
+let _traceLastEditedContactId = null;
+
 function effectiveCalendarId() {
   return ghlCalendarIdFromEnv();
 }
@@ -509,6 +512,17 @@ export default async function handler(req, res) {
           const fromCf     = [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
           const canonical  = readCanonicalAddressLine(contact);
           e.parsedAddress = canonical;
+          if (_traceLastEditedContactId && String(contact?.id || '') === String(_traceLastEditedContactId)) {
+            const traceFull = fromCf || canonical || '';
+            console.log('[TRACE][mapped_address_after_edit]', {
+              contactId: contact.id,
+              straat_huisnummer: canonStreetHouse || null,
+              postcode: canonPostcode || null,
+              woonplaats: canonWoonplaats || null,
+              address1: String(contact.address1 || '').trim() || null,
+              fullAddressLine: traceFull || null,
+            });
+          }
           if (fromCf) {
             e.parsedStraatnaam = straat;
             e.parsedHuisnummer = huisnr;
@@ -1050,6 +1064,7 @@ export default async function handler(req, res) {
           price,
           priceLines,
         } = req.body || {};
+        console.log('[TRACE][request_body]', req.body);
         if (process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
           console.log('[updatePlannerBookingDetails][request_body]', {
             keys: req.body && typeof req.body === 'object' ? Object.keys(req.body) : [],
@@ -1081,6 +1096,7 @@ export default async function handler(req, res) {
         const phoneNorm = normalizePhoneForGhl(phone);
         const emailNorm = String(email || '').trim().toLowerCase();
         const addressNorm = String(address || '').trim();
+        console.log('[TRACE][normalized_address]', addressNorm);
         if (process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
           console.log('[updatePlannerBookingDetails][normalized_address]', {
             contactId: cid,
@@ -1205,6 +1221,29 @@ export default async function handler(req, res) {
           contactId: cid,
           address1: address1 || null,
         });
+        console.log('[TRACE][write_payload]', payload);
+        const logContactAddressReadBack = async (label) => {
+          try {
+            const rr = await fetchWithRetry(`${GHL_BASE}/contacts/${encodeURIComponent(cid)}`, {
+              headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' },
+            });
+            const raw = await rr.text().catch(() => '');
+            let contact = null;
+            try {
+              const j = JSON.parse(raw);
+              contact = j?.contact || j;
+            } catch (_) {}
+            console.log(label, {
+              httpOk: rr.ok,
+              address1: contact?.address1 ?? null,
+              straat_huisnummer: getField(contact, BOOKING_FORM_FIELD_IDS.straat_huisnummer),
+              postcode: getField(contact, BOOKING_FORM_FIELD_IDS.postcode),
+              woonplaats: getField(contact, BOOKING_FORM_FIELD_IDS.woonplaats),
+            });
+          } catch (e) {
+            console.log(label, { error: String(e?.message || e) });
+          }
+        };
         const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${encodeURIComponent(cid)}`, {
           method: 'PUT',
           headers: {
@@ -1215,8 +1254,11 @@ export default async function handler(req, res) {
           body: JSON.stringify(payload),
           _allowPostRetry: false,
         });
+        const putText = await putRes.text().catch(() => '');
+        console.log('[TRACE][ghl_put_status]', putRes.status);
+        console.log('[TRACE][ghl_put_response]', putText.slice(0, 500));
         if (!putRes.ok) {
-          const detail = (await putRes.text().catch(() => '')).slice(0, 400);
+          const detail = putText.slice(0, 400);
           console.error('[updatePlannerBookingDetails][contact_update_fail]', {
             contactId: cid,
             status: putRes.status,
@@ -1245,8 +1287,11 @@ export default async function handler(req, res) {
             body: JSON.stringify(fallbackPayload),
             _allowPostRetry: false,
           });
+          const retryText = await retryRes.text().catch(() => '');
+          console.log('[TRACE][ghl_put_status_retry]', retryRes.status);
+          console.log('[TRACE][ghl_put_response_retry]', retryText.slice(0, 500));
           if (!retryRes.ok) {
-            const retryDetail = (await retryRes.text().catch(() => '')).slice(0, 400);
+            const retryDetail = retryText.slice(0, 400);
             console.error('[updatePlannerBookingDetails][booking_fields_fail]', {
               contactId: cid,
               status: retryRes.status,
@@ -1257,6 +1302,10 @@ export default async function handler(req, res) {
               detail: retryDetail || detail,
             });
           }
+          _traceLastEditedContactId = cid;
+          await logContactAddressReadBack('[TRACE][address_after_write_immediate]');
+          await new Promise((r) => setTimeout(r, 2000));
+          await logContactAddressReadBack('[TRACE][address_after_write_delayed]');
           console.log('[updatePlannerBookingDetails][contact_update_ok]', {
             contactId: cid,
             mode: 'fallback_without_phone_email',
@@ -1282,6 +1331,10 @@ export default async function handler(req, res) {
             warning: 'Contactvelden opgeslagen zonder phone/email (fallback na GHL validatie).',
           });
         }
+        _traceLastEditedContactId = cid;
+        await logContactAddressReadBack('[TRACE][address_after_write_immediate]');
+        await new Promise((r) => setTimeout(r, 2000));
+        await logContactAddressReadBack('[TRACE][address_after_write_delayed]');
         console.log('[updatePlannerBookingDetails][contact_update_ok]', {
           contactId: cid,
           mode: 'primary',
