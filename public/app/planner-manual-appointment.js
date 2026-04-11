@@ -305,6 +305,12 @@
             throw new Error(moveData.error || moveData.detail || `Verplaatsen mislukt (${moveRes.status})`);
           }
         }
+        debug('edit_save_address_payload', {
+          contactId: editingMeta.contactId,
+          address: form.address,
+          date: form.date,
+          slotKey: form.slotKey,
+        });
         res = await fetch('/api/ghl?action=updatePlannerBookingDetails', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },

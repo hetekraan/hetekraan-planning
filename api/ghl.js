@@ -46,6 +46,7 @@ import {
   buildCanonicalAddressWritePayload,
   logCanonicalAddressRead,
   logCanonicalAddressWrite,
+  mergeGhlNativeAddressFromParts,
   readCanonicalAddressLine,
   splitAddressLineToStraatHuis,
 } from '../lib/ghl-contact-canonical.js';
@@ -1088,7 +1089,16 @@ export default async function handler(req, res) {
           structuredPriceRulesLen: structuredPriceRules.length,
         });
 
-        const { address1, customFields: addrCf } = buildCanonicalAddressWritePayload(addressNorm);
+        const { address1, customFields: addrCf, parts } = buildCanonicalAddressWritePayload(addressNorm);
+        /** Zelfde boekingsformulier-CF als confirm-booking, anders blijft getAppointments oude straat/postcode/plaats tonen. */
+        const streetHouseLine = [parts.straatnaam, parts.huisnummer]
+          .filter(Boolean)
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        const bookingStraatHuis =
+          streetHouseLine ||
+          (addressNorm ? String(address1 || addressNorm).replace(/\s+/g, ' ').trim() : '');
         const customFields = [
           ...addrCf,
           { id: FIELD_IDS.type_onderhoud, field_value: workTypeNorm || 'reparatie' },
@@ -1107,6 +1117,9 @@ export default async function handler(req, res) {
           customFieldCountBeforeCanon: customFields.length,
         });
         const bookingCanon = appendBookingCanonFields(customFields, {
+          straat_huisnummer: bookingStraatHuis,
+          postcode: parts.postcode || '',
+          woonplaats: parts.woonplaats || '',
           type_onderhoud: workTypeNorm || 'reparatie',
           probleemomschrijving: descNorm || '',
           tijdslot: slotLabelNorm || '',
@@ -1116,6 +1129,22 @@ export default async function handler(req, res) {
           boeking_bevestigd_dagdeel: slotPart,
           boeking_bevestigd_status: 'confirmed',
         });
+        if (addressNorm) {
+          if (!String(parts.postcode || '').trim()) {
+            bookingCanon.customFields.push({
+              id: BOOKING_FORM_FIELD_IDS.postcode,
+              value: '',
+              field_value: '',
+            });
+          }
+          if (!String(parts.woonplaats || '').trim()) {
+            bookingCanon.customFields.push({
+              id: BOOKING_FORM_FIELD_IDS.woonplaats,
+              value: '',
+              field_value: '',
+            });
+          }
+        }
         const payload = {
           firstName,
           lastName,
@@ -1124,6 +1153,18 @@ export default async function handler(req, res) {
         if (phoneNorm) payload.phone = phoneNorm;
         if (emailNorm) payload.email = emailNorm;
         if (address1) payload.address1 = address1;
+        if (addressNorm) mergeGhlNativeAddressFromParts(payload, parts);
+        if (process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
+          console.log('[updatePlannerBookingDetails][address_write]', {
+            contactId: cid,
+            addressNorm,
+            address1,
+            parts,
+            bookingStraatHuis,
+            bookingFormPostcode: parts.postcode || '(cleared)',
+            bookingFormWoonplaats: parts.woonplaats || '(cleared)',
+          });
+        }
         console.log('[updatePlannerBookingDetails][contact_update_start]', {
           contactId: cid,
           hasPhone: !!payload.phone,
