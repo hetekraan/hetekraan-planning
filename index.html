@@ -2470,8 +2470,8 @@
     header {
       position: relative;
       flex-wrap: wrap;
-      padding-bottom: 8px;
-      row-gap: 6px;
+      padding: 4px max(12px, env(safe-area-inset-right)) 6px max(12px, env(safe-area-inset-left));
+      row-gap: 4px;
     }
     header > div:first-child {
       flex: 1 1 100%;
@@ -2480,6 +2480,23 @@
     }
     header > div:first-child .hamburger-btn {
       display: none !important;
+    }
+    .planner-header-brand-row {
+      gap: 4px;
+      min-height: 0;
+    }
+    .planner-brand-mark {
+      flex: 1 1 auto;
+      justify-content: center;
+      min-width: 0;
+    }
+    .planner-brand-logo {
+      display: block;
+      height: clamp(64px, 18vw, 80px);
+      width: auto;
+      max-width: min(94vw, 520px);
+      object-fit: contain;
+      object-position: center;
     }
     .planner-app-tools {
       display: flex;
@@ -2792,18 +2809,6 @@
     }
   }
 
-  @media (max-width: 600px) {
-    .planner-brand-logo {
-      height: 48px;
-      max-width: min(300px, 86vw);
-    }
-  }
-  @media (min-width: 601px) and (max-width: 1179px) {
-    .planner-brand-logo {
-      height: 40px;
-      max-width: min(280px, 58vw);
-    }
-  }
 </style>
 </head>
 <body>
