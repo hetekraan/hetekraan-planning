@@ -28,13 +28,35 @@
     return window.HK_DEV_LOGIN_BYPASS !== false;
   }
 
+  /**
+   * Localhost bypass: kies dezelfde planner-username als bij echte login.
+   * Volgorde: getypt in #loginUser → bestaande hk_user (storage/cookie) → "daan".
+   * Zo blijft "jerry" na refresh staan i.p.v. telkens naar "daan" te springen.
+   */
+  function getDevBypassPlannerUsername(userKey) {
+    try {
+      const el = document.getElementById('loginUser');
+      const typed = String(el?.value || '').trim().toLowerCase();
+      if (typed) return typed;
+    } catch (_) {}
+    try {
+      let existing = localStorage.getItem(userKey);
+      if (!existing && window.HKPlannerAuthSession?.getCookieVal) {
+        existing = window.HKPlannerAuthSession.getCookieVal(userKey);
+      }
+      const ex = String(existing || '').trim().toLowerCase();
+      if (ex) return ex;
+    } catch (_) {}
+    return 'daan';
+  }
+
   function applyDevBypassLogin(input) {
     const userKey = input?.userKey;
     const sessionKey = input?.sessionKey;
     const setCookieVal = input?.setCookieVal;
     if (!userKey || !sessionKey) return false;
     if (!isDevLoginBypassEnabled()) return false;
-    const devUser = 'daan';
+    const devUser = getDevBypassPlannerUsername(userKey);
     const devToken = 'dev-localhost-bypass';
     try {
       localStorage.setItem(userKey, devUser);

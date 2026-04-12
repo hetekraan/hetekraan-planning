@@ -6,6 +6,7 @@
       showToast,
       hkAuthHeader,
       getGhlBaseUrl,
+      getGhlIosContactAppUrlTemplate,
       isKlaarLocally,
       isKlaarLocallyContactDate,
       clearDashBlockedDate,
@@ -31,13 +32,22 @@
         return;
       }
       const rows = Array.isArray(data?.appointments) ? data.appointments : [];
+      const appTpl = typeof getGhlIosContactAppUrlTemplate === 'function' ? getGhlIosContactAppUrlTemplate() : '';
       setAppointments(
-        rows.map((a) => ({
-          ...a,
-          ghlUrl: a.contactId ? `${getGhlBaseUrl()}/${a.contactId}` : '',
-          review: false,
-          priceVisible: false,
-        }))
+        rows.map((a) => {
+          const web = a.contactId && getGhlBaseUrl() ? `${getGhlBaseUrl()}/${a.contactId}` : '';
+          const app =
+            appTpl && a.contactId
+              ? String(appTpl).split('{contactId}').join(encodeURIComponent(String(a.contactId)))
+              : '';
+          return {
+            ...a,
+            ghlUrl: web,
+            ghlAppUrl: app,
+            review: false,
+            priceVisible: false,
+          };
+        })
       );
       const appts = getAppointmentsRef();
       appts.forEach((a) => {

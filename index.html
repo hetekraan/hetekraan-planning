@@ -3198,87 +3198,255 @@
   }
 
   /*
-   * Account "jerry": automatisch comfort-UI (body.user-jerry + ui-scale-large + jerry-mode).
-   * Extra bump boven bestaande .ui-scale-large / .jerry-mode — zelfde layout, grotere tik/tekst.
+   * ── Account jerry: primaire schaal (staat laatst in deze stylesheet → wint op ui-scale-large / jerry-mode)
+   * Zelfde layout/hiërarchie; alleen grotere type, tikdoelen en lucht.
    */
+  body.user-jerry {
+    --appt-action-icon-size: 60px;
+    --appt-action-icon-radius: 18px;
+    --appts-header-util-size: 60px;
+    --appts-header-cta-height: 58px;
+  }
+
   body.user-jerry .stat-val {
-    font-size: clamp(24px, 5.2vw, 32px);
+    font-size: clamp(28px, 6.5vw, 40px) !important;
+    line-height: 1.1;
   }
   body.user-jerry .stat-label {
-    font-size: 11px;
-    letter-spacing: 0.09em;
+    font-size: 12px !important;
+    letter-spacing: 0.08em;
+    margin-top: 6px;
   }
   body.user-jerry .section-title {
-    font-size: 12px;
+    font-size: 15px !important;
   }
   body.user-jerry .planning-section-title {
-    font-size: 17px;
-    margin-bottom: 14px;
-    padding-bottom: 10px;
+    font-size: clamp(20px, 4.8vw, 26px) !important;
+    margin-bottom: 16px !important;
+    padding-bottom: 12px !important;
+    letter-spacing: 0.04em;
   }
   body.user-jerry .appt-number {
-    font-size: clamp(17px, 3.6vw, 20px);
+    font-size: clamp(20px, 4.5vw, 26px) !important;
+  }
+  body.user-jerry .appt-time {
+    font-size: clamp(20px, 4.6vw, 26px) !important;
   }
   body.user-jerry .appt-address {
-    font-size: clamp(18px, 3.9vw, 22px);
+    font-size: clamp(26px, 6.8vw, 42px) !important;
+    line-height: 1.22 !important;
+    font-weight: 700 !important;
   }
   body.user-jerry .appt-name {
-    font-size: 21px;
+    font-size: clamp(20px, 5vw, 30px) !important;
+    line-height: 1.35 !important;
   }
   body.user-jerry .appt-desc {
-    font-size: 16px;
-    line-height: 1.45;
+    font-size: clamp(17px, 4.2vw, 24px) !important;
+    line-height: 1.5 !important;
   }
   body.user-jerry .appt-phone {
-    font-size: 16px;
+    font-size: clamp(18px, 4.2vw, 24px) !important;
   }
   body.user-jerry .tag {
-    font-size: 13px;
-    padding: 6px 11px;
+    font-size: 15px !important;
+    padding: 8px 14px !important;
+    border-radius: 10px;
   }
   body.user-jerry .appt-price {
-    font-size: clamp(19px, 4.2vw, 23px);
+    font-size: clamp(22px, 5.2vw, 32px) !important;
   }
   body.user-jerry .total-label {
-    font-size: 14px;
+    font-size: 16px !important;
   }
   body.user-jerry .total-amount {
-    font-size: 26px;
+    font-size: clamp(28px, 6vw, 38px) !important;
+  }
+  body.user-jerry .meta-label {
+    font-size: 12px !important;
+  }
+  body.user-jerry .meta-value {
+    font-size: 16px !important;
+  }
+  body.user-jerry .appt-notes {
+    font-size: clamp(16px, 4vw, 22px) !important;
+    padding: 10px 12px !important;
   }
   body.user-jerry .planner-week-day {
-    font-size: 12px;
-    padding: 11px 9px 13px;
-    min-width: 58px;
+    font-size: 14px !important;
+    padding: 12px 10px 14px !important;
+    min-width: 64px !important;
   }
   body.user-jerry .planner-week-day .planner-week-day-num {
-    font-size: 20px;
+    font-size: clamp(22px, 5.2vw, 30px) !important;
   }
   body.user-jerry .date-label {
-    font-size: 12px;
+    font-size: 14px !important;
   }
   body.user-jerry .appt-inner {
-    padding-top: 16px;
-    padding-bottom: 16px;
+    padding: 20px 18px 20px 44px !important;
   }
   body.user-jerry .appt-card {
-    margin-bottom: 14px;
+    margin-bottom: 18px !important;
+  }
+  body.user-jerry .appt-body {
+    gap: 14px !important;
+    margin: 10px 0 14px !important;
   }
   body.user-jerry .appt-footer {
-    gap: 10px;
+    gap: 12px !important;
   }
-  body.user-jerry {
-    --appt-action-icon-size: 50px;
+  body.user-jerry .appointments,
+  body.user-jerry .route-panel {
+    padding: 20px !important;
+    gap: 16px !important;
   }
   body.user-jerry .day-blocked-banner {
-    font-size: 16px;
-    padding: 12px 14px;
+    font-size: 18px !important;
+    padding: 14px 16px !important;
   }
   body.user-jerry .modal-title {
-    font-size: 20px;
+    font-size: clamp(22px, 4.5vw, 28px) !important;
   }
+  body.user-jerry .complete-row,
+  body.user-jerry .service-date-row,
+  body.user-jerry .review-toggle {
+    font-size: 17px !important;
+  }
+  body.user-jerry .slot-daypart-hint {
+    font-size: 18px !important;
+  }
+  body.user-jerry .ghl-cal-time-hint {
+    font-size: 15px !important;
+  }
+
+  body.user-jerry .btn-add,
+  body.user-jerry .btn-dagopgave,
+  body.user-jerry .btn-save,
+  body.user-jerry .btn-cancel,
+  body.user-jerry .btn-done,
+  body.user-jerry .btn-prijs,
+  body.user-jerry .btn-optimize,
+  body.user-jerry .btn-confirm-route,
+  body.user-jerry .btn-unlock-route,
+  body.user-jerry .btn-maps,
+  body.user-jerry .btn-morning,
+  body.user-jerry .btn-logout,
+  body.user-jerry .btn-confirm,
+  body.user-jerry .mobile-tab {
+    font-size: clamp(16px, 3.8vw, 20px) !important;
+    min-height: 56px !important;
+    padding: 12px 16px !important;
+  }
+  body.user-jerry .planner-app-icon-btn {
+    min-width: 60px !important;
+    min-height: 60px !important;
+    width: 60px !important;
+    height: 60px !important;
+    font-size: 26px !important;
+  }
+  body.user-jerry .appointments-header-actions .appointments-header-util .btn-dagopgave,
+  body.user-jerry .appointments-header-actions .appointments-header-util .planner-app-icon-btn.btn-day-block {
+    width: var(--appts-header-util-size) !important;
+    height: var(--appts-header-util-size) !important;
+    min-width: var(--appts-header-util-size) !important;
+    min-height: var(--appts-header-util-size) !important;
+    font-size: 22px !important;
+  }
+  body.user-jerry .appointments-header-actions > .btn-add {
+    min-height: var(--appts-header-cta-height) !important;
+    height: var(--appts-header-cta-height) !important;
+    font-size: 17px !important;
+  }
+  body.user-jerry .icon-btn {
+    min-width: 56px !important;
+    min-height: 56px !important;
+    width: 56px !important;
+    height: 56px !important;
+    font-size: 20px !important;
+  }
+  body.user-jerry .appt-actions .icon-btn.appt-action-icon {
+    width: var(--appt-action-icon-size) !important;
+    min-width: var(--appt-action-icon-size) !important;
+    max-width: var(--appt-action-icon-size) !important;
+    height: var(--appt-action-icon-size) !important;
+    min-height: unset !important;
+    padding: 0 !important;
+    font-size: 24px !important;
+  }
+  body.user-jerry .appt-footer-cta-row .btn-prijs,
+  body.user-jerry .appt-footer-cta-row .btn-done {
+    min-height: 52px !important;
+    padding: 10px 14px !important;
+    font-size: 18px !important;
+  }
+  body.user-jerry .icon-btn.edit-action {
+    min-width: 100px !important;
+    min-height: 56px !important;
+    height: 56px !important;
+    font-size: 15px !important;
+  }
+  body.user-jerry .date-nav button {
+    min-width: 56px !important;
+    min-height: 58px !important;
+    font-size: 22px !important;
+  }
+  body.user-jerry .hamburger-btn {
+    width: 54px !important;
+    height: 54px !important;
+    font-size: 24px !important;
+  }
+
+  body.user-jerry .form-label {
+    font-size: 14px !important;
+  }
+  body.user-jerry .form-input,
+  body.user-jerry .form-select,
+  body.user-jerry textarea.form-input {
+    font-size: 18px !important;
+    padding: 14px 16px !important;
+    min-height: 56px !important;
+  }
+  body.user-jerry textarea.form-input {
+    min-height: 120px !important;
+  }
+  body.user-jerry .modal-actions > button,
+  body.user-jerry .modal-actions > a {
+    min-height: 58px !important;
+    font-size: 18px !important;
+  }
+
   @media (min-width: 1180px) {
     body.user-jerry .date-label {
-      font-size: 13px;
+      font-size: 15px !important;
+    }
+    body.user-jerry .appt-address {
+      font-size: clamp(24px, 2.2vw, 36px) !important;
+    }
+    body.user-jerry .appt-name {
+      font-size: clamp(19px, 1.6vw, 26px) !important;
+    }
+    body.user-jerry .btn-add,
+    body.user-jerry .btn-dagopgave,
+    body.user-jerry .btn-save,
+    body.user-jerry .btn-cancel,
+    body.user-jerry .btn-done,
+    body.user-jerry .btn-prijs,
+    body.user-jerry .btn-optimize,
+    body.user-jerry .btn-confirm-route,
+    body.user-jerry .btn-unlock-route,
+    body.user-jerry .btn-maps,
+    body.user-jerry .btn-morning,
+    body.user-jerry .btn-logout,
+    body.user-jerry .btn-confirm {
+      font-size: 16px !important;
+      min-height: 50px !important;
+    }
+    body.user-jerry .planner-app-icon-btn {
+      min-width: 54px !important;
+      min-height: 54px !important;
+      width: 54px !important;
+      height: 54px !important;
     }
   }
 
@@ -3692,15 +3860,22 @@
 <script>
 /** Wordt gevuld vanuit /api/planning-config (GHL_LOCATION_ID in Vercel). */
 let GHL_BASE_URL = '';
+/** Optioneel: template voor mobiele app-link (env GHL_IOS_CONTACT_APP_URL_TEMPLATE). */
+let GHL_IOS_CONTACT_APP_URL_TEMPLATE = '';
+let GHL_PLANNING_CONFIG_FETCHED = false;
 
 async function refreshGhlContactBaseUrl() {
-  if (GHL_BASE_URL) return;
+  if (GHL_PLANNING_CONFIG_FETCHED) return;
   try {
     const r = await fetch('/api/planning-config?_=' + Date.now(), { cache: 'no-store' });
-    const d = await r.json();
+    const d = await r.json().catch(() => ({}));
+    GHL_PLANNING_CONFIG_FETCHED = true;
     if (d.ghlLocationId) {
       GHL_BASE_URL =
         'https://app.gohighlevel.com/v2/location/' + encodeURIComponent(d.ghlLocationId) + '/contacts/detail';
+    }
+    if (d.ghlIosContactAppUrlTemplate != null) {
+      GHL_IOS_CONTACT_APP_URL_TEMPLATE = String(d.ghlIosContactAppUrlTemplate || '').trim();
     }
   } catch (_) {}
 }
@@ -3717,6 +3892,46 @@ function escapeHtml(s) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
+
+/**
+ * GHL-contact: optioneel eerst custom URL (mobiele app), daarna dezelfde https-URL als voorheen.
+ * Alleen actief als `data-ghl-app` gezet is (via env GHL_IOS_CONTACT_APP_URL_TEMPLATE).
+ */
+function hkOpenGhlContact(ev, el) {
+  const app = el?.getAttribute?.('data-ghl-app');
+  const web = el?.getAttribute?.('href');
+  if (!app || !web) return true;
+  if (ev?.preventDefault) ev.preventDefault();
+  const iframe = document.createElement('iframe');
+  iframe.setAttribute('src', app);
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.cssText = 'display:none;position:absolute;width:0;height:0;border:0;clip:rect(0,0,0,0)';
+  document.body.appendChild(iframe);
+  let done = false;
+  const cleanup = () => {
+    try {
+      document.body.removeChild(iframe);
+    } catch (_) {}
+  };
+  const openWeb = () => {
+    if (done) return;
+    done = true;
+    cleanup();
+    const w = window.open(web, '_blank', 'noopener,noreferrer');
+    if (!w) window.location.href = web;
+  };
+  const t = setTimeout(openWeb, 750);
+  const onVis = () => {
+    if (document.visibilityState === 'hidden') {
+      done = true;
+      clearTimeout(t);
+      document.removeEventListener('visibilitychange', onVis);
+      setTimeout(cleanup, 400);
+    }
+  };
+  document.addEventListener('visibilitychange', onVis);
+  return false;
 }
 
 function closeGlobalSearchResults() {
@@ -3830,6 +4045,7 @@ function createPlannerCtx() {
     showToast,
     hkAuthHeader,
     getGhlBaseUrl: () => GHL_BASE_URL,
+    getGhlIosContactAppUrlTemplate: () => GHL_IOS_CONTACT_APP_URL_TEMPLATE,
     isKlaarLocally,
     isKlaarLocallyContactDate,
     clearDashBlockedDate,
@@ -4115,6 +4331,17 @@ function readPlannerUsernameRaw() {
     const c = window.HKPlannerAuthSession?.getCookieVal?.(HK_PLANNER_USER_KEY);
     if (c) return String(c);
   } catch (_) {}
+  try {
+    let t = '';
+    try {
+      t = localStorage.getItem('hk_session_token') || '';
+    } catch (_) {}
+    if (!t && window.HKPlannerAuthSession?.getCookieVal) {
+      t = window.HKPlannerAuthSession.getCookieVal('hk_session_token') || '';
+    }
+    const dec = window.HKPlannerAuthSession?.decodeSessionPayload?.(t);
+    if (dec && dec.user) return String(dec.user);
+  } catch (_) {}
   return '';
 }
 
@@ -4218,6 +4445,38 @@ function toggleMobileMenu(open) {
   }
 }
 
+function logJerryUiDiag() {
+  try {
+    if (localStorage.getItem('hk_debug_jerry_ui') !== '1') return;
+    const raw = readPlannerUsernameRaw();
+    const isJ = isJerryPlannerAccount();
+    const cls = document.body?.className || '';
+    console.info('[JERRY_UI][current_user]', JSON.stringify(raw));
+    console.info('[JERRY_UI][is_jerry]', isJ);
+    console.info('[JERRY_UI][body_class_added]', {
+      userJerry: cls.includes('user-jerry'),
+      uiScaleLarge: cls.includes('ui-scale-large'),
+      jerryMode: cls.includes('jerry-mode'),
+      documentBodyClassName: cls,
+    });
+    requestAnimationFrame(() => {
+      try {
+        const q = (sel) => document.querySelector(sel);
+        const cs = (el) => (el ? window.getComputedStyle(el).fontSize : '(no element)');
+        const btn = q('.btn-add') || document.querySelector('button');
+        console.info('[JERRY_UI][computed_sizes]', {
+          apptAddress: cs(q('.appt-address')),
+          apptName: cs(q('.appt-name')),
+          btnAddOrFirst: cs(btn),
+        });
+      } catch (e) {
+        console.info('[JERRY_UI][computed_sizes]', String(e));
+      }
+    });
+  } catch (_) {}
+}
+
+/** Jerry: `body.user-jerry` is de hoofdvlag (CSS laatst in <style>); `ui-scale-large` + `jerry-mode` blijven voor gedeelde basis. */
 function applyUiScalePref() {
   const manualLarge = readUiScaleLarge();
   const jerryAccount = isJerryPlannerAccount();
@@ -4226,6 +4485,7 @@ function applyUiScalePref() {
   document.body.classList.toggle('ui-scale-large', on);
   document.body.classList.toggle('jerry-mode', on);
   document.body.classList.toggle('user-jerry', jerryAccount);
+  logJerryUiDiag();
 }
 
 window.setPlannerUiScale = setPlannerUiScale;
@@ -4670,7 +4930,7 @@ function renderApptCard(a, i) {
           <div class="appt-actions">
             ${a.phone ? `<a class="icon-btn appt-action-icon" href="tel:${a.phone}" title="Bellen">${APPT_ACTION_SVG.phone}</a>` : ''}
             ${a.mapsLink ? `<a class="icon-btn appt-action-icon" href="${a.mapsLink}" target="_blank" rel="noopener noreferrer" title="Maps">${APPT_ACTION_SVG.map}</a>` : ''}
-            ${a.ghlUrl ? `<a class="icon-btn appt-action-icon" href="${a.ghlUrl}" target="_blank" rel="noopener noreferrer" title="Open in GHL">${APPT_ACTION_SVG.link}</a>` : ''}
+            ${a.ghlUrl ? `<a class="icon-btn appt-action-icon" href="${a.ghlUrl}"${a.ghlAppUrl ? ` data-ghl-app="${escapeHtml(a.ghlAppUrl)}" onclick="return hkOpenGhlContact(event,this)"` : ''} target="_blank" rel="noopener noreferrer" title="Open in GHL">${APPT_ACTION_SVG.link}</a>` : ''}
             ${isDone ? `<button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentDetailsModal(${idQ})' title="Bekijk details">${APPT_ACTION_SVG.eye}</button>` : ''}
             <button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">${APPT_ACTION_SVG.pencil}</button>
             <button type="button" class="icon-btn appt-action-icon" onclick='deleteAppt(${idQ})' title="Verwijderen">${APPT_ACTION_SVG.close}</button>
