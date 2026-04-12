@@ -3241,8 +3241,29 @@
   body.user-jerry .appt-number {
     font-size: clamp(20px, 4.5vw, 26px) !important;
   }
+  body.user-jerry .appt-top {
+    gap: 12px !important;
+  }
   body.user-jerry .appt-time {
-    font-size: clamp(20px, 4.6vw, 26px) !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    column-gap: 14px !important;
+    row-gap: 8px !important;
+    font-size: clamp(22px, 5.4vw, 30px) !important;
+    font-weight: 650 !important;
+    line-height: 1.35 !important;
+  }
+  body.user-jerry .appt-time .time-window-badge {
+    font-size: clamp(17px, 4.2vw, 22px) !important;
+    font-weight: 600 !important;
+    padding: 6px 12px !important;
+    border-radius: 10px !important;
+    margin-left: 0 !important;
+    line-height: 1.2 !important;
+  }
+  body.user-jerry .appt-card.violation .appt-time .time-window-badge {
+    font-size: clamp(16px, 4vw, 21px) !important;
   }
   body.user-jerry .appt-address {
     font-size: clamp(26px, 6.8vw, 42px) !important;
@@ -3325,11 +3346,17 @@
   body.user-jerry .review-toggle {
     font-size: 17px !important;
   }
-  body.user-jerry .slot-daypart-hint {
-    font-size: 18px !important;
+  body.user-jerry .appt-time .slot-daypart-hint {
+    font-size: clamp(20px, 5vw, 28px) !important;
+    font-weight: 600 !important;
+    line-height: 1.25 !important;
   }
-  body.user-jerry .ghl-cal-time-hint {
-    font-size: 15px !important;
+  body.user-jerry .appt-time .ghl-cal-time-hint {
+    font-size: clamp(16px, 3.9vw, 21px) !important;
+    font-weight: 500 !important;
+    margin-left: 0 !important;
+    color: rgba(170, 170, 198, 0.95) !important;
+    line-height: 1.3 !important;
   }
 
   body.user-jerry .btn-add,
@@ -3614,6 +3641,20 @@
     }
     body.user-jerry .appt-name {
       font-size: clamp(19px, 1.6vw, 26px) !important;
+    }
+    body.user-jerry .appt-time {
+      font-size: clamp(20px, 1.9vw, 26px) !important;
+      column-gap: 12px !important;
+    }
+    body.user-jerry .appt-time .time-window-badge {
+      font-size: clamp(15px, 1.35vw, 19px) !important;
+      padding: 5px 10px !important;
+    }
+    body.user-jerry .appt-time .slot-daypart-hint {
+      font-size: clamp(18px, 1.75vw, 24px) !important;
+    }
+    body.user-jerry .appt-time .ghl-cal-time-hint {
+      font-size: clamp(14px, 1.35vw, 18px) !important;
     }
     body.user-jerry .btn-add,
     body.user-jerry .btn-dagopgave,
