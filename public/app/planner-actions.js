@@ -151,6 +151,24 @@
   function openDayBlockChoiceModal(ctx) {
     const labelEl = document.getElementById('dayBlockChoiceDateLabel');
     if (labelEl) labelEl.textContent = ctx.formatDate(ctx.getCurrentDate());
+    const tgl = document.getElementById('btnCustomerDayFullToggle');
+    if (tgl) {
+      const on = ctx.getPlannerCustomerDayFull?.() === true;
+      tgl.textContent = on
+        ? 'Dag weer openzetten voor klantboekingen'
+        : 'Dag is vol (geen nieuwe klantboekingen)';
+    }
+    const hint = document.getElementById('dayBlockChoiceCustomerFullHint');
+    if (hint) {
+      if (ctx.getPlannerCustomerDayFullStoreConfigured?.() === true) {
+        hint.style.display = 'none';
+        hint.textContent = '';
+      } else {
+        hint.style.display = 'block';
+        hint.textContent =
+          '“Dag is vol” slaat op in Upstash Redis (UPSTASH_REDIS_REST_URL + TOKEN), hetzelfde als Model B-reserveringen. Zonder Redis kun je alleen GHL-blok gebruiken.';
+      }
+    }
     document.getElementById('dayBlockChoiceOverlay')?.classList.add('visible');
   }
 
@@ -160,7 +178,38 @@
 
   async function applyDayBlockChoice(dayPart, ctx) {
     closeDayBlockChoiceModal();
+    if (dayPart === 'customerDayFull') {
+      return toggleCustomerDayFull(ctx);
+    }
     return blockCurrentDayInGhl(ctx, { dayPart, skipConfirm: true });
+  }
+
+  async function toggleCustomerDayFull(ctx) {
+    const dateStr = ctx.getDateStr(ctx.getCurrentDate());
+    const currently = ctx.getPlannerCustomerDayFull?.() === true;
+    const next = !currently;
+    ctx.showToast(next ? '⏳ Dag vol zetten voor klanten…' : '⏳ Klantboekingen weer openzetten…', 'loading');
+    try {
+      const res = await fetch('/api/ghl?action=setCustomerDayFull', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-HK-Auth': ctx.hkAuthHeader() },
+        body: JSON.stringify({ date: dateStr, full: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || `Fout ${res.status}`);
+      }
+      ctx.setPlannerCustomerDayFull?.(!!data.customerDayFull);
+      ctx.showToast(
+        next
+          ? '✓ Deze dag staat vol voor klanten (online boeken/suggesties uit)'
+          : '✓ Klanten kunnen deze dag weer boeken',
+        'success'
+      );
+      await ctx.loadAppointments(ctx.getCurrentDate());
+    } catch (e) {
+      ctx.showToast(String(e.message || e), 'info');
+    }
   }
 
   async function unblockCurrentDayInGhl(ctx) {

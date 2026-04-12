@@ -70,6 +70,11 @@ import {
 } from '../lib/amsterdam-day-read-cache.js';
 import { deleteConfirmedReservationForContactDate } from '../lib/block-reservation-store.js';
 import { createConfirmedReservation } from '../lib/block-reservation-store.js';
+import {
+  getCustomerDayFullFlag,
+  isCustomerDayFullStoreConfigured,
+  setCustomerDayFullFlag,
+} from '../lib/customer-day-full-store.js';
 import { buildCompleteAppointmentPayload } from '../lib/usecases/complete-appointment.js';
 import { resolveContactCustomFieldId } from '../lib/ghl-custom-fields.js';
 
@@ -682,7 +687,47 @@ export default async function handler(req, res) {
             syntheticRows: appointments.filter((a) => a.isSyntheticBlockBooking).length,
           })
         );
-        return res.status(200).json({ appointments });
+        let customerDayFull = false;
+        try {
+          customerDayFull = await getCustomerDayFullFlag(locId, date);
+        } catch (cfErr) {
+          console.warn('[getAppointments] customerDayFull:', cfErr?.message || cfErr);
+        }
+        return res.status(200).json({
+          appointments,
+          customerDayFull,
+          customerDayFullStoreConfigured: isCustomerDayFullStoreConfigured(),
+        });
+      }
+
+      case 'setCustomerDayFull': {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+        const dateCf = normalizeYyyyMmDdInput(String(req.body?.date || ''));
+        if (!dateCf) return res.status(400).json({ error: 'date vereist (YYYY-MM-DD)' });
+        const full =
+          req.body?.full === true ||
+          req.body?.full === 1 ||
+          String(req.body?.full || '').toLowerCase() === 'true';
+        if (!isCustomerDayFullStoreConfigured()) {
+          return res.status(503).json({
+            error:
+              '“Dag is vol” gebruikt Upstash Redis. Zet UPSTASH_REDIS_REST_URL en UPSTASH_REDIS_REST_TOKEN op Vercel (zelfde als Model B-reserveringen).',
+            code: 'NO_REDIS',
+          });
+        }
+        const out = await setCustomerDayFullFlag(locConfigured, dateCf, full);
+        if (!out.ok) {
+          return res.status(400).json({ error: 'Kon dag-vol status niet opslaan', code: out.code || 'SAVE_FAILED' });
+        }
+        console.log(
+          JSON.stringify({
+            event: 'hk_customer_day_full',
+            dateStr: dateCf,
+            full,
+            locationId: locConfigured,
+          })
+        );
+        return res.status(200).json({ success: true, customerDayFull: full });
       }
 
       case 'searchAppointments': {

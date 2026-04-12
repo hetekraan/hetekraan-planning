@@ -26,12 +26,18 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setAppointments([]);
+        if (typeof ctx.setPlannerCustomerDayFull === 'function') {
+          ctx.setPlannerCustomerDayFull(false, false);
+        }
         showToast(data?.error ? String(data.error) : `Afspraken laden mislukt (${res.status})`, 'info');
         applyRouteSnapshot(dateStr);
         render();
         return;
       }
       const rows = Array.isArray(data?.appointments) ? data.appointments : [];
+      if (typeof ctx.setPlannerCustomerDayFull === 'function') {
+        ctx.setPlannerCustomerDayFull(!!data.customerDayFull, !!data.customerDayFullStoreConfigured);
+      }
       const appTpl = typeof getGhlIosContactAppUrlTemplate === 'function' ? getGhlIosContactAppUrlTemplate() : '';
       setAppointments(
         rows.map((a) => {
@@ -68,6 +74,9 @@
     } catch (err) {
       console.warn('GHL niet bereikbaar', err);
       setAppointments([]);
+      if (typeof ctx.setPlannerCustomerDayFull === 'function') {
+        ctx.setPlannerCustomerDayFull(false, false);
+      }
       showToast('Kon afspraken niet laden', 'info');
     }
     applyRouteSnapshot(dateStr);

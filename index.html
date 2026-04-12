@@ -1463,6 +1463,20 @@
     cursor: pointer;
   }
   .day-blocked-dismiss:hover { background: rgba(255, 140, 0, 0.22); }
+  .day-blocked-banner.day-blocked-banner--customer-full {
+    border-color: rgba(120, 190, 255, 0.4);
+    background: rgba(70, 140, 220, 0.1);
+  }
+  .day-blocked-banner.day-blocked-banner--customer-full strong {
+    color: #a8d4ff;
+  }
+  .planner-app-icon-btn.btn-day-block.is-day-customer-full:not(.is-day-blocked) {
+    border-color: rgba(120, 190, 255, 0.45);
+    background: rgba(70, 140, 220, 0.12);
+  }
+  .planner-app-icon-btn.btn-day-block.is-day-customer-full:not(.is-day-blocked) .btn-day-block-ic {
+    color: rgba(170, 210, 255, 0.95);
+  }
   .planning-section--blocks .planning-section-title {
     color: rgba(255, 180, 120, 0.88);
     border-bottom-color: rgba(255, 140, 0, 0.22);
@@ -3835,11 +3849,13 @@
 <div class="modal-overlay" id="dayBlockChoiceOverlay" onclick="if(event.target===this)closeDayBlockChoiceModal()">
   <div class="modal" style="max-width:360px" role="dialog" aria-modal="true" aria-labelledby="dayBlockChoiceTitle" onclick="event.stopPropagation()">
     <div class="modal-title" id="dayBlockChoiceTitle">Dag blokkeren</div>
-    <p style="font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.45">Kies hoe je <strong id="dayBlockChoiceDateLabel"></strong> wilt blokkeren in GHL.</p>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 14px;line-height:1.45">Kies een optie voor <strong id="dayBlockChoiceDateLabel"></strong> — GHL-blok of alleen klantboekingen dicht.</p>
     <div class="modal-actions" style="flex-direction:column;gap:8px;align-items:stretch">
       <button type="button" class="btn-save" style="width:100%;padding:10px" onclick="applyDayBlockChoice('full')">Hele dag blokkeren</button>
       <button type="button" class="btn-save" style="width:100%;padding:10px" onclick="applyDayBlockChoice('morning')">Ochtend blokkeren (09:00–13:00)</button>
       <button type="button" class="btn-save" style="width:100%;padding:10px" onclick="applyDayBlockChoice('afternoon')">Middag blokkeren (13:00–17:00)</button>
+      <button type="button" class="btn-save" id="btnCustomerDayFullToggle" style="width:100%;padding:10px" onclick="applyDayBlockChoice('customerDayFull')">Dag is vol (geen nieuwe klantboekingen)</button>
+      <p id="dayBlockChoiceCustomerFullHint" style="font-size:11px;color:var(--muted);margin:-4px 0 0;line-height:1.4;display:none"></p>
       <button type="button" class="btn-cancel" style="width:100%;padding:10px;text-align:center" onclick="closeDayBlockChoiceModal()">Annuleren</button>
     </div>
   </div>
@@ -4143,6 +4159,9 @@ async function refreshGhlContactBaseUrl() {
 
 let currentDate = new Date();
 let appointments = [];
+/** Server: Redis “dag vol” voor klantboekingen (geen GHL-blok). */
+let plannerCustomerDayFull = false;
+let plannerCustomerDayFullStoreConfigured = false;
 let globalSearchTimer = null;
 let globalSearchResultsCache = [];
 
@@ -4331,6 +4350,14 @@ function createPlannerCtx() {
     formatDate,
     isDashBlockedPending,
     markDashBlockedDate,
+    getPlannerCustomerDayFull: () => plannerCustomerDayFull,
+    setPlannerCustomerDayFull: (full, storeConfigured) => {
+      plannerCustomerDayFull = !!full;
+      if (typeof storeConfigured === 'boolean') {
+        plannerCustomerDayFullStoreConfigured = storeConfigured;
+      }
+    },
+    getPlannerCustomerDayFullStoreConfigured: () => plannerCustomerDayFullStoreConfigured,
     orderRouteMorningFirst,
     getRouteStopsForSidebar,
     recalculateRouteTimesPreservingOrder,
@@ -5290,6 +5317,7 @@ function render() {
 
   const bannerEl = document.getElementById('dayBlockedBanner');
   if (bannerEl) {
+    bannerEl.classList.remove('day-blocked-banner--customer-full');
     if (blocks.length) {
       bannerEl.style.display = 'flex';
       bannerEl.innerHTML =
@@ -5298,6 +5326,11 @@ function render() {
       bannerEl.style.display = 'flex';
       bannerEl.innerHTML =
         '<span aria-hidden="true">🚫</span><span><strong>Deze dag is geblokkeerd</strong> — zojuist via dit dashboard (hele datum in GHL). Online boeken sluit daarna deze <strong>hele datum</strong> uit zolang het blok actief is. GHL toont het blokslot soms pas na een paar seconden; ververs de dag of controleer de GHL-agenda. <button type="button" class="day-blocked-dismiss" onclick="dismissDashBlockedBanner()">Melding verbergen</button></span>';
+    } else if (plannerCustomerDayFull) {
+      bannerEl.style.display = 'flex';
+      bannerEl.classList.add('day-blocked-banner--customer-full');
+      bannerEl.innerHTML =
+        '<span aria-hidden="true">📅</span><span><strong>Dag is vol voor klanten</strong> — geen nieuwe online boekingen of suggesties voor deze datum. De planner en bestaande afspraken blijven normaal.</span>';
     } else {
       bannerEl.style.display = 'none';
       bannerEl.innerHTML = '';
@@ -5313,12 +5346,14 @@ function render() {
     : 'Blokkeer deze dag in GHL (hele dag, ochtend of middag). Online boeken sluit de hele datum uit zodra er bloktijd in 08–18 Amsterdam valt.';
   if (blockBtn) {
     blockBtn.classList.toggle('is-day-blocked', dayIsBlocked);
+    blockBtn.classList.toggle('is-day-customer-full', plannerCustomerDayFull && !dayIsBlocked);
     blockBtn.disabled = false;
     blockBtn.setAttribute('aria-label', blockLabelText);
     blockBtn.title = blockTitle;
   }
   if (blockBtnMobile) {
     blockBtnMobile.classList.toggle('is-day-blocked', dayIsBlocked);
+    blockBtnMobile.classList.toggle('is-day-customer-full', plannerCustomerDayFull && !dayIsBlocked);
     blockBtnMobile.setAttribute('aria-label', blockLabelText);
     blockBtnMobile.title = blockTitle;
   }
