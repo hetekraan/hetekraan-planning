@@ -54,14 +54,15 @@
     --klaar-border: #1a4030;
     /* Afspraakkaart: actie-iconen (neutraal iOS-achtig) */
     --appt-action-icon-size: 44px;
-    --appt-action-icon-radius: 11px;
-    --appt-action-icon-bg: #16161e;
-    --appt-action-icon-bg-hover: #1f1f2a;
-    --appt-action-icon-bg-active: #13131a;
-    --appt-action-icon-border: rgba(255, 255, 255, 0.09);
-    --appt-action-icon-border-hover: rgba(255, 255, 255, 0.15);
-    --appt-action-icon-fg: rgba(200, 200, 210, 0.55);
-    --appt-action-icon-fg-hover: rgba(222, 222, 230, 0.78);
+    --appt-action-icon-radius: 12px;
+    /* Match week strip / planner-week-edge (surface2 + warm text, accent on hover) */
+    --appt-action-icon-bg: var(--surface2);
+    --appt-action-icon-bg-hover: var(--surface2);
+    --appt-action-icon-bg-active: var(--surface3);
+    --appt-action-icon-border: var(--border);
+    --appt-action-icon-border-hover: var(--muted);
+    --appt-action-icon-fg: rgba(232, 232, 240, 0.88);
+    --appt-action-icon-fg-hover: var(--accent);
   }
 
   html {
@@ -341,11 +342,13 @@
 
   .appt-number {
     position: absolute;
-    top: 10px;
-    left: 12px;
+    top: 9px;
+    left: 11px;
     font-family: var(--font-body);
-    font-size: 10px;
-    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+    color: rgba(232, 232, 240, 0.72);
+    letter-spacing: 0.02em;
   }
 
   .appt-inner { padding: 12px 12px 12px 36px; }
@@ -435,25 +438,19 @@
     background: var(--appt-action-icon-bg);
     border: 1px solid var(--appt-action-icon-border);
     border-radius: var(--appt-action-icon-radius);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
-    filter: grayscale(1);
-    opacity: 0.96;
-    transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease, filter 0.12s ease, color 0.12s ease;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
     -webkit-font-smoothing: antialiased;
   }
   .appt-actions .icon-btn.appt-action-icon:hover {
     color: var(--appt-action-icon-fg-hover);
     background: var(--appt-action-icon-bg-hover);
     border-color: var(--appt-action-icon-border-hover);
-    opacity: 1;
-    filter: grayscale(1) brightness(1.06);
   }
   .appt-actions .icon-btn.appt-action-icon:active {
     color: var(--appt-action-icon-fg-hover);
     background: var(--appt-action-icon-bg-active);
-    border-color: rgba(255, 255, 255, 0.08);
-    opacity: 1;
-    filter: grayscale(1) brightness(0.97);
+    border-color: var(--appt-action-icon-border-hover);
   }
   .appt-actions .icon-btn.appt-action-icon:focus-visible {
     outline: 2px solid rgba(255, 255, 255, 0.22);
@@ -555,18 +552,8 @@
     line-height: 1.28;
     letter-spacing: -0.02em;
     margin: 0;
-    display: flex;
-    gap: 6px;
-    align-items: flex-start;
+    min-width: 0;
   }
-  .appt-address-pin {
-    flex-shrink: 0;
-    opacity: 0.42;
-    font-size: 0.88em;
-    line-height: 1.35;
-    margin-top: 0.12em;
-  }
-  .appt-address-txt { min-width: 0; }
 
   .appt-name {
     font-family: var(--font-body);
@@ -717,11 +704,11 @@
 
   .tag {
     font-family: var(--font-body);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    padding: 4px 9px;
+    padding: 5px 10px;
     border-radius: 6px;
   }
   .tag.reparatie { background: rgba(255, 107, 53, 0.1); color: rgba(255, 140, 100, 0.95); }
@@ -730,9 +717,9 @@
 
   .appt-phone {
     font-family: var(--font-body);
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 500;
-    color: rgba(130, 130, 155, 0.98);
+    color: rgba(150, 150, 175, 0.98);
   }
   .appt-price {
     font-family: var(--font-body);
@@ -744,21 +731,6 @@
     line-height: 1.1;
   }
   .appt-card.done .appt-price { color: rgba(102, 102, 128, 0.85); font-weight: 600; }
-
-  .status-dot {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 9px;
-    font-family: var(--font-body);
-    font-weight: 500;
-    color: rgba(102, 102, 128, 0.92);
-  }
-  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
-  .dot.klaar { background: var(--accent2); }
-  .dot.onderweg { background: var(--blue); animation: pulse 1.5s infinite; }
-
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
   .btn-done {
     background: var(--surface3);
@@ -1248,7 +1220,7 @@
   body.ui-scale-large .btn-dagopgave             { font-size: 17px; padding: 8px 11px; }
   body.ui-scale-large .planner-app-icon-btn.btn-day-block .btn-day-block-ic { font-size: 22px; }
   body.ui-scale-large .day-blocked-banner       { font-size: 15px; padding: 12px 14px; }
-  body.ui-scale-large .appt-number              { font-size: 12px; }
+  body.ui-scale-large .appt-number              { font-size: 13px; }
   body.ui-scale-large .appt-time                { font-size: 18px; }
   body.ui-scale-large .slot-daypart-hint         { font-size: 16px; }
   body.ui-scale-large .ghl-cal-time-hint         { font-size: 13px; }
@@ -1259,18 +1231,16 @@
   body.ui-scale-large .meta-label               { font-size: 10px; }
   body.ui-scale-large .meta-value               { font-size: 13px; }
   body.ui-scale-large .appt-notes              { font-size: 14px; padding: 6px 10px; }
-  body.ui-scale-large .tag                      { font-size: 11px; padding: 4px 9px; }
-  body.ui-scale-large .appt-phone               { font-size: 13px; }
+  body.ui-scale-large .tag                      { font-size: 12px; padding: 5px 10px; }
+  body.ui-scale-large .appt-phone               { font-size: 14px; }
   body.ui-scale-large .appt-price               { font-size: clamp(17px, 3.9vw, 20px); font-weight: 700; }
-  body.ui-scale-large .status-dot               { font-size: 13px; }
-  body.ui-scale-large .dot                      { width: 8px; height: 8px; }
   body.ui-scale-large .btn-done                 { font-size: 14px; padding: 8px 14px; }
   body.ui-scale-large .btn-confirm              { font-size: 14px; padding: 9px 18px; }
   body.ui-scale-large .btn-prijs                { font-size: 14px; padding: 9px 14px; }
   body.ui-scale-large .icon-btn                 { width: 38px; height: 38px; font-size: 15px; border-radius: 8px; }
   body.ui-scale-large .appt-actions .icon-btn.appt-action-icon {
     --appt-action-icon-size: 44px;
-    --appt-action-icon-radius: 11px;
+    --appt-action-icon-radius: 12px;
     font-size: 19px;
   }
   body.ui-scale-large .appt-footer-cta-row .btn-prijs,
@@ -2164,13 +2134,13 @@
   /* App widths: comfortable card type when not using full desktop card density */
   @media (max-width: 1179px) {
     .appt-inner { padding: 12px 10px 12px 38px; }
-    .appt-number { left: 10px; font-size: 12px; }
+    .appt-number { left: 10px; font-size: 13px; }
     .appt-name { font-size: 15px; font-weight: 500; }
     .appt-time { font-size: 18px; }
     .appt-address { font-size: clamp(16px, 3.8vw, 18px); }
     .appt-desc { font-size: 13px; }
-    .tag { font-size: 10px; padding: 4px 8px; }
-    .appt-phone { font-size: 12px; }
+    .tag { font-size: 11px; padding: 5px 9px; }
+    .appt-phone { font-size: 13px; }
     .appt-footer-cta-row {
       width: min(176px, 48vw);
     }
@@ -2908,9 +2878,9 @@
       grid-column: 1;
       grid-row: 1;
       padding: 18px 0 0 8px;
-      font-size: 13px;
+      font-size: 14px;
       font-weight: 700;
-      color: var(--muted);
+      color: rgba(232, 232, 240, 0.7);
     }
     .appt-inner {
       grid-column: 2;
@@ -2981,13 +2951,13 @@
       margin: 0;
     }
     .tag {
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 600;
       padding: 5px 12px;
       border-radius: 999px;
     }
     .appt-phone {
-      font-size: 12px;
+      font-size: 13px;
     }
     .appt-price {
       font-size: clamp(16px, 4.2vw, 19px);
@@ -4393,7 +4363,7 @@ function renderApptCard(a, i) {
         <div class="appt-top">
           <div class="appt-time">
             ${a.timeWindow ? `<span class="time-window-badge">${a.timeWindow}</span>` : `<span class="slot-daypart-hint">${slotHint}</span>`}
-            <span class="ghl-cal-time-hint" title="Starttijd in GHL-agenda (ter referentie)">· agenda ${a.estimated ? '~' : ''}${a.timeSlot}</span>
+            <span class="ghl-cal-time-hint" title="Starttijd in GHL (ter referentie)"> ${a.estimated ? '~' : ''}${a.timeSlot}</span>
           </div>
           <div class="appt-actions">
             ${a.phone ? `<a class="icon-btn appt-action-icon" href="tel:${a.phone}" title="Bellen">📞</a>` : ''}
@@ -4405,7 +4375,7 @@ function renderApptCard(a, i) {
           </div>
         </div>
         <div class="appt-body">
-          ${a.fullAddressLine ? `<div class="appt-address"><span class="appt-address-pin" aria-hidden="true">📍</span><span class="appt-address-txt">${a.fullAddressLine}</span></div>` : ''}
+          ${a.fullAddressLine ? `<div class="appt-address">${a.fullAddressLine}</div>` : ''}
           <div class="appt-name">${a.name}</div>
           <div class="appt-desc">${a.jobDescription || ''}</div>
         </div>
@@ -4417,17 +4387,13 @@ function renderApptCard(a, i) {
               <span class="tag ${a.jobType}">${a.jobType}</span>
               ${a.phone ? `<span class="appt-phone">${a.phone}</span>` : ''}
             </div>
-            <div class="status-dot" title="${a.status}">
-              <div class="dot ${a.status}"></div>
-              <span class="hk-sr-only">${a.status}</span>
-            </div>
           </div>
           <div class="appt-footer-right">
             ${a.priceLabel ? `<span class="appt-price">${a.priceLabel}</span>` : ''}
             ${!isDone ? `<div class="appt-footer-actions-touch">
               <div class="appt-footer-cta-row">
-                <button type="button" class="btn-prijs ${barVisible&&!isOnderweg?'active':''}" onclick='togglePrijs(${idQ})' title="Prijsoverzicht bekijken">💶 Prijs</button>
-                <button type="button" class="btn-done ${isOnderweg?'active':''}" onclick='${isOnderweg ? `scrollToPrijs(${idQ})` : `askOnderweg(${idQ})`}' title="${isOnderweg ? 'Naar prijs en afronden' : 'Markeer onderweg'}">${isOnderweg ? '💳 Afrekenen' : '→ Onderweg'}</button>
+                <button type="button" class="btn-prijs ${barVisible&&!isOnderweg?'active':''}" onclick='togglePrijs(${idQ})' title="Prijsoverzicht bekijken">Prijs</button>
+                <button type="button" class="btn-done ${isOnderweg?'active':''}" onclick='${isOnderweg ? `scrollToPrijs(${idQ})` : `askOnderweg(${idQ})`}' title="${isOnderweg ? 'Naar prijs en afronden' : 'Markeer onderweg'}">Onderweg</button>
               </div>
             </div>` : ''}
           </div>
