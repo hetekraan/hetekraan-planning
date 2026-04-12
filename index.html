@@ -52,17 +52,16 @@
     --installatie: #4a9eff;
     --klaar-bg: #0d2018;
     --klaar-border: #1a4030;
-    /* Afspraakkaart: actie-iconen (neutraal iOS-achtig) */
+    /* Afspraakkaart: actie-iconen — zelfde basis als weektegels (surface2 + subtiele rand) */
     --appt-action-icon-size: 44px;
-    --appt-action-icon-radius: 12px;
-    /* Match week strip / planner-week-edge (surface2 + warm text, accent on hover) */
+    --appt-action-icon-radius: 14px;
     --appt-action-icon-bg: var(--surface2);
     --appt-action-icon-bg-hover: var(--surface2);
     --appt-action-icon-bg-active: var(--surface3);
     --appt-action-icon-border: var(--border);
-    --appt-action-icon-border-hover: rgba(255, 255, 255, 0.18);
-    --appt-action-icon-fg: rgba(198, 198, 210, 0.82);
-    --appt-action-icon-fg-hover: rgba(236, 236, 244, 0.96);
+    --appt-action-icon-border-hover: rgba(255, 255, 255, 0.14);
+    --appt-action-icon-fg: rgba(232, 232, 240, 0.72);
+    --appt-action-icon-fg-hover: rgba(248, 248, 252, 0.92);
   }
 
   html {
@@ -431,30 +430,34 @@
     min-width: var(--appt-action-icon-size);
     max-width: var(--appt-action-icon-size);
     padding: 0;
-    font-size: 19px;
-    line-height: 1;
+    font-size: 0;
+    line-height: 0;
     font-weight: 500;
     letter-spacing: 0;
     color: var(--appt-action-icon-fg);
     background: var(--appt-action-icon-bg);
     border: 1px solid var(--appt-action-icon-border);
     border-radius: var(--appt-action-icon-radius);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-    filter: grayscale(1);
-    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, filter 0.12s ease;
+    box-shadow: none;
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
     -webkit-font-smoothing: antialiased;
+  }
+  .appt-actions .icon-btn.appt-action-icon .appt-action-svg {
+    width: calc(var(--appt-action-icon-size) * 0.44);
+    height: calc(var(--appt-action-icon-size) * 0.44);
+    flex-shrink: 0;
+    display: block;
+    stroke: currentColor;
   }
   .appt-actions .icon-btn.appt-action-icon:hover {
     color: var(--appt-action-icon-fg-hover);
     background: var(--appt-action-icon-bg-hover);
     border-color: var(--appt-action-icon-border-hover);
-    filter: grayscale(1) brightness(1.12);
   }
   .appt-actions .icon-btn.appt-action-icon:active {
     color: var(--appt-action-icon-fg-hover);
     background: var(--appt-action-icon-bg-active);
     border-color: var(--appt-action-icon-border-hover);
-    filter: grayscale(1) brightness(0.96);
   }
   .appt-actions .icon-btn.appt-action-icon:focus-visible {
     outline: 2px solid rgba(255, 255, 255, 0.22);
@@ -462,6 +465,15 @@
   }
   .appt-actions a.icon-btn.appt-action-icon {
     -webkit-tap-highlight-color: transparent;
+    text-decoration: none;
+    color: var(--appt-action-icon-fg);
+  }
+  .appt-actions a.icon-btn.appt-action-icon:visited {
+    color: var(--appt-action-icon-fg);
+  }
+  .appt-actions a.icon-btn.appt-action-icon:hover,
+  .appt-actions a.icon-btn.appt-action-icon:visited:hover {
+    color: var(--appt-action-icon-fg-hover);
   }
 
   .icon-btn {
@@ -977,14 +989,15 @@
   .planning-section:last-child { margin-bottom: 0; }
   .planning-section-title {
     font-family: var(--font-display);
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 600;
-    letter-spacing: 0.07em;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: rgba(232, 232, 240, 0.55);
+    color: rgba(232, 232, 240, 0.62);
     margin-bottom: 12px;
     padding-bottom: 8px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    line-height: 1.3;
   }
 
   .empty-hint {
@@ -1222,7 +1235,11 @@
   body.ui-scale-large .section-title             { font-size: 13px; }
   body.ui-scale-large .btn-add                   { font-size: 14px; padding: 10px 18px; }
   body.ui-scale-large .btn-dagopgave             { font-size: 17px; padding: 8px 11px; }
-  body.ui-scale-large .planner-app-icon-btn.btn-day-block .btn-day-block-ic { font-size: 22px; }
+  body.ui-scale-large .planner-app-icon-btn.btn-day-block .btn-day-block-ic { font-size: 24px; }
+  body.ui-scale-large .planning-section-title {
+    font-size: 15px;
+    letter-spacing: 0.055em;
+  }
   body.ui-scale-large .day-blocked-banner       { font-size: 15px; padding: 12px 14px; }
   body.ui-scale-large .appt-number              { font-size: clamp(15px, 3.4vw, 17px); color: rgba(210, 210, 222, 0.55); }
   body.ui-scale-large .appt-time                { font-size: 18px; }
@@ -1244,8 +1261,7 @@
   body.ui-scale-large .icon-btn                 { width: 38px; height: 38px; font-size: 15px; border-radius: 8px; }
   body.ui-scale-large .appt-actions .icon-btn.appt-action-icon {
     --appt-action-icon-size: 44px;
-    --appt-action-icon-radius: 12px;
-    font-size: 19px;
+    --appt-action-icon-radius: 14px;
   }
   body.ui-scale-large .appt-footer-cta-row .btn-prijs,
   body.ui-scale-large .appt-footer-cta-row .btn-done {
@@ -1296,17 +1312,21 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 20px;
+    font-size: 22px;
     line-height: 1;
+    font-weight: 600;
+    color: rgba(198, 198, 210, 0.78);
     filter: grayscale(1);
-    opacity: 0.52;
+    opacity: 0.65;
   }
   .planner-app-icon-btn.btn-day-block:hover .btn-day-block-ic {
-    opacity: 0.75;
+    opacity: 0.88;
+    color: rgba(228, 228, 236, 0.92);
   }
   .planner-app-icon-btn.btn-day-block.is-day-blocked .btn-day-block-ic {
-    filter: grayscale(0);
-    opacity: 0.95;
+    filter: grayscale(1) brightness(1.08);
+    opacity: 0.98;
+    color: rgba(236, 236, 244, 0.95);
   }
   .planner-app-icon-btn.btn-day-block.is-day-blocked {
     border-color: rgba(255, 140, 0, 0.42);
@@ -2459,7 +2479,7 @@
     }
     body.ui-scale-large .appt-actions .icon-btn.appt-action-icon {
       --appt-action-icon-size: 48px;
-      --appt-action-icon-radius: 12px;
+      --appt-action-icon-radius: 14px;
       font-size: 20px;
     }
     body.ui-scale-large .icon-btn.edit-action {
@@ -2547,7 +2567,7 @@
     }
     body.ui-scale-large .appt-actions .icon-btn.appt-action-icon {
       --appt-action-icon-size: 44px;
-      --appt-action-icon-radius: 11px;
+      --appt-action-icon-radius: 14px;
       font-size: 19px;
     }
     body.ui-scale-large .icon-btn.edit-action {
@@ -2850,14 +2870,15 @@
     }
     .planning-section-title {
       font-family: var(--font-display);
-      font-size: 13px;
+      font-size: 15px;
       font-weight: 600;
-      letter-spacing: 0.07em;
+      letter-spacing: 0.055em;
       text-transform: uppercase;
-      color: rgba(232, 232, 240, 0.52);
+      color: rgba(232, 232, 240, 0.58);
       border-bottom: 1px solid rgba(255, 255, 255, 0.09);
       margin-bottom: 16px;
       padding-bottom: 10px;
+      line-height: 1.3;
     }
 
     .appt-card {
@@ -2930,8 +2951,7 @@
     }
     .appt-actions .icon-btn.appt-action-icon {
       --appt-action-icon-size: 48px;
-      --appt-action-icon-radius: 12px;
-      font-size: 20px;
+      --appt-action-icon-radius: 14px;
     }
 
     .appt-body {
@@ -3085,7 +3105,7 @@
     <button class="btn-add" type="button" onclick="toggleMobileMenu(false);openModal()">+ Afspraak</button>
     <button class="btn-dagopgave" type="button" onclick="toggleMobileMenu(false);openDagopgave()">📋 Dagopgave</button>
     <button type="button" class="planner-app-icon-btn btn-day-block btn-day-block--menu" id="btnBlockDayGhlMobile" onclick="toggleMobileMenu(false);onBlockDayButtonClick()" aria-label="Blokkeer dag">
-      <span class="btn-day-block-ic" aria-hidden="true">📅</span>
+      <span class="btn-day-block-ic" aria-hidden="true">■</span>
     </button>
     <button class="btn-logout" type="button" onclick="toggleMobileMenu(false);logoutPlanning()">Uitloggen</button>
   </div>
@@ -3107,11 +3127,11 @@
 <div class="layout">
   <div class="appointments" id="panelAfspraken">
     <div class="appointments-header">
-      <div class="section-title">⬛ Afspraken van de dag</div>
+      <div class="section-title">Afspraken van de dag</div>
       <div class="appointments-header-actions">
         <button class="btn-dagopgave" onclick="openDagopgave()" title="Dagopgave voor Tellow">📋</button>
         <button type="button" class="planner-app-icon-btn btn-day-block" id="btnBlockDayGhl" onclick="onBlockDayButtonClick()" aria-label="Blokkeer dag" title="Blokkeer of deblokkeer deze dag in GHL">
-          <span class="btn-day-block-ic" aria-hidden="true">📅</span>
+          <span class="btn-day-block-ic" aria-hidden="true">■</span>
         </button>
         <button class="btn-add" onclick="openModal()">+ Afspraak</button>
       </div>
@@ -4326,6 +4346,16 @@ function calcStats() {
   document.getElementById('totalBar').textContent       = fmtEuro(total);
 }
 
+/** Top-right card actions: stroke-SVGs use currentColor (no emoji color bleed). */
+const APPT_ACTION_SVG = {
+  phone: '<svg xmlns="http://www.w3.org/2000/svg" class="appt-action-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+  map: '<svg xmlns="http://www.w3.org/2000/svg" class="appt-action-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><path stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>',
+  link: '<svg xmlns="http://www.w3.org/2000/svg" class="appt-action-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.08 1.08"/><path stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.08-1.08"/></svg>',
+  eye: '<svg xmlns="http://www.w3.org/2000/svg" class="appt-action-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+  pencil: '<svg xmlns="http://www.w3.org/2000/svg" class="appt-action-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5m-1.414-9.414a2 2 0 1 1 2.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>',
+  close: '<svg xmlns="http://www.w3.org/2000/svg" class="appt-action-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 6L6 18M6 6l12 12"/></svg>'
+};
+
 function renderApptCard(a, i) {
     const domId = appointmentDomSafeId(a.id);
     const idQ = JSON.stringify(a.id);
@@ -4371,12 +4401,12 @@ function renderApptCard(a, i) {
             <span class="ghl-cal-time-hint" title="Starttijd in GHL (ter referentie)"> ${a.estimated ? '~' : ''}${a.timeSlot}</span>
           </div>
           <div class="appt-actions">
-            ${a.phone ? `<a class="icon-btn appt-action-icon" href="tel:${a.phone}" title="Bellen">📞</a>` : ''}
-            ${a.mapsLink ? `<a class="icon-btn appt-action-icon" href="${a.mapsLink}" target="_blank" rel="noopener noreferrer" title="Maps">📍</a>` : ''}
-            ${a.ghlUrl ? `<a class="icon-btn appt-action-icon" href="${a.ghlUrl}" target="_blank" rel="noopener noreferrer" title="Open in GHL">🔗</a>` : ''}
-            ${isDone ? `<button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentDetailsModal(${idQ})' title="Bekijk details">👁</button>` : ''}
-            <button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">✏</button>
-            <button type="button" class="icon-btn appt-action-icon" onclick='deleteAppt(${idQ})' title="Verwijderen">✕</button>
+            ${a.phone ? `<a class="icon-btn appt-action-icon" href="tel:${a.phone}" title="Bellen">${APPT_ACTION_SVG.phone}</a>` : ''}
+            ${a.mapsLink ? `<a class="icon-btn appt-action-icon" href="${a.mapsLink}" target="_blank" rel="noopener noreferrer" title="Maps">${APPT_ACTION_SVG.map}</a>` : ''}
+            ${a.ghlUrl ? `<a class="icon-btn appt-action-icon" href="${a.ghlUrl}" target="_blank" rel="noopener noreferrer" title="Open in GHL">${APPT_ACTION_SVG.link}</a>` : ''}
+            ${isDone ? `<button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentDetailsModal(${idQ})' title="Bekijk details">${APPT_ACTION_SVG.eye}</button>` : ''}
+            <button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">${APPT_ACTION_SVG.pencil}</button>
+            <button type="button" class="icon-btn appt-action-icon" onclick='deleteAppt(${idQ})' title="Verwijderen">${APPT_ACTION_SVG.close}</button>
           </div>
         </div>
         <div class="appt-body">
