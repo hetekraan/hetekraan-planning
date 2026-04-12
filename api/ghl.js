@@ -967,6 +967,7 @@ export default async function handler(req, res) {
 
         const {
           serviceDay,
+          datumLaatsteOnderhoud,
           extrasNorm,
           canonicalPrijsRegels,
           canonicalPrijsTotaal,
@@ -976,6 +977,7 @@ export default async function handler(req, res) {
           type,
           totalPrice,
           extras,
+          lastService,
         });
         console.log('[BOOKING_PRICE_DEBUG]', {
           contactId,
@@ -989,6 +991,7 @@ export default async function handler(req, res) {
             contactId,
             routeDateRequested: routeDate != null ? String(routeDate) : null,
             serviceDayWritten: serviceDay,
+            datumLaatsteOnderhoudWritten: datumLaatsteOnderhoud,
             appointmentId: appointmentId != null ? String(appointmentId) : null,
             prijsTotaal: canonicalPrijsTotaal,
             prijsRegelsLines: extrasNorm.length,

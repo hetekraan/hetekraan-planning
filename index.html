@@ -921,6 +921,12 @@
     outline: none;
   }
   .service-date-row input:focus { border-color: var(--accent); }
+  .service-date-row--last-maint label {
+    font: inherit;
+    color: inherit;
+    margin: 0;
+    flex-shrink: 0;
+  }
 
   .btn-confirm {
     background: var(--accent2);
@@ -3416,6 +3422,150 @@
     font-size: 18px !important;
   }
 
+  /*
+   * Jerry: prijs / “Bevestig klaar” paneel (= .complete-bar in de kaart, geen aparte modal-overlay).
+   */
+  body.user-jerry .complete-bar {
+    padding: 18px 14px 18px 38px !important;
+    gap: 14px !important;
+  }
+  body.user-jerry .complete-bar .complete-row {
+    gap: 12px !important;
+  }
+  body.user-jerry .complete-bar .review-toggle {
+    font-size: 19px !important;
+    line-height: 1.35 !important;
+    gap: 14px !important;
+    color: rgba(200, 200, 215, 0.95) !important;
+  }
+  body.user-jerry .complete-bar .toggle {
+    width: 54px !important;
+    height: 32px !important;
+    border-radius: 16px !important;
+  }
+  body.user-jerry .complete-bar .toggle::after {
+    width: 26px !important;
+    height: 26px !important;
+    top: 2px !important;
+    left: 2px !important;
+  }
+  body.user-jerry .complete-bar .toggle.on::after {
+    left: 26px !important;
+  }
+  body.user-jerry .complete-bar .service-date-row {
+    font-size: 18px !important;
+    gap: 12px !important;
+  }
+  body.user-jerry .complete-bar .service-date-row input[type='date'] {
+    font-size: 18px !important;
+    padding: 10px 12px !important;
+    min-height: 50px !important;
+  }
+  body.user-jerry .complete-bar .price-section {
+    gap: 10px !important;
+    padding-top: 14px !important;
+    margin-top: 8px !important;
+  }
+  body.user-jerry .complete-bar .price-section-label {
+    font-size: 15px !important;
+    letter-spacing: 0.07em !important;
+    margin-bottom: 10px !important;
+    line-height: 1.35 !important;
+  }
+  body.user-jerry .complete-bar .price-section-label span {
+    font-size: 15px !important;
+    font-weight: 500 !important;
+  }
+  body.user-jerry .complete-bar .extra-item {
+    font-size: 18px !important;
+    padding: 10px 0 !important;
+    min-height: 54px !important;
+  }
+  body.user-jerry .complete-bar .extra-item > .form-input {
+    font-size: 18px !important;
+    min-height: 54px !important;
+    padding: 12px 14px !important;
+  }
+  body.user-jerry .complete-bar .extra-item .price-input {
+    width: 112px !important;
+    min-width: 100px !important;
+  }
+  body.user-jerry .complete-bar .extra-item .extra-remove {
+    font-size: 20px !important;
+    padding: 4px 10px !important;
+  }
+  body.user-jerry .complete-bar .extra-item > div span {
+    font-size: 17px !important;
+    color: rgba(180, 180, 198, 0.95) !important;
+  }
+  body.user-jerry .complete-bar .add-extra-row {
+    gap: 12px !important;
+    margin-top: 12px !important;
+  }
+  body.user-jerry .complete-bar .add-extra-row .form-input {
+    height: auto !important;
+    min-height: 56px !important;
+    font-size: 18px !important;
+    padding: 14px 16px !important;
+  }
+  body.user-jerry .complete-bar .add-extra-row .price-input {
+    width: 108px !important;
+    flex-shrink: 0 !important;
+  }
+  body.user-jerry .complete-bar .btn-add-extra {
+    width: 56px !important;
+    height: 56px !important;
+    min-width: 56px !important;
+    font-size: 28px !important;
+    border-radius: 12px !important;
+  }
+  body.user-jerry .complete-bar .form-input::placeholder {
+    font-size: 17px !important;
+    opacity: 0.8;
+  }
+  body.user-jerry .complete-bar .price-total-row {
+    font-size: 20px !important;
+    padding-top: 14px !important;
+    margin-top: 12px !important;
+    gap: 12px;
+  }
+  body.user-jerry .complete-bar .price-total-row span:last-child {
+    font-size: clamp(24px, 6vw, 36px) !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.02em;
+  }
+  body.user-jerry .complete-bar .btn-cancel,
+  body.user-jerry .complete-bar .btn-confirm {
+    min-height: 60px !important;
+    padding: 14px 22px !important;
+    font-size: 20px !important;
+    border-radius: 12px !important;
+  }
+  body.user-jerry .complete-bar .catalog-v1-results {
+    max-height: 240px !important;
+    border-radius: 10px !important;
+  }
+  body.user-jerry .complete-bar .catalog-v1-result {
+    font-size: 18px !important;
+    min-height: 56px !important;
+    padding: 16px 14px !important;
+    gap: 10px !important;
+  }
+  body.user-jerry .complete-bar .catalog-v1-empty {
+    font-size: 17px !important;
+    padding: 14px 12px !important;
+  }
+  body.user-jerry .complete-bar .catalog-v1-line {
+    font-size: 17px !important;
+    margin-top: 8px !important;
+    gap: 10px !important;
+  }
+  body.user-jerry .complete-bar .catalog-v1-line button {
+    font-size: 17px !important;
+    min-height: 48px !important;
+    padding: 8px 10px !important;
+  }
+
   @media (min-width: 1180px) {
     body.user-jerry .date-label {
       font-size: 15px !important;
@@ -3447,6 +3597,26 @@
       min-height: 54px !important;
       width: 54px !important;
       height: 54px !important;
+    }
+    body.user-jerry .complete-bar {
+      padding: 16px 16px 16px 36px !important;
+    }
+    body.user-jerry .complete-bar .review-toggle {
+      font-size: 17px !important;
+    }
+    body.user-jerry .complete-bar .btn-cancel,
+    body.user-jerry .complete-bar .btn-confirm {
+      min-height: 52px !important;
+      font-size: 18px !important;
+      padding: 12px 18px !important;
+    }
+    body.user-jerry .complete-bar .extra-item > .form-input,
+    body.user-jerry .complete-bar .add-extra-row .form-input {
+      font-size: 17px !important;
+      min-height: 50px !important;
+    }
+    body.user-jerry .complete-bar .price-total-row span:last-child {
+      font-size: clamp(22px, 2.4vw, 30px) !important;
     }
   }
 
@@ -4911,7 +5081,9 @@ function renderApptCard(a, i) {
     const isOnderweg = a.status === 'onderweg';
     const isViolation = !!a.violation;
     const barVisible = isOnderweg || !!a.priceVisible;
-    const showServiceDate = isOnderweg && a.jobType === 'reparatie';
+    const routeYmdPlanner = getDateStr(currentDate);
+    const lastServiceInputVal = String(a.lastService || '').trim() || routeYmdPlanner;
+    const lastMaintRowVisible = barVisible && !isDone;
 
     const metaItems = [];
     if (a.datumInstallatie) metaItems.push(`<div class="meta-item"><div class="meta-label">Installatie</div><div class="meta-value">${a.datumInstallatie}</div></div>`);
@@ -4969,10 +5141,10 @@ function renderApptCard(a, i) {
             <span>Review mail versturen (morgen)</span>
           </label>
         </div>
-        ${showServiceDate ? `
-        <div class="service-date-row">
-          <span>Laatste onderhoud:</span>
-          <input type="date" id="sdate-${domId}" value="${a.lastService||''}" onchange='setLastService(${idQ}, this.value)'>
+        ${lastMaintRowVisible ? `
+        <div class="service-date-row service-date-row--last-maint">
+          <label for="sdate-${domId}">Laatste onderhoud</label>
+          <input type="date" id="sdate-${domId}" name="lastService" value="${escapeHtml(lastServiceInputVal)}" onchange='setLastService(${idQ}, this.value)'>
         </div>` : ''}
 
         <div class="price-section" id="price-${domId}">

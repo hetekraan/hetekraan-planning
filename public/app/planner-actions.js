@@ -74,6 +74,12 @@
     const total = calcTotalPrice(a);
     const lines = a.extras || [];
     const contact = a.contact || {};
+    const routeDate = getDateStr(getCurrentDate());
+    const domId = appointmentDomSafeId(id);
+    const sdateEl = document.getElementById(`sdate-${domId}`);
+    let lastMaintenance = String(sdateEl?.value || '').trim();
+    if (!lastMaintenance) lastMaintenance = String(a.lastService || '').trim();
+    if (!lastMaintenance) lastMaintenance = routeDate;
     if (a.contactId) {
       try {
         const ghlRes = await fetch('/api/ghl?action=completeAppointment', {
@@ -84,10 +90,10 @@
             appointmentId: a.id || undefined,
             type: a.jobType,
             sendReview: a.review,
-            lastService: a.lastService || null,
+            lastService: lastMaintenance,
             totalPrice: total,
             extras: lines,
-            routeDate: getDateStr(getCurrentDate()),
+            routeDate,
           }),
         });
         if (!ghlRes.ok) showToast(`⚠ GHL kon niet worden bijgewerkt (${ghlRes.status}) — afspraak wel klaar gezet`, 'info');
