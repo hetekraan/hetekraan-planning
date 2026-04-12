@@ -921,9 +921,15 @@
     outline: none;
   }
   .service-date-row input:focus { border-color: var(--accent); }
+  .service-date-row--last-maint {
+    padding: 10px 0 12px;
+    margin-top: 4px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.14);
+  }
   .service-date-row--last-maint label {
     font: inherit;
-    color: inherit;
+    font-weight: 600;
+    color: var(--text);
     margin: 0;
     flex-shrink: 0;
   }
@@ -3452,14 +3458,47 @@
   body.user-jerry .complete-bar .toggle.on::after {
     left: 26px !important;
   }
-  body.user-jerry .complete-bar .service-date-row {
-    font-size: 18px !important;
-    gap: 12px !important;
+  /* Laatste onderhoud: groot tikvlak (native <input type="date">; iOS-picker zelf niet style-baar) */
+  body.user-jerry .complete-bar .service-date-row--last-maint {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    flex-wrap: nowrap !important;
+    gap: 10px !important;
+    padding: 14px 12px !important;
+    margin: 6px 0 4px !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    border-radius: 12px !important;
+    font-size: 20px !important;
+    color: rgba(220, 220, 232, 0.98) !important;
   }
-  body.user-jerry .complete-bar .service-date-row input[type='date'] {
-    font-size: 18px !important;
-    padding: 10px 12px !important;
-    min-height: 50px !important;
+  body.user-jerry .complete-bar .service-date-row--last-maint label {
+    font-size: 20px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.02em !important;
+    color: rgba(236, 236, 244, 0.98) !important;
+  }
+  body.user-jerry .complete-bar .service-date-row--last-maint input[type='date'] {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    min-height: 64px !important;
+    font-size: 22px !important;
+    line-height: 1.25 !important;
+    padding: 14px 16px !important;
+    border-radius: 12px !important;
+    border: 2px solid rgba(255, 255, 255, 0.18) !important;
+    background: var(--surface3) !important;
+    color: var(--text) !important;
+    touch-action: manipulation !important;
+  }
+  body.user-jerry .complete-bar .service-date-row--last-maint input[type='date']::-webkit-calendar-picker-indicator {
+    opacity: 1;
+    cursor: pointer;
+    padding: 14px;
+    margin: -8px -6px -8px 4px;
+    transform: scale(1.35);
+    transform-origin: center right;
   }
   body.user-jerry .complete-bar .price-section {
     gap: 10px !important;
@@ -3617,6 +3656,17 @@
     }
     body.user-jerry .complete-bar .price-total-row span:last-child {
       font-size: clamp(22px, 2.4vw, 30px) !important;
+    }
+    body.user-jerry .complete-bar .service-date-row--last-maint {
+      padding: 12px 10px !important;
+    }
+    body.user-jerry .complete-bar .service-date-row--last-maint label {
+      font-size: 18px !important;
+    }
+    body.user-jerry .complete-bar .service-date-row--last-maint input[type='date'] {
+      min-height: 56px !important;
+      font-size: 19px !important;
+      padding: 12px 14px !important;
     }
   }
 
