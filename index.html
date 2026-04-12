@@ -67,6 +67,17 @@
   html {
     overflow-x: clip;
   }
+  .hk-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
@@ -234,7 +245,7 @@
   .appointments-header {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
+    align-items: center;
     gap: 10px;
     flex-wrap: wrap;
     margin-bottom: 12px;
@@ -706,12 +717,12 @@
 
   .tag {
     font-family: var(--font-body);
-    font-size: 9px;
-    font-weight: 500;
+    font-size: 10px;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    padding: 3px 7px;
-    border-radius: 4px;
+    letter-spacing: 0.06em;
+    padding: 4px 9px;
+    border-radius: 6px;
   }
   .tag.reparatie { background: rgba(255, 107, 53, 0.1); color: rgba(255, 140, 100, 0.95); }
   .tag.onderhoud { background: rgba(0, 212, 170, 0.1); color: rgba(120, 230, 200, 0.95); }
@@ -719,9 +730,9 @@
 
   .appt-phone {
     font-family: var(--font-body);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 500;
-    color: rgba(102, 102, 128, 0.95);
+    color: rgba(130, 130, 155, 0.98);
   }
   .appt-price {
     font-family: var(--font-body);
@@ -1235,8 +1246,7 @@
   body.ui-scale-large .section-title             { font-size: 13px; }
   body.ui-scale-large .btn-add                   { font-size: 14px; padding: 10px 18px; }
   body.ui-scale-large .btn-dagopgave             { font-size: 17px; padding: 8px 11px; }
-  body.ui-scale-large .btn-day-block             { font-size: 14px; padding: 8px 11px; }
-  body.ui-scale-large .btn-day-block .btn-day-block-ic { font-size: 17px; }
+  body.ui-scale-large .planner-app-icon-btn.btn-day-block .btn-day-block-ic { font-size: 22px; }
   body.ui-scale-large .day-blocked-banner       { font-size: 15px; padding: 12px 14px; }
   body.ui-scale-large .appt-number              { font-size: 12px; }
   body.ui-scale-large .appt-time                { font-size: 18px; }
@@ -1303,52 +1313,37 @@
   }
   .btn-dagopgave:hover { background: var(--surface3); color: var(--text); }
 
-  .btn-day-block {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    color: var(--muted);
-    min-width: 44px;
-    min-height: 44px;
-    padding: 8px 10px;
-    border-radius: 8px;
-    font-size: 12px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.15s, border-color 0.15s, color 0.15s;
-    touch-action: manipulation;
+  .planner-app-icon-btn.btn-day-block {
+    flex-shrink: 0;
+    gap: 0;
+    padding: 0;
+  }
+  .planner-app-icon-btn.btn-day-block .btn-day-block-ic {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-  }
-  .btn-day-block .btn-day-block-ic {
-    font-size: 16px;
+    font-size: 20px;
     line-height: 1;
+    filter: grayscale(1);
+    opacity: 0.52;
   }
-  .btn-day-block .btn-day-block-txt {
-    white-space: nowrap;
-    letter-spacing: 0.01em;
+  .planner-app-icon-btn.btn-day-block:hover .btn-day-block-ic {
+    opacity: 0.75;
   }
-  .btn-day-block:hover {
+  .planner-app-icon-btn.btn-day-block.is-day-blocked .btn-day-block-ic {
+    filter: grayscale(0);
+    opacity: 0.95;
+  }
+  .planner-app-icon-btn.btn-day-block.is-day-blocked {
+    border-color: rgba(255, 140, 0, 0.42);
     background: rgba(255, 140, 0, 0.12);
-    color: #ffb347;
-    border-color: rgba(255, 140, 0, 0.35);
   }
-  .btn-day-block.is-day-blocked {
-    background: rgba(255, 140, 0, 0.18);
-    color: #ffb347;
-    border-color: rgba(255, 140, 0, 0.45);
-    cursor: pointer;
-  }
-  .btn-day-block.is-day-blocked:hover {
-    background: rgba(255, 140, 0, 0.24);
+  .planner-app-icon-btn.btn-day-block.is-day-blocked:hover {
     border-color: rgba(255, 140, 0, 0.55);
+    background: rgba(255, 140, 0, 0.18);
   }
-  .btn-day-block--menu {
-    width: 100%;
-    justify-content: flex-start;
-    text-align: left;
-    font-weight: 600;
+  .btn-day-block--menu.planner-app-icon-btn {
+    margin: 4px auto 0;
   }
 
   .appt-card.cal-block {
@@ -1865,33 +1860,57 @@
       gap: 6px;
     }
   }
+  /* Zoeken: verborgen in layout; opent als paneel onder header via 🔎 */
   .global-search {
-    width: 100%;
-    max-width: 1180px;
-    margin: 10px auto 12px;
+    --global-search-top: 56px;
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: var(--global-search-top);
+    z-index: 160;
+    padding: 0 max(12px, env(safe-area-inset-right)) 12px max(12px, env(safe-area-inset-left));
+    margin: 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(-8px);
+    transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s;
+  }
+  .global-search.global-search--open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+  .global-search-panel {
     position: relative;
-    padding: 0 12px;
+    max-width: 720px;
+    margin: 0 auto;
+    padding-top: 8px;
   }
   .global-search-input {
     width: 100%;
-    background: var(--surface);
+    background: var(--surface2);
     border: 1px solid var(--border);
     color: var(--text);
     border-radius: 10px;
     min-height: 42px;
     padding: 10px 12px;
-    font-size: 13px;
+    font-size: 14px;
   }
   .global-search-results {
     position: absolute;
     top: calc(100% + 6px);
-    left: 12px;
-    right: 12px;
+    left: 0;
+    right: 0;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 10px;
-    z-index: 140;
-    max-height: 340px;
+    z-index: 165;
+    max-height: min(340px, 52vh);
     overflow: auto;
     display: none;
   }
@@ -2116,14 +2135,13 @@
       font-size: 14px;
       border-radius: 6px;
     }
-    .btn-day-block {
-      padding: 5px 8px;
-      min-height: 0;
-      font-size: 12px;
-      border-radius: 6px;
-      gap: 4px;
+    .planner-app-icon-btn.btn-day-block {
+      width: 44px;
+      height: 44px;
+      min-height: 44px;
+      border-radius: 10px;
     }
-    .btn-day-block .btn-day-block-ic { font-size: 14px; }
+    .planner-app-icon-btn.btn-day-block .btn-day-block-ic { font-size: 18px; }
 
     .btn-done {
       padding: 5px 10px;
@@ -2201,6 +2219,14 @@
     min-height: 56px !important;
     padding: 10px 14px;
     font-size: 18px;
+  }
+  body.jerry-mode .planner-app-icon-btn {
+    min-height: 56px !important;
+    height: 56px !important;
+    width: 56px !important;
+    min-width: 56px !important;
+    padding: 0 !important;
+    font-size: 22px !important;
   }
   body.jerry-mode .icon-btn {
     width: auto;
@@ -2406,11 +2432,17 @@
       padding: 14px 18px;
       font-size: 16px;
     }
-    body.ui-scale-large .btn-dagopgave,
-    body.ui-scale-large .btn-day-block {
+    body.ui-scale-large .btn-dagopgave {
       min-height: 56px;
       padding: 12px 14px;
       font-size: 14px;
+    }
+    body.ui-scale-large .planner-app-icon-btn.btn-day-block {
+      width: 56px;
+      height: 56px;
+      min-height: 56px;
+      min-width: 56px;
+      border-radius: 12px;
     }
     body.ui-scale-large .btn-optimize {
       min-height: 58px;
@@ -2498,11 +2530,16 @@
       font-size: 14px;
       border-radius: 8px;
     }
-    body.ui-scale-large .btn-dagopgave,
-    body.ui-scale-large .btn-day-block {
+    body.ui-scale-large .btn-dagopgave {
       min-height: 48px;
       padding: 10px 12px;
       font-size: 13px;
+    }
+    body.ui-scale-large .planner-app-icon-btn.btn-day-block {
+      width: 48px;
+      height: 48px;
+      min-height: 48px;
+      min-width: 48px;
     }
     body.ui-scale-large .btn-optimize {
       min-height: 50px;
@@ -2828,12 +2865,8 @@
       display: none !important;
     }
 
-    .global-search {
-      margin-top: 6px;
-      margin-bottom: 8px;
-    }
     .global-search-input {
-      min-height: 48px;
+      min-height: 46px;
       font-size: 15px;
       border-radius: 12px;
     }
@@ -2949,8 +2982,12 @@
     }
     .tag {
       font-size: 11px;
-      padding: 6px 12px;
+      font-weight: 600;
+      padding: 5px 12px;
       border-radius: 999px;
+    }
+    .appt-phone {
+      font-size: 12px;
     }
     .appt-price {
       font-size: clamp(16px, 4.2vw, 19px);
@@ -3021,7 +3058,7 @@
     </div>
   </div>
   <div class="planner-app-tools" aria-label="Zoeken en menu">
-    <button type="button" class="planner-app-icon-btn" onclick="focusGlobalSearch()" title="Zoeken">🔎</button>
+    <button type="button" class="planner-app-icon-btn" id="btnGlobalSearch" onclick="focusGlobalSearch()" title="Zoeken" aria-label="Zoek afspraken">🔎</button>
     <button type="button" class="planner-app-icon-btn" onclick="toggleMobileMenu(true)" title="Menu">☰</button>
   </div>
   <div class="date-nav-wrap">
@@ -3072,22 +3109,24 @@
     <div class="section-title" style="margin-bottom:4px">Menu</div>
     <button class="btn-add" type="button" onclick="toggleMobileMenu(false);openModal()">+ Afspraak</button>
     <button class="btn-dagopgave" type="button" onclick="toggleMobileMenu(false);openDagopgave()">📋 Dagopgave</button>
-    <button type="button" class="btn-day-block btn-day-block--menu" id="btnBlockDayGhlMobile" onclick="toggleMobileMenu(false);onBlockDayButtonClick()">
+    <button type="button" class="planner-app-icon-btn btn-day-block btn-day-block--menu" id="btnBlockDayGhlMobile" onclick="toggleMobileMenu(false);onBlockDayButtonClick()" aria-label="Blokkeer dag">
       <span class="btn-day-block-ic" aria-hidden="true">📅</span>
-      <span class="btn-day-block-txt" id="btnBlockDayGhlMobileLabel">Blokkeer dag</span>
     </button>
     <button class="btn-logout" type="button" onclick="toggleMobileMenu(false);logoutPlanning()">Uitloggen</button>
   </div>
 </div>
-<div class="global-search" id="globalSearchWrap">
-  <input
-    id="globalSearchInput"
-    class="global-search-input"
-    type="text"
-    placeholder="Zoek afspraak op naam, adres, telefoon, notitie..."
-    autocomplete="off"
-  >
-  <div id="globalSearchResults" class="global-search-results"></div>
+<div class="global-search" id="globalSearchWrap" aria-hidden="true">
+  <div class="global-search-panel">
+    <input
+      id="globalSearchInput"
+      class="global-search-input"
+      type="text"
+      placeholder="Zoek afspraak op naam, adres, telefoon, notitie..."
+      autocomplete="off"
+      aria-label="Zoek afspraken"
+    >
+    <div id="globalSearchResults" class="global-search-results"></div>
+  </div>
 </div>
 
 <div class="layout">
@@ -3096,9 +3135,8 @@
       <div class="section-title">⬛ Afspraken van de dag</div>
       <div class="appointments-header-actions">
         <button class="btn-dagopgave" onclick="openDagopgave()" title="Dagopgave voor Tellow">📋</button>
-        <button type="button" class="btn-day-block" id="btnBlockDayGhl" onclick="onBlockDayButtonClick()" aria-labelledby="btnBlockDayGhlLabel" title="Blokkeer of deblokkeer deze dag in GHL">
+        <button type="button" class="planner-app-icon-btn btn-day-block" id="btnBlockDayGhl" onclick="onBlockDayButtonClick()" aria-label="Blokkeer dag" title="Blokkeer of deblokkeer deze dag in GHL">
           <span class="btn-day-block-ic" aria-hidden="true">📅</span>
-          <span class="btn-day-block-txt" id="btnBlockDayGhlLabel">Blokkeer dag</span>
         </button>
         <button class="btn-add" onclick="openModal()">+ Afspraak</button>
       </div>
@@ -3449,6 +3487,18 @@ function closeGlobalSearchResults() {
   box.classList.remove('open');
 }
 
+function collapseGlobalSearchDock() {
+  const wrap = document.getElementById('globalSearchWrap');
+  if (wrap) {
+    wrap.classList.remove('global-search--open');
+    wrap.style.removeProperty('--global-search-top');
+    wrap.setAttribute('aria-hidden', 'true');
+  }
+  const input = document.getElementById('globalSearchInput');
+  if (input) input.blur();
+  closeGlobalSearchResults();
+}
+
 function renderGlobalSearchResults(rows) {
   const box = document.getElementById('globalSearchResults');
   if (!box) return;
@@ -3508,7 +3558,10 @@ async function openGlobalSearchResult(idx) {
   const targetDate = window.HKPlannerUtils?.plannerDateFromYmd
     ? window.HKPlannerUtils.plannerDateFromYmd(row.date)
     : null;
-  if (!targetDate) return;
+  if (!targetDate) {
+    collapseGlobalSearchDock();
+    return;
+  }
   currentDate = targetDate;
   document.getElementById('dateLabel').textContent = formatDate(currentDate);
   renderPlannerWeekStrip();
@@ -3518,7 +3571,10 @@ async function openGlobalSearchResult(idx) {
     ? appointments.find((a) => String(a.contactId || '') === String(row.contactId || ''))
     : null;
   const hit = byId || byContact;
-  if (!hit) return;
+  if (!hit) {
+    collapseGlobalSearchDock();
+    return;
+  }
   scrollToCard(hit.id);
   const domId = appointmentDomSafeId(hit.id);
   const el = document.getElementById(`card-${domId}`);
@@ -3526,6 +3582,7 @@ async function openGlobalSearchResult(idx) {
     el.classList.add('drag-over');
     setTimeout(() => el.classList.remove('drag-over'), 1600);
   }
+  collapseGlobalSearchDock();
 }
 
 function createPlannerCtx() {
@@ -3857,6 +3914,14 @@ function switchMobileTab(tab) {
 }
 
 function focusGlobalSearch() {
+  const wrap = document.getElementById('globalSearchWrap');
+  const header = document.querySelector('header');
+  if (wrap && header) {
+    const h = Math.ceil(header.getBoundingClientRect().bottom + 4);
+    wrap.style.setProperty('--global-search-top', `${h}px`);
+    wrap.classList.add('global-search--open');
+    wrap.setAttribute('aria-hidden', 'false');
+  }
   const input = document.getElementById('globalSearchInput');
   switchMobileTab('afspraken');
   const tabZ = document.getElementById('tabZoeken');
@@ -3867,10 +3932,7 @@ function focusGlobalSearch() {
   if (tabA) tabA.classList.remove('active');
   if (tabR) tabR.classList.remove('active');
   if (tabM) tabM.classList.remove('active');
-  if (input) {
-    input.focus();
-    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }
+  if (input) input.focus();
 }
 
 function toggleMobileMenu(open) {
@@ -4355,9 +4417,9 @@ function renderApptCard(a, i) {
               <span class="tag ${a.jobType}">${a.jobType}</span>
               ${a.phone ? `<span class="appt-phone">${a.phone}</span>` : ''}
             </div>
-            <div class="status-dot">
+            <div class="status-dot" title="${a.status}">
               <div class="dot ${a.status}"></div>
-              <span class="appt-status-txt">${a.status}</span>
+              <span class="hk-sr-only">${a.status}</span>
             </div>
           </div>
           <div class="appt-footer-right">
@@ -4451,23 +4513,22 @@ function render() {
   }
 
   const blockBtn = document.getElementById('btnBlockDayGhl');
-  const blockLabel = document.getElementById('btnBlockDayGhlLabel');
   const blockBtnMobile = document.getElementById('btnBlockDayGhlMobile');
-  const blockLabelMobile = document.getElementById('btnBlockDayGhlMobileLabel');
   const dayIsBlocked = blocks.length > 0 || dashBlockedPending;
   const blockLabelText = dayIsBlocked ? 'Deblokkeer dag' : 'Blokkeer dag';
+  const blockTitle = dayIsBlocked
+    ? 'Heft de GHL-blokkade voor deze dag op — daarna kan online boeken deze datum weer voorstellen (als er verder geen blok in 08–18 Ams valt).'
+    : 'Blokkeer deze dag in GHL (hele dag, ochtend of middag). Online boeken sluit de hele datum uit zodra er bloktijd in 08–18 Amsterdam valt.';
   if (blockBtn) {
     blockBtn.classList.toggle('is-day-blocked', dayIsBlocked);
     blockBtn.disabled = false;
-    if (blockLabel) blockLabel.textContent = blockLabelText;
-    blockBtn.title = dayIsBlocked
-      ? 'Heft de GHL-blokkade voor deze dag op — daarna kan online boeken deze datum weer voorstellen (als er verder geen blok in 08–18 Ams valt).'
-      : 'Blokkeer deze dag in GHL (hele dag, ochtend of middag). Online boeken sluit de hele datum uit zodra er bloktijd in 08–18 Amsterdam valt.';
+    blockBtn.setAttribute('aria-label', blockLabelText);
+    blockBtn.title = blockTitle;
   }
   if (blockBtnMobile) {
     blockBtnMobile.classList.toggle('is-day-blocked', dayIsBlocked);
-    if (blockLabelMobile) blockLabelMobile.textContent = blockLabelText;
-    blockBtnMobile.title = blockBtn ? blockBtn.title : '';
+    blockBtnMobile.setAttribute('aria-label', blockLabelText);
+    blockBtnMobile.title = blockTitle;
   }
 
   const parts = [];
@@ -5268,15 +5329,21 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeGlobalSearchResults();
+    if (e.key !== 'Escape') return;
+    const wrap = document.getElementById('globalSearchWrap');
+    if (wrap && wrap.classList.contains('global-search--open')) {
+      collapseGlobalSearchDock();
+      return;
+    }
+    toggleMobileMenu(false);
   });
   document.addEventListener('click', (e) => {
     const wrap = document.getElementById('globalSearchWrap');
-    if (!wrap || wrap.contains(e.target)) return;
-    closeGlobalSearchResults();
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') toggleMobileMenu(false);
+    const btn = document.getElementById('btnGlobalSearch');
+    if (!wrap) return;
+    if (wrap.contains(e.target)) return;
+    if (btn && btn.contains(e.target)) return;
+    collapseGlobalSearchDock();
   });
   checkLogin();
 });
