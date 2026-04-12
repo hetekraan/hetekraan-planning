@@ -60,9 +60,9 @@
     --appt-action-icon-bg-hover: var(--surface2);
     --appt-action-icon-bg-active: var(--surface3);
     --appt-action-icon-border: var(--border);
-    --appt-action-icon-border-hover: var(--muted);
-    --appt-action-icon-fg: rgba(232, 232, 240, 0.88);
-    --appt-action-icon-fg-hover: var(--accent);
+    --appt-action-icon-border-hover: rgba(255, 255, 255, 0.18);
+    --appt-action-icon-fg: rgba(198, 198, 210, 0.82);
+    --appt-action-icon-fg-hover: rgba(236, 236, 244, 0.96);
   }
 
   html {
@@ -342,16 +342,17 @@
 
   .appt-number {
     position: absolute;
-    top: 9px;
-    left: 11px;
+    top: 8px;
+    left: 8px;
     font-family: var(--font-body);
-    font-size: 12px;
+    font-size: clamp(14px, 3.35vw, 17px);
     font-weight: 700;
-    color: rgba(232, 232, 240, 0.72);
-    letter-spacing: 0.02em;
+    color: rgba(210, 210, 222, 0.58);
+    letter-spacing: -0.02em;
+    line-height: 1.15;
   }
 
-  .appt-inner { padding: 12px 12px 12px 36px; }
+  .appt-inner { padding: 12px 12px 12px 30px; }
 
   .appt-top {
     display: flex;
@@ -439,18 +440,21 @@
     border: 1px solid var(--appt-action-icon-border);
     border-radius: var(--appt-action-icon-radius);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+    filter: grayscale(1);
+    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease, filter 0.12s ease;
     -webkit-font-smoothing: antialiased;
   }
   .appt-actions .icon-btn.appt-action-icon:hover {
     color: var(--appt-action-icon-fg-hover);
     background: var(--appt-action-icon-bg-hover);
     border-color: var(--appt-action-icon-border-hover);
+    filter: grayscale(1) brightness(1.12);
   }
   .appt-actions .icon-btn.appt-action-icon:active {
     color: var(--appt-action-icon-fg-hover);
     background: var(--appt-action-icon-bg-active);
     border-color: var(--appt-action-icon-border-hover);
+    filter: grayscale(1) brightness(0.96);
   }
   .appt-actions .icon-btn.appt-action-icon:focus-visible {
     outline: 2px solid rgba(255, 255, 255, 0.22);
@@ -764,7 +768,7 @@
     display: none;
     background: var(--surface2);
     border-top: 1px solid var(--border);
-    padding: 10px 12px 10px 36px;
+    padding: 10px 12px 10px 30px;
     flex-direction: column;
     gap: 8px;
   }
@@ -1220,7 +1224,7 @@
   body.ui-scale-large .btn-dagopgave             { font-size: 17px; padding: 8px 11px; }
   body.ui-scale-large .planner-app-icon-btn.btn-day-block .btn-day-block-ic { font-size: 22px; }
   body.ui-scale-large .day-blocked-banner       { font-size: 15px; padding: 12px 14px; }
-  body.ui-scale-large .appt-number              { font-size: 13px; }
+  body.ui-scale-large .appt-number              { font-size: clamp(15px, 3.4vw, 17px); color: rgba(210, 210, 222, 0.55); }
   body.ui-scale-large .appt-time                { font-size: 18px; }
   body.ui-scale-large .slot-daypart-hint         { font-size: 16px; }
   body.ui-scale-large .ghl-cal-time-hint         { font-size: 13px; }
@@ -1254,7 +1258,7 @@
   body.ui-scale-large .service-date-row         { font-size: 14px; }
   body.ui-scale-large .service-date-row input   { font-size: 13px; padding: 7px 10px; }
   body.ui-scale-large .review-toggle            { font-size: 14px; }
-  body.ui-scale-large .appt-inner               { padding: 14px 16px 14px 44px; }
+  body.ui-scale-large .appt-inner               { padding: 14px 16px 14px 36px; }
   body.ui-scale-large .appt-card                { margin-bottom: 12px; }
   body.ui-scale-large .total-label              { font-size: 13px; }
   body.ui-scale-large .total-amount             { font-size: 22px; }
@@ -2133,8 +2137,8 @@
 
   /* App widths: comfortable card type when not using full desktop card density */
   @media (max-width: 1179px) {
-    .appt-inner { padding: 12px 10px 12px 38px; }
-    .appt-number { left: 10px; font-size: 13px; }
+    .appt-inner { padding: 12px 10px 12px 30px; }
+    .appt-number { left: 8px; font-size: clamp(15px, 3.5vw, 17px); }
     .appt-name { font-size: 15px; font-weight: 500; }
     .appt-time { font-size: 18px; }
     .appt-address { font-size: clamp(16px, 3.8vw, 18px); }
@@ -2223,7 +2227,7 @@
     border-radius: 14px;
   }
   body.jerry-mode .appt-inner {
-    padding: 18px 18px 18px 52px;
+    padding: 18px 18px 18px 40px;
   }
   body.jerry-mode .appointments,
   body.jerry-mode .route-panel {
@@ -2860,10 +2864,10 @@
       border-radius: 16px;
       margin-bottom: 20px;
       display: grid;
-      grid-template-columns: 48px 1fr;
+      grid-template-columns: 44px 1fr;
       grid-template-rows: auto auto;
       align-items: start;
-      column-gap: 4px;
+      column-gap: 2px;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.14);
     }
     .appt-card.done::after {
@@ -2877,15 +2881,16 @@
       position: static;
       grid-column: 1;
       grid-row: 1;
-      padding: 18px 0 0 8px;
-      font-size: 14px;
+      padding: 16px 0 0 4px;
+      font-size: clamp(15px, 3.6vw, 18px);
       font-weight: 700;
-      color: rgba(232, 232, 240, 0.7);
+      color: rgba(210, 210, 222, 0.58);
+      letter-spacing: -0.02em;
     }
     .appt-inner {
       grid-column: 2;
       grid-row: 1;
-      padding: 16px 16px 16px 8px;
+      padding: 16px 16px 16px 4px;
       display: flex;
       flex-direction: column;
       gap: 4px;
