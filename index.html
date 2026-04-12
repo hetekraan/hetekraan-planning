@@ -62,6 +62,11 @@
     --appt-action-icon-border-hover: rgba(255, 255, 255, 0.14);
     --appt-action-icon-fg: rgba(232, 232, 240, 0.72);
     --appt-action-icon-fg-hover: rgba(248, 248, 252, 0.92);
+    /* Afsprakenpaneel: kopregel-acties (2 util + CTA) */
+    --appts-header-util-size: 48px;
+    --appts-header-cta-height: 48px;
+    --appts-header-actions-gap: 10px;
+    --appts-header-util-gap: 6px;
   }
 
   html {
@@ -251,13 +256,82 @@
     margin-bottom: 12px;
   }
   .appointments-header-actions {
-    display: flex;
+    display: inline-flex;
+    flex-wrap: nowrap;
     align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
     justify-content: flex-end;
+    gap: var(--appts-header-actions-gap);
     flex: 1;
     min-width: 0;
+  }
+  .appointments-header-util {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--appts-header-util-gap);
+  }
+  /* Vierkant: zelfde maat/radius als weektegel-inactief */
+  .appointments-header-util .btn-dagopgave {
+    width: var(--appts-header-util-size);
+    height: var(--appts-header-util-size);
+    min-width: var(--appts-header-util-size);
+    min-height: var(--appts-header-util-size);
+    padding: 0;
+    box-sizing: border-box;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: rgba(198, 198, 210, 0.88);
+    font-size: 18px;
+    line-height: 1;
+    filter: grayscale(1);
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, filter 0.15s ease;
+  }
+  .appointments-header-util .btn-dagopgave:hover {
+    background: var(--surface3);
+    color: rgba(236, 236, 244, 0.95);
+    border-color: rgba(255, 255, 255, 0.12);
+    filter: grayscale(1);
+  }
+  .appointments-header-util .planner-app-icon-btn.btn-day-block {
+    width: var(--appts-header-util-size);
+    height: var(--appts-header-util-size);
+    min-width: var(--appts-header-util-size);
+    min-height: var(--appts-header-util-size);
+    border-radius: 14px;
+    box-sizing: border-box;
+  }
+  .appointments-header-actions .planner-app-icon-btn.btn-day-block:not(.is-day-blocked):hover {
+    border-color: rgba(255, 255, 255, 0.14);
+    background: var(--surface3);
+    color: rgba(228, 228, 236, 0.95);
+  }
+  /* CTA: zelfde taal als .planner-week-day.is-active (accentvulling + rand + halo) */
+  .appointments-header-actions .btn-add {
+    height: var(--appts-header-cta-height);
+    min-height: var(--appts-header-cta-height);
+    padding: 0 16px;
+    box-sizing: border-box;
+    border-radius: 14px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    background: rgba(255, 107, 53, 0.22);
+    border: 1px solid var(--accent);
+    color: var(--text);
+    box-shadow: 0 0 0 1px rgba(255, 107, 53, 0.35);
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+  }
+  .appointments-header-actions .btn-add:hover {
+    opacity: 1;
+    background: rgba(255, 107, 53, 0.3);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px rgba(255, 107, 53, 0.5);
+  }
+  .appointments-header-actions .btn-add .btn-add-accent {
+    color: var(--accent);
+    font-weight: 700;
+    margin-right: 2px;
   }
 
   .section-title {
@@ -2137,6 +2211,29 @@
     }
     .planner-app-icon-btn.btn-day-block .btn-day-block-ic { font-size: 18px; }
 
+    .appointments-header-actions {
+      gap: 8px;
+    }
+    .appointments-header-util .btn-dagopgave,
+    .appointments-header-util .planner-app-icon-btn.btn-day-block {
+      width: var(--appts-header-util-size);
+      height: var(--appts-header-util-size);
+      min-width: var(--appts-header-util-size);
+      min-height: var(--appts-header-util-size);
+      border-radius: 14px;
+    }
+    .appointments-header-util .btn-dagopgave {
+      padding: 0;
+      font-size: 18px;
+    }
+    .appointments-header-actions .btn-add {
+      height: var(--appts-header-cta-height);
+      min-height: var(--appts-header-cta-height);
+      padding: 0 16px;
+      font-size: 13px;
+      border-radius: 14px;
+    }
+
     .btn-done {
       padding: 5px 10px;
       border-radius: 6px;
@@ -2183,6 +2280,8 @@
   /* ═══ Jerry mode: extra laag (touch, formulieren, catalogus, modals) — alleen met body.ui-scale-large ═══ */
   body.ui-scale-large {
     --jerry-focus: 0 0 0 3px rgba(0, 212, 170, 0.4);
+    --appts-header-util-size: 52px;
+    --appts-header-cta-height: 52px;
   }
 
   /* ── Explicit Jerry mode alias + stronger readability targets ── */
@@ -2221,6 +2320,23 @@
     min-width: 56px !important;
     padding: 0 !important;
     font-size: 22px !important;
+  }
+  body.jerry-mode .appointments-header-actions .appointments-header-util .btn-dagopgave,
+  body.jerry-mode .appointments-header-actions .appointments-header-util .planner-app-icon-btn.btn-day-block {
+    width: var(--appts-header-util-size) !important;
+    height: var(--appts-header-util-size) !important;
+    min-width: var(--appts-header-util-size) !important;
+    min-height: var(--appts-header-util-size) !important;
+    padding: 0 !important;
+    font-size: 20px !important;
+    border-radius: 14px !important;
+  }
+  body.jerry-mode .appointments-header-actions > .btn-add {
+    min-height: var(--appts-header-cta-height) !important;
+    height: var(--appts-header-cta-height) !important;
+    padding: 0 18px !important;
+    font-size: 14px !important;
+    border-radius: 14px !important;
   }
   body.jerry-mode .icon-btn {
     width: auto;
@@ -2438,6 +2554,26 @@
       min-width: 56px;
       border-radius: 12px;
     }
+    body.ui-scale-large .appointments-header-actions .btn-add {
+      min-height: var(--appts-header-cta-height);
+      height: var(--appts-header-cta-height);
+      padding: 0 18px;
+      font-size: 14px;
+      border-radius: 14px;
+    }
+    body.ui-scale-large .appointments-header-util .btn-dagopgave {
+      min-height: var(--appts-header-util-size);
+      height: var(--appts-header-util-size);
+      padding: 0;
+      font-size: 18px;
+    }
+    body.ui-scale-large .appointments-header-util .planner-app-icon-btn.btn-day-block {
+      width: var(--appts-header-util-size);
+      height: var(--appts-header-util-size);
+      min-width: var(--appts-header-util-size);
+      min-height: var(--appts-header-util-size);
+      border-radius: 14px;
+    }
     body.ui-scale-large .btn-optimize {
       min-height: 58px;
       font-size: 15px;
@@ -2534,6 +2670,26 @@
       height: 48px;
       min-height: 48px;
       min-width: 48px;
+    }
+    body.ui-scale-large .appointments-header-actions .btn-add {
+      min-height: var(--appts-header-cta-height);
+      height: var(--appts-header-cta-height);
+      padding: 0 18px;
+      font-size: 14px;
+      border-radius: 14px;
+    }
+    body.ui-scale-large .appointments-header-util .btn-dagopgave {
+      min-height: var(--appts-header-util-size);
+      height: var(--appts-header-util-size);
+      padding: 0;
+      font-size: 18px;
+    }
+    body.ui-scale-large .appointments-header-util .planner-app-icon-btn.btn-day-block {
+      width: var(--appts-header-util-size);
+      height: var(--appts-header-util-size);
+      min-width: var(--appts-header-util-size);
+      min-height: var(--appts-header-util-size);
+      border-radius: 14px;
     }
     body.ui-scale-large .btn-optimize {
       min-height: 50px;
@@ -3129,11 +3285,13 @@
     <div class="appointments-header">
       <div class="section-title">Afspraken van de dag</div>
       <div class="appointments-header-actions">
-        <button class="btn-dagopgave" onclick="openDagopgave()" title="Dagopgave voor Tellow">📋</button>
-        <button type="button" class="planner-app-icon-btn btn-day-block" id="btnBlockDayGhl" onclick="onBlockDayButtonClick()" aria-label="Blokkeer dag" title="Blokkeer of deblokkeer deze dag in GHL">
-          <span class="btn-day-block-ic" aria-hidden="true">■</span>
-        </button>
-        <button class="btn-add" onclick="openModal()">+ Afspraak</button>
+        <div class="appointments-header-util">
+          <button class="btn-dagopgave" onclick="openDagopgave()" title="Dagopgave voor Tellow">📋</button>
+          <button type="button" class="planner-app-icon-btn btn-day-block" id="btnBlockDayGhl" onclick="onBlockDayButtonClick()" aria-label="Blokkeer dag" title="Blokkeer of deblokkeer deze dag in GHL">
+            <span class="btn-day-block-ic" aria-hidden="true">■</span>
+          </button>
+        </div>
+        <button class="btn-add" onclick="openModal()"><span class="btn-add-accent">+</span> Afspraak</button>
       </div>
     </div>
     <div id="dayBlockedBanner" class="day-blocked-banner" style="display:none" role="status"></div>
