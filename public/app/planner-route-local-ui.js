@@ -66,13 +66,12 @@
 
     if (hint) {
       if (routeOpLocked) {
-        hint.style.display = 'block';
-        hint.textContent =
-          '🔒 Route vergrendeld na “Bevestig route” — optimaliseren/slepen geblokkeerd tot je ontgrendelt (🔓).';
+        hint.style.display = 'none';
+        hint.textContent = '';
       } else if (hasLocalSnapshot) {
         hint.style.display = 'block';
         hint.textContent =
-          'ℹ️ Lokale route (volgorde + tijden) actief — blijft zo na verversen of andere dag, tot je opnieuw bevestigt of hieronder reset.';
+          'ℹ️ Lokale route (volgorde + tijden) actief — blijft zo na verversen tot je opnieuw bevestigt of hieronder reset.';
       } else {
         hint.style.display = 'none';
         hint.textContent = '';

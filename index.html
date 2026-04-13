@@ -975,18 +975,255 @@
   /* ROUTE PANEL */
   .route-panel {
     padding: 12px max(12px, env(safe-area-inset-right)) 16px max(12px, env(safe-area-inset-left));
-    overflow-x: clip;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    display: grid;
-    grid-auto-flow: row;
-    grid-auto-rows: max-content;
-    align-content: start;
-    gap: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
     min-width: 0;
+    -webkit-overflow-scrolling: touch;
   }
   .route-panel > * {
     min-width: 0;
+  }
+
+  .route-panel-status {
+    flex: 0 0 auto;
+  }
+
+  .route-status-card {
+    background: linear-gradient(165deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 12px 12px 10px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+  }
+
+  .route-status-card__top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .route-status-kicker {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(232, 232, 240, 0.45);
+    margin-bottom: 2px;
+  }
+
+  .route-status-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    line-height: 1.2;
+  }
+
+  .route-status-text {
+    margin: 6px 0 0;
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(232, 232, 240, 0.88);
+    line-height: 1.35;
+  }
+
+  .route-status-badge {
+    flex: 0 0 auto;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 5px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: rgba(232, 232, 240, 0.85);
+    background: rgba(0, 0, 0, 0.2);
+    max-width: 42%;
+    text-align: center;
+    line-height: 1.2;
+  }
+
+  .route-status-badge--local {
+    border-color: rgba(0, 212, 170, 0.35);
+    color: var(--accent2);
+    background: rgba(0, 212, 170, 0.08);
+  }
+
+  .route-status-badge--central {
+    border-color: rgba(255, 179, 71, 0.45);
+    color: #ffc266;
+    background: rgba(255, 140, 0, 0.1);
+  }
+
+  .route-toolbar--card {
+    margin-top: 12px;
+  }
+
+  .route-local-hint {
+    font-size: 11px;
+    color: var(--muted);
+    margin: 8px 0 0;
+    line-height: 1.4;
+  }
+
+  .route-reset-link {
+    margin-top: 6px;
+    font-size: 11px;
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    text-decoration: underline;
+    padding: 0;
+    text-align: left;
+  }
+
+  .route-flow-scroll {
+    flex: 1 1 auto;
+    min-height: 120px;
+    overflow-x: clip;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.12);
+  }
+
+  .route-panel-footer {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .route-summary {
+    font-size: 11px;
+    color: rgba(232, 232, 240, 0.72);
+    line-height: 1.45;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .route-summary__line {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    align-items: baseline;
+  }
+
+  .route-summary__bit strong {
+    font-weight: 600;
+    color: rgba(248, 248, 252, 0.92);
+  }
+
+  .route-summary__sub {
+    font-weight: 400;
+    color: var(--muted);
+  }
+
+  .route-summary__muted {
+    color: var(--muted);
+  }
+
+  .route-phase {
+    padding: 0 10px 2px;
+  }
+
+  .route-phase__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 0 8px;
+    margin-top: 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .route-phase:first-of-type .route-phase__head {
+    margin-top: 0;
+    padding-top: 10px;
+  }
+
+  .route-phase__label {
+    font-family: var(--font-display);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(232, 232, 240, 0.78);
+  }
+
+  .route-phase__window {
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(232, 232, 240, 0.45);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .route-phase__head--pm .route-phase__label {
+    color: rgba(0, 212, 170, 0.88);
+  }
+
+  .route-transition {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px 10px 8px;
+    margin: 2px 0 4px;
+  }
+
+  .route-transition__rail {
+    width: 2px;
+    border-radius: 2px;
+    background: linear-gradient(180deg, rgba(255, 107, 53, 0.15), rgba(0, 212, 170, 0.35));
+    flex-shrink: 0;
+  }
+
+  .route-transition__title {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(232, 232, 240, 0.5);
+    margin-bottom: 4px;
+  }
+
+  .route-transition__meta {
+    font-size: 12px;
+    font-weight: 500;
+    color: rgba(232, 232, 240, 0.88);
+  }
+
+  .route-transition__meta--muted {
+    color: var(--muted);
+    font-weight: 400;
+  }
+
+  .route-empty-day {
+    padding: 18px 14px 10px;
+    text-align: center;
+  }
+
+  .route-empty-day__title {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(232, 232, 240, 0.82);
+    margin-bottom: 6px;
+  }
+
+  .route-empty-day__sub {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.45;
+    max-width: 240px;
+    margin: 0 auto;
   }
 
   .route-toolbar {
@@ -1061,20 +1298,7 @@
   .btn-confirm-route:hover { background: rgba(0,212,170,0.2); }
   .btn-confirm-route.saved { background: rgba(0,212,170,0.25); }
 
-  .route-list { display: flex; flex-direction: column; }
-
-  .route-section-head {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--muted);
-    padding: 10px 0 6px;
-    border-bottom: 1px solid var(--border);
-    margin-top: 4px;
-  }
-  .route-section-head:first-of-type { margin-top: 0; padding-top: 4px; }
-  .route-section-head--pm { color: var(--accent2); }
+  .route-list { display: flex; flex-direction: column; padding-bottom: 4px; }
 
   .planning-section { margin-bottom: 18px; }
   .planning-section:last-child { margin-bottom: 0; }
@@ -1111,21 +1335,108 @@
     border-radius: 4px;
   }
   .route-drag-handle:hover { background: var(--surface3); color: white; }
+  .route-item[draggable='false'] .route-drag-handle {
+    opacity: 0.28;
+    cursor: not-allowed;
+  }
   .route-item.dragging { opacity: 0.35; }
   .route-item.drag-over { border-top: 2px solid var(--accent); }
 
   .route-item {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 0;
-    border-bottom: 1px solid var(--border);
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     cursor: pointer;
-    transition: opacity 0.15s;
+    transition: opacity 0.15s, background 0.15s;
   }
   .route-item:last-child { border-bottom: none; }
-  .route-item:hover { opacity: 0.8; }
+  .route-item:hover { opacity: 0.92; background: rgba(255, 255, 255, 0.02); }
   .route-item.done { opacity: 0.4; }
+  .route-item.has-violation {
+    border-left: 2px solid rgba(255, 140, 0, 0.65);
+    padding-left: 8px;
+  }
+
+  .route-item--depot {
+    cursor: default;
+    opacity: 1;
+  }
+  .route-item--depot:hover {
+    opacity: 1;
+    background: transparent;
+  }
+
+  .route-drag-handle--ghost {
+    visibility: hidden;
+  }
+
+  .route-item-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .route-name-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .route-sub-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .route-eta {
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: rgba(232, 232, 240, 0.92);
+    flex-shrink: 0;
+  }
+
+  .route-eta--muted {
+    font-weight: 500;
+    color: rgba(232, 232, 240, 0.35);
+  }
+
+  .route-job-pill,
+  .route-day-pill {
+    flex-shrink: 0;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 3px 6px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(232, 232, 240, 0.55);
+    max-width: 38%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .route-job-pill {
+    border-color: rgba(0, 212, 170, 0.25);
+    color: rgba(0, 212, 170, 0.85);
+    background: rgba(0, 212, 170, 0.06);
+  }
+
+  .route-violation {
+    margin-left: 6px;
+    font-size: 12px;
+    color: #ffb347;
+  }
 
   .route-num {
     width: 22px;
@@ -2141,7 +2452,7 @@
       padding: 16px;
       height: 100%;
       max-height: 100%;
-      overflow-y: auto;
+      overflow: hidden;
     }
 
     .date-nav-wrap {
@@ -3845,17 +4156,33 @@
   </div>
 
   <div class="route-panel tab-hidden" id="panelRoute">
-    <div class="section-title">⚡ Routevolgorde</div>
-    <div class="route-toolbar">
-      <button class="btn-optimize" id="btnOptimize" onclick="optimizeRoute()">⚡ OPTIMALISEER</button>
-      <button class="btn-unlock-route" id="btnUnlock" style="display:none" onclick="unlockRoute()" title="Handmatige volgorde verwijderen en opnieuw optimaliseren">🔓 Ontgrendel</button>
-      <button class="btn-confirm-route" id="btnConfirmRoute" onclick="confirmRoute()" title="Sla geplande tijden op in GHL zodat ochtendmeldingen de juiste aankomsttijd sturen">✓ Bevestig route</button>
+    <div class="route-panel-status">
+      <div class="route-status-card">
+        <div class="route-status-card__top">
+          <div class="route-status-card__titles">
+            <div class="route-status-kicker">Dagroute</div>
+            <h2 class="route-status-title" id="routePanelDateTitle">Route</h2>
+            <p class="route-status-text" id="routePanelStatusText"></p>
+          </div>
+          <span class="route-status-badge" id="routePanelStatusBadge" hidden></span>
+        </div>
+        <div class="route-toolbar route-toolbar--card">
+          <button type="button" class="btn-optimize" id="btnOptimize" onclick="optimizeRoute()">Optimaliseer</button>
+          <button type="button" class="btn-unlock-route" id="btnUnlock" style="display:none" onclick="unlockRoute()" title="Ontgrendel route (centraal) of handmatige volgorde">Ontgrendel</button>
+          <button type="button" class="btn-confirm-route" id="btnConfirmRoute" onclick="confirmRoute()" title="Sla geplande tijden op in GHL zodat ochtendmeldingen de juiste aankomsttijd sturen">Bevestig route</button>
+        </div>
+        <div id="routeLocalHint" class="route-local-hint" style="display:none"></div>
+        <button type="button" class="route-reset-link" onclick="resetLocalRouteTimes()" id="btnResetLocalRoute" style="display:none">↺ Reset naar GHL-agenda (wis lokale tijden)</button>
+      </div>
     </div>
-    <div id="routeLocalHint" style="font-size:11px;color:var(--muted);margin:-2px 0 10px;line-height:1.35;display:none"></div>
-    <button type="button" onclick="resetLocalRouteTimes()" style="font-size:11px;background:transparent;border:none;color:var(--muted);cursor:pointer;text-decoration:underline;padding:0;margin:-6px 0 10px;display:none" id="btnResetLocalRoute">↺ Reset naar GHL-agenda (wis lokale tijden)</button>
-    <div class="route-list" id="routeList"></div>
-    <a class="btn-maps" href="#" onclick="openMaps(event)">🗺 Open volledige route in Maps</a>
-    <button class="btn-morning" onclick="sendMorningMessages()">☀️ Stuur ochtendmeldingen</button>
+    <div class="route-flow-scroll">
+      <div class="route-list" id="routeList"></div>
+    </div>
+    <div class="route-panel-footer">
+      <div class="route-summary" id="routeSummary" aria-live="polite"></div>
+      <a class="btn-maps" href="#" onclick="openMaps(event)">🗺 Open volledige route in Maps</a>
+      <button type="button" class="btn-morning" onclick="sendMorningMessages()">☀️ Stuur ochtendmeldingen</button>
+    </div>
   </div>
 </div>
 
@@ -4399,6 +4726,8 @@ function createPlannerCtx() {
     isDaanEditor,
     normalizeTimeStr,
     closeModal,
+    setLastPartitionedRoutePlan: (dateStr, plan) => setLastPartitionedRoutePlan(dateStr, plan),
+    clearLastPartitionedRoutePlan: (dateStr) => clearLastPartitionedRoutePlan(dateStr),
   };
 }
 window.createPlannerCtx = createPlannerCtx;
@@ -4564,6 +4893,34 @@ function clearConfirmedRouteOrder(dateStr) {
 
 /** Centrale route-lock zoals opgehaald via backend (`/api/ghl?action=getAppointments`). */
 const serverRouteLockByDate = new Map();
+/** Laatste waarde van `routeLockStoreConfigured` uit getAppointments (Upstash / multi-device). */
+let routeLockRedisStoreConfigured = false;
+
+/** Laatste partitionedDay legInfo (per dag) voor sidebar-overgang + samenvatting; alleen UI-cache. */
+const lastPartitionedRoutePlanByDate = new Map();
+
+function getLastPartitionedRoutePlan(dateStr) {
+  const hit = lastPartitionedRoutePlanByDate.get(String(dateStr || ''));
+  return hit && typeof hit === 'object' ? hit : null;
+}
+
+function setLastPartitionedRoutePlan(dateStr, plan) {
+  if (!dateStr || !plan || typeof plan !== 'object') return;
+  lastPartitionedRoutePlanByDate.set(String(dateStr), {
+    contactIdsOrder: Array.isArray(plan.contactIdsOrder)
+      ? plan.contactIdsOrder.map((x) => String(x || '').trim()).filter(Boolean)
+      : [],
+    legInfo: Array.isArray(plan.legInfo) ? plan.legInfo : [],
+    returnLegToDepotMinutes: Number.isFinite(Number(plan.returnLegToDepotMinutes))
+      ? Number(plan.returnLegToDepotMinutes)
+      : undefined,
+    savedAt: Date.now(),
+  });
+}
+
+function clearLastPartitionedRoutePlan(dateStr) {
+  lastPartitionedRoutePlanByDate.delete(String(dateStr || ''));
+}
 
 function getServerRouteLock(dateStr) {
   if (!dateStr) return null;
@@ -4580,6 +4937,9 @@ function isRouteOperationalLockedForDate(dateStr) {
 function syncCentralRouteLockState(dateStr, routeLock, storeConfigured) {
   const ds = String(dateStr || '').trim();
   if (!ds) return;
+  if (typeof storeConfigured === 'boolean') {
+    routeLockRedisStoreConfigured = storeConfigured;
+  }
   if (storeConfigured === true) {
     if (routeLock && routeLock.locked === true) {
       const order = Array.isArray(routeLock.orderContactIds)
@@ -4765,6 +5125,7 @@ function updateRouteLocalUi() {
 }
 
 async function resetLocalRouteTimes() {
+  clearLastPartitionedRoutePlan(getDateStr(currentDate));
   if (!window.HKPlannerRouteLocalUi?.resetLocalRouteTimes) return;
   return window.HKPlannerRouteLocalUi.resetLocalRouteTimes({
     dateStr: getDateStr(currentDate),
@@ -5596,45 +5957,259 @@ function render() {
   }
   document.getElementById('apptList').innerHTML = listHtml;
 
-  renderRoute(getRouteStopsForSidebar());
+  const routeStops = getRouteStopsForSidebar();
+  renderRoute(routeStops);
   calcStats();
   updateRouteLocalUi();
+  updateRoutePanelChrome(routeStops);
   renderPlannerWeekStrip();
+}
+
+function formatRoutePanelTitle(d) {
+  try {
+    const date = d instanceof Date ? d : new Date(d);
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return 'Route';
+    const wk = new Intl.DateTimeFormat('nl-NL', { weekday: 'short', timeZone: 'Europe/Amsterdam' }).format(date);
+    const dm = new Intl.DateTimeFormat('nl-NL', {
+      day: 'numeric',
+      month: 'short',
+      timeZone: 'Europe/Amsterdam',
+    }).format(date);
+    return `Route ${String(wk).replace(/\.$/, '')} ${dm}`.replace(/\s+/g, ' ').trim();
+  } catch (_) {
+    return 'Route';
+  }
+}
+
+function timeStrToTotalMinutes(t) {
+  const n = normalizeTimeStr(String(t || '').replace(/^~/, '').trim());
+  if (!n) return null;
+  const [h, m] = n.split(':').map((x) => parseInt(x, 10));
+  if (!Number.isFinite(h)) return null;
+  return h * 60 + (Number.isFinite(m) ? m : 0);
+}
+
+function formatJobTypeLabelShort(jobType) {
+  const m = { onderhoud: 'Onderhoud', reparatie: 'Reparatie', installatie: 'Installatie' };
+  const k = String(jobType || '').trim();
+  return m[k] || (k ? k.charAt(0).toUpperCase() + k.slice(1) : '');
+}
+
+function routePlanMatchesStops(plan, routeStops) {
+  if (!plan?.contactIdsOrder?.length) return false;
+  const curr = orderRouteMorningFirst(routeStops)
+    .map((x) => (x?.contactId ? String(x.contactId).trim() : ''))
+    .filter(Boolean);
+  if (curr.length !== plan.contactIdsOrder.length) return false;
+  return plan.contactIdsOrder.every((id, i) => id === curr[i]);
+}
+
+function transitionTravelMinutesFromPlan(plan, morningLen) {
+  if (!plan?.legInfo?.length || !morningLen) return null;
+  const leg = plan.legInfo[morningLen];
+  const sec = leg?.durationSeconds;
+  if (!Number.isFinite(sec) || sec <= 0) return null;
+  return Math.round(sec / 60);
+}
+
+function buildRouteSummaryHtml(routeStops, dateStr) {
+  const plan = getLastPartitionedRoutePlan(dateStr);
+  const match = routePlanMatchesStops(plan, routeStops);
+  const n = routeStops.length;
+  if (!n) {
+    return '<span class="route-summary__line route-summary__muted">Geen stops in deze route</span>';
+  }
+  const bits = [];
+  bits.push(`<span class="route-summary__bit"><strong>${n}</strong> stop${n === 1 ? '' : 's'}</span>`);
+  if (match && plan?.legInfo?.length) {
+    const legM = plan.legInfo.reduce((s, l) => s + Math.round((l.durationSeconds || 0) / 60), 0);
+    const ret = plan.returnLegToDepotMinutes;
+    const tot = legM + (Number.isFinite(ret) ? ret : 0);
+    bits.push(`<span class="route-summary__bit">~<strong>${tot}</strong> min rijden</span>`);
+  }
+  const ordered = orderRouteMorningFirst(routeStops);
+  const last = ordered[ordered.length - 1];
+  const startMin = timeStrToTotalMinutes(last?.timeSlot);
+  if (startMin != null) {
+    const job = JOB_DURATION[last.jobType] || 30;
+    let endMin = startMin + job;
+    let tail = '';
+    if (match && Number.isFinite(plan.returnLegToDepotMinutes)) {
+      endMin += plan.returnLegToDepotMinutes;
+      tail = ` <span class="route-summary__sub">(incl. ~${plan.returnLegToDepotMinutes} min terug depot)</span>`;
+    }
+    bits.push(`<span class="route-summary__bit">Eind <strong>~${minsToTime(endMin)}</strong>${tail}</span>`);
+  }
+  return `<div class="route-summary__line">${bits.join('')}</div>`;
+}
+
+function updateRoutePanelChrome(routeStops) {
+  const dateStr = getDateStr(currentDate);
+  const opLocked = isRouteOperationalLockedForDate(dateStr);
+  const srv = getServerRouteLock(dateStr);
+  const centralLocked = routeLockRedisStoreConfigured === true && srv && srv.locked === true;
+
+  const titleEl = document.getElementById('routePanelDateTitle');
+  if (titleEl) titleEl.textContent = formatRoutePanelTitle(currentDate);
+
+  const statusTextEl = document.getElementById('routePanelStatusText');
+  const badgeEl = document.getElementById('routePanelStatusBadge');
+  let statusMain = '';
+  let badge = '';
+  let badgeMode = '';
+  if (opLocked) {
+    if (centralLocked) {
+      statusMain = 'Route vergrendeld voor alle apparaten';
+      badge = 'Alle devices';
+      badgeMode = 'central';
+    } else {
+      statusMain = 'Route bevestigd';
+      badge = 'Bevestigd';
+      badgeMode = 'local';
+    }
+  } else {
+    statusMain = 'Nog niet bevestigd';
+  }
+  if (statusTextEl) statusTextEl.textContent = statusMain;
+  if (badgeEl) {
+    badgeEl.classList.remove('route-status-badge--central', 'route-status-badge--local');
+    if (badge) {
+      badgeEl.textContent = badge;
+      badgeEl.removeAttribute('hidden');
+      badgeEl.classList.add(badgeMode === 'central' ? 'route-status-badge--central' : 'route-status-badge--local');
+    } else {
+      badgeEl.textContent = '';
+      badgeEl.setAttribute('hidden', '');
+    }
+  }
+
+  const btnOpt = document.getElementById('btnOptimize');
+  if (btnOpt) btnOpt.disabled = opLocked || routeLocked;
+
+  const btnConf = document.getElementById('btnConfirmRoute');
+  if (btnConf) btnConf.disabled = opLocked;
+
+  const unlockEl = document.getElementById('btnUnlock');
+  if (unlockEl) {
+    const showUnlock = routeLocked || (opLocked && routeLockRedisStoreConfigured);
+    unlockEl.style.display = showUnlock ? 'inline-flex' : 'none';
+  }
+
+  const sumEl = document.getElementById('routeSummary');
+  if (sumEl) sumEl.innerHTML = buildRouteSummaryHtml(routeStops || [], dateStr);
+}
+
+function renderDepotRow(kind, planMeta) {
+  const isEnd = kind === 'end';
+  const title = isEnd ? 'Depot / einde' : 'Depot / start';
+  const sub = isEnd
+    ? planMeta?.returnMin != null
+      ? `Terug naar Cornelis Dopperkade · ~${planMeta.returnMin} min`
+      : 'Terug naar vaste locatie (Cornelis Dopperkade)'
+    : 'Cornelis Dopperkade, Amsterdam — vertrek';
+  return `
+    <div class="route-item route-item--depot ${isEnd ? 'route-item--depot-end' : 'route-item--depot-start'}">
+      <div class="route-drag-handle route-drag-handle--ghost" aria-hidden="true">&#8801;</div>
+      <div class="route-num depot">${isEnd ? '🏁' : '🏠'}</div>
+      <div class="route-item-main">
+        <div class="route-name-row">
+          <span class="route-name">${title}</span>
+        </div>
+        <div class="route-sub-row">
+          <span class="route-addr">${sub}</span>
+        </div>
+      </div>
+    </div>`;
 }
 
 function renderRouteItemHtml(a) {
   const idQ = JSON.stringify(a.id);
+  const shortAddr = formatShortAddressLine(a);
+  const tsRaw = a.timeSlot ? String(a.timeSlot).replace(/^~/, '').trim() : '';
+  const ts = tsRaw ? normalizeTimeStr(tsRaw) : '';
+  const etaHtml = ts
+    ? `<span class="route-eta">${a.estimated ? '~' : ''}${ts}</span>`
+    : `<span class="route-eta route-eta--muted">—</span>`;
+  const jobLbl = formatJobTypeLabelShort(a.jobType);
+  const dayChip = (a.dayPart ?? 1) === 0 ? '09–13' : '13–17';
+  const viol = a.violation ? '<span class="route-violation" title="Tijdsvenster lastig haalbaar">⚠</span>' : '';
   return `
-    <div class="route-item ${a.status === 'klaar' ? 'done' : ''}"
+    <div class="route-item ${a.status === 'klaar' ? 'done' : ''} ${a.violation ? 'has-violation' : ''}"
          draggable="true"
          data-appt-id="${String(a.id).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}"
          data-day-part="${routeDayPartKey(a)}"
          onclick='scrollToCard(${idQ})'>
-      <div class="route-drag-handle" onclick="event.stopPropagation()" title="Slepen om te herordenen">&#8801;</div>
+      <div class="route-drag-handle" onclick="event.stopPropagation()" title="Slepen om te herordenen (binnen ochtend of middag)">&#8801;</div>
       <div class="route-num">${a.routeStop != null ? a.routeStop : '–'}</div>
-      <div class="route-info">
-        <div class="route-name">${a.name}</div>
-        <div class="route-addr">${a.fullAddressLine || a.address || ''}</div>
+      <div class="route-item-main">
+        <div class="route-name-row">
+          <span class="route-name">${a.name || '—'}${viol}</span>
+          ${etaHtml}
+        </div>
+        <div class="route-sub-row">
+          <span class="route-addr">${shortAddr || '—'}</span>
+          ${jobLbl ? `<span class="route-job-pill">${jobLbl}</span>` : `<span class="route-day-pill">${dayChip}</span>`}
+        </div>
       </div>
-      <div class="route-time">${a.timeWindow ? a.timeWindow : ((a.dayPart ?? 1) === 0 ? '09–13' : '13–17')}${a.estimated ? ` · ~${a.timeSlot}` : ''}</div>
     </div>`;
+}
+
+function formatShortAddressLine(a) {
+  const raw = String(a?.fullAddressLine || a?.address || '').trim();
+  if (!raw) return '';
+  const parts = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  const one = parts[0] || raw;
+  if (one.length <= 44) return one;
+  return `${one.slice(0, 41)}…`;
 }
 
 function renderRoute(routeStops) {
   const list = document.getElementById('routeList');
+  if (!list) return;
+  const dateStr = getDateStr(currentDate);
   const { morning, afternoon } = splitSidebarByDayPart(routeStops);
-  let body =
-    `<div class="route-item">
-      <div class="route-drag-handle" style="visibility:hidden">&#8801;</div>
-      <div class="route-num depot">🏠</div>
-      <div class="route-info"><div class="route-name">Depot / Start</div><div class="route-addr">Vaste startlocatie</div></div>
+  const plan = getLastPartitionedRoutePlan(dateStr);
+  const planMatch = routePlanMatchesStops(plan, routeStops);
+  const returnMin = planMatch && Number.isFinite(plan?.returnLegToDepotMinutes) ? plan.returnLegToDepotMinutes : null;
+
+  let body = renderDepotRow('start', null);
+
+  if (!routeStops.length) {
+    body += `<div class="route-empty-day" role="status">
+      <div class="route-empty-day__title">Nog geen routestops</div>
+      <div class="route-empty-day__sub">Zodra er adressen klaarstaan voor vandaag, verschijnen ze hier als dagroute.</div>
     </div>`;
-  if (morning.length) {
-    body += `<div class="route-section-head">Ochtend 09:00–13:00</div>` + morning.map((a) => renderRouteItemHtml(a)).join('');
+  } else {
+    if (morning.length) {
+      body += `<section class="route-phase route-phase--am" aria-label="Ochtend">
+        <header class="route-phase__head"><span class="route-phase__label">Ochtend</span><span class="route-phase__window">09:00–13:00</span></header>
+        <div class="route-phase__body">${morning.map((a) => renderRouteItemHtml(a)).join('')}</div>
+      </section>`;
+    }
+    if (morning.length && afternoon.length) {
+      const tMin = transitionTravelMinutesFromPlan(plan, morning.length);
+      const meta =
+        tMin != null
+          ? `<span class="route-transition__meta">~${tMin} min rijden naar eerste middagstop</span>`
+          : `<span class="route-transition__meta route-transition__meta--muted">Overgang ochtend → middag</span>`;
+      body += `<div class="route-transition" role="presentation">
+        <div class="route-transition__rail" aria-hidden="true"></div>
+        <div class="route-transition__text">
+          <div class="route-transition__title">Overgang</div>
+          ${meta}
+        </div>
+      </div>`;
+    }
+    if (afternoon.length) {
+      body += `<section class="route-phase route-phase--pm" aria-label="Middag">
+        <header class="route-phase__head route-phase__head--pm"><span class="route-phase__label">Middag</span><span class="route-phase__window">13:00–17:00</span></header>
+        <div class="route-phase__body">${afternoon.map((a) => renderRouteItemHtml(a)).join('')}</div>
+      </section>`;
+    }
   }
-  if (afternoon.length) {
-    body += `<div class="route-section-head route-section-head--pm">Middag 13:00–17:00</div>` + afternoon.map((a) => renderRouteItemHtml(a)).join('');
-  }
+
+  body += renderDepotRow('end', returnMin != null ? { returnMin } : null);
+
   list.innerHTML = body;
 
   initRouteDrag(list);
@@ -5705,9 +6280,11 @@ async function unlockRoute() {
   serverRouteLockByDate.set(String(dateStr), { locked: false, updatedAt: Date.now() });
   window.HKPlannerRouteSnapshot?.clearRouteOperationalLock?.({ dateStr, routeSnapshotKey });
   clearConfirmedRouteOrder(dateStr);
+  clearLastPartitionedRoutePlan(dateStr);
   document.getElementById('btnOptimize').disabled = false;
   document.getElementById('btnUnlock').style.display = 'none';
   updateRouteLocalUi();
+  updateRoutePanelChrome(getRouteStopsForSidebar());
   showToast('Route ontgrendeld (centraal + lokaal) — je kunt opnieuw optimaliseren', 'info');
 }
 

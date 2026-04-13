@@ -70,6 +70,16 @@
         );
       }
 
+      if (typeof ctx.setLastPartitionedRoutePlan === 'function') {
+        ctx.setLastPartitionedRoutePlan(dateStr, {
+          contactIdsOrder: optimized.map((a) => (a?.contactId ? String(a.contactId) : '')).filter(Boolean),
+          legInfo: Array.isArray(data.legInfo) ? data.legInfo : [],
+          returnLegToDepotMinutes: Number.isFinite(Number(data.returnLegToDepotMinutes))
+            ? Number(data.returnLegToDepotMinutes)
+            : undefined,
+        });
+      }
+
       const legSecs = (data.legInfo || []).reduce((s, l) => s + (l.durationSeconds || 0), 0);
       const returnMin = Number(data.returnLegToDepotMinutes);
       const totalTravelMins = Math.round(legSecs / 60) + (Number.isFinite(returnMin) ? returnMin : 0);

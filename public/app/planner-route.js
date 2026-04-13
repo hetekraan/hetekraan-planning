@@ -135,6 +135,9 @@
         ctx.saveRouteOperationalLock(routeDate, { orderContactIds, etasByContactId });
       }
       ctx.saveRouteSnapshot(routeDate);
+      if (typeof ctx.render === 'function') {
+        ctx.render();
+      }
       if (btn) {
         setTimeout(() => {
           btn.textContent = '✓ Bevestig route';
