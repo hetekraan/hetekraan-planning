@@ -1,10 +1,15 @@
 (function initPlannerScheduling(global) {
   /**
-   * Dagdelen blijven strikt gescheiden: alleen ochtendstops worden onderling geoptimaliseerd,
-   * alleen middagstops onderling. Middag-run start vanaf het adres van de laatste ochtendstop
-   * (body.origin) zodat de eerste middagstop dichter bij de overgang ligt; daarna volledige dag-ETAs.
+   * Route-optimalisatie via `/api/optimize-route` met `mode: "partitionedDay"`:
+   * depot → ochtend (09:00–13:00, eerste stop 09:00) → overgang laatste ochtend → middag (≥13:00, 13:00–17:00)
+   * → optioneel reistijd terug naar depot in API-response.
    */
   async function optimizeRoute(ctx) {
+    const dateStr = ctx.getDateStr(ctx.getCurrentDate());
+    if (typeof ctx.isRouteOperationalLocked === 'function' && ctx.isRouteOperationalLocked(dateStr)) {
+      ctx.showToast('Route is vergrendeld na “Bevestig route”. Ontgrendel eerst (🔓).', 'info');
+      return;
+    }
     const active = ctx.orderRouteMorningFirst(ctx.getRouteStopsForSidebar());
     const done = ctx.getAppointmentsRef().filter((a) => !a.fullAddressLine || a.status === 'klaar');
     if (active.length < 2) {
@@ -12,68 +17,62 @@
       return;
     }
 
-    const morning = active.filter((a) => a.dayPart === 0);
-    const afternoon = active.filter((a) => a.dayPart !== 0);
-
     function apptPayload(a) {
       return {
         address: a.fullAddressLine || a.address,
         timeWindow: a.timeWindow || null,
         jobDuration: ctx.jobDurationForType(a.jobType),
         dayPart: a.dayPart,
+        bookingLocked: !!a.bookingLocked,
       };
-    }
-
-    async function runOptimizeSubset(apps, originAddress) {
-      const body = { appointments: apps.map(apptPayload) };
-      if (originAddress) body.origin = originAddress;
-      const res = await fetch('/api/optimize-route', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || data.message || 'Onbekende fout');
-      const ordered = data.order.map((i) => apps[i]);
-      const travel = (data.legInfo || []).reduce((s, l) => s + (l.durationSeconds || 0), 0);
-      return { ordered, travel };
     }
 
     ctx.showToast('⏳ Route wordt geoptimaliseerd...', 'loading');
     try {
-      let totalTravelSecs = 0;
-      let orderedM = [...morning];
-      let orderedA = [...afternoon];
-
-      if (morning.length >= 2) {
-        const r = await runOptimizeSubset(morning, null);
-        orderedM = r.ordered;
-        totalTravelSecs += r.travel;
-      }
-      if (afternoon.length >= 2) {
-        const lastMorningAddr =
-          orderedM.length > 0
-            ? String(orderedM[orderedM.length - 1].fullAddressLine || orderedM[orderedM.length - 1].address || '').trim()
-            : '';
-        const r = await runOptimizeSubset(afternoon, lastMorningAddr || undefined);
-        orderedA = r.ordered;
-        totalTravelSecs += r.travel;
+      const res = await fetch('/api/optimize-route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'partitionedDay',
+          returnToDepot: true,
+          appointments: active.map(apptPayload),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || data.message || 'Onbekende fout');
+      if (data.mode !== 'partitionedDay' || !Array.isArray(data.order) || !Array.isArray(data.etas)) {
+        throw new Error('Route-API: onverwacht antwoord (partitionedDay)');
       }
 
-      const optimized = [...orderedM, ...orderedA];
+      const optimized = data.order.map((i) => active[i]);
       optimized.forEach((a) => {
         a.violation = false;
       });
-      await ctx.recalculateRouteTimesPreservingOrder(optimized);
+      data.order.forEach((apptIdx, step) => {
+        const appt = active[apptIdx];
+        if (appt) {
+          appt.timeSlot = data.etas[step];
+          appt.estimated = true;
+        }
+      });
+      if (data.violations?.length) {
+        data.violations.forEach((v) => {
+          const step = data.order.indexOf(v.apptIdx);
+          if (step >= 0 && optimized[step]) optimized[step].violation = true;
+        });
+      }
+
       ctx.setAppointments([...optimized, ...done]);
       if (typeof ctx.setConfirmedRouteOrder === 'function') {
         ctx.setConfirmedRouteOrder(
-          ctx.getDateStr(ctx.getCurrentDate()),
+          dateStr,
           optimized.map((a) => (a?.contactId ? String(a.contactId) : '')).filter(Boolean)
         );
       }
 
-      const totalTravelMins = Math.round(totalTravelSecs / 60);
+      const legSecs = (data.legInfo || []).reduce((s, l) => s + (l.durationSeconds || 0), 0);
+      const returnMin = Number(data.returnLegToDepotMinutes);
+      const totalTravelMins = Math.round(legSecs / 60) + (Number.isFinite(returnMin) ? returnMin : 0);
       const vCount = optimized.filter((a) => a.violation).length;
       const violationMsg = vCount > 0 ? ` · ⚠️ ${vCount} tijdsvenster${vCount > 1 ? 's' : ''} niet haalbaar` : '';
 
@@ -81,9 +80,9 @@
       const unlock = document.getElementById('btnUnlock');
       if (btn) btn.disabled = false;
       if (unlock) unlock.style.display = 'none';
-      ctx.saveRouteSnapshot(ctx.getDateStr(ctx.getCurrentDate()));
+      ctx.saveRouteSnapshot(dateStr);
       ctx.showToast(
-        `⚡ Route geoptimaliseerd (ochtend/middag apart)\n${active.length} stops · ~${totalTravelMins} min rijden (deelroutes)${violationMsg}`,
+        `⚡ Route geoptimaliseerd (09–13 / 13–17, depot)\n${active.length} stops · ~${totalTravelMins} min rijden (incl. terug depot indien berekend)${violationMsg}`,
         'success'
       );
       ctx.render();

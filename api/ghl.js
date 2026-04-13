@@ -630,6 +630,11 @@ export default async function handler(req, res) {
           e.parsedConfirmedDate = String(
             getField(contact, BOOKING_FORM_FIELD_IDS.boeking_bevestigd_datum) || ''
           ).trim();
+          e.parsedConfirmedStatus = String(
+            getField(contact, BOOKING_FORM_FIELD_IDS.boeking_bevestigd_status) || ''
+          )
+            .trim()
+            .toLowerCase();
           e.parsedPaymentStatus = getField(contact, BOOKING_FORM_FIELD_IDS.betaal_status) || '';
           const canonPrijsRegels = getField(contact, BOOKING_FORM_FIELD_IDS.prijs_regels);
           let parsedPrijsRegels = parseStructuredPriceRulesString(canonPrijsRegels);

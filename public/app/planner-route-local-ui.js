@@ -51,15 +51,25 @@
     if (!dateStr || !routeSnapshotKey) return;
 
     let hasLocalSnapshot = false;
+    let routeOpLocked = false;
     try {
-      hasLocalSnapshot = !!localStorage.getItem(routeSnapshotKey(dateStr));
+      const raw = localStorage.getItem(routeSnapshotKey(dateStr));
+      hasLocalSnapshot = !!raw;
+      if (raw) {
+        const p = JSON.parse(raw);
+        routeOpLocked = !!(p?.routeOperationalLock && p.routeOperationalLock.locked);
+      }
     } catch (_) {}
 
     const hint = document.getElementById('routeLocalHint');
     const resetButton = document.getElementById('btnResetLocalRoute');
 
     if (hint) {
-      if (hasLocalSnapshot) {
+      if (routeOpLocked) {
+        hint.style.display = 'block';
+        hint.textContent =
+          '🔒 Route vergrendeld na “Bevestig route” — optimaliseren/slepen geblokkeerd tot je ontgrendelt (🔓).';
+      } else if (hasLocalSnapshot) {
         hint.style.display = 'block';
         hint.textContent =
           'ℹ️ Lokale route (volgorde + tijden) actief — blijft zo na verversen of andere dag, tot je opnieuw bevestigt of hieronder reset.';

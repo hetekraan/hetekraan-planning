@@ -4372,6 +4372,17 @@ function createPlannerCtx() {
     getConfirmedRouteOrder: (dateStr) => readConfirmedRouteOrder(dateStr),
     setConfirmedRouteOrder: (dateStr, contactIdsOrder) => saveConfirmedRouteOrder(dateStr, contactIdsOrder),
     clearConfirmedRouteOrder: (dateStr) => clearConfirmedRouteOrder(dateStr),
+    isRouteOperationalLocked: (dateStr) =>
+      !!window.HKPlannerRouteSnapshot?.isRouteOperationalLocked?.({ dateStr, routeSnapshotKey }),
+    saveRouteOperationalLock: (dateStr, payload) => {
+      window.HKPlannerRouteSnapshot?.saveRouteOperationalLock?.({
+        dateStr,
+        routeSnapshotKey,
+        normalizeTimeStr,
+        orderContactIds: payload?.orderContactIds,
+        etasByContactId: payload?.etasByContactId,
+      });
+    },
     orderRouteMorningFirst,
     getRouteStopsForSidebar,
     recalculateRouteTimesPreservingOrder,
@@ -4431,6 +4442,11 @@ function applyRouteOrderFromStops(stopsOrdered) {
 
 /** Actieve route-contactIds voor snapshot: ochtend eerst, dan middag. */
 function activeRouteContactIdsMorningFirst() {
+  const dateStr = getDateStr(currentDate);
+  const op = window.HKPlannerRouteSnapshot?.readRouteOperationalLock?.({ dateStr, routeSnapshotKey });
+  if (op?.locked && op.orderContactIds?.length) {
+    return op.orderContactIds.map((x) => String(x || '').trim()).filter(Boolean);
+  }
   const active = appointments.filter((a) => a.fullAddressLine && a.status !== 'klaar');
   return orderRouteMorningFirst(active)
     .map((a) => a.contactId)
@@ -4635,6 +4651,29 @@ function applyRouteSnapshot(dateStr) {
 function getRouteStopsForSidebar() {
   if (!window.HKPlannerRouteLocalUi?.getRouteStopsForSidebar) return [];
   const dateStr = getDateStr(currentDate);
+  const opLock = window.HKPlannerRouteSnapshot?.readRouteOperationalLock?.({ dateStr, routeSnapshotKey });
+  if (opLock?.locked && opLock.orderContactIds?.length) {
+    const active = appointments.filter((a) => a.fullAddressLine && a.status !== 'klaar');
+    const byC = Object.fromEntries(active.filter((a) => a?.contactId).map((a) => [String(a.contactId), a]));
+    const used = new Set();
+    const ordered = [];
+    for (const cid of opLock.orderContactIds) {
+      const k = String(cid || '').trim();
+      if (!k || used.has(k)) continue;
+      const hit = byC[k];
+      if (!hit) continue;
+      ordered.push(hit);
+      used.add(k);
+    }
+    for (const a of active) {
+      const k = a?.contactId ? String(a.contactId) : '';
+      if (!k || !used.has(k)) {
+        ordered.push(a);
+        if (k) used.add(k);
+      }
+    }
+    return ordered;
+  }
   const base = window.HKPlannerRouteLocalUi.getRouteStopsForSidebar({
     appointments,
     dateStr,
@@ -5546,6 +5585,10 @@ function renderRoute(routeStops) {
 /** Zelfde volgorde als `active` (array), ETAs via Google Distance Matrix / Directions */
 async function recalculateRouteTimesPreservingOrder(active) {
   if (!active.length) return;
+  const dateStr = getDateStr(currentDate);
+  if (window.HKPlannerRouteSnapshot?.isRouteOperationalLocked?.({ dateStr, routeSnapshotKey })) {
+    return;
+  }
   const res = await fetch('/api/optimize-route', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -5583,16 +5626,34 @@ let routeLocked = false;
 
 function unlockRoute() {
   routeLocked = false;
+  const dateStr = getDateStr(currentDate);
+  window.HKPlannerRouteSnapshot?.clearRouteOperationalLock?.({ dateStr, routeSnapshotKey });
   document.getElementById('btnOptimize').disabled = false;
   document.getElementById('btnUnlock').style.display = 'none';
-  showToast('Volgorde ontgrendeld — je kunt nu opnieuw optimaliseren', 'info');
+  updateRouteLocalUi();
+  showToast('Route- en volgordevergrendeling opgeheven — je kunt opnieuw optimaliseren', 'info');
 }
 
 function initRouteDrag(list) {
+  const dateStrUi = getDateStr(currentDate);
+  const routeOpLocked = window.HKPlannerRouteSnapshot?.isRouteOperationalLocked?.({
+    dateStr: dateStrUi,
+    routeSnapshotKey,
+  });
   const items = list.querySelectorAll('[data-appt-id]');
 
   items.forEach(el => {
+    el.draggable = !routeOpLocked;
     el.addEventListener('dragstart', e => {
+      if (
+        window.HKPlannerRouteSnapshot?.isRouteOperationalLocked?.({
+          dateStr: getDateStr(currentDate),
+          routeSnapshotKey,
+        })
+      ) {
+        e.preventDefault();
+        return;
+      }
       _dragSrcId = el.dataset.apptId;
       el.classList.add('dragging');
       e.dataTransfer.effectAllowed = 'move';
@@ -5617,6 +5678,15 @@ function initRouteDrag(list) {
     el.addEventListener('drop', e => {
       e.preventDefault();
       e.stopPropagation();
+      if (
+        window.HKPlannerRouteSnapshot?.isRouteOperationalLocked?.({
+          dateStr: getDateStr(currentDate),
+          routeSnapshotKey,
+        })
+      ) {
+        showToast('Route is vergrendeld na “Bevestig route”. Ontgrendel eerst (🔓).', 'info');
+        return;
+      }
       const targetId = el.dataset.apptId;
       if (String(targetId) === String(_dragSrcId)) return;
 

@@ -1,13 +1,23 @@
 // api/optimize-route.js
 // Probeert Distance Matrix API voor volledige tijdvenster-optimalisatie.
 // Valt terug op Directions API (optimize:true) als Distance Matrix niet beschikbaar is.
+//
+// Modi:
+// - Standaard (geen `mode`): bestaand gedrag (één batch, optioneel preserveOrder).
+// - `mode: "partitionedDay"`: harde ochtend (09:00–13:00) / middag (13:00–17:00) splitsing,
+//   start vanaf depot, eerste ochtendstop op 09:00, middag vanaf laatste ochtendadres met
+//   klok ≥ 13:00 en ≥ einde laatste ochtendklus; optioneel `returnToDepot: true` → reistijd
+//   laatste stop → depot in response.
 
-const DEPOT      = 'Cornelis Dopperkade, Amsterdam';
+const DEPOT = 'Cornelis Dopperkade, Amsterdam';
 /**
- * Eerste **ochtendklant** arriveert om dit tijdstip (minuten sinds middernacht), ongeacht rijtijd vanaf depot.
- * (Niet: om 09:00 vertrekken bij depot — de interne klok startte daarvoor impliciet op depot+rit.)
+ * Legacy default: interne klok start 09:00 (depot-impliciet).
+ * Bij `partitionedDay` middagfase wordt `initialClockMinutes` expliciet gezet (≥ 13:00).
  */
 const START_TIME = 9 * 60;
+
+const MORNING_BLOCK = { start: 9 * 60, end: 13 * 60 };
+const AFTERNOON_BLOCK = { start: 13 * 60, end: 17 * 60 };
 
 /** Ochtendvenster (o.a. "ochtend" in parseTimeWindow eindigt 13:00). Alleen als fallback zonder dayPart. */
 function isMorningTimeWindow(tw) {
@@ -34,8 +44,8 @@ function parseTimeWindow(str) {
   if (!str || str === 'null') return null;
   const s = str.toLowerCase().trim();
   if (s.includes('ochtend')) return { start: 8 * 60, end: 13 * 60 };
-  if (s.includes('middag'))  return { start: 12 * 60, end: 18 * 60 };
-  if (s.includes('avond'))   return { start: 17 * 60, end: 20 * 60 };
+  if (s.includes('middag')) return { start: 12 * 60, end: 18 * 60 };
+  if (s.includes('avond')) return { start: 17 * 60, end: 20 * 60 };
 
   const rondMatch = s.match(/rond\s+(\d{1,2})[:.h](\d{2})/);
   if (rondMatch) {
@@ -46,7 +56,7 @@ function parseTimeWindow(str) {
   if (rangeMatch) {
     return {
       start: parseInt(rangeMatch[1]) * 60 + parseInt(rangeMatch[2]),
-      end:   parseInt(rangeMatch[3]) * 60 + parseInt(rangeMatch[4]),
+      end: parseInt(rangeMatch[3]) * 60 + parseInt(rangeMatch[4]),
     };
   }
   const singleMatch = s.match(/(\d{1,2})[:.h](\d{2})/);
@@ -58,7 +68,7 @@ function parseTimeWindow(str) {
 }
 
 function minutesToTime(m) {
-  const h   = Math.floor(m / 60);
+  const h = Math.floor(m / 60);
   const min = m % 60;
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
 }
@@ -67,19 +77,25 @@ function roundUpQuarter(m) {
   return Math.ceil(m / 15) * 15;
 }
 
+/**
+ * @typedef {{ initialClockMinutes: number, pinFirstMorningCustomer: boolean }} ScheduleOpts
+ */
+
 // Bereken ETAs voor een gegeven volgorde met reistijdenmatrix (in minuten)
-function calcETAs(order, travel, timeWindows, jobDurations, appointments) {
+function calcETAs(order, travel, timeWindows, jobDurations, appointments, opts) {
+  const initialClock = opts?.initialClockMinutes ?? START_TIME;
+  const pinFirst = opts?.pinFirstMorningCustomer !== false;
   const etas = [];
-  let currentIdx  = 0; // depot
-  let currentTime = START_TIME;
+  let currentIdx = 0;
+  let currentTime = initialClock;
 
   for (let step = 0; step < order.length; step++) {
-    const i         = order[step];
+    const i = order[step];
     const travelMin = travel[currentIdx][i + 1];
-    const tw        = timeWindows[i];
+    const tw = timeWindows[i];
 
     let eta;
-    if (step === 0 && isMorningStopForFirstCustomerPin(appointments[i], tw)) {
+    if (pinFirst && step === 0 && isMorningStopForFirstCustomerPin(appointments[i], tw)) {
       eta = firstMorningCustomerArrivalMinutes(tw);
     } else {
       let arrival = currentTime + travelMin;
@@ -88,43 +104,46 @@ function calcETAs(order, travel, timeWindows, jobDurations, appointments) {
     }
     etas.push(eta);
     currentTime = eta + jobDurations[i];
-    currentIdx  = i + 1;
+    currentIdx = i + 1;
   }
   return etas;
 }
 
 // Greedy algoritme met volledige reistijdenmatrix
-function greedySchedule(n, travel, timeWindows, jobDurations, appointments) {
+function greedySchedule(n, travel, timeWindows, jobDurations, appointments, opts) {
+  const initialClock = opts?.initialClockMinutes ?? START_TIME;
+  const pinFirst = opts?.pinFirstMorningCustomer !== false;
+
   const visited = new Array(n).fill(false);
-  const order   = [];
-  let currentIdx  = 0;
-  let currentTime = START_TIME;
+  const order = [];
+  let currentIdx = 0;
+  let currentTime = initialClock;
 
   for (let step = 0; step < n; step++) {
     let bestCandidate = -1;
-    let bestScore     = Infinity;
+    let bestScore = Infinity;
 
     for (let i = 0; i < n; i++) {
       if (visited[i]) continue;
       const travelMin = travel[currentIdx][i + 1];
-      const tw        = timeWindows[i];
-      let arrival     = currentTime + travelMin;
-      if (step === 0 && isMorningStopForFirstCustomerPin(appointments[i], tw)) {
+      const tw = timeWindows[i];
+      let arrival = currentTime + travelMin;
+      if (pinFirst && step === 0 && isMorningStopForFirstCustomerPin(appointments[i], tw)) {
         arrival = firstMorningCustomerArrivalMinutes(tw);
       }
-      let score       = travelMin;
+      let score = travelMin;
 
       if (tw) {
         if (arrival > tw.end) {
-          score += (arrival - tw.end) * 8;        // te laat: zware straf
+          score += (arrival - tw.end) * 8;
         } else if (arrival < tw.start) {
-          score += (tw.start - arrival) * 0.2;    // te vroeg: wachtstraf
-          score -= Math.max(0, tw.end - arrival) * 0.05; // urgentie bonus
+          score += (tw.start - arrival) * 0.2;
+          score -= Math.max(0, tw.end - arrival) * 0.05;
         }
       }
 
       if (score < bestScore) {
-        bestScore     = score;
+        bestScore = score;
         bestCandidate = i;
       }
     }
@@ -132,19 +151,227 @@ function greedySchedule(n, travel, timeWindows, jobDurations, appointments) {
     visited[bestCandidate] = true;
     order.push(bestCandidate);
     const twPick = timeWindows[bestCandidate];
-    let arrival  = currentTime + travel[currentIdx][bestCandidate + 1];
-    if (step === 0 && isMorningStopForFirstCustomerPin(appointments[bestCandidate], twPick)) {
+    let arrival = currentTime + travel[currentIdx][bestCandidate + 1];
+    if (pinFirst && step === 0 && isMorningStopForFirstCustomerPin(appointments[bestCandidate], twPick)) {
       arrival = firstMorningCustomerArrivalMinutes(twPick);
     } else if (twPick && arrival < twPick.start) {
       arrival = twPick.start;
     }
-    const etaPick = step === 0 && isMorningStopForFirstCustomerPin(appointments[bestCandidate], twPick)
-      ? arrival
-      : roundUpQuarter(arrival);
+    const etaPick =
+      pinFirst && step === 0 && isMorningStopForFirstCustomerPin(appointments[bestCandidate], twPick)
+        ? arrival
+        : roundUpQuarter(arrival);
     currentTime = etaPick + jobDurations[bestCandidate];
-    currentIdx  = bestCandidate + 1;
+    currentIdx = bestCandidate + 1;
   }
   return order;
+}
+
+async function fetchDistanceMatrixTravelMinutes(key, allLocations) {
+  const originsParam = allLocations.map((l) => encodeURIComponent(l)).join('|');
+  const destsParam = allLocations.map((l) => encodeURIComponent(l)).join('|');
+  const matrixUrl =
+    `https://maps.googleapis.com/maps/api/distancematrix/json` +
+    `?origins=${originsParam}&destinations=${destsParam}&region=nl&language=nl&key=${key}`;
+
+  const matRes = await fetch(matrixUrl);
+  const matData = await matRes.json();
+  if (matData.status !== 'OK') return null;
+  return matData.rows.map((row) =>
+    row.elements.map((el) => (el.status === 'OK' ? Math.ceil((el.duration?.value || 0) / 60) : 60))
+  );
+}
+
+/**
+ * @returns {Promise<{ order: number[], etas: number[], legInfo: { durationSeconds: number }[], travel: number[][] } | null>}
+ */
+async function optimizeSubsetMatrix({
+  key,
+  origin,
+  appointments,
+  scheduleOpts,
+  fixedOrder,
+}) {
+  const n = appointments.length;
+  if (n < 1) return { order: [], etas: [], legInfo: [], travel: [] };
+
+  const allLocations = [origin, ...appointments.map((a) => a.address)];
+  const travel = await fetchDistanceMatrixTravelMinutes(key, allLocations);
+  if (!travel) return null;
+
+  const timeWindows = appointments.map((a) => parseTimeWindow(a.timeWindow));
+  const jobDurations = appointments.map((a) => a.jobDuration || 30);
+
+  const order = fixedOrder || greedySchedule(n, travel, timeWindows, jobDurations, appointments, scheduleOpts);
+  const etas = calcETAs(order, travel, timeWindows, jobDurations, appointments, scheduleOpts);
+  const legInfo = order.map((apptIdx, i) => {
+    const fromIdx = i === 0 ? 0 : order[i - 1] + 1;
+    return { durationSeconds: travel[fromIdx][apptIdx + 1] * 60 };
+  });
+  return { order, etas, legInfo, travel };
+}
+
+async function travelMinutesOneLeg(key, fromAddr, toAddr) {
+  const travel = await fetchDistanceMatrixTravelMinutes(key, [fromAddr, toAddr]);
+  if (!travel || !travel[0]) return null;
+  return travel[0][1];
+}
+
+function collectViolations(order, etas, timeWindows) {
+  const violations = [];
+  order.forEach((apptIdx, i) => {
+    const tw = timeWindows[apptIdx];
+    if (!tw) return;
+    if (etas[i] > tw.end) {
+      violations.push({
+        apptIdx,
+        eta: minutesToTime(etas[i]),
+        window: `${minutesToTime(tw.start)}-${minutesToTime(tw.end)}`,
+      });
+    }
+  });
+  return violations;
+}
+
+/**
+ * Harde klantblokken + depot → ochtend → (overgang) → middag → optioneel terug naar depot.
+ */
+async function handlePartitionedDay(req, res, key, appointments, returnToDepot) {
+  const n = appointments.length;
+  if (n < 1) {
+    return res.status(400).json({ error: 'Geen afspraken' });
+  }
+
+  const morningOrigIndices = [];
+  const afternoonOrigIndices = [];
+  for (let i = 0; i < n; i++) {
+    if (Number(appointments[i]?.dayPart) === 0) morningOrigIndices.push(i);
+    else afternoonOrigIndices.push(i);
+  }
+
+  const mApps = morningOrigIndices.map((gi) => ({
+    ...appointments[gi],
+    address: appointments[gi].address,
+    timeWindow: '09:00-13:00',
+    jobDuration: appointments[gi].jobDuration || 30,
+    dayPart: 0,
+  }));
+
+  const globalOrder = [];
+  const globalEtasMin = [];
+  const globalLegInfo = [];
+  const violations = [];
+
+  /** Ochtendfase */
+  if (mApps.length > 0) {
+    const r =
+      (await optimizeSubsetMatrix({
+        key,
+        origin: DEPOT,
+        appointments: mApps,
+        scheduleOpts: {
+          initialClockMinutes: MORNING_BLOCK.start,
+          pinFirstMorningCustomer: true,
+        },
+        fixedOrder: mApps.length === 1 ? [0] : null,
+      })) || null;
+
+    if (!r) {
+      return res.status(500).json({ error: 'DISTANCE_MATRIX_FAILED', message: 'Afstands-matrix tijdelijk niet beschikbaar' });
+    }
+
+    const twM = mApps.map(() => MORNING_BLOCK);
+    violations.push(
+      ...collectViolations(r.order, r.etas, twM).map((v) => ({
+        ...v,
+        apptIdx: morningOrigIndices[v.apptIdx],
+      }))
+    );
+
+    for (let s = 0; s < r.order.length; s++) {
+      const localIdx = r.order[s];
+      globalOrder.push(morningOrigIndices[localIdx]);
+      globalEtasMin.push(r.etas[s]);
+      globalLegInfo.push(r.legInfo[s] || { durationSeconds: 0 });
+    }
+  }
+
+  /** Middagfase */
+  const aApps = afternoonOrigIndices.map((gi) => ({
+    ...appointments[gi],
+    address: appointments[gi].address,
+    timeWindow: '13:00-17:00',
+    jobDuration: appointments[gi].jobDuration || 30,
+    dayPart: 1,
+  }));
+
+  if (aApps.length > 0) {
+    let afternoonOrigin = DEPOT;
+    let afternoonClock = AFTERNOON_BLOCK.start;
+
+    if (mApps.length > 0) {
+      const lastLocalMorningIdx = mApps.length - 1;
+      const lastMorningGlobal = morningOrigIndices[lastLocalMorningIdx];
+      const lastMorningAddr = String(appointments[lastMorningGlobal]?.address || '').trim();
+      if (lastMorningAddr) afternoonOrigin = lastMorningAddr;
+
+      const lastMorningEta = globalEtasMin[globalEtasMin.length - 1];
+      const lastMorningJob = mApps[lastLocalMorningIdx].jobDuration || 30;
+      afternoonClock = Math.max(AFTERNOON_BLOCK.start, lastMorningEta + lastMorningJob);
+    }
+
+    const r =
+      (await optimizeSubsetMatrix({
+        key,
+        origin: afternoonOrigin,
+        appointments: aApps,
+        scheduleOpts: {
+          initialClockMinutes: afternoonClock,
+          pinFirstMorningCustomer: false,
+        },
+        fixedOrder: aApps.length === 1 ? [0] : null,
+      })) || null;
+
+    if (!r) {
+      return res.status(500).json({ error: 'DISTANCE_MATRIX_FAILED', message: 'Afstands-matrix tijdelijk niet beschikbaar' });
+    }
+
+    const twA = aApps.map(() => AFTERNOON_BLOCK);
+    violations.push(
+      ...collectViolations(r.order, r.etas, twA).map((v) => ({
+        ...v,
+        apptIdx: afternoonOrigIndices[v.apptIdx],
+      }))
+    );
+
+    for (let s = 0; s < r.order.length; s++) {
+      const localIdx = r.order[s];
+      globalOrder.push(afternoonOrigIndices[localIdx]);
+      globalEtasMin.push(r.etas[s]);
+      globalLegInfo.push(r.legInfo[s] || { durationSeconds: 0 });
+    }
+  }
+
+  let returnLegToDepotMinutes = null;
+  if (returnToDepot && globalOrder.length > 0) {
+    const lastG = globalOrder[globalOrder.length - 1];
+    const lastAddr = String(appointments[lastG]?.address || '').trim();
+    if (lastAddr) {
+      returnLegToDepotMinutes = await travelMinutesOneLeg(key, lastAddr, DEPOT);
+    }
+  }
+
+  return res.status(200).json({
+    mode: 'partitionedDay',
+    order: globalOrder,
+    etas: globalEtasMin.map(minutesToTime),
+    violations,
+    legInfo: globalLegInfo,
+    method: 'partitionedDay+distance-matrix',
+    originUsed: 'depot+transition',
+    destinationUsed: returnToDepot ? 'depot' : 'none',
+    returnLegToDepotMinutes: returnLegToDepotMinutes != null ? returnLegToDepotMinutes : undefined,
+  });
 }
 
 export default async function handler(req, res) {
@@ -154,7 +381,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { appointments, preserveOrder, origin: originRaw } = req.body;
+  const { appointments, preserveOrder, origin: originRaw, mode, returnToDepot } = req.body;
   if (!appointments || appointments.length < 1) {
     return res.status(400).json({ error: 'Geen afspraken' });
   }
@@ -162,37 +389,34 @@ export default async function handler(req, res) {
   const key = process.env.GOOGLE_MAPS_API_KEY;
   if (!key) return res.status(500).json({ error: 'GOOGLE_MAPS_API_KEY ontbreekt' });
 
-  const origin =
-    typeof originRaw === 'string' && originRaw.trim() ? originRaw.trim() : DEPOT;
+  if (mode === 'partitionedDay') {
+    const wantReturn = returnToDepot !== false;
+    return handlePartitionedDay(req, res, key, appointments, wantReturn);
+  }
 
-  const n            = appointments.length;
-  const timeWindows  = appointments.map(a => parseTimeWindow(a.timeWindow));
-  const jobDurations = appointments.map(a => a.jobDuration || 30);
-  const allLocations = [origin, ...appointments.map(a => a.address)];
+  const origin = typeof originRaw === 'string' && originRaw.trim() ? originRaw.trim() : DEPOT;
+
+  const n = appointments.length;
+  const timeWindows = appointments.map((a) => parseTimeWindow(a.timeWindow));
+  const jobDurations = appointments.map((a) => a.jobDuration || 30);
+  const allLocations = [origin, ...appointments.map((a) => a.address)];
   /** Vaste volgorde (bv. na slepen): indices 0..n-1 */
-  const fixedOrder   = preserveOrder === true ? appointments.map((_, i) => i) : null;
+  const fixedOrder = preserveOrder === true ? appointments.map((_, i) => i) : null;
+
+  const defaultScheduleOpts = { initialClockMinutes: START_TIME, pinFirstMorningCustomer: true };
 
   // ── Poging 1: Distance Matrix API ──────────────────────────────────────────
-  let order, etas, legInfo;
+  let order;
+  let etas;
+  let legInfo;
   let usedDistanceMatrix = false;
 
   try {
-    const originsParam = allLocations.map(l => encodeURIComponent(l)).join('|');
-    const destsParam   = allLocations.map(l => encodeURIComponent(l)).join('|');
-    const matrixUrl    = `https://maps.googleapis.com/maps/api/distancematrix/json` +
-      `?origins=${originsParam}&destinations=${destsParam}&region=nl&language=nl&key=${key}`;
-
-    const matRes  = await fetch(matrixUrl);
-    const matData = await matRes.json();
-
-    if (matData.status === 'OK') {
-      const travel = matData.rows.map(row =>
-        row.elements.map(el => el.status === 'OK' ? Math.ceil((el.duration?.value || 0) / 60) : 60)
-      );
-
-      order    = fixedOrder || greedySchedule(n, travel, timeWindows, jobDurations, appointments);
-      etas     = calcETAs(order, travel, timeWindows, jobDurations, appointments);
-      legInfo  = order.map((apptIdx, i) => {
+    const travel = await fetchDistanceMatrixTravelMinutes(key, allLocations);
+    if (travel) {
+      order = fixedOrder || greedySchedule(n, travel, timeWindows, jobDurations, appointments, defaultScheduleOpts);
+      etas = calcETAs(order, travel, timeWindows, jobDurations, appointments, defaultScheduleOpts);
+      legInfo = order.map((apptIdx, i) => {
         const fromIdx = i === 0 ? 0 : order[i - 1] + 1;
         return { durationSeconds: travel[fromIdx][apptIdx + 1] * 60 };
       });
@@ -202,17 +426,16 @@ export default async function handler(req, res) {
 
   // ── Fallback: Directions API ────────────────────────────────────────────────
   if (!usedDistanceMatrix) {
-    const addrJoined = appointments.map(a => a.address).join('|');
-    const waypoints    = fixedOrder
-      ? addrJoined
-      : `optimize:true|${addrJoined}`;
-    const url = `https://maps.googleapis.com/maps/api/directions/json` +
+    const addrJoined = appointments.map((a) => a.address).join('|');
+    const waypoints = fixedOrder ? addrJoined : `optimize:true|${addrJoined}`;
+    const url =
+      `https://maps.googleapis.com/maps/api/directions/json` +
       `?origin=${encodeURIComponent(origin)}` +
       `&destination=${encodeURIComponent(DEPOT)}` +
       `&waypoints=${encodeURIComponent(waypoints)}` +
       `&region=nl&language=nl&key=${key}`;
 
-    const gmRes  = await fetch(url);
+    const gmRes = await fetch(url);
     const gmData = await gmRes.json();
 
     if (gmData.status !== 'OK') {
@@ -222,15 +445,14 @@ export default async function handler(req, res) {
     const legs = gmData.routes?.[0]?.legs || [];
 
     if (fixedOrder) {
-      // Depot → stop1 → … → stopN → depot: eerste n legs zijn de echte ritten
-      const legDurMin = legs.slice(0, n).map(l => Math.ceil((l.duration?.value || 0) / 60));
+      const legDurMin = legs.slice(0, n).map((l) => Math.ceil((l.duration?.value || 0) / 60));
       let currentTime = START_TIME;
-      etas    = [];
+      etas = [];
       legInfo = [];
       for (let step = 0; step < n; step++) {
         const apptIdx = step;
         const travelMin = legDurMin[step] || 0;
-        const tw        = timeWindows[apptIdx];
+        const tw = timeWindows[apptIdx];
         let eta;
         if (step === 0 && isMorningStopForFirstCustomerPin(appointments[apptIdx], tw)) {
           eta = firstMorningCustomerArrivalMinutes(tw);
@@ -246,15 +468,15 @@ export default async function handler(req, res) {
       order = fixedOrder;
     } else {
       const gmOrder = gmData.routes?.[0]?.waypoint_order || appointments.map((_, i) => i);
-      const legDurMin = legs.map(l => Math.ceil((l.duration?.value || 0) / 60));
+      const legDurMin = legs.map((l) => Math.ceil((l.duration?.value || 0) / 60));
 
       let currentTime = START_TIME;
-      etas    = [];
+      etas = [];
       legInfo = [];
 
       gmOrder.forEach((apptIdx, step) => {
         const travelMin = legDurMin[step] || 0;
-        const tw        = timeWindows[apptIdx];
+        const tw = timeWindows[apptIdx];
         let eta;
         if (step === 0 && isMorningStopForFirstCustomerPin(appointments[apptIdx], tw)) {
           eta = firstMorningCustomerArrivalMinutes(tw);
@@ -272,23 +494,15 @@ export default async function handler(req, res) {
     }
   }
 
-  // Schendingen detecteren
-  const violations = [];
-  order.forEach((apptIdx, i) => {
-    const tw = timeWindows[apptIdx];
-    if (!tw) return;
-    if (etas[i] > tw.end) {
-      violations.push({
-        apptIdx,
-        eta: minutesToTime(etas[i]),
-        window: `${minutesToTime(tw.start)}-${minutesToTime(tw.end)}`,
-      });
-    }
-  });
+  const violations = collectViolations(order, etas, timeWindows);
 
   const methodTag = usedDistanceMatrix
-    ? (fixedOrder ? 'distance-matrix+fixed-order' : 'distance-matrix')
-    : (fixedOrder ? 'directions+fixed-order' : 'directions-fallback');
+    ? fixedOrder
+      ? 'distance-matrix+fixed-order'
+      : 'distance-matrix'
+    : fixedOrder
+      ? 'directions+fixed-order'
+      : 'directions-fallback';
 
   const originTag = origin === DEPOT ? 'depot' : 'custom';
 

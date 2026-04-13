@@ -64,10 +64,14 @@
   }
 
   async function confirmRoute(ctx) {
+    const routeDate = ctx.getDateStr(ctx.getCurrentDate());
+    if (typeof ctx.isRouteOperationalLocked === 'function' && ctx.isRouteOperationalLocked(routeDate)) {
+      ctx.showToast('Route is al vergrendeld voor deze dag. Ontgrendel eerst om opnieuw te bevestigen.', 'info');
+      return;
+    }
     const active = ctx
       .getAppointmentsRef()
       .filter((a) => a.contactId && a.timeSlot && a.status !== 'klaar');
-    const routeDate = ctx.getDateStr(ctx.getCurrentDate());
     const routeSequence = [...active].sort((a, b) => (a.routeStop || 99) - (b.routeStop || 99));
     const toSave = routeSequence.map((a, i) => ({
       contactId: a.contactId,
@@ -109,6 +113,16 @@
           routeDate,
           routeSequence.map((a) => (a?.contactId ? String(a.contactId) : '')).filter(Boolean)
         );
+      }
+      const orderContactIds = routeSequence.map((a) => (a?.contactId ? String(a.contactId) : '')).filter(Boolean);
+      const etasByContactId = {};
+      routeSequence.forEach((a) => {
+        const cid = a?.contactId ? String(a.contactId) : '';
+        const ts = a?.timeSlot ? ctx.normalizeTimeStr(String(a.timeSlot).replace(/^~/, '')) : '';
+        if (cid && ts) etasByContactId[cid] = ts;
+      });
+      if (typeof ctx.saveRouteOperationalLock === 'function') {
+        ctx.saveRouteOperationalLock(routeDate, { orderContactIds, etasByContactId });
       }
       ctx.saveRouteSnapshot(routeDate);
       if (btn) {
