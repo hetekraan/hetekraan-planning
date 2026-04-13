@@ -66,6 +66,12 @@
       });
       await ctx.recalculateRouteTimesPreservingOrder(optimized);
       ctx.setAppointments([...optimized, ...done]);
+      if (typeof ctx.setConfirmedRouteOrder === 'function') {
+        ctx.setConfirmedRouteOrder(
+          ctx.getDateStr(ctx.getCurrentDate()),
+          optimized.map((a) => (a?.contactId ? String(a.contactId) : '')).filter(Boolean)
+        );
+      }
 
       const totalTravelMins = Math.round(totalTravelSecs / 60);
       const vCount = optimized.filter((a) => a.violation).length;

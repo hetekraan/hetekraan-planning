@@ -74,6 +74,7 @@
   async function resetLocalRouteTimes(input) {
     const dateStr = input?.dateStr;
     const routeSnapshotKey = input?.routeSnapshotKey;
+    const clearConfirmedRouteOrder = input?.clearConfirmedRouteOrder;
     const updateRouteLocalUiFn = input?.updateRouteLocalUi;
     const reload = input?.reload;
     const showToast = input?.showToast;
@@ -82,6 +83,9 @@
     try {
       localStorage.removeItem(routeSnapshotKey(dateStr));
     } catch (_) {}
+    if (typeof clearConfirmedRouteOrder === 'function') {
+      clearConfirmedRouteOrder();
+    }
     updateRouteLocalUiFn();
     await reload();
     showToast('Lokale tijden gewist — opnieuw uit GHL geladen', 'success');

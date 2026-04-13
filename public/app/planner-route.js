@@ -104,6 +104,12 @@
       }
       if (data.calendarErrors?.length) msg += ` · ⚠️ ${data.calendarErrors.length} agenda-update mislukt (zie serverlog)`;
       ctx.showToast(msg, 'success');
+      if (typeof ctx.setConfirmedRouteOrder === 'function') {
+        ctx.setConfirmedRouteOrder(
+          routeDate,
+          routeSequence.map((a) => (a?.contactId ? String(a.contactId) : '')).filter(Boolean)
+        );
+      }
       ctx.saveRouteSnapshot(routeDate);
       if (btn) {
         setTimeout(() => {

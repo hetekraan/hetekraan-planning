@@ -4360,6 +4360,9 @@ function createPlannerCtx() {
       }
     },
     getPlannerCustomerDayFullStoreConfigured: () => plannerCustomerDayFullStoreConfigured,
+    getConfirmedRouteOrder: (dateStr) => readConfirmedRouteOrder(dateStr),
+    setConfirmedRouteOrder: (dateStr, contactIdsOrder) => saveConfirmedRouteOrder(dateStr, contactIdsOrder),
+    clearConfirmedRouteOrder: (dateStr) => clearConfirmedRouteOrder(dateStr),
     orderRouteMorningFirst,
     getRouteStopsForSidebar,
     recalculateRouteTimesPreservingOrder,
@@ -4482,6 +4485,50 @@ function routeSnapshotKey(dateStr) {
   return `hk_route_times_${dateStr}`;
 }
 
+function confirmedRouteOrderKey(dateStr) {
+  return `hk_route_confirmed_order_${dateStr}`;
+}
+
+function readConfirmedRouteOrder(dateStr) {
+  if (!dateStr) return [];
+  try {
+    const raw = localStorage.getItem(confirmedRouteOrderKey(dateStr));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed?.contactIdsOrder) ? parsed.contactIdsOrder : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveConfirmedRouteOrder(dateStr, contactIdsOrder) {
+  if (!dateStr) return;
+  const clean = Array.from(
+    new Set(
+      (Array.isArray(contactIdsOrder) ? contactIdsOrder : [])
+        .map((x) => String(x || '').trim())
+        .filter(Boolean)
+    )
+  );
+  if (!clean.length) return;
+  try {
+    localStorage.setItem(
+      confirmedRouteOrderKey(dateStr),
+      JSON.stringify({
+        savedAt: Date.now(),
+        contactIdsOrder: clean,
+      })
+    );
+  } catch (_) {}
+}
+
+function clearConfirmedRouteOrder(dateStr) {
+  if (!dateStr) return;
+  try {
+    localStorage.removeItem(confirmedRouteOrderKey(dateStr));
+  } catch (_) {}
+}
+
 function markDashBlockedDate(dateStr) {
   if (!window.HKPlannerBlockState?.markDashBlockedDate) return;
   return window.HKPlannerBlockState.markDashBlockedDate(dateStr);
@@ -4578,11 +4625,34 @@ function applyRouteSnapshot(dateStr) {
 /** Routestops in dezelfde volgorde als je handmatig hebt gezet (of anders op tijd). */
 function getRouteStopsForSidebar() {
   if (!window.HKPlannerRouteLocalUi?.getRouteStopsForSidebar) return [];
-  return window.HKPlannerRouteLocalUi.getRouteStopsForSidebar({
+  const dateStr = getDateStr(currentDate);
+  const base = window.HKPlannerRouteLocalUi.getRouteStopsForSidebar({
     appointments,
-    dateStr: getDateStr(currentDate),
+    dateStr,
     routeSnapshotKey,
   });
+  const confirmedOrder = readConfirmedRouteOrder(dateStr);
+  if (!confirmedOrder.length) return base;
+
+  const byContact = Object.fromEntries(base.filter((a) => a?.contactId).map((a) => [String(a.contactId), a]));
+  const used = new Set();
+  const ordered = [];
+  for (const contactId of confirmedOrder) {
+    const key = String(contactId || '');
+    if (!key || used.has(key)) continue;
+    const hit = byContact[key];
+    if (!hit) continue;
+    ordered.push(hit);
+    used.add(key);
+  }
+  for (const a of base) {
+    const key = a?.contactId ? String(a.contactId) : '';
+    if (!key || !used.has(key)) {
+      ordered.push(a);
+      if (key) used.add(key);
+    }
+  }
+  return ordered;
 }
 
 function updateRouteLocalUi() {
@@ -4598,6 +4668,7 @@ async function resetLocalRouteTimes() {
   return window.HKPlannerRouteLocalUi.resetLocalRouteTimes({
     dateStr: getDateStr(currentDate),
     routeSnapshotKey,
+    clearConfirmedRouteOrder: () => clearConfirmedRouteOrder(getDateStr(currentDate)),
     updateRouteLocalUi,
     reload: () => loadAppointments(currentDate),
     showToast,
@@ -5556,6 +5627,10 @@ function initRouteDrag(list) {
       ordered.splice(ti, 0, item);
 
       applyRouteOrderFromStops(ordered);
+      saveConfirmedRouteOrder(
+        getDateStr(currentDate),
+        ordered.map((a) => (a?.contactId ? String(a.contactId) : '')).filter(Boolean)
+      );
       mergeRouteOrderIntoSnapshot(getDateStr(currentDate));
       updateRouteLocalUi();
 
