@@ -696,6 +696,8 @@ export default async function handler(req, res) {
       proposalConstraints,
     });
     const blocksToTry = proposalBlocksToEvaluate(proposalConstraints);
+    const maxSuggest = effectiveMaxOptions(proposalConstraints, 2, 2);
+    const scanCandidateTarget = maxSuggest + 4;
 
     const processSuggestDay = async (cursor, i) => {
       try {
@@ -825,7 +827,7 @@ export default async function handler(req, res) {
             error: 'Kalender-events tijdelijk niet beschikbaar. Probeer het later opnieuw.',
           });
         }
-        if (candidates.length >= 18) break;
+        if (candidates.length >= scanCandidateTarget) break;
       }
     } else {
       let cursor = schedule.start;
@@ -857,7 +859,7 @@ export default async function handler(req, res) {
           });
         }
         cursor = addAmsterdamCalendarDays(cursor, 1);
-        if (candidates.length >= 18) break;
+        if (candidates.length >= scanCandidateTarget) break;
       }
     }
 
@@ -877,7 +879,6 @@ export default async function handler(req, res) {
       ...ranking.telemetry,
     });
 
-    const maxSuggest = effectiveMaxOptions(proposalConstraints, 2, 2);
     const suggestions = rankedCandidates.slice(0, maxSuggest).map((c) => ({
       dateStr: c.dateStr,
       dateLabel: c.dateLabel,
