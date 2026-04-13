@@ -978,9 +978,14 @@
     overflow-x: clip;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-auto-flow: row;
+    grid-auto-rows: max-content;
+    align-content: start;
     gap: 12px;
+    min-width: 0;
+  }
+  .route-panel > * {
     min-width: 0;
   }
 
@@ -989,7 +994,7 @@
     flex-wrap: wrap;
     gap: 8px;
     align-items: stretch;
-    margin-bottom: 8px;
+    margin-bottom: 0;
   }
   .route-toolbar .btn-optimize {
     flex: 1 1 140px;
