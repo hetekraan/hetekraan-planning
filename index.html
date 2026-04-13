@@ -4372,8 +4372,9 @@ function createPlannerCtx() {
     getConfirmedRouteOrder: (dateStr) => readConfirmedRouteOrder(dateStr),
     setConfirmedRouteOrder: (dateStr, contactIdsOrder) => saveConfirmedRouteOrder(dateStr, contactIdsOrder),
     clearConfirmedRouteOrder: (dateStr) => clearConfirmedRouteOrder(dateStr),
-    isRouteOperationalLocked: (dateStr) =>
-      !!window.HKPlannerRouteSnapshot?.isRouteOperationalLocked?.({ dateStr, routeSnapshotKey }),
+    isRouteOperationalLocked: (dateStr) => isRouteOperationalLockedForDate(dateStr),
+    syncCentralRouteLock: (dateStr, routeLock, storeConfigured) =>
+      syncCentralRouteLockState(dateStr, routeLock, storeConfigured),
     saveRouteOperationalLock: (dateStr, payload) => {
       window.HKPlannerRouteSnapshot?.saveRouteOperationalLock?.({
         dateStr,
@@ -4382,7 +4383,14 @@ function createPlannerCtx() {
         orderContactIds: payload?.orderContactIds,
         etasByContactId: payload?.etasByContactId,
       });
+      serverRouteLockByDate.set(String(dateStr || ''), {
+        locked: true,
+        orderContactIds: Array.isArray(payload?.orderContactIds) ? payload.orderContactIds : [],
+        etasByContactId: payload?.etasByContactId && typeof payload.etasByContactId === 'object' ? payload.etasByContactId : {},
+        updatedAt: Date.now(),
+      });
     },
+    getCurrentPlannerUser: () => readPlannerUsernameRaw() || '',
     orderRouteMorningFirst,
     getRouteStopsForSidebar,
     recalculateRouteTimesPreservingOrder,
@@ -4443,7 +4451,7 @@ function applyRouteOrderFromStops(stopsOrdered) {
 /** Actieve route-contactIds voor snapshot: ochtend eerst, dan middag. */
 function activeRouteContactIdsMorningFirst() {
   const dateStr = getDateStr(currentDate);
-  const op = window.HKPlannerRouteSnapshot?.readRouteOperationalLock?.({ dateStr, routeSnapshotKey });
+  const op = getServerRouteLock(dateStr) || window.HKPlannerRouteSnapshot?.readRouteOperationalLock?.({ dateStr, routeSnapshotKey });
   if (op?.locked && op.orderContactIds?.length) {
     return op.orderContactIds.map((x) => String(x || '').trim()).filter(Boolean);
   }
@@ -4554,6 +4562,51 @@ function clearConfirmedRouteOrder(dateStr) {
   } catch (_) {}
 }
 
+/** Centrale route-lock zoals opgehaald via backend (`/api/ghl?action=getAppointments`). */
+const serverRouteLockByDate = new Map();
+
+function getServerRouteLock(dateStr) {
+  if (!dateStr) return null;
+  const hit = serverRouteLockByDate.get(String(dateStr));
+  return hit && typeof hit === 'object' ? hit : null;
+}
+
+function isRouteOperationalLockedForDate(dateStr) {
+  const srv = getServerRouteLock(dateStr);
+  if (srv && srv.locked === true) return true;
+  return !!window.HKPlannerRouteSnapshot?.isRouteOperationalLocked?.({ dateStr, routeSnapshotKey });
+}
+
+function syncCentralRouteLockState(dateStr, routeLock, storeConfigured) {
+  const ds = String(dateStr || '').trim();
+  if (!ds) return;
+  if (storeConfigured === true) {
+    if (routeLock && routeLock.locked === true) {
+      const order = Array.isArray(routeLock.orderContactIds)
+        ? routeLock.orderContactIds.map((x) => String(x || '').trim()).filter(Boolean)
+        : [];
+      const etas = routeLock.etasByContactId && typeof routeLock.etasByContactId === 'object'
+        ? routeLock.etasByContactId
+        : {};
+      serverRouteLockByDate.set(ds, { ...routeLock, orderContactIds: order, etasByContactId: etas, locked: true });
+      window.HKPlannerRouteSnapshot?.saveRouteOperationalLock?.({
+        dateStr: ds,
+        routeSnapshotKey,
+        normalizeTimeStr,
+        orderContactIds: order,
+        etasByContactId: etas,
+      });
+      if (order.length) saveConfirmedRouteOrder(ds, order);
+      return;
+    }
+    serverRouteLockByDate.set(ds, { locked: false, updatedAt: Date.now() });
+    window.HKPlannerRouteSnapshot?.clearRouteOperationalLock?.({ dateStr: ds, routeSnapshotKey });
+    clearConfirmedRouteOrder(ds);
+    return;
+  }
+  // Geen centrale store => bestaande lokale lock blijft fallback.
+}
+
 function markDashBlockedDate(dateStr) {
   if (!window.HKPlannerBlockState?.markDashBlockedDate) return;
   return window.HKPlannerBlockState.markDashBlockedDate(dateStr);
@@ -4651,7 +4704,7 @@ function applyRouteSnapshot(dateStr) {
 function getRouteStopsForSidebar() {
   if (!window.HKPlannerRouteLocalUi?.getRouteStopsForSidebar) return [];
   const dateStr = getDateStr(currentDate);
-  const opLock = window.HKPlannerRouteSnapshot?.readRouteOperationalLock?.({ dateStr, routeSnapshotKey });
+  const opLock = getServerRouteLock(dateStr) || window.HKPlannerRouteSnapshot?.readRouteOperationalLock?.({ dateStr, routeSnapshotKey });
   if (opLock?.locked && opLock.orderContactIds?.length) {
     const active = appointments.filter((a) => a.fullAddressLine && a.status !== 'klaar');
     const byC = Object.fromEntries(active.filter((a) => a?.contactId).map((a) => [String(a.contactId), a]));
@@ -4717,6 +4770,11 @@ async function resetLocalRouteTimes() {
     dateStr: getDateStr(currentDate),
     routeSnapshotKey,
     clearConfirmedRouteOrder: () => clearConfirmedRouteOrder(getDateStr(currentDate)),
+    clearRouteOperationalLock: () =>
+      window.HKPlannerRouteSnapshot?.clearRouteOperationalLock?.({
+        dateStr: getDateStr(currentDate),
+        routeSnapshotKey,
+      }),
     updateRouteLocalUi,
     reload: () => loadAppointments(currentDate),
     showToast,
@@ -5586,7 +5644,7 @@ function renderRoute(routeStops) {
 async function recalculateRouteTimesPreservingOrder(active) {
   if (!active.length) return;
   const dateStr = getDateStr(currentDate);
-  if (window.HKPlannerRouteSnapshot?.isRouteOperationalLocked?.({ dateStr, routeSnapshotKey })) {
+  if (isRouteOperationalLockedForDate(dateStr)) {
     return;
   }
   const res = await fetch('/api/optimize-route', {
@@ -5624,33 +5682,44 @@ async function recalculateRouteTimesPreservingOrder(active) {
 let _dragSrcId = null;
 let routeLocked = false;
 
-function unlockRoute() {
+async function unlockRoute() {
   routeLocked = false;
   const dateStr = getDateStr(currentDate);
+  try {
+    const res = await fetch('/api/ghl?action=setRouteLock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
+      body: JSON.stringify({
+        date: dateStr,
+        routeLock: { locked: false, updatedBy: readPlannerUsernameRaw() || 'unknown' },
+      }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.error || d.code || `Serverfout (${res.status})`);
+    }
+  } catch (err) {
+    showToast(`Ontgrendelen mislukt: ${err.message || err}`, 'info');
+    return;
+  }
+  serverRouteLockByDate.set(String(dateStr), { locked: false, updatedAt: Date.now() });
   window.HKPlannerRouteSnapshot?.clearRouteOperationalLock?.({ dateStr, routeSnapshotKey });
+  clearConfirmedRouteOrder(dateStr);
   document.getElementById('btnOptimize').disabled = false;
   document.getElementById('btnUnlock').style.display = 'none';
   updateRouteLocalUi();
-  showToast('Route- en volgordevergrendeling opgeheven — je kunt opnieuw optimaliseren', 'info');
+  showToast('Route ontgrendeld (centraal + lokaal) — je kunt opnieuw optimaliseren', 'info');
 }
 
 function initRouteDrag(list) {
   const dateStrUi = getDateStr(currentDate);
-  const routeOpLocked = window.HKPlannerRouteSnapshot?.isRouteOperationalLocked?.({
-    dateStr: dateStrUi,
-    routeSnapshotKey,
-  });
+  const routeOpLocked = isRouteOperationalLockedForDate(dateStrUi);
   const items = list.querySelectorAll('[data-appt-id]');
 
   items.forEach(el => {
     el.draggable = !routeOpLocked;
     el.addEventListener('dragstart', e => {
-      if (
-        window.HKPlannerRouteSnapshot?.isRouteOperationalLocked?.({
-          dateStr: getDateStr(currentDate),
-          routeSnapshotKey,
-        })
-      ) {
+      if (isRouteOperationalLockedForDate(getDateStr(currentDate))) {
         e.preventDefault();
         return;
       }
@@ -5678,12 +5747,7 @@ function initRouteDrag(list) {
     el.addEventListener('drop', e => {
       e.preventDefault();
       e.stopPropagation();
-      if (
-        window.HKPlannerRouteSnapshot?.isRouteOperationalLocked?.({
-          dateStr: getDateStr(currentDate),
-          routeSnapshotKey,
-        })
-      ) {
+      if (isRouteOperationalLockedForDate(getDateStr(currentDate))) {
         showToast('Route is vergrendeld na “Bevestig route”. Ontgrendel eerst (🔓).', 'info');
         return;
       }

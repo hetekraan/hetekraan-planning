@@ -75,6 +75,11 @@ import {
   isCustomerDayFullStoreConfigured,
   setCustomerDayFullFlag,
 } from '../lib/customer-day-full-store.js';
+import {
+  getRouteLock,
+  isRouteLockStoreConfigured,
+  setRouteLock,
+} from '../lib/route-lock-store.js';
 import { buildCompleteAppointmentPayload } from '../lib/usecases/complete-appointment.js';
 import { resolveContactCustomFieldId } from '../lib/ghl-custom-fields.js';
 
@@ -734,10 +739,21 @@ export default async function handler(req, res) {
         } catch (cfErr) {
           console.warn('[getAppointments] customerDayFull:', cfErr?.message || cfErr);
         }
+        let routeLock = null;
+        const routeLockStoreConfigured = isRouteLockStoreConfigured();
+        if (routeLockStoreConfigured) {
+          try {
+            routeLock = await getRouteLock(locId, date);
+          } catch (rlErr) {
+            console.warn('[getAppointments] routeLock:', rlErr?.message || rlErr);
+          }
+        }
         return res.status(200).json({
           appointments,
           customerDayFull,
           customerDayFullStoreConfigured: isCustomerDayFullStoreConfigured(),
+          routeLock,
+          routeLockStoreConfigured,
         });
       }
 
@@ -1466,7 +1482,7 @@ export default async function handler(req, res) {
 
       case 'saveRouteTimes': {
         // Custom field geplande aankomst + optioneel GHL-kalender bijwerken
-        const { routeTimes } = req.body; // [{ contactId, plannedTime, ghlAppointmentId?, routeDate?, startTime?, durationMin? }]
+        const { routeTimes, routeLock } = req.body; // routeLock: { dateStr, locked, orderContactIds, etasByContactId, updatedBy? }
         if (!Array.isArray(routeTimes) || routeTimes.length === 0) {
           return res.status(400).json({ error: 'routeTimes array vereist' });
         }
@@ -1512,11 +1528,68 @@ export default async function handler(req, res) {
           }
         }
         console.log(`[saveRouteTimes] ${results.length} contacten bijgewerkt, kalender OK: ${calendarSynced}, fouten: ${calendarErrors.length}`);
+        let routeLockSaved = false;
+        let routeLockState = null;
+        if (routeLock && typeof routeLock === 'object') {
+          const lockDate = normalizeYyyyMmDdInput(String(routeLock.dateStr || ''));
+          if (!lockDate) {
+            return res.status(400).json({ error: 'routeLock.dateStr vereist (YYYY-MM-DD)' });
+          }
+          if (!isRouteLockStoreConfigured()) {
+            return res.status(503).json({
+              error:
+                'Route-lock gebruikt Upstash Redis. Zet UPSTASH_REDIS_REST_URL en UPSTASH_REDIS_REST_TOKEN op Vercel.',
+              code: 'NO_ROUTE_LOCK_STORE',
+            });
+          }
+          const lockWrite = await setRouteLock(locConfigured, lockDate, routeLock);
+          if (!lockWrite.ok) {
+            return res.status(400).json({ error: 'Kon route-lock niet opslaan', code: lockWrite.code || 'ROUTE_LOCK_SAVE_FAILED' });
+          }
+          routeLockSaved = true;
+          routeLockState = lockWrite.lock;
+          console.log('[saveRouteTimes] routeLock saved', {
+            dateStr: lockDate,
+            locked: !!routeLockState?.locked,
+            orderLen: Array.isArray(routeLockState?.orderContactIds) ? routeLockState.orderContactIds.length : 0,
+          });
+        }
         return res.status(200).json({
           success: true,
           saved: results.length,
           calendarSynced,
           calendarErrors: calendarErrors.length ? calendarErrors : undefined,
+          routeLockSaved,
+          routeLock: routeLockState || undefined,
+        });
+      }
+
+      case 'setRouteLock': {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+        if (!isRouteLockStoreConfigured()) {
+          return res.status(503).json({
+            error:
+              'Route-lock gebruikt Upstash Redis. Zet UPSTASH_REDIS_REST_URL en UPSTASH_REDIS_REST_TOKEN op Vercel.',
+            code: 'NO_ROUTE_LOCK_STORE',
+          });
+        }
+        const dateStr = normalizeYyyyMmDdInput(String(req.body?.date || req.body?.dateStr || ''));
+        if (!dateStr) return res.status(400).json({ error: 'date vereist (YYYY-MM-DD)' });
+        const routeLock = req.body?.routeLock && typeof req.body.routeLock === 'object'
+          ? req.body.routeLock
+          : { locked: false };
+        const out = await setRouteLock(locConfigured, dateStr, {
+          ...routeLock,
+          dateStr,
+        });
+        if (!out.ok) {
+          return res.status(400).json({ error: 'Kon route-lock niet opslaan', code: out.code || 'ROUTE_LOCK_SAVE_FAILED' });
+        }
+        return res.status(200).json({
+          success: true,
+          dateStr,
+          routeLock: out.lock,
+          routeLockStoreConfigured: true,
         });
       }
 

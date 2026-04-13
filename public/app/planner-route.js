@@ -91,10 +91,27 @@
       btn.disabled = true;
     }
     try {
+      const plannerUser = typeof ctx.getCurrentPlannerUser === 'function' ? ctx.getCurrentPlannerUser() : '';
+      const orderContactIds = routeSequence.map((a) => (a?.contactId ? String(a.contactId) : '')).filter(Boolean);
+      const etasByContactId = {};
+      routeSequence.forEach((a) => {
+        const cid = a?.contactId ? String(a.contactId) : '';
+        const ts = a?.timeSlot ? ctx.normalizeTimeStr(String(a.timeSlot).replace(/^~/, '')) : '';
+        if (cid && ts) etasByContactId[cid] = ts;
+      });
       const res = await fetch('/api/ghl?action=saveRouteTimes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-HK-Auth': ctx.hkAuthHeader() },
-        body: JSON.stringify({ routeTimes: toSave }),
+        body: JSON.stringify({
+          routeTimes: toSave,
+          routeLock: {
+            dateStr: routeDate,
+            locked: true,
+            orderContactIds,
+            etasByContactId,
+            updatedBy: plannerUser || 'unknown',
+          },
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Fout');
@@ -111,16 +128,9 @@
       if (typeof ctx.setConfirmedRouteOrder === 'function') {
         ctx.setConfirmedRouteOrder(
           routeDate,
-          routeSequence.map((a) => (a?.contactId ? String(a.contactId) : '')).filter(Boolean)
+          orderContactIds
         );
       }
-      const orderContactIds = routeSequence.map((a) => (a?.contactId ? String(a.contactId) : '')).filter(Boolean);
-      const etasByContactId = {};
-      routeSequence.forEach((a) => {
-        const cid = a?.contactId ? String(a.contactId) : '';
-        const ts = a?.timeSlot ? ctx.normalizeTimeStr(String(a.timeSlot).replace(/^~/, '')) : '';
-        if (cid && ts) etasByContactId[cid] = ts;
-      });
       if (typeof ctx.saveRouteOperationalLock === 'function') {
         ctx.saveRouteOperationalLock(routeDate, { orderContactIds, etasByContactId });
       }

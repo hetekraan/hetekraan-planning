@@ -27,6 +27,7 @@
       isKlaarLocally,
       isKlaarLocallyContactDate,
       clearDashBlockedDate,
+      syncCentralRouteLock,
       applyRouteSnapshot,
       render,
       setAppointments,
@@ -61,6 +62,9 @@
       const rows = Array.isArray(data?.appointments) ? data.appointments : [];
       if (typeof ctx.setPlannerCustomerDayFull === 'function') {
         ctx.setPlannerCustomerDayFull(!!data.customerDayFull, !!data.customerDayFullStoreConfigured);
+      }
+      if (typeof syncCentralRouteLock === 'function') {
+        syncCentralRouteLock(dateStr, data.routeLock || null, !!data.routeLockStoreConfigured);
       }
       const appTpl = typeof getGhlIosContactAppUrlTemplate === 'function' ? getGhlIosContactAppUrlTemplate() : '';
       setAppointments(

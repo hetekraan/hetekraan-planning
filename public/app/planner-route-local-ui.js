@@ -85,6 +85,7 @@
     const dateStr = input?.dateStr;
     const routeSnapshotKey = input?.routeSnapshotKey;
     const clearConfirmedRouteOrder = input?.clearConfirmedRouteOrder;
+    const clearRouteOperationalLock = input?.clearRouteOperationalLock;
     const updateRouteLocalUiFn = input?.updateRouteLocalUi;
     const reload = input?.reload;
     const showToast = input?.showToast;
@@ -95,6 +96,9 @@
     } catch (_) {}
     if (typeof clearConfirmedRouteOrder === 'function') {
       clearConfirmedRouteOrder();
+    }
+    if (typeof clearRouteOperationalLock === 'function') {
+      clearRouteOperationalLock();
     }
     updateRouteLocalUiFn();
     await reload();
