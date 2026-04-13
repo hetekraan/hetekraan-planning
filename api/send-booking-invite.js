@@ -14,7 +14,6 @@ import {
   blockDisplayLabels,
   blockOfferKey,
   evaluateBlockOffer,
-  isEventInCustomerBlock,
 } from '../lib/block-capacity-offers.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
@@ -49,35 +48,152 @@ import { rankProposalCandidates } from '../lib/proposal-ranking.js';
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_BASE        = 'https://services.leadconnectorhq.com';
-const MAPS_KEY = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_KEY;
 const PROPOSAL_CLUSTERING_FIRST = String(process.env.PROPOSAL_CLUSTERING_FIRST || '').toLowerCase() === 'true';
 
-function haversine(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function normalizeSelectedInviteSlots(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue;
+    const dateStr = String(row.dateStr || '').trim();
+    const block = String(row.block || '').trim();
+    if (!YMD_RE.test(dateStr)) continue;
+    if (block !== 'morning' && block !== 'afternoon') continue;
+    const key = `${dateStr}_${block}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ dateStr, block });
+    if (out.length >= 2) break;
+  }
+  return out;
 }
 
-async function geocode(address) {
-  if (!MAPS_KEY) return null;
-  try {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${MAPS_KEY}`;
-    const r = await fetch(url);
-    const d = await r.json();
-    if (d.status === 'OK' && d.results?.[0]?.geometry?.location) {
-      return d.results[0].geometry.location;
+async function validateSelectedInviteSlots({
+  selected,
+  workType,
+  proposalConstraints,
+  perf,
+  blockSlotUserId,
+  trace,
+}) {
+  const eventCache = new Map();
+
+  async function loadMergedCalendarDayEvents(dateStr) {
+    if (eventCache.has(dateStr)) return eventCache.get(dateStr);
+    const dayBounds = amsterdamCalendarDayBoundsMs(dateStr);
+    if (!dayBounds) {
+      eventCache.set(dateStr, []);
+      return [];
     }
-  } catch {}
-  return null;
-}
+    const tCal = Date.now();
+    const raw = await cachedFetchCalendarEventsForDay(dateStr, {
+      base: GHL_BASE,
+      locationId: GHL_LOCATION_ID,
+      calendarId: ghlCalendarIdFromEnv(),
+      apiKey: GHL_API_KEY,
+    });
+    if (perf) perf.ghl_calendar_fetch_sum_ms += Date.now() - tCal;
+    if (raw === null) {
+      eventCache.set(dateStr, null);
+      return null;
+    }
+    const calEv = Array.isArray(raw) ? raw : [];
+    const tBlk = Date.now();
+    const blockedMerged = await cachedFetchBlockedSlotsAsEvents(
+      GHL_BASE,
+      {
+        locationId: GHL_LOCATION_ID,
+        calendarId: ghlCalendarIdFromEnv(),
+        apiKey: GHL_API_KEY,
+        assignedUserId: blockSlotUserId,
+      },
+      dayBounds
+    );
+    if (perf) perf.blocked_slots_fetch_sum_ms += Date.now() - tBlk;
+    const merged = calEv.concat(Array.isArray(blockedMerged) ? blockedMerged : []);
+    markBlockLikeOnCalendarEvents(merged);
+    eventCache.set(dateStr, merged);
+    return merged;
+  }
 
-function nearestDistanceKm(newCoord, existingCoords) {
-  if (!existingCoords.length) return null;
-  return Math.min(...existingCoords.map((c) => haversine(newCoord.lat, newCoord.lng, c.lat, c.lng)));
+  async function eventsForCapacityForDate(dateStr) {
+    const merged = await loadMergedCalendarDayEvents(dateStr);
+    if (merged === null) return null;
+    let resvSynthetic = [];
+    try {
+      const tR = Date.now();
+      resvSynthetic = await cachedListConfirmedSyntheticEventsForDate(dateStr);
+      if (perf) perf.redis_synthetic_sum_ms += Date.now() - tR;
+    } catch (e) {
+      console.warn('[send-booking-invite] block reservations:', e?.message || e);
+    }
+    return resvSynthetic.length > 0 ? [...merged, ...resvSynthetic] : merged;
+  }
+
+  const picked = [];
+  for (const sel of selected) {
+    if (!proposalConstraintsPassCandidate(sel.dateStr, sel.block, proposalConstraints)) {
+      return { ok: false, error: 'Geselecteerde opties voldoen niet aan de actieve voorwaarden.' };
+    }
+
+    const tDb = Date.now();
+    const dayBlk = await isCustomerBookingBlockedOnAmsterdamDate(
+      GHL_BASE,
+      customerAvailabilityCtx(blockSlotUserId),
+      sel.dateStr
+    );
+    if (perf) perf.day_blocked_check_sum_ms += Date.now() - tDb;
+    if (dayBlk) {
+      return { ok: false, error: 'Een van de gekozen dagen is geblokkeerd voor klantboekingen.' };
+    }
+
+    const baseWithResv = await eventsForCapacityForDate(sel.dateStr);
+    if (baseWithResv === null) {
+      return { ok: false, error: 'Kalender-events tijdelijk niet beschikbaar. Probeer het later opnieuw.' };
+    }
+
+    const events = augmentMergedForPicks(baseWithResv, sel.dateStr, picked, workType);
+    const tEv = Date.now();
+    const evaluation = evaluateBlockOffer({
+      dateStr: sel.dateStr,
+      block: sel.block,
+      workType,
+      events,
+      dayBlocked: false,
+    });
+    if (perf) perf.evaluate_block_offer_sum_ms += Date.now() - tEv;
+    if (!evaluation.eligible) {
+      return {
+        ok: false,
+        error:
+          'Een van de gekozen tijdsloten is niet meer beschikbaar. Vernieuw de suggestie en probeer opnieuw.',
+      };
+    }
+
+    const labels = blockDisplayLabels(sel.block);
+    picked.push({
+      dateStr: sel.dateStr,
+      block: sel.block,
+      score: Number(evaluation.score ?? 0),
+      legacyScore: Number(evaluation.score ?? 0),
+      evalScore: Number(evaluation.score ?? 0),
+      dateLabel: dutchDateLabel(sel.dateStr),
+      blockLabel: labels.blockLabelNl,
+      timeLabel: labels.slotLabelSpace,
+    });
+  }
+
+  if (trace) {
+    trace.dayDecisions.push({
+      outcome: 'selected_slots_validated',
+      slots: picked.map((s) => ({ dateStr: s.dateStr, block: s.block })),
+    });
+  }
+
+  return { ok: true, slots: picked };
 }
 
 /** Zelfde availability-context als confirm-booking / suggest-slots (Europe/Amsterdam-dag via GHL). */
@@ -155,7 +271,7 @@ function dutchDateLabel(dateStr) {
  * Tot 2 opties `dateStr` + `block`, zelfde regels als api/suggest-slots (block-capacity-offers + merged kalender).
  * @param {Record<string, unknown> | null | undefined} proposalConstraints — geparsed; null = geen filter
  */
-async function pickBlockInviteOffers(workType, timings, proposalConstraints = null, customerAddress = '') {
+async function pickBlockInviteOffers(workType, timings, proposalConstraints = null) {
   const perf = timings || null;
   if (!GHL_API_KEY) return [];
   const calId = ghlCalendarIdFromEnv();
@@ -171,17 +287,6 @@ async function pickBlockInviteOffers(workType, timings, proposalConstraints = nu
 
   const dbg = availabilityDebugEnabled();
   const trace = dbg ? { flow: 'send-booking-invite', timeZone: 'Europe/Amsterdam', dayDecisions: [] } : null;
-  const geocodeCache = new Map();
-  const newCoord = customerAddress ? await geocode(customerAddress) : null;
-
-  const geocodeAddressCached = async (address) => {
-    const key = String(address || '').trim().toLowerCase();
-    if (!key) return null;
-    if (geocodeCache.has(key)) return geocodeCache.get(key);
-    const coord = await geocode(key);
-    geocodeCache.set(key, coord);
-    return coord;
-  };
 
   const eventCache = new Map();
 
@@ -294,18 +399,6 @@ async function pickBlockInviteOffers(workType, timings, proposalConstraints = nu
         continue;
       }
       const labels = blockDisplayLabels(block);
-      let nearestDistanceForCandidate = null;
-      if (newCoord) {
-        const customerEvents = eventsForCapacity.filter((e) => !e._hkGhlBlockSlot);
-        const blockEvents = customerEvents.filter((e) => isEventInCustomerBlock(e, block));
-        const coords = [];
-        for (const e of blockEvents) {
-          if (!e?.address) continue;
-          const c = await geocodeAddressCached(e.address);
-          if (c) coords.push(c);
-        }
-        nearestDistanceForCandidate = nearestDistanceKm(newCoord, coords);
-      }
       const evalScore = Number(evaluation.score ?? 0);
       candidates.push({
         dateStr: cursor,
@@ -313,7 +406,6 @@ async function pickBlockInviteOffers(workType, timings, proposalConstraints = nu
         score: evalScore + i * 0.02,
         legacyScore: evalScore + i * 0.02,
         evalScore,
-        nearestDistanceKm: nearestDistanceForCandidate,
         dateLabel,
         blockLabel: labels.blockLabelNl,
         timeLabel: labels.slotLabelSpace,
@@ -348,20 +440,25 @@ async function pickBlockInviteOffers(workType, timings, proposalConstraints = nu
     return [];
   }
 
-  const ranking = rankProposalCandidates({
-    candidates,
-    nowDateStr: startDate,
-    enableClusteringFirst: PROPOSAL_CLUSTERING_FIRST,
-    horizonDays: 14,
-    tierAMinutes: 15,
-    tierBMinutes: 25,
-    kmPerMinute: 0.9,
-  });
-  const rankedCandidates = ranking.ranked;
-  console.log('[send-booking-invite][proposal_ranking]', {
-    mode: PROPOSAL_CLUSTERING_FIRST ? 'clustering_first' : 'legacy',
-    ...ranking.telemetry,
-  });
+  let rankedCandidates = candidates;
+  if (PROPOSAL_CLUSTERING_FIRST) {
+    const ranking = rankProposalCandidates({
+      candidates,
+      nowDateStr: startDate,
+      enableClusteringFirst: true,
+      horizonDays: 14,
+      tierAMinutes: 15,
+      tierBMinutes: 25,
+      kmPerMinute: 0.9,
+    });
+    rankedCandidates = ranking.ranked;
+    console.log('[send-booking-invite][proposal_ranking]', {
+      mode: 'clustering_first',
+      ...ranking.telemetry,
+    });
+  } else {
+    rankedCandidates = [...candidates].sort((a, b) => (a.legacyScore ?? 0) - (b.legacyScore ?? 0));
+  }
   candidates.length = 0;
   candidates.push(...rankedCandidates);
   if (candidates.length === 0) {
@@ -438,6 +535,8 @@ export default async function handler(req, res) {
   const reqT0 = Date.now();
   const perf = {
     route: 'send-booking-invite',
+    invite_path: 'unknown',
+    token_clear_sleep_ms: 0,
     ghl_calendar_fetch_sum_ms: 0,
     blocked_slots_fetch_sum_ms: 0,
     redis_synthetic_sum_ms: 0,
@@ -449,6 +548,7 @@ export default async function handler(req, res) {
     ghl_invite_puts_ms: 0,
     ghl_tag_ops_ms: 0,
     pick_block_wall_ms: 0,
+    selected_slots_validate_ms: 0,
     map_token_response_ms: 0,
   };
 
@@ -576,9 +676,52 @@ export default async function handler(req, res) {
   const intakePriceTotal = toPriceNumber(priceTotalParam);
   const proposalConstraints = parseProposalConstraints(body.proposalConstraints);
 
-  const tPick0 = Date.now();
-  const slots = await pickBlockInviteOffers(workType, perf, proposalConstraints, address);
-  perf.pick_block_wall_ms = Date.now() - tPick0;
+  const selectedRaw = body.selectedSlots;
+  const selectedNormalized = normalizeSelectedInviteSlots(selectedRaw);
+  let slots = [];
+
+  const dbg = availabilityDebugEnabled();
+  const trace = dbg ? { flow: 'send-booking-invite', timeZone: 'Europe/Amsterdam', dayDecisions: [] } : null;
+
+  if (selectedNormalized.length) {
+    perf.invite_path = 'selected_slots';
+    const tSel0 = Date.now();
+    const blockSlotUserId = await resolveBlockSlotAssignedUserId(
+      GHL_BASE,
+      GHL_API_KEY,
+      ghlLocationIdFromEnv(),
+      ghlCalendarIdFromEnv()
+    );
+    const v = await validateSelectedInviteSlots({
+      selected: selectedNormalized,
+      workType,
+      proposalConstraints,
+      perf,
+      blockSlotUserId,
+      trace,
+    });
+    perf.selected_slots_validate_ms = Date.now() - tSel0;
+    if (!v.ok) {
+      return res.status(409).json({ success: false, error: v.error || 'Geselecteerde tijdsloten zijn niet meer geldig.' });
+    }
+    slots = v.slots;
+    if (trace) {
+      logAvailability('invite_booking_flow_summary', {
+        ...trace,
+        offeredToClient: slots.map((c) => ({
+          dateStr: c.dateStr,
+          block: c.block,
+          offerKey: blockOfferKey(c.dateStr, c.block),
+        })),
+        source: 'selected_slots',
+      });
+    }
+  } else {
+    perf.invite_path = 'pick_block_invite_offers';
+    const tPick0 = Date.now();
+    slots = await pickBlockInviteOffers(workType, perf, proposalConstraints);
+    perf.pick_block_wall_ms = Date.now() - tPick0;
+  }
   if (slots.length === 0) {
     return res.status(200).json({ success: false, message: 'Geen beschikbare slots in de komende 7 werkdagen.' });
   }
@@ -631,7 +774,13 @@ export default async function handler(req, res) {
   const slot1 = slots[0];
   const slot2 = slots[1];
   // Voorbeeldtekst (zelfde inhoud als template); wordt niet meer via API verstuurd.
-  let message = `We hebben nog een gaatje op een van de volgende twee tijdslots:\n\n`;
+  const slotPhrase =
+    slots.length <= 1
+      ? 'dit tijdslot'
+      : slots.length === 2
+        ? 'een van de volgende twee tijdslots'
+        : `een van de volgende ${slots.length} tijdslots`;
+  let message = `We hebben nog een gaatje op ${slotPhrase}:\n\n`;
   message += `*Optie 1:* ${capitalize(slot1.dateLabel)} tussen ${slot1.timeLabel}\n`;
   if (slot2) message += `*Optie 2:* ${capitalize(slot2.dateLabel)} tussen ${slot2.timeLabel}\n`;
   message += `\nKlik op de link om jouw voorkeur door te geven, dan plannen we het gelijk in:\n${bookingUrl}`;
@@ -714,7 +863,11 @@ export default async function handler(req, res) {
       console.warn('[send-booking-invite] token clear PUT:', clearRes.status, t.slice(0, 300));
     }
     const resetMs = Math.min(Math.max(parseInt(process.env.BOOKING_TOKEN_RESET_MS || '450', 10) || 450, 0), 5000);
-    if (resetMs > 0) await new Promise((r) => setTimeout(r, resetMs));
+    if (resetMs > 0) {
+      const tSleep0 = Date.now();
+      await new Promise((r) => setTimeout(r, resetMs));
+      perf.token_clear_sleep_ms += Date.now() - tSleep0;
+    }
   }
 
   const invitePut = {
@@ -808,6 +961,19 @@ export default async function handler(req, res) {
   } finally {
     perf.total_ms = Date.now() - reqT0;
     console.log('[timing send-booking-invite]', JSON.stringify(perf));
+    console.log('[timing send-booking-invite][phases]', {
+      invite_path: perf.invite_path,
+      total_ms: perf.total_ms,
+      contact_resolve_ms: perf.contact_resolve_ms,
+      ghl_contact_get_ms: perf.ghl_contact_get_ms,
+      ghl_contact_put_phone_ms: perf.ghl_contact_put_phone_ms,
+      selected_slots_validate_ms: perf.selected_slots_validate_ms,
+      pick_block_wall_ms: perf.pick_block_wall_ms,
+      ghl_invite_puts_ms: perf.ghl_invite_puts_ms,
+      ghl_tag_ops_ms: perf.ghl_tag_ops_ms,
+      token_clear_sleep_ms: perf.token_clear_sleep_ms,
+      map_token_response_ms: perf.map_token_response_ms,
+    });
   }
 }
 

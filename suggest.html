@@ -852,6 +852,13 @@
             priceRules: intake.selectedPriceItems,
             priceTotal: intake.totaalprijs,
           };
+      // Exact gekozen opties uit de suggest-preview (`loadedSlots` komt uit `/api/suggest-slots` response).
+      if (Array.isArray(loadedSlots) && loadedSlots.length) {
+        body.selectedSlots = loadedSlots.map((s) => ({
+          dateStr: String(s.dateStr || '').trim(),
+          block: String(s.block || '').trim(),
+        }));
+      }
       if (pendingProposalConstraints) body.proposalConstraints = pendingProposalConstraints;
 
       const ac = new AbortController();
@@ -873,6 +880,10 @@
         data = raw ? JSON.parse(raw) : {};
       } catch {
         throw new Error('Server gaf geen geldige JSON (HTTP ' + res.status + '). Controleer /api/send-booking-invite.');
+      }
+
+      if (!res.ok) {
+        throw new Error(data.error || data.message || `HTTP ${res.status}`);
       }
 
       hide('resultCard');

@@ -51,6 +51,16 @@
     const type = document.getElementById('mType').value.toLowerCase();
     const desc = document.getElementById('mDesc').value.trim();
     const date = document.getElementById('mDate')?.value || new Date().toISOString().split('T')[0];
+    const proposalDateStr = String(document.getElementById('mDate')?.value || '').trim();
+    const proposalBlock = String(document.getElementById('mSlot')?.value || '').trim();
+    if (!proposalDateStr || !/^\d{4}-\d{2}-\d{2}$/.test(proposalDateStr)) {
+      ctx.showToast('Kies een datum voor het voorstel', 'info');
+      return;
+    }
+    if (proposalBlock !== 'morning' && proposalBlock !== 'afternoon') {
+      ctx.showToast('Kies ochtend of middag voor het voorstel', 'info');
+      return;
+    }
     if (!name) {
       ctx.showToast('Vul de naam in', 'info');
       return;
@@ -63,6 +73,8 @@
     try {
       const proposalConstraints = buildPlannerProposalConstraints();
       const body = { name, phone, address, type, workType: type, desc };
+      // Exact gekozen voorstel uit de modal (`mDate` + `mSlot`); server valideert licht i.p.v. opnieuw te scannen.
+      body.selectedSlots = [{ dateStr: proposalDateStr, block: proposalBlock }];
       if (proposalConstraints) body.proposalConstraints = proposalConstraints;
       const pricePayload = pricePayloadFromModalCatalog();
       if (pricePayload) {
