@@ -41,7 +41,9 @@ import {
   proposalBlocksToEvaluate,
   proposalConstraintsPassCandidate,
 } from '../lib/proposal-constraints.js';
+import { rankProposalCandidates } from '../lib/proposal-ranking.js';
 const GHL_API_KEY = process.env.GHL_API_KEY;
+const PROPOSAL_CLUSTERING_FIRST = String(process.env.PROPOSAL_CLUSTERING_FIRST || '').toLowerCase() === 'true';
 
 function sleepMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -109,8 +111,8 @@ async function geocode(address) {
   return null;
 }
 
-function routeFitScore(newCoord, existingCoords) {
-  if (existingCoords.length === 0) return 0;
+function nearestDistanceKm(newCoord, existingCoords) {
+  if (!existingCoords.length) return null;
   return Math.min(...existingCoords.map((c) => haversine(newCoord.lat, newCoord.lng, c.lat, c.lng)));
 }
 
@@ -761,15 +763,19 @@ export default async function handler(req, res) {
         const slotsLeft = Math.max(0, maxB - evaluation.state.blockCustomerCount);
         const existingCount = evaluation.state.blockCustomerCount;
 
-        let sortScore = (evaluation.score ?? 0) + i * 0.02;
+        const evalScore = Number(evaluation.score ?? 0);
+        let legacyScore = evalScore + i * 0.02;
+        let nearestDistanceForCandidate = null;
         if (newCoord) {
           const customerEvents = eventsForCapacity.filter((e) => !e._hkGhlBlockSlot);
           const blockEvents = customerEvents.filter((e) => isEventInCustomerBlock(e, block));
           const tRg = Date.now();
           const existingCoords = await geocodeEvents(blockEvents);
           perf.geocode_route_fit_sum_ms += Date.now() - tRg;
-          const fitScore = routeFitScore(newCoord, existingCoords);
-          sortScore += fitScore * (1 + blockEvents.length / Math.max(1, maxB)) + i * 0.01;
+          nearestDistanceForCandidate = nearestDistanceKm(newCoord, existingCoords);
+          if (Number.isFinite(nearestDistanceForCandidate)) {
+            legacyScore += nearestDistanceForCandidate * (1 + blockEvents.length / Math.max(1, maxB)) + i * 0.01;
+          }
         }
 
         candidates.push({
@@ -777,7 +783,10 @@ export default async function handler(req, res) {
           dateLabel,
           block,
           existingCount,
-          score: sortScore,
+          score: legacyScore,
+          legacyScore,
+          evalScore,
+          nearestDistanceKm: nearestDistanceForCandidate,
           timeLabel: labels.slotLabelSpace,
           blockLabel: labels.blockLabelNl,
           slotsLeft,
@@ -853,10 +862,23 @@ export default async function handler(req, res) {
     }
 
     const tMap0 = Date.now();
-    candidates.sort((a, b) => a.score - b.score);
+    const ranking = rankProposalCandidates({
+      candidates,
+      nowDateStr: startDate,
+      enableClusteringFirst: PROPOSAL_CLUSTERING_FIRST,
+      horizonDays: 14,
+      tierAMinutes: 15,
+      tierBMinutes: 25,
+      kmPerMinute: 0.9,
+    });
+    const rankedCandidates = ranking.ranked;
+    console.log('[suggest-slots][proposal_ranking]', {
+      mode: PROPOSAL_CLUSTERING_FIRST ? 'clustering_first' : 'legacy',
+      ...ranking.telemetry,
+    });
 
     const maxSuggest = effectiveMaxOptions(proposalConstraints, 2, 2);
-    const suggestions = candidates.slice(0, maxSuggest).map((c) => ({
+    const suggestions = rankedCandidates.slice(0, maxSuggest).map((c) => ({
       dateStr: c.dateStr,
       dateLabel: c.dateLabel,
       block: c.block,

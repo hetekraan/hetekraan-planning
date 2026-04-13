@@ -14,6 +14,7 @@ import {
   blockDisplayLabels,
   blockOfferKey,
   evaluateBlockOffer,
+  isEventInCustomerBlock,
 } from '../lib/block-capacity-offers.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
@@ -43,10 +44,41 @@ import {
   proposalBlocksToEvaluate,
   proposalConstraintsPassCandidate,
 } from '../lib/proposal-constraints.js';
+import { rankProposalCandidates } from '../lib/proposal-ranking.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_BASE        = 'https://services.leadconnectorhq.com';
+const MAPS_KEY = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_KEY;
+const PROPOSAL_CLUSTERING_FIRST = String(process.env.PROPOSAL_CLUSTERING_FIRST || '').toLowerCase() === 'true';
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+async function geocode(address) {
+  if (!MAPS_KEY) return null;
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${MAPS_KEY}`;
+    const r = await fetch(url);
+    const d = await r.json();
+    if (d.status === 'OK' && d.results?.[0]?.geometry?.location) {
+      return d.results[0].geometry.location;
+    }
+  } catch {}
+  return null;
+}
+
+function nearestDistanceKm(newCoord, existingCoords) {
+  if (!existingCoords.length) return null;
+  return Math.min(...existingCoords.map((c) => haversine(newCoord.lat, newCoord.lng, c.lat, c.lng)));
+}
 
 /** Zelfde availability-context als confirm-booking / suggest-slots (Europe/Amsterdam-dag via GHL). */
 function customerAvailabilityCtx(assignedUserId) {
@@ -123,7 +155,7 @@ function dutchDateLabel(dateStr) {
  * Tot 2 opties `dateStr` + `block`, zelfde regels als api/suggest-slots (block-capacity-offers + merged kalender).
  * @param {Record<string, unknown> | null | undefined} proposalConstraints — geparsed; null = geen filter
  */
-async function pickBlockInviteOffers(workType, timings, proposalConstraints = null) {
+async function pickBlockInviteOffers(workType, timings, proposalConstraints = null, customerAddress = '') {
   const perf = timings || null;
   if (!GHL_API_KEY) return [];
   const calId = ghlCalendarIdFromEnv();
@@ -139,6 +171,17 @@ async function pickBlockInviteOffers(workType, timings, proposalConstraints = nu
 
   const dbg = availabilityDebugEnabled();
   const trace = dbg ? { flow: 'send-booking-invite', timeZone: 'Europe/Amsterdam', dayDecisions: [] } : null;
+  const geocodeCache = new Map();
+  const newCoord = customerAddress ? await geocode(customerAddress) : null;
+
+  const geocodeAddressCached = async (address) => {
+    const key = String(address || '').trim().toLowerCase();
+    if (!key) return null;
+    if (geocodeCache.has(key)) return geocodeCache.get(key);
+    const coord = await geocode(key);
+    geocodeCache.set(key, coord);
+    return coord;
+  };
 
   const eventCache = new Map();
 
@@ -251,10 +294,26 @@ async function pickBlockInviteOffers(workType, timings, proposalConstraints = nu
         continue;
       }
       const labels = blockDisplayLabels(block);
+      let nearestDistanceForCandidate = null;
+      if (newCoord) {
+        const customerEvents = eventsForCapacity.filter((e) => !e._hkGhlBlockSlot);
+        const blockEvents = customerEvents.filter((e) => isEventInCustomerBlock(e, block));
+        const coords = [];
+        for (const e of blockEvents) {
+          if (!e?.address) continue;
+          const c = await geocodeAddressCached(e.address);
+          if (c) coords.push(c);
+        }
+        nearestDistanceForCandidate = nearestDistanceKm(newCoord, coords);
+      }
+      const evalScore = Number(evaluation.score ?? 0);
       candidates.push({
         dateStr: cursor,
         block,
-        score: (evaluation.score ?? 0) + i * 0.02,
+        score: evalScore + i * 0.02,
+        legacyScore: evalScore + i * 0.02,
+        evalScore,
+        nearestDistanceKm: nearestDistanceForCandidate,
         dateLabel,
         blockLabel: labels.blockLabelNl,
         timeLabel: labels.slotLabelSpace,
@@ -289,7 +348,22 @@ async function pickBlockInviteOffers(workType, timings, proposalConstraints = nu
     return [];
   }
 
-  candidates.sort((a, b) => a.score - b.score);
+  const ranking = rankProposalCandidates({
+    candidates,
+    nowDateStr: startDate,
+    enableClusteringFirst: PROPOSAL_CLUSTERING_FIRST,
+    horizonDays: 14,
+    tierAMinutes: 15,
+    tierBMinutes: 25,
+    kmPerMinute: 0.9,
+  });
+  const rankedCandidates = ranking.ranked;
+  console.log('[send-booking-invite][proposal_ranking]', {
+    mode: PROPOSAL_CLUSTERING_FIRST ? 'clustering_first' : 'legacy',
+    ...ranking.telemetry,
+  });
+  candidates.length = 0;
+  candidates.push(...rankedCandidates);
   if (candidates.length === 0) {
     if (trace) {
       logAvailability('invite_booking_flow_summary', {
@@ -503,7 +577,7 @@ export default async function handler(req, res) {
   const proposalConstraints = parseProposalConstraints(body.proposalConstraints);
 
   const tPick0 = Date.now();
-  const slots = await pickBlockInviteOffers(workType, perf, proposalConstraints);
+  const slots = await pickBlockInviteOffers(workType, perf, proposalConstraints, address);
   perf.pick_block_wall_ms = Date.now() - tPick0;
   if (slots.length === 0) {
     return res.status(200).json({ success: false, message: 'Geen beschikbare slots in de komende 7 werkdagen.' });
