@@ -618,6 +618,18 @@ export default async function handler(req, res) {
             getField(contact, BOOKING_FORM_FIELD_IDS.tijdslot) ||
             getField(contact, FIELD_IDS.tijdafspraak) ||
             null;
+          const confirmedDayPartRaw = String(
+            getField(contact, BOOKING_FORM_FIELD_IDS.boeking_bevestigd_dagdeel) || ''
+          )
+            .trim()
+            .toLowerCase();
+          e.parsedConfirmedDayPart =
+            confirmedDayPartRaw === 'morning' || confirmedDayPartRaw === 'afternoon'
+              ? confirmedDayPartRaw
+              : null;
+          e.parsedConfirmedDate = String(
+            getField(contact, BOOKING_FORM_FIELD_IDS.boeking_bevestigd_datum) || ''
+          ).trim();
           e.parsedPaymentStatus = getField(contact, BOOKING_FORM_FIELD_IDS.betaal_status) || '';
           const canonPrijsRegels = getField(contact, BOOKING_FORM_FIELD_IDS.prijs_regels);
           let parsedPrijsRegels = parseStructuredPriceRulesString(canonPrijsRegels);
