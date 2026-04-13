@@ -234,6 +234,166 @@ function collectViolations(order, etas, timeWindows) {
 }
 
 /**
+ * Interne vaste start (operationeel), veldnaam `internalFixedStart` of `internalFixedStartTime`, "HH:mm".
+ * Niet hetzelfde als het klant-boekingsslot (`timeWindow` / `dayPart`).
+ */
+function parseInternalFixedStartMinutes(appt) {
+  const s = String(appt?.internalFixedStart ?? appt?.internalFixedStartTime ?? '')
+    .trim()
+    .replace(/^~/, '');
+  if (!s) return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(s);
+  if (!m) return null;
+  const h = parseInt(m[1], 10);
+  const mm = parseInt(m[2], 10);
+  if (!Number.isFinite(h) || !Number.isFinite(mm) || h > 23 || mm > 59) return null;
+  return h * 60 + mm;
+}
+
+/** Harde regels: interne start binnen dagdeel-blok (ochtend t/m 13:00 / middag vanaf 13:00). */
+function validateInternalPinsPartitioned(appointments, morningOrigIndices, afternoonOrigIndices) {
+  const messages = [];
+  for (const gi of morningOrigIndices) {
+    const a = appointments[gi];
+    const t = parseInternalFixedStartMinutes(a);
+    if (t == null) continue;
+    const job = a.jobDuration || 30;
+    if (t + job > MORNING_BLOCK.end) {
+      messages.push(
+        `Interne start ${minutesToTime(t)} (+ ${job} min) eindigt na 13:00 (ochtendblok). Kies een eerdere tijd of kortere klus.`
+      );
+    }
+  }
+  for (const gi of afternoonOrigIndices) {
+    const a = appointments[gi];
+    const t = parseInternalFixedStartMinutes(a);
+    if (t == null) continue;
+    const job = a.jobDuration || 30;
+    if (t < AFTERNOON_BLOCK.start) {
+      messages.push(
+        `Middagafspraak: interne start ${minutesToTime(t)} ligt vóór 13:00. Zet de afspraak op ochtend of kies een tijd vanaf 13:00.`
+      );
+    }
+    if (t + job > AFTERNOON_BLOCK.end) {
+      messages.push(`Interne start ${minutesToTime(t)} (+ ${job} min) eindigt na 17:00 (middagblok).`);
+    }
+  }
+  return messages;
+}
+
+/**
+ * Partition-subset met harde interne starttijden: vrije stops greedy vóór elke pin (deadline),
+ * pins op exacte minuut, daarna resterende vrije stops.
+ * @returns {Promise<null|{order:number[],etas:number[],legInfo:object[],travel:number[][]}|{error:string}>}
+ */
+async function optimizeSubsetMatrixWithInternalPins({ key, origin, appointments, scheduleOpts, partBlock }) {
+  const n = appointments.length;
+  if (n < 1) return { order: [], etas: [], legInfo: [], travel: [] };
+
+  const pinMinutes = appointments.map((a) => parseInternalFixedStartMinutes(a));
+  if (!pinMinutes.some((t) => t != null)) return null;
+
+  if (n === 1) {
+    return optimizeSubsetMatrix({ key, origin, appointments, scheduleOpts, fixedOrder: [0] });
+  }
+
+  const allLocations = [origin, ...appointments.map((a) => a.address)];
+  const travel = await fetchDistanceMatrixTravelMinutes(key, allLocations);
+  if (!travel) return null;
+
+  const jobDurations = appointments.map((a) => a.jobDuration || 30);
+  const pinEntries = [];
+  for (let i = 0; i < n; i++) {
+    if (pinMinutes[i] != null) pinEntries.push({ idx: i, t: pinMinutes[i] });
+  }
+  pinEntries.sort((a, b) => a.t - b.t || a.idx - b.idx);
+
+  const order = [];
+  const etasMin = [];
+  const legInfo = [];
+  const remaining = new Set(Array.from({ length: n }, (_, i) => i));
+
+  let cursorMatrixIdx = 0;
+  let cursorTime = scheduleOpts?.initialClockMinutes ?? partBlock.start;
+  if (pinEntries.length && pinEntries[0].t < cursorTime) {
+    cursorTime = pinEntries[0].t;
+  }
+
+  const travelFromCursor = (localIdx) => travel[cursorMatrixIdx][localIdx + 1];
+
+  function appendFree(localIdx) {
+    const tm = travelFromCursor(localIdx);
+    legInfo.push({ durationSeconds: tm * 60 });
+    let arrival = cursorTime + tm;
+    arrival = Math.max(arrival, partBlock.start);
+    const eta = roundUpQuarter(arrival);
+    order.push(localIdx);
+    etasMin.push(eta);
+    cursorTime = eta + jobDurations[localIdx];
+    cursorMatrixIdx = localIdx + 1;
+    remaining.delete(localIdx);
+  }
+
+  function appendPinned(localIdx, forcedMin) {
+    const tm = travelFromCursor(localIdx);
+    legInfo.push({ durationSeconds: tm * 60 });
+    const earliest = roundUpQuarter(cursorTime + tm);
+    if (earliest > forcedMin) {
+      return `Intern vaste start ${minutesToTime(forcedMin)} niet haalbaar: vroegste aankomst ~${minutesToTime(earliest)} (reistijd).`;
+    }
+    order.push(localIdx);
+    etasMin.push(forcedMin);
+    cursorTime = forcedMin + jobDurations[localIdx];
+    cursorMatrixIdx = localIdx + 1;
+    remaining.delete(localIdx);
+    return null;
+  }
+
+  function greedyFillBefore(deadlineMin) {
+    while (true) {
+      const frees = [...remaining].filter((i) => pinMinutes[i] == null);
+      if (!frees.length) return;
+      let best = -1;
+      let bestTm = Infinity;
+      for (const i of frees) {
+        const tm = travelFromCursor(i);
+        const etaQ = roundUpQuarter(Math.max(cursorTime + tm, partBlock.start));
+        const fin = etaQ + jobDurations[i];
+        if (deadlineMin < 1e9 && fin > deadlineMin) continue;
+        if (tm < bestTm) {
+          bestTm = tm;
+          best = i;
+        }
+      }
+      if (best < 0) return;
+      appendFree(best);
+    }
+  }
+
+  for (const pin of pinEntries) {
+    greedyFillBefore(pin.t);
+    if (!remaining.has(pin.idx)) {
+      return { error: 'Interne vaste starts sluiten elkaar uit (zelfde stop of onmogelijke volgorde).' };
+    }
+    const errPin = appendPinned(pin.idx, pin.t);
+    if (errPin) return { error: errPin };
+  }
+
+  greedyFillBefore(1e12);
+  while (remaining.size) {
+    const i = [...remaining][0];
+    if (pinMinutes[i] != null) {
+      const errPin = appendPinned(i, pinMinutes[i]);
+      if (errPin) return { error: errPin };
+    } else {
+      appendFree(i);
+    }
+  }
+
+  return { order, etas: etasMin, legInfo, travel };
+}
+
+/**
  * Harde klantblokken + depot → ochtend → (overgang) → middag → optioneel terug naar depot.
  */
 async function handlePartitionedDay(req, res, key, appointments, returnToDepot) {
@@ -249,12 +409,18 @@ async function handlePartitionedDay(req, res, key, appointments, returnToDepot) 
     else afternoonOrigIndices.push(i);
   }
 
+  const pinMsgs = validateInternalPinsPartitioned(appointments, morningOrigIndices, afternoonOrigIndices);
+  if (pinMsgs.length) {
+    return res.status(400).json({ error: pinMsgs[0], messages: pinMsgs });
+  }
+
   const mApps = morningOrigIndices.map((gi) => ({
     ...appointments[gi],
     address: appointments[gi].address,
     timeWindow: '09:00-13:00',
     jobDuration: appointments[gi].jobDuration || 30,
     dayPart: 0,
+    internalFixedStart: appointments[gi].internalFixedStart || appointments[gi].internalFixedStartTime || undefined,
   }));
 
   const globalOrder = [];
@@ -264,17 +430,32 @@ async function handlePartitionedDay(req, res, key, appointments, returnToDepot) 
 
   /** Ochtendfase */
   if (mApps.length > 0) {
-    const r =
-      (await optimizeSubsetMatrix({
-        key,
-        origin: DEPOT,
-        appointments: mApps,
-        scheduleOpts: {
-          initialClockMinutes: MORNING_BLOCK.start,
-          pinFirstMorningCustomer: true,
-        },
-        fixedOrder: mApps.length === 1 ? [0] : null,
-      })) || null;
+    const usePins = mApps.some((a) => parseInternalFixedStartMinutes(a) != null);
+    let r = usePins
+      ? await optimizeSubsetMatrixWithInternalPins({
+          key,
+          origin: DEPOT,
+          appointments: mApps,
+          scheduleOpts: {
+            initialClockMinutes: MORNING_BLOCK.start,
+            pinFirstMorningCustomer: false,
+          },
+          partBlock: MORNING_BLOCK,
+        })
+      : await optimizeSubsetMatrix({
+          key,
+          origin: DEPOT,
+          appointments: mApps,
+          scheduleOpts: {
+            initialClockMinutes: MORNING_BLOCK.start,
+            pinFirstMorningCustomer: true,
+          },
+          fixedOrder: mApps.length === 1 ? [0] : null,
+        });
+
+    if (r && r.error) {
+      return res.status(400).json({ error: r.error });
+    }
 
     if (!r) {
       return res.status(500).json({ error: 'DISTANCE_MATRIX_FAILED', message: 'Afstands-matrix tijdelijk niet beschikbaar' });
@@ -303,6 +484,7 @@ async function handlePartitionedDay(req, res, key, appointments, returnToDepot) 
     timeWindow: '13:00-17:00',
     jobDuration: appointments[gi].jobDuration || 30,
     dayPart: 1,
+    internalFixedStart: appointments[gi].internalFixedStart || appointments[gi].internalFixedStartTime || undefined,
   }));
 
   if (aApps.length > 0) {
@@ -320,17 +502,32 @@ async function handlePartitionedDay(req, res, key, appointments, returnToDepot) 
       afternoonClock = Math.max(AFTERNOON_BLOCK.start, lastMorningEta + lastMorningJob);
     }
 
-    const r =
-      (await optimizeSubsetMatrix({
-        key,
-        origin: afternoonOrigin,
-        appointments: aApps,
-        scheduleOpts: {
-          initialClockMinutes: afternoonClock,
-          pinFirstMorningCustomer: false,
-        },
-        fixedOrder: aApps.length === 1 ? [0] : null,
-      })) || null;
+    const usePinsPm = aApps.some((a) => parseInternalFixedStartMinutes(a) != null);
+    let r = usePinsPm
+      ? await optimizeSubsetMatrixWithInternalPins({
+          key,
+          origin: afternoonOrigin,
+          appointments: aApps,
+          scheduleOpts: {
+            initialClockMinutes: afternoonClock,
+            pinFirstMorningCustomer: false,
+          },
+          partBlock: AFTERNOON_BLOCK,
+        })
+      : await optimizeSubsetMatrix({
+          key,
+          origin: afternoonOrigin,
+          appointments: aApps,
+          scheduleOpts: {
+            initialClockMinutes: afternoonClock,
+            pinFirstMorningCustomer: false,
+          },
+          fixedOrder: aApps.length === 1 ? [0] : null,
+        });
+
+    if (r && r.error) {
+      return res.status(400).json({ error: r.error });
+    }
 
     if (!r) {
       return res.status(500).json({ error: 'DISTANCE_MATRIX_FAILED', message: 'Afstands-matrix tijdelijk niet beschikbaar' });

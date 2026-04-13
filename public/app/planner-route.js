@@ -99,6 +99,14 @@
         const ts = a?.timeSlot ? ctx.normalizeTimeStr(String(a.timeSlot).replace(/^~/, '')) : '';
         if (cid && ts) etasByContactId[cid] = ts;
       });
+      const internalFixedStartByContactId = {};
+      routeSequence.forEach((a) => {
+        const cid = a?.contactId ? String(a.contactId) : '';
+        const ft = a?.internalFixedStartTime
+          ? ctx.normalizeTimeStr(String(a.internalFixedStartTime).replace(/^~/, ''))
+          : '';
+        if (cid && ft) internalFixedStartByContactId[cid] = ft;
+      });
       const res = await fetch('/api/ghl?action=saveRouteTimes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-HK-Auth': ctx.hkAuthHeader() },
@@ -109,6 +117,7 @@
             locked: true,
             orderContactIds,
             etasByContactId,
+            internalFixedStartByContactId,
             updatedBy: plannerUser || 'unknown',
           },
         }),
@@ -132,7 +141,11 @@
         );
       }
       if (typeof ctx.saveRouteOperationalLock === 'function') {
-        ctx.saveRouteOperationalLock(routeDate, { orderContactIds, etasByContactId });
+        ctx.saveRouteOperationalLock(routeDate, {
+          orderContactIds,
+          etasByContactId,
+          internalFixedStartByContactId,
+        });
       }
       ctx.saveRouteSnapshot(routeDate);
       if (typeof ctx.render === 'function') {

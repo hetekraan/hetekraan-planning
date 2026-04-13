@@ -11,11 +11,19 @@
   function makeByContactId(appointments, normalizeTimeStr) {
     const byContactId = {};
     for (const a of appointments || []) {
-      if (!a?.contactId || !a?.timeSlot) continue;
-      byContactId[a.contactId] = {
-        timeSlot: normalizeTimeStr(a.timeSlot),
-        estimated: !!a.estimated,
-      };
+      if (!a?.contactId) continue;
+      const slot = a.timeSlot ? normalizeTimeStr(String(a.timeSlot).replace(/^~/, '')) : '';
+      const internal = a.internalFixedStartTime
+        ? normalizeTimeStr(String(a.internalFixedStartTime).replace(/^~/, ''))
+        : '';
+      if (!slot && !internal) continue;
+      const row = {};
+      if (slot) {
+        row.timeSlot = slot;
+        row.estimated = !!a.estimated;
+      }
+      if (internal) row.internalFixedStartTime = internal;
+      byContactId[a.contactId] = row;
     }
     return byContactId;
   }
@@ -26,11 +34,21 @@
     const order = Array.isArray(raw.orderContactIds) ? raw.orderContactIds.map((x) => String(x || '').trim()).filter(Boolean) : [];
     const etas = raw.etasByContactId && typeof raw.etasByContactId === 'object' ? raw.etasByContactId : {};
     if (!order.length) return null;
+    const internalRaw = raw.internalFixedStartByContactId;
+    const internalFixedStartByContactId =
+      internalRaw && typeof internalRaw === 'object'
+        ? Object.fromEntries(
+            Object.entries(internalRaw)
+              .map(([k, v]) => [String(k || '').trim(), String(v || '').trim().replace(/^~/, '')])
+              .filter(([k, v]) => k && /^\d{2}:\d{2}$/.test(v))
+          )
+        : {};
     return {
       locked: true,
       savedAt: typeof raw.savedAt === 'number' ? raw.savedAt : Date.now(),
       orderContactIds: order,
       etasByContactId: etas,
+      ...(Object.keys(internalFixedStartByContactId).length ? { internalFixedStartByContactId } : {}),
     };
   }
 
@@ -51,7 +69,11 @@
       ...(prev.byContactId && typeof prev.byContactId === 'object' ? prev.byContactId : {}),
     };
     const latest = makeByContactId(getAppointmentsRef(), normalizeTimeStr);
-    for (const [contactId, payload] of Object.entries(latest)) byContactId[contactId] = payload;
+    for (const [contactId, payload] of Object.entries(latest)) {
+      const merged = { ...(byContactId[contactId] || {}), ...payload };
+      if (!payload.internalFixedStartTime) delete merged.internalFixedStartTime;
+      byContactId[contactId] = merged;
+    }
 
     try {
       localStorage.setItem(
@@ -106,6 +128,7 @@
     const normalizeTimeStr = input?.normalizeTimeStr;
     const orderContactIds = input?.orderContactIds;
     const etasByContactId = input?.etasByContactId;
+    const internalFixedStartByContactIdIn = input?.internalFixedStartByContactId;
     if (!dateStr || !routeSnapshotKey || !normalizeTimeStr) return;
 
     const snapshotKey = routeSnapshotKey(dateStr);
@@ -117,14 +140,28 @@
       new Set((Array.isArray(orderContactIds) ? orderContactIds : []).map((x) => String(x || '').trim()).filter(Boolean))
     );
     const etas = etasByContactId && typeof etasByContactId === 'object' ? etasByContactId : {};
+    const hasInternalArg = internalFixedStartByContactIdIn !== undefined && internalFixedStartByContactIdIn !== null;
+    const internalFixedStartByContactId =
+      hasInternalArg && typeof internalFixedStartByContactIdIn === 'object'
+        ? Object.fromEntries(
+            Object.entries(internalFixedStartByContactIdIn)
+              .map(([k, v]) => [String(k || '').trim(), normalizeTimeStr(String(v || '').replace(/^~/, ''))])
+              .filter(([k, v]) => k && /^\d{2}:\d{2}$/.test(v))
+          )
+        : null;
     for (const cid of cleanOrder) {
       const t = etas[cid];
+      const prevRow = byContactId[cid] && typeof byContactId[cid] === 'object' ? { ...byContactId[cid] } : {};
       if (t) {
-        byContactId[cid] = {
-          timeSlot: normalizeTimeStr(String(t)),
-          estimated: true,
-        };
+        prevRow.timeSlot = normalizeTimeStr(String(t));
+        prevRow.estimated = true;
       }
+      if (hasInternalArg) {
+        const intT = internalFixedStartByContactId ? internalFixedStartByContactId[cid] : undefined;
+        if (intT) prevRow.internalFixedStartTime = intT;
+        else delete prevRow.internalFixedStartTime;
+      }
+      if (Object.keys(prevRow).length) byContactId[cid] = prevRow;
     }
     const lock = {
       locked: true,
@@ -133,6 +170,9 @@
       etasByContactId: Object.fromEntries(
         Object.entries(etas).map(([k, v]) => [String(k), normalizeTimeStr(String(v || ''))]).filter(([, v]) => v)
       ),
+      ...(internalFixedStartByContactId && Object.keys(internalFixedStartByContactId).length
+        ? { internalFixedStartByContactId }
+        : {}),
     };
     try {
       localStorage.setItem(
@@ -196,11 +236,19 @@
     if (byContactId && typeof byContactId === 'object') {
       for (const a of getAppointmentsRef() || []) {
         const row = byContactId[a?.contactId];
+        if (!row || !a?.contactId) continue;
         const slot = row?.timeSlot ?? row?.time;
-        if (!slot || !a?.contactId) continue;
-        a.timeSlot = normalizeTimeStr(slot);
-        a.estimated = !!row.estimated;
-        appliedCount++;
+        if (slot) {
+          a.timeSlot = normalizeTimeStr(String(slot));
+          a.estimated = !!row.estimated;
+          appliedCount++;
+        }
+        if (row.internalFixedStartTime) {
+          a.internalFixedStartTime = normalizeTimeStr(String(row.internalFixedStartTime));
+          appliedCount++;
+        } else {
+          delete a.internalFixedStartTime;
+        }
       }
     }
 
@@ -212,6 +260,17 @@
         if (!t) continue;
         a.timeSlot = normalizeTimeStr(String(t));
         a.estimated = true;
+        appliedCount++;
+      }
+    }
+
+    if (opLock?.locked && opLock.internalFixedStartByContactId) {
+      for (const a of getAppointmentsRef() || []) {
+        const cid = a?.contactId ? String(a.contactId) : '';
+        if (!cid) continue;
+        const ft = opLock.internalFixedStartByContactId[cid];
+        if (!ft) continue;
+        a.internalFixedStartTime = normalizeTimeStr(String(ft));
         appliedCount++;
       }
     }
