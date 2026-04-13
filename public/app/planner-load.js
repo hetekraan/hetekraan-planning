@@ -1,4 +1,21 @@
 (function initPlannerLoad(global) {
+  let loadSeq = 0;
+
+  function shouldDebugDateNav() {
+    try {
+      return localStorage.getItem('hk_debug_date_nav') === '1';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function debugDateNav(tag, payload) {
+    if (!shouldDebugDateNav()) return;
+    try {
+      console.info(`[DATE_NAV][${tag}]`, payload || {});
+    } catch (_) {}
+  }
+
   async function loadAppointments(ctx, date) {
     const {
       getDateStr,
@@ -16,6 +33,8 @@
       getAppointmentsRef,
     } = ctx;
     const dateStr = getDateStr(date);
+    const reqId = ++loadSeq;
+    debugDateNav('load_start', { reqId, dateStr });
     try {
       await refreshGhlContactBaseUrl();
       showToast('⏳ Afspraken laden...', 'loading');
@@ -24,6 +43,10 @@
         { cache: 'no-store', headers: { 'X-HK-Auth': hkAuthHeader() } }
       );
       const data = await res.json().catch(() => ({}));
+      if (reqId !== loadSeq) {
+        debugDateNav('ignored_stale_response', { reqId, dateStr, status: res.status });
+        return;
+      }
       if (!res.ok) {
         setAppointments([]);
         if (typeof ctx.setPlannerCustomerDayFull === 'function') {
@@ -32,6 +55,7 @@
         showToast(data?.error ? String(data.error) : `Afspraken laden mislukt (${res.status})`, 'info');
         applyRouteSnapshot(dateStr);
         render();
+        debugDateNav('load_finish', { reqId, dateStr, ok: false, status: res.status });
         return;
       }
       const rows = Array.isArray(data?.appointments) ? data.appointments : [];
@@ -71,13 +95,23 @@
         if (nBlk) parts.push(`${nBlk} blokslot${nBlk === 1 ? '' : 'ten'}`);
         showToast(`✓ ${parts.join(', ')} geladen`, 'success');
       }
+      debugDateNav('load_finish', { reqId, dateStr, ok: true, count: appts.length });
     } catch (err) {
+      if (reqId !== loadSeq) {
+        debugDateNav('ignored_stale_response', { reqId, dateStr, reason: 'catch' });
+        return;
+      }
       console.warn('GHL niet bereikbaar', err);
       setAppointments([]);
       if (typeof ctx.setPlannerCustomerDayFull === 'function') {
         ctx.setPlannerCustomerDayFull(false, false);
       }
       showToast('Kon afspraken niet laden', 'info');
+      debugDateNav('load_finish', { reqId, dateStr, ok: false, reason: 'exception' });
+    }
+    if (reqId !== loadSeq) {
+      debugDateNav('ignored_stale_response', { reqId, dateStr, reason: 'post_processing' });
+      return;
     }
     applyRouteSnapshot(dateStr);
     render();

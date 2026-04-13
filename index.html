@@ -2140,8 +2140,7 @@
     }
 
     .date-nav-wrap {
-      flex: 0 1 auto;
-      justify-content: flex-start;
+      display: none !important;
     }
 
     .date-label {
@@ -2152,10 +2151,11 @@
     }
 
     header {
-      flex-wrap: nowrap;
-      padding: 0 14px;
-      height: 52px;
+      flex-wrap: wrap;
+      padding: 6px 14px 8px;
+      height: auto;
       min-height: 52px;
+      row-gap: 8px;
     }
     .planner-header-brand-row {
       flex: 0 1 auto;
@@ -2265,9 +2265,14 @@
       border-radius: 6px;
     }
 
-    .planner-app-tools,
-    .planner-week-nav {
+    .planner-app-tools {
       display: none !important;
+    }
+    .planner-week-nav {
+      display: flex !important;
+      order: 3;
+      flex: 1 1 100%;
+      min-width: 0;
     }
     header > div:first-child .hamburger-btn {
       display: inline-flex;
@@ -4295,10 +4300,7 @@ async function openGlobalSearchResult(idx) {
     collapseGlobalSearchDock();
     return;
   }
-  currentDate = targetDate;
-  document.getElementById('dateLabel').textContent = formatDate(currentDate);
-  renderPlannerWeekStrip();
-  await loadAppointments(currentDate);
+  await goToDateStr(getDateStr(targetDate), 'global_search');
   const byId = appointments.find((a) => String(a.id) === String(row.id));
   const byContact = !byId && row.contactId
     ? appointments.find((a) => String(a.contactId || '') === String(row.contactId || ''))
@@ -4337,7 +4339,7 @@ function createPlannerCtx() {
     getAppointmentsRef: () => appointments,
     getCurrentDate: () => currentDate,
     setCurrentDate: (d) => {
-      currentDate = d;
+      setCurrentDateAndRefreshUi(d);
     },
     loadAppointments,
     calcTotalPrice,
@@ -4934,18 +4936,36 @@ function updatePlannerMonthLabel() {
   }
 }
 
+function plannerDateNavDebugEnabled() {
+  try {
+    return localStorage.getItem('hk_debug_date_nav') === '1';
+  } catch (_) {
+    return false;
+  }
+}
+
+function logPlannerDateNav(tag, payload) {
+  if (!plannerDateNavDebugEnabled()) return;
+  try {
+    console.info(`[DATE_NAV][${tag}]`, payload || {});
+  } catch (_) {}
+}
+
+function setCurrentDateAndRefreshUi(nextDate) {
+  if (!(nextDate instanceof Date) || Number.isNaN(nextDate.getTime())) return;
+  currentDate = nextDate;
+  const dl = document.getElementById('dateLabel');
+  if (dl) dl.textContent = formatDate(currentDate);
+  renderPlannerWeekStrip();
+}
+
 function shiftPlannerWeek(deltaWeeks) {
   const ds = getDateStr(currentDate);
   const parts = ds.split('-').map((x) => parseInt(x, 10));
   if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return;
   const [y, m, d] = parts;
-  currentDate = new Date(Date.UTC(y, m - 1, d + deltaWeeks * 7, 12, 0, 0));
-  const dl = document.getElementById('dateLabel');
-  if (dl) dl.textContent = formatDate(currentDate);
-  syncPlannerDatePickerValue();
-  updatePlannerMonthLabel();
-  renderPlannerWeekStrip();
-  loadAppointments(currentDate);
+  const targetDate = new Date(Date.UTC(y, m - 1, d + deltaWeeks * 7, 12, 0, 0));
+  void goToDateStr(getDateStr(targetDate), 'shift_week');
 }
 
 function goToTodayPlanner() {
@@ -4983,21 +5003,20 @@ function changeDay(dir) {
   const parts = ds.split('-').map((x) => parseInt(x, 10));
   if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return;
   const [y, m, d] = parts;
-  currentDate = new Date(Date.UTC(y, m - 1, d + dir, 12, 0, 0));
-  document.getElementById('dateLabel').textContent = formatDate(currentDate);
-  renderPlannerWeekStrip();
-  loadAppointments(currentDate);
+  const targetDate = new Date(Date.UTC(y, m - 1, d + dir, 12, 0, 0));
+  void goToDateStr(getDateStr(targetDate), 'change_day');
 }
 
 /** Spring naar kalenderdag (Amsterdam) — weekstrip app layout */
-function goToDateStr(ymd) {
+function goToDateStr(ymd, source = 'go_to_date') {
   const parts = String(ymd || '').split('-').map((x) => parseInt(x, 10));
   if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return;
-  currentDate = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12, 0, 0));
-  const dl = document.getElementById('dateLabel');
-  if (dl) dl.textContent = formatDate(currentDate);
-  renderPlannerWeekStrip();
-  loadAppointments(currentDate);
+  const nextDate = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12, 0, 0));
+  const dateStr = getDateStr(nextDate);
+  logPlannerDateNav('requested', { source, dateStr });
+  setCurrentDateAndRefreshUi(nextDate);
+  logPlannerDateNav('ui_synced', { source, dateStr });
+  return loadAppointments(currentDate);
 }
 
 /** App layout: scroll naar afronden na “onderweg” */
