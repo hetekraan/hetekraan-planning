@@ -317,6 +317,30 @@ function normalizePhoneForGhl(raw) {
   return digits;
 }
 
+function normalizeSearchText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function phoneSearchVariants(raw) {
+  const e164 = normalizePhoneForGhl(raw);
+  if (!e164) return [];
+  const digits = e164.replace(/\D/g, '');
+  const variants = new Set();
+  if (e164) variants.add(e164);
+  if (digits) variants.add(digits);
+  if (digits.startsWith('31') && digits.length >= 10) {
+    variants.add(`0${digits.slice(2)}`);
+  }
+  if (digits.startsWith('06') && digits.length >= 10) {
+    variants.add(`31${digits.slice(1)}`);
+    variants.add(`+31${digits.slice(1)}`);
+  }
+  return [...variants].filter(Boolean);
+}
+
 function fallbackContactName(input = {}) {
   const name = String(input.name || '').trim();
   if (name) return name;
@@ -732,8 +756,9 @@ export default async function handler(req, res) {
 
       case 'searchAppointments': {
         const qRaw = String(req.query?.q || '').trim();
-        const q = qRaw.toLowerCase();
-        if (q.length < 2) return res.status(200).json({ results: [] });
+        const q = normalizeSearchText(qRaw);
+        const qPhoneVariants = phoneSearchVariants(qRaw);
+        if (q.length < 2 && !qPhoneVariants.length) return res.status(200).json({ results: [] });
 
         const today = formatYyyyMmDdInAmsterdam(new Date());
         const startDate =
@@ -850,22 +875,20 @@ export default async function handler(req, res) {
               ''
           ).trim();
 
-          const haystack = [
-            name,
-            bedrijfsnaam,
-            canonicalAddr,
-            phone,
-            email,
-            omschrijving,
-            notes,
-            prijsRegels,
-            prijsTotaal,
-            type,
-            timeSlot,
-          ]
-            .join(' ')
-            .toLowerCase();
-          if (!haystack.includes(q)) continue;
+          const nameNorm = normalizeSearchText(name);
+          const phoneNorm = phoneSearchVariants(phone);
+          const emailNorm = normalizeSearchText(email);
+          const addressNorm = normalizeSearchText(canonicalAddr);
+          const descriptionNorm = normalizeSearchText(omschrijving);
+          const extraNorm = normalizeSearchText(
+            [bedrijfsnaam, notes, prijsRegels, prijsTotaal, type, timeSlot].join(' ')
+          );
+          const haystack = [nameNorm, emailNorm, addressNorm, descriptionNorm, extraNorm].join(' ');
+          const textMatch = q.length >= 2 && haystack.includes(q);
+          const phoneMatch =
+            qPhoneVariants.length > 0 &&
+            qPhoneVariants.some((qv) => phoneNorm.some((pv) => pv.includes(qv)));
+          if (!textMatch && !phoneMatch) continue;
 
           out.push({
             id:
