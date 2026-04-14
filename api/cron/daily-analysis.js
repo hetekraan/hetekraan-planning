@@ -216,10 +216,12 @@ async function saveToContact(contactId, extracted) {
     customFieldCount: customFields.length,
   });
 
-  await fetch(`${GHL_BASE}/contacts/${contactId}`, {
-    method: 'PUT',
-    headers: GHL_HEADERS(),
-    body: JSON.stringify(payload),
+  // Fase 1: automatische WhatsApp -> GHL veldwrites uitgeschakeld.
+  // We behouden extractie + payload-opbouw voor interne analyse/diagnostiek.
+  console.info('[daily-analysis] write disabled (dry-run)', {
+    contactId,
+    address1: payload.address1 || null,
+    customFieldCount: Array.isArray(payload.customFields) ? payload.customFields.length : 0,
   });
 }
 
