@@ -797,6 +797,7 @@ export default async function handler(req, res) {
           afternoon: afternoonCoords,
           targetBlock: block,
         });
+        console.info('[geo-gate-coords]', { dateStr: cursor, morningCoordsCount: morningCoords.length, afternoonCoordsCount: afternoonCoords.length, morningCoords, afternoonCoords, geoCheckResult: geoCheck });
         if (!geoCheck.valid) {
           console.info(
             `[geo-gate] Skipped ${cursor} ${block} for contact ${resolvedContactId || 'unknown'}: ` +
