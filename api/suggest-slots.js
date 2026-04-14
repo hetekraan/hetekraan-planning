@@ -669,7 +669,6 @@ export default async function handler(req, res) {
 
       const tGeoAddr0 = Date.now();
       const newCoord = address ? await cachedGeocode(address) : null;
-      console.info('[geo-gate-newcoord]', { dateStr: cursor, address, newCoord });
       perf.geocode_address_ms += Date.now() - tGeoAddr0;
 
       try {
@@ -775,7 +774,6 @@ export default async function handler(req, res) {
             eventContactMap[cid] = readCanonicalAddressLine(contact) || contact.address1 || '';
           }
         }
-        console.info('[geo-gate-contacts]', { uniqueCids, eventContactMap });
         perf.contact_resolve_day_ms = (perf.contact_resolve_day_ms ?? 0) + (Date.now() - tContactResolve0);
         const [morningCoords, afternoonCoords] = await Promise.all([
           geocodeEvents(
@@ -798,7 +796,6 @@ export default async function handler(req, res) {
           afternoon: afternoonCoords,
           targetBlock: block,
         });
-        console.info('[geo-gate-coords]', { dateStr: cursor, morningCoordsCount: morningCoords.length, afternoonCoordsCount: afternoonCoords.length, morningCoords, afternoonCoords, geoCheckResult: geoCheck });
         if (!geoCheck.valid) {
           console.info(
             `[geo-gate] Skipped ${cursor} ${block} for contact ${resolvedContactId || 'unknown'}: ` +
