@@ -551,15 +551,14 @@ export default async function handler(req, res) {
           const canonPostcode = getField(contact, BOOKING_FORM_FIELD_IDS.postcode);
           const canonWoonplaats = getField(contact, BOOKING_FORM_FIELD_IDS.woonplaats);
           const splitCanon = splitAddressLineToStraatHuis(canonStreetHouse);
-          const straat = splitCanon.straatnaam || getField(contact, FIELD_IDS.straatnaam);
-          const huisnr = splitCanon.huisnummer || getField(contact, FIELD_IDS.huisnummer);
+          const straat = splitCanon.straatnaam || '';
+          const huisnr = splitCanon.huisnummer || '';
           const postcode =
             canonPostcode ||
-            getField(contact, FIELD_IDS.postcode) ||
             String(contact.postalCode || '')
               .replace(/\s+/g, ' ')
               .trim();
-          const woonplaats = canonWoonplaats || getField(contact, FIELD_IDS.woonplaats) || contact.city || '';
+          const woonplaats = canonWoonplaats || contact.city || '';
           const fromCf     = [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
           const canonical  = readCanonicalAddressLine(contact);
           e.parsedAddress = canonical;

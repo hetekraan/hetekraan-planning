@@ -29,8 +29,6 @@ const FIELDS = {
   huisnummer:           'co5Mr16rF6S6ay5hJOSJ',
   postcode:             '3bCi5hL0rR9XGG33x2Gv',
   type_onderhoud:       'EXSQmlt7BqkXJMs8F3Qk',
-  leeftijd_quooker:     'WLUAFmNnaVTCK4wdhqVg',
-  leeftijd_kraan:       'bYYyKo1Wyqxntc0UL2lY',
   afgesproken_prijs:    'HGjlT6ofaBiMz3j2HsXL',
   prijs_regels:         'gPjrUG2eH81PeALh8tVS',
   tijdafspraak:         'RfKARymCOYYkufGY053T',
