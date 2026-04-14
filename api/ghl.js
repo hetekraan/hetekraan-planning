@@ -1054,6 +1054,13 @@ export default async function handler(req, res) {
           }
         }
 
+        invalidateAmsterdamDayGhlReadCachesForDate({
+          locationId: ghlLocationIdFromEnv(),
+          calendarId: effectiveCalendarId(),
+          dateStr: normalizeYyyyMmDdInput(String(routeDate || '')),
+          trigger: 'updateContactDashboard',
+        });
+
         return res.status(200).json({
           success: true,
           calendarSynced,
