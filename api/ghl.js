@@ -1014,7 +1014,9 @@ export default async function handler(req, res) {
           .join(' ')
           .replace(/\s+/g, ' ')
           .trim();
+        const trimmedWoonplaats = String(woonplaats || '').trim();
         if (composedAddr) payload.address1 = composedAddr;
+        if (trimmedWoonplaats) payload.city = trimmedWoonplaats;
 
         if (Object.keys(payload).length === 0) {
           return res.status(400).json({ error: 'Geen velden om bij te werken' });

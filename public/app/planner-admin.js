@@ -16,7 +16,7 @@
     document.getElementById('deStraat').value = a.straatnaam || '';
     document.getElementById('deHuisnr').value = a.huisnummer || '';
     document.getElementById('dePostcode').value = a.postalCode || '';
-    document.getElementById('deWoonplaats').value = a.city || '';
+    document.getElementById('deWoonplaats').value = a.woonplaats || a.city || '';
     document.getElementById('deType').value =
       a.jobType === 'installatie' || a.jobType === 'reparatie' || a.jobType === 'onderhoud'
         ? a.jobType
