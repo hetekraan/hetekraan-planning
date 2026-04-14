@@ -45,6 +45,7 @@ import {
 import { rankProposalCandidates } from '../lib/proposal-ranking.js';
 import { isGeoValid } from '../lib/geo-gate.js';
 import { geocode, geocodeEvents } from '../lib/geo-utils.js';
+import { fetchWithRetry } from '../lib/retry.js';
 const GHL_API_KEY = process.env.GHL_API_KEY;
 const PROPOSAL_CLUSTERING_FIRST = String(process.env.PROPOSAL_CLUSTERING_FIRST || '').toLowerCase() === 'true';
 
@@ -392,6 +393,7 @@ export default async function handler(req, res) {
     day_blocked_check_sum_ms: 0,
     evaluate_block_offer_sum_ms: 0,
     geocode_route_fit_sum_ms: 0,
+    contact_resolve_day_ms: 0,
     contact_fetch_ms: 0,
     geocode_address_ms: 0,
     map_sort_slice_ms: 0,
@@ -740,9 +742,54 @@ export default async function handler(req, res) {
         const customerEvents = eventsForCapacity.filter((e) => !e._hkGhlBlockSlot);
         const morningEvents = customerEvents.filter((e) => isEventInCustomerBlock(e, 'morning'));
         const afternoonEvents = customerEvents.filter((e) => isEventInCustomerBlock(e, 'afternoon'));
+        const uniqueCids = [
+          ...new Set(
+            customerEvents
+              .map((e) => String(e.contactId || e.contact_id || '').trim())
+              .filter(Boolean)
+          ),
+        ];
+        const tContactResolve0 = Date.now();
+        const contactResults = await Promise.all(
+          uniqueCids.map(async (cid) => {
+            try {
+              const r = await fetchWithRetry(`${GHL_BASE}/contacts/${cid}`, {
+                method: 'GET',
+                headers: {
+                  Authorization: `Bearer ${GHL_API_KEY}`,
+                  'Content-Type': 'application/json',
+                  Version: '2021-04-15',
+                },
+              });
+              const d = await r.json();
+              return { cid, contact: d.contact ?? d ?? null };
+            } catch {
+              return { cid, contact: null };
+            }
+          })
+        );
+        const eventContactMap = {};
+        for (const { cid, contact } of contactResults) {
+          if (contact) {
+            eventContactMap[cid] = readCanonicalAddressLine(contact) || contact.address1 || '';
+          }
+        }
+        perf.contact_resolve_day_ms = (perf.contact_resolve_day_ms ?? 0) + (Date.now() - tContactResolve0);
         const [morningCoords, afternoonCoords] = await Promise.all([
-          geocodeEvents(morningEvents, cachedGeocode),
-          geocodeEvents(afternoonEvents, cachedGeocode),
+          geocodeEvents(
+            morningEvents.map((e) => ({
+              ...e,
+              address: e.address || eventContactMap[String(e.contactId || e.contact_id || '')] || '',
+            })),
+            cachedGeocode
+          ),
+          geocodeEvents(
+            afternoonEvents.map((e) => ({
+              ...e,
+              address: e.address || eventContactMap[String(e.contactId || e.contact_id || '')] || '',
+            })),
+            cachedGeocode
+          ),
         ]);
         const geoCheck = isGeoValid(newCoord, {
           morning: morningCoords,
