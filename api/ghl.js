@@ -986,9 +986,16 @@ export default async function handler(req, res) {
         pushField(FIELD_IDS.tijdafspraak, tijdafspraak);
         pushField(FIELD_IDS.opmerkingen, opmerkingen);
         pushField(FIELD_IDS.prijs, prijs);
+        const canonStraatHuisnummer = [straatnaam, huisnummer]
+          .map((x) => String(x || '').trim())
+          .filter(Boolean)
+          .join(' ');
         const bookingCanon = appendBookingCanonFields(customFields, {
           type_onderhoud: typeOnderhoud,
           probleemomschrijving,
+          straat_huisnummer: canonStraatHuisnummer,
+          postcode: String(postcode || '').trim(),
+          woonplaats: String(woonplaats || '').trim(),
         });
         console.log('[BOOKING_CANON_WRITE]', {
           typeOnderhoud: bookingCanon.written.type_onderhoud || '',
