@@ -102,10 +102,21 @@
       const internalFixedStartByContactId = {};
       routeSequence.forEach((a) => {
         const cid = a?.contactId ? String(a.contactId) : '';
-        const ft = a?.internalFixedStartTime
+        const pinObj =
+          a?.internalFixedPin && typeof a.internalFixedPin === 'object'
+            ? {
+                type: String(a.internalFixedPin.type || '').trim().toLowerCase() || 'exact',
+                time: ctx.normalizeTimeStr(String(a.internalFixedPin.time || '').replace(/^~/, '')),
+              }
+            : null;
+        const legacyTime = a?.internalFixedStartTime
           ? ctx.normalizeTimeStr(String(a.internalFixedStartTime).replace(/^~/, ''))
           : '';
-        if (cid && ft) internalFixedStartByContactId[cid] = ft;
+        if (cid && pinObj && /^(exact|after|before)$/.test(pinObj.type) && /^\d{2}:\d{2}$/.test(pinObj.time)) {
+          internalFixedStartByContactId[cid] = pinObj;
+        } else if (cid && legacyTime) {
+          internalFixedStartByContactId[cid] = { type: 'exact', time: legacyTime };
+        }
       });
       const res = await fetch('/api/ghl?action=saveRouteTimes', {
         method: 'POST',

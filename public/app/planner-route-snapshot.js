@@ -1,4 +1,19 @@
 (function () {
+  function normalizeInternalFixedPin(raw, normalizeTimeStr) {
+    if (!raw) return null;
+    if (typeof raw === 'object') {
+      const type = String(raw.type || '').trim().toLowerCase();
+      const time = normalizeTimeStr(String(raw.time || '').replace(/^~/, ''));
+      if ((type === 'exact' || type === 'after' || type === 'before') && /^\d{2}:\d{2}$/.test(time)) {
+        return { type, time };
+      }
+      return null;
+    }
+    const legacy = normalizeTimeStr(String(raw || '').replace(/^~/, ''));
+    if (!/^\d{2}:\d{2}$/.test(legacy)) return null;
+    return { type: 'exact', time: legacy };
+  }
+
   function readSnapshot(snapshotKey) {
     try {
       const raw = localStorage.getItem(snapshotKey);
@@ -13,16 +28,17 @@
     for (const a of appointments || []) {
       if (!a?.contactId) continue;
       const slot = a.timeSlot ? normalizeTimeStr(String(a.timeSlot).replace(/^~/, '')) : '';
-      const internal = a.internalFixedStartTime
-        ? normalizeTimeStr(String(a.internalFixedStartTime).replace(/^~/, ''))
-        : '';
+      const pin =
+        normalizeInternalFixedPin(a.internalFixedPin, normalizeTimeStr) ||
+        normalizeInternalFixedPin(a.internalFixedStartTime, normalizeTimeStr);
+      const internal = pin?.time || '';
       if (!slot && !internal) continue;
       const row = {};
       if (slot) {
         row.timeSlot = slot;
         row.estimated = !!a.estimated;
       }
-      if (internal) row.internalFixedStartTime = internal;
+      if (pin) row.internalFixedStartTime = pin;
       byContactId[a.contactId] = row;
     }
     return byContactId;
@@ -39,8 +55,8 @@
       internalRaw && typeof internalRaw === 'object'
         ? Object.fromEntries(
             Object.entries(internalRaw)
-              .map(([k, v]) => [String(k || '').trim(), String(v || '').trim().replace(/^~/, '')])
-              .filter(([k, v]) => k && /^\d{2}:\d{2}$/.test(v))
+              .map(([k, v]) => [String(k || '').trim(), normalizeInternalFixedPin(v, (x) => x)])
+              .filter(([k, v]) => k && v)
           )
         : {};
     return {
@@ -145,8 +161,8 @@
       hasInternalArg && typeof internalFixedStartByContactIdIn === 'object'
         ? Object.fromEntries(
             Object.entries(internalFixedStartByContactIdIn)
-              .map(([k, v]) => [String(k || '').trim(), normalizeTimeStr(String(v || '').replace(/^~/, ''))])
-              .filter(([k, v]) => k && /^\d{2}:\d{2}$/.test(v))
+              .map(([k, v]) => [String(k || '').trim(), normalizeInternalFixedPin(v, normalizeTimeStr)])
+              .filter(([k, v]) => k && v)
           )
         : null;
     for (const cid of cleanOrder) {
@@ -243,10 +259,13 @@
           a.estimated = !!row.estimated;
           appliedCount++;
         }
-        if (row.internalFixedStartTime) {
-          a.internalFixedStartTime = normalizeTimeStr(String(row.internalFixedStartTime));
+        const rowPin = normalizeInternalFixedPin(row.internalFixedStartTime, normalizeTimeStr);
+        if (rowPin) {
+          a.internalFixedPin = rowPin;
+          a.internalFixedStartTime = rowPin.time;
           appliedCount++;
         } else {
+          delete a.internalFixedPin;
           delete a.internalFixedStartTime;
         }
       }
@@ -270,7 +289,10 @@
         if (!cid) continue;
         const ft = opLock.internalFixedStartByContactId[cid];
         if (!ft) continue;
-        a.internalFixedStartTime = normalizeTimeStr(String(ft));
+        const pin = normalizeInternalFixedPin(ft, normalizeTimeStr);
+        if (!pin) continue;
+        a.internalFixedPin = pin;
+        a.internalFixedStartTime = pin.time;
         appliedCount++;
       }
     }

@@ -24,7 +24,7 @@
         jobDuration: ctx.jobDurationForType(a.jobType),
         dayPart: a.dayPart,
         bookingLocked: !!a.bookingLocked,
-        internalFixedStart: a.internalFixedStartTime || undefined,
+        internalFixedStart: a.internalFixedPin || a.internalFixedStartTime || undefined,
       };
     }
 

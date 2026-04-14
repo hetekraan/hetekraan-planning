@@ -1,4 +1,13 @@
 (function initPlannerAdmin(global) {
+  function syncInternalFixedControls() {
+    const typeEl = document.getElementById('deInternalFixedType');
+    const timeEl = document.getElementById('deInternalFixedStart');
+    if (!timeEl) return;
+    const enabled = !!(typeEl && typeEl.value);
+    timeEl.disabled = !enabled;
+    if (!enabled) timeEl.value = '';
+  }
+
   function openDaanEditModal(ctx, apptId) {
     if (!ctx.isDaanEditor()) {
       ctx.showToast('Alleen Daan kan klantgegevens zo bewerken', 'info');
@@ -29,11 +38,14 @@
     const tm = ctx.normalizeTimeStr(a.timeSlot || '08:00');
     document.getElementById('deApptTime').value = tm.length >= 5 ? tm : '08:00';
     document.getElementById('deDuration').value = String(ctx.jobDurationForType(a.jobType));
-    const fixedEl = document.getElementById(
+    const pin = a.internalFixedPin || (a.internalFixedStartTime ? { type: 'exact', time: a.internalFixedStartTime } : null);
+    const typeEl = document.getElementById(
+      'deInternalFixedType');
+    const timeEl = document.getElementById(
       'deInternalFixedStart');
-    if (fixedEl) {
-      fixedEl.value = a.internalFixedStartTime || '';
-    }
+    if (typeEl) typeEl.value = pin?.type || '';
+    if (timeEl) timeEl.value = pin?.time || '';
+    syncInternalFixedControls();
     document.getElementById('daanEditOverlay').classList.add('visible');
   }
 
@@ -84,9 +96,14 @@
       if (data.calendarSynced) msg += ' · agenda bijgewerkt';
       if (data.calendarError) msg += ' · agenda: ' + String(data.calendarError).slice(0, 100);
       ctx.showToast(msg, 'success');
-      const fixedVal = document.getElementById(
+      const pinType = document.getElementById(
+        'deInternalFixedType')?.value || '';
+      const pinTime = document.getElementById(
         'deInternalFixedStart')?.value || '';
-      setAppointmentInternalFixedStart(apptIdRaw, fixedVal);
+      const pinValue = pinType && pinTime
+        ? JSON.stringify({ type: pinType, time: pinTime })
+        : '';
+      setAppointmentInternalFixedStart(apptIdRaw, pinValue);
       await ctx.loadAppointments(ctx.getCurrentDate());
     } catch (e) {
       ctx.showToast('Opslaan mislukt: ' + e.message, 'info');
@@ -100,5 +117,6 @@
     openDaanEditModal,
     closeDaanEditModal,
     saveDaanEditToGhl,
+    syncInternalFixedControls,
   };
 })(window);

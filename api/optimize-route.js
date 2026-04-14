@@ -234,20 +234,45 @@ function collectViolations(order, etas, timeWindows) {
 }
 
 /**
- * Interne vaste start (operationeel), veldnaam `internalFixedStart` of `internalFixedStartTime`, "HH:mm".
+ * Interne vaste start (operationeel), veldnaam `internalFixedStart` of `internalFixedStartTime`.
+ * Ondersteunt:
+ * - legacy plain "HH:mm" => { type: "exact", minutes }
+ * - object/json { type: "exact"|"after"|"before", time: "HH:mm" }
  * Niet hetzelfde als het klant-boekingsslot (`timeWindow` / `dayPart`).
  */
 function parseInternalFixedStartMinutes(appt) {
-  const s = String(appt?.internalFixedStart ?? appt?.internalFixedStartTime ?? '')
-    .trim()
-    .replace(/^~/, '');
-  if (!s) return null;
+  const raw = appt?.internalFixedStart ?? appt?.internalFixedPin ?? appt?.internalFixedStartTime ?? null;
+  if (!raw) return null;
+  let type = 'exact';
+  let timeRaw = '';
+  if (typeof raw === 'object') {
+    type = String(raw.type || '').trim().toLowerCase() || 'exact';
+    timeRaw = String(raw.time || '').trim();
+  } else {
+    const s = String(raw).trim();
+    if (!s) return null;
+    if (s.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(s);
+        type = String(parsed?.type || '').trim().toLowerCase() || 'exact';
+        timeRaw = String(parsed?.time || '').trim();
+      } catch {
+        type = 'exact';
+        timeRaw = s;
+      }
+    } else {
+      type = 'exact';
+      timeRaw = s;
+    }
+  }
+  if (type !== 'exact' && type !== 'after' && type !== 'before') type = 'exact';
+  const s = timeRaw.replace(/^~/, '');
   const m = /^(\d{1,2}):(\d{2})$/.exec(s);
   if (!m) return null;
   const h = parseInt(m[1], 10);
   const mm = parseInt(m[2], 10);
   if (!Number.isFinite(h) || !Number.isFinite(mm) || h > 23 || mm > 59) return null;
-  return h * 60 + mm;
+  return { type, minutes: h * 60 + mm };
 }
 
 /** Harde regels: interne start binnen dagdeel-blok (ochtend t/m 13:00 / middag vanaf 13:00). */
@@ -258,9 +283,9 @@ function validateInternalPinsPartitioned(appointments, morningOrigIndices, after
     const t = parseInternalFixedStartMinutes(a);
     if (t == null) continue;
     const job = a.jobDuration || 30;
-    if (t + job > MORNING_BLOCK.end) {
+    if (t.minutes + job > MORNING_BLOCK.end) {
       messages.push(
-        `Interne start ${minutesToTime(t)} (+ ${job} min) eindigt na 13:00 (ochtendblok). Kies een eerdere tijd of kortere klus.`
+        `Interne start ${minutesToTime(t.minutes)} (+ ${job} min) eindigt na 13:00 (ochtendblok). Kies een eerdere tijd of kortere klus.`
       );
     }
   }
@@ -269,13 +294,13 @@ function validateInternalPinsPartitioned(appointments, morningOrigIndices, after
     const t = parseInternalFixedStartMinutes(a);
     if (t == null) continue;
     const job = a.jobDuration || 30;
-    if (t < AFTERNOON_BLOCK.start) {
+    if (t.minutes < AFTERNOON_BLOCK.start) {
       messages.push(
-        `Middagafspraak: interne start ${minutesToTime(t)} ligt vóór 13:00. Zet de afspraak op ochtend of kies een tijd vanaf 13:00.`
+        `Middagafspraak: interne start ${minutesToTime(t.minutes)} ligt vóór 13:00. Zet de afspraak op ochtend of kies een tijd vanaf 13:00.`
       );
     }
-    if (t + job > AFTERNOON_BLOCK.end) {
-      messages.push(`Interne start ${minutesToTime(t)} (+ ${job} min) eindigt na 17:00 (middagblok).`);
+    if (t.minutes + job > AFTERNOON_BLOCK.end) {
+      messages.push(`Interne start ${minutesToTime(t.minutes)} (+ ${job} min) eindigt na 17:00 (middagblok).`);
     }
   }
   return messages;
@@ -290,8 +315,8 @@ async function optimizeSubsetMatrixWithInternalPins({ key, origin, appointments,
   const n = appointments.length;
   if (n < 1) return { order: [], etas: [], legInfo: [], travel: [] };
 
-  const pinMinutes = appointments.map((a) => parseInternalFixedStartMinutes(a));
-  if (!pinMinutes.some((t) => t != null)) return null;
+  const pinSpecs = appointments.map((a) => parseInternalFixedStartMinutes(a));
+  if (!pinSpecs.some((t) => t != null)) return null;
 
   if (n === 1) {
     return optimizeSubsetMatrix({ key, origin, appointments, scheduleOpts, fixedOrder: [0] });
@@ -304,7 +329,7 @@ async function optimizeSubsetMatrixWithInternalPins({ key, origin, appointments,
   const jobDurations = appointments.map((a) => a.jobDuration || 30);
   const pinEntries = [];
   for (let i = 0; i < n; i++) {
-    if (pinMinutes[i] != null) pinEntries.push({ idx: i, t: pinMinutes[i] });
+    if (pinSpecs[i] != null) pinEntries.push({ idx: i, spec: pinSpecs[i], t: pinSpecs[i].minutes });
   }
   pinEntries.sort((a, b) => a.t - b.t || a.idx - b.idx);
 
@@ -334,24 +359,55 @@ async function optimizeSubsetMatrixWithInternalPins({ key, origin, appointments,
     remaining.delete(localIdx);
   }
 
-  function appendPinned(localIdx, forcedMin) {
+  function appendPinned(localIdx, pinSpec) {
+    const forcedMin = pinSpec.minutes;
+    const mode = pinSpec.type || 'exact';
     const tm = travelFromCursor(localIdx);
     legInfo.push({ durationSeconds: tm * 60 });
     const earliest = roundUpQuarter(cursorTime + tm);
-    if (earliest > forcedMin) {
-      return `Intern vaste start ${minutesToTime(forcedMin)} niet haalbaar: vroegste aankomst ~${minutesToTime(earliest)} (reistijd).`;
+    if (mode === 'exact') {
+      if (earliest > forcedMin) {
+        return `Intern vaste start ${minutesToTime(forcedMin)} niet haalbaar: vroegste aankomst ~${minutesToTime(earliest)} (reistijd).`;
+      }
+      order.push(localIdx);
+      etasMin.push(forcedMin);
+      cursorTime = forcedMin + jobDurations[localIdx];
+      cursorMatrixIdx = localIdx + 1;
+      remaining.delete(localIdx);
+      return null;
     }
-    order.push(localIdx);
-    etasMin.push(forcedMin);
-    cursorTime = forcedMin + jobDurations[localIdx];
-    cursorMatrixIdx = localIdx + 1;
-    remaining.delete(localIdx);
-    return null;
+    if (mode === 'after') {
+      const eta = Math.max(earliest, forcedMin);
+      order.push(localIdx);
+      etasMin.push(eta);
+      cursorTime = eta + jobDurations[localIdx];
+      cursorMatrixIdx = localIdx + 1;
+      remaining.delete(localIdx);
+      return null;
+    }
+    if (mode === 'before') {
+      if (earliest + jobDurations[localIdx] > forcedMin) {
+        return `before-deadline-exceeded: ${minutesToTime(forcedMin)} niet haalbaar (vroegste start ~${minutesToTime(earliest)}).`;
+      }
+      order.push(localIdx);
+      etasMin.push(earliest);
+      cursorTime = earliest + jobDurations[localIdx];
+      cursorMatrixIdx = localIdx + 1;
+      remaining.delete(localIdx);
+      return null;
+    }
+    return `Onbekende interne pin-modus: ${mode}`;
+  }
+
+  function appendPinnedByLocalIdx(localIdx) {
+    const spec = pinSpecs[localIdx];
+    if (!spec) return null;
+    return appendPinned(localIdx, spec);
   }
 
   function greedyFillBefore(deadlineMin) {
     while (true) {
-      const frees = [...remaining].filter((i) => pinMinutes[i] == null);
+      const frees = [...remaining].filter((i) => pinSpecs[i] == null);
       if (!frees.length) return;
       let best = -1;
       let bestTm = Infinity;
@@ -375,15 +431,15 @@ async function optimizeSubsetMatrixWithInternalPins({ key, origin, appointments,
     if (!remaining.has(pin.idx)) {
       return { error: 'Interne vaste starts sluiten elkaar uit (zelfde stop of onmogelijke volgorde).' };
     }
-    const errPin = appendPinned(pin.idx, pin.t);
+    const errPin = appendPinned(pin.idx, pin.spec);
     if (errPin) return { error: errPin };
   }
 
   greedyFillBefore(1e12);
   while (remaining.size) {
     const i = [...remaining][0];
-    if (pinMinutes[i] != null) {
-      const errPin = appendPinned(i, pinMinutes[i]);
+    if (pinSpecs[i] != null) {
+      const errPin = appendPinnedByLocalIdx(i);
       if (errPin) return { error: errPin };
     } else {
       appendFree(i);

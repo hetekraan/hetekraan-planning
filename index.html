@@ -4425,22 +4425,34 @@
     <div class="de-field-group">
       <label class="de-label">VASTE AANKOMSTTIJD</label>
       <div style="display:flex;align-items:center;gap:8px;">
+        <select id="deInternalFixedType"
+          onchange="window.HKPlannerAdmin?.syncInternalFixedControls?.()"
+          style="background:var(--color-background-secondary);
+          border:0.5px solid var(--color-border-secondary);
+          border-radius:var(--border-radius-md);
+          color:var(--color-text-primary);
+          padding:8px 10px;font-size:14px;">
+          <option value="">— geen vaste tijd —</option>
+          <option value="exact">Op</option>
+          <option value="after">Na</option>
+          <option value="before">Voor</option>
+        </select>
         <input type="time" id="deInternalFixedStart"
           style="background:var(--color-background-secondary);
           border:0.5px solid var(--color-border-secondary);
           border-radius:var(--border-radius-md);
           color:var(--color-text-primary);
-          padding:8px 10px;font-size:14px;width:130px;">
+          padding:8px 10px;font-size:14px;width:120px;">
         <span style="font-size:12px;
           color:var(--color-text-secondary);">
           optioneel — mag buiten 09-17 vallen
         </span>
         <button type="button"
           onclick="document.getElementById(
+            'deInternalFixedType').value='';
+            document.getElementById(
             'deInternalFixedStart').value='';
-            this.closest('.de-field-group')
-            .querySelector('input').dispatchEvent(
-            new Event('change'))"
+            window.HKPlannerAdmin?.syncInternalFixedControls?.()"
           style="font-size:11px;
           color:var(--color-text-tertiary);
           background:none;border:none;cursor:pointer;">
@@ -5139,6 +5151,19 @@ function validateInternalFixedForAppointment(a, hhmmNorm) {
 }
 
 function setAppointmentInternalFixedStart(id, domValue) {
+  function parseInternalFixedInput(raw) {
+    if (!raw) return null;
+    if (typeof raw === 'object' && raw.type) return raw;
+    const s = String(raw).trim();
+    if (!s) return null;
+    if (s.startsWith('{')) {
+      try {
+        const p = JSON.parse(s);
+        if (p.type && p.time) return p;
+      } catch {}
+    }
+    return { type: 'exact', time: s };
+  }
   const dateStr = getDateStr(currentDate);
   if (isRouteOperationalLockedForDate(dateStr)) {
     showToast('Route is vergrendeld — ontgrendel eerst om de interne vaste start te wijzigen.', 'info');
@@ -5150,11 +5175,19 @@ function setAppointmentInternalFixedStart(id, domValue) {
     showToast('Geen GHL-contactId — koppel de afspraak in GHL.', 'info');
     return;
   }
-  const raw = String(domValue || '').trim();
-  if (!raw) {
+  const parsed = parseInternalFixedInput(domValue);
+  if (!parsed) {
     delete a.internalFixedStartTime;
+    delete a.internalFixedPin;
   } else {
-    const norm = normalizeTimeStr(raw.replace(/^~/, ''));
+    const pinType = String(parsed.type || '').trim().toLowerCase();
+    const pinTime = String(parsed.time || '').trim();
+    if (pinType !== 'exact' && pinType !== 'after' && pinType !== 'before') {
+      showToast('Ongeldige pin-modus (gebruik op/na/voor).', 'info');
+      render();
+      return;
+    }
+    const norm = normalizeTimeStr(pinTime.replace(/^~/, ''));
     const v = validateInternalFixedForAppointment(a, norm);
     if (!v.ok) {
       showToast(v.message, 'info');
@@ -5162,6 +5195,7 @@ function setAppointmentInternalFixedStart(id, domValue) {
       return;
     }
     a.internalFixedStartTime = norm;
+    a.internalFixedPin = { type: pinType, time: norm };
   }
   mergeRouteOrderIntoSnapshot(dateStr);
   saveRouteSnapshot(dateStr);
@@ -5954,9 +5988,17 @@ function renderApptCard(a, i) {
             <button type="button" class="icon-btn appt-action-icon" onclick='deleteAppt(${idQ})' title="Verwijderen">${APPT_ACTION_SVG.close}</button>
           </div>
         </div>
-        ${a.internalFixedStartTime ? `
-          <span class="route-pin-badge">${a.internalFixedStartTime}</span>
-        ` : ''}
+        ${(() => {
+          const pin =
+            a.internalFixedPin && typeof a.internalFixedPin === 'object'
+              ? a.internalFixedPin
+              : a.internalFixedStartTime
+                ? { type: 'exact', time: a.internalFixedStartTime }
+                : null;
+          if (!pin) return '';
+          const pinTypeLabel = { exact: 'Op', after: 'Na', before: 'Voor' }[pin.type] || 'Op';
+          return `<span class="route-pin-badge">${pinTypeLabel} ${pin.time}</span>`;
+        })()}
         <div class="appt-body">
           ${a.fullAddressLine ? `<div class="appt-address">${a.fullAddressLine}</div>` : ''}
           <div class="appt-name">${a.name}</div>
@@ -6411,7 +6453,7 @@ async function recalculateRouteTimesPreservingOrder(active) {
         timeWindow:  a.timeWindow || null,
         jobDuration: JOB_DURATION[a.jobType] || 30,
         dayPart:     a.dayPart,
-        internalFixedStart: a.internalFixedStartTime || undefined,
+        internalFixedStart: a.internalFixedPin || a.internalFixedStartTime || undefined,
       })),
       preserveOrder: true,
     }),
