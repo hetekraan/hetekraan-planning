@@ -774,6 +774,7 @@ export default async function handler(req, res) {
             eventContactMap[cid] = readCanonicalAddressLine(contact) || contact.address1 || '';
           }
         }
+        console.info('[geo-gate-contacts]', { uniqueCids, eventContactMap });
         perf.contact_resolve_day_ms = (perf.contact_resolve_day_ms ?? 0) + (Date.now() - tContactResolve0);
         const [morningCoords, afternoonCoords] = await Promise.all([
           geocodeEvents(
