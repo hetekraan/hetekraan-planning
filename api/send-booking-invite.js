@@ -728,7 +728,7 @@ export default async function handler(req, res) {
     : (contact.name || nameParam || 'Klant');
   const firstName = contact.firstName || name.split(' ')[0];
 
-  const address = readCanonicalAddressLine(contact) || contact.address1 || addressParam || '';
+  const address = addressParam || readCanonicalAddressLine(contact) || contact.address1 || '';
   const canonicalAddr = buildCanonicalAddressWritePayload(address);
   const straat = String(canonicalAddr?.parts?.straatnaam || '').trim();
   const huisnr = String(canonicalAddr?.parts?.huisnummer || '').trim();
