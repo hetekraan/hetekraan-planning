@@ -669,6 +669,7 @@ export default async function handler(req, res) {
 
       const tGeoAddr0 = Date.now();
       const newCoord = address ? await cachedGeocode(address) : null;
+      console.info('[geo-gate-newcoord]', { dateStr: cursor, address, newCoord });
       perf.geocode_address_ms += Date.now() - tGeoAddr0;
 
       try {
