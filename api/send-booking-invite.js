@@ -14,6 +14,7 @@ import {
   blockDisplayLabels,
   blockOfferKey,
   evaluateBlockOffer,
+  isEventInCustomerBlock,
 } from '../lib/block-capacity-offers.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
@@ -44,6 +45,8 @@ import {
   proposalConstraintsPassCandidate,
 } from '../lib/proposal-constraints.js';
 import { rankProposalCandidates } from '../lib/proposal-ranking.js';
+import { isGeoValid } from '../lib/geo-gate.js';
+import { geocode, geocodeEvents } from '../lib/geo-utils.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -78,6 +81,8 @@ async function validateSelectedInviteSlots({
   perf,
   blockSlotUserId,
   trace,
+  address,
+  resolvedContactId,
 }) {
   const eventCache = new Map();
 
@@ -153,6 +158,41 @@ async function validateSelectedInviteSlots({
     const baseWithResv = await eventsForCapacityForDate(sel.dateStr);
     if (baseWithResv === null) {
       return { ok: false, error: 'Kalender-events tijdelijk niet beschikbaar. Probeer het later opnieuw.' };
+    }
+    const geocodeCache = new Map();
+    async function cachedGeocode(addressLine) {
+      const key = String(addressLine || '').trim();
+      if (!key) return null;
+      if (geocodeCache.has(key)) return geocodeCache.get(key);
+      const coord = await geocode(key);
+      geocodeCache.set(key, coord ?? null);
+      return geocodeCache.get(key);
+    }
+    const tGeoAddr0 = Date.now();
+    const newCoord = address ? await cachedGeocode(address) : null;
+    if (perf) perf.geocode_address_ms += Date.now() - tGeoAddr0;
+
+    const customerEvents = baseWithResv.filter((e) => !e._hkGhlBlockSlot);
+    const morningEvents = customerEvents.filter((e) => isEventInCustomerBlock(e, 'morning'));
+    const afternoonEvents = customerEvents.filter((e) => isEventInCustomerBlock(e, 'afternoon'));
+    const [morningCoords, afternoonCoords] = await Promise.all([
+      geocodeEvents(morningEvents, cachedGeocode),
+      geocodeEvents(afternoonEvents, cachedGeocode),
+    ]);
+    const geoCheck = isGeoValid(newCoord, {
+      morning: morningCoords,
+      afternoon: afternoonCoords,
+      targetBlock: sel.block,
+    });
+    if (!geoCheck.valid) {
+      console.info(
+        `[geo-gate] Skipped ${sel.dateStr} ${sel.block} for contact ${resolvedContactId || 'unknown'}: ` +
+          `${geoCheck.reason} (coord: ${JSON.stringify(newCoord)})`
+      );
+      return {
+        ok: false,
+        error: 'Een van de gekozen tijdsloten is geografisch niet haalbaar. Vernieuw de suggestie en probeer opnieuw.',
+      };
     }
 
     const events = augmentMergedForPicks(baseWithResv, sel.dateStr, picked, workType);
@@ -271,7 +311,7 @@ function dutchDateLabel(dateStr) {
  * Tot 2 opties `dateStr` + `block`, zelfde regels als api/suggest-slots (block-capacity-offers + merged kalender).
  * @param {Record<string, unknown> | null | undefined} proposalConstraints — geparsed; null = geen filter
  */
-async function pickBlockInviteOffers(workType, timings, proposalConstraints = null) {
+async function pickBlockInviteOffers(workType, timings, proposalConstraints = null, address = '', resolvedContactId = '') {
   const perf = timings || null;
   if (!GHL_API_KEY) return [];
   const calId = ghlCalendarIdFromEnv();
@@ -354,6 +394,19 @@ async function pickBlockInviteOffers(workType, timings, proposalConstraints = nu
   const blocksToTry = proposalBlocksToEvaluate(proposalConstraints);
 
   const processOneDay = async (cursor, i) => {
+    const geocodeCache = new Map();
+    async function cachedGeocode(addressLine) {
+      const key = String(addressLine || '').trim();
+      if (!key) return null;
+      if (geocodeCache.has(key)) return geocodeCache.get(key);
+      const coord = await geocode(key);
+      geocodeCache.set(key, coord ?? null);
+      return geocodeCache.get(key);
+    }
+    const tGeoAddr0 = Date.now();
+    const newCoord = address ? await cachedGeocode(address) : null;
+    if (perf) perf.geocode_address_ms += Date.now() - tGeoAddr0;
+
     try {
       const tDb = Date.now();
       const db = await isCustomerBookingBlockedOnAmsterdamDate(
@@ -373,11 +426,30 @@ async function pickBlockInviteOffers(workType, timings, proposalConstraints = nu
 
     const eventsForCapacity = await eventsForCapacityForDate(cursor);
     if (eventsForCapacity === null) return null;
+    const customerEvents = eventsForCapacity.filter((e) => !e._hkGhlBlockSlot);
+    const morningEvents = customerEvents.filter((e) => isEventInCustomerBlock(e, 'morning'));
+    const afternoonEvents = customerEvents.filter((e) => isEventInCustomerBlock(e, 'afternoon'));
+    const [morningCoords, afternoonCoords] = await Promise.all([
+      geocodeEvents(morningEvents, cachedGeocode),
+      geocodeEvents(afternoonEvents, cachedGeocode),
+    ]);
 
     const dateLabel = dutchDateLabel(cursor);
 
     for (const block of blocksToTry) {
       if (!proposalConstraintsPassCandidate(cursor, block, proposalConstraints)) continue;
+      const geoCheck = isGeoValid(newCoord, {
+        morning: morningCoords,
+        afternoon: afternoonCoords,
+        targetBlock: block,
+      });
+      if (!geoCheck.valid) {
+        console.info(
+          `[geo-gate] Skipped ${cursor} ${block} for contact ${resolvedContactId || 'unknown'}: ` +
+            `${geoCheck.reason} (coord: ${JSON.stringify(newCoord)})`
+        );
+        continue;
+      }
       const tEv = Date.now();
       const evaluation = evaluateBlockOffer({
         dateStr: cursor,
@@ -481,6 +553,37 @@ async function pickBlockInviteOffers(workType, timings, proposalConstraints = nu
 
       const baseWithResv = await eventsForCapacityForDate(c.dateStr);
       if (baseWithResv === null) continue;
+      const geocodeCache = new Map();
+      async function cachedGeocode(addressLine) {
+        const key = String(addressLine || '').trim();
+        if (!key) return null;
+        if (geocodeCache.has(key)) return geocodeCache.get(key);
+        const coord = await geocode(key);
+        geocodeCache.set(key, coord ?? null);
+        return geocodeCache.get(key);
+      }
+      const tGeoAddr0 = Date.now();
+      const newCoord = address ? await cachedGeocode(address) : null;
+      if (perf) perf.geocode_address_ms += Date.now() - tGeoAddr0;
+      const customerEvents = baseWithResv.filter((e) => !e._hkGhlBlockSlot);
+      const morningEvents = customerEvents.filter((e) => isEventInCustomerBlock(e, 'morning'));
+      const afternoonEvents = customerEvents.filter((e) => isEventInCustomerBlock(e, 'afternoon'));
+      const [morningCoords, afternoonCoords] = await Promise.all([
+        geocodeEvents(morningEvents, cachedGeocode),
+        geocodeEvents(afternoonEvents, cachedGeocode),
+      ]);
+      const geoCheck = isGeoValid(newCoord, {
+        morning: morningCoords,
+        afternoon: afternoonCoords,
+        targetBlock: c.block,
+      });
+      if (!geoCheck.valid) {
+        console.info(
+          `[geo-gate] Skipped ${c.dateStr} ${c.block} for contact ${resolvedContactId || 'unknown'}: ` +
+            `${geoCheck.reason} (coord: ${JSON.stringify(newCoord)})`
+        );
+        continue;
+      }
       const events = augmentMergedForPicks(baseWithResv, c.dateStr, picked, workType);
       const tEv2 = Date.now();
       const evaluation = evaluateBlockOffer({
@@ -542,6 +645,7 @@ export default async function handler(req, res) {
     redis_synthetic_sum_ms: 0,
     day_blocked_check_sum_ms: 0,
     evaluate_block_offer_sum_ms: 0,
+    geocode_address_ms: 0,
     contact_resolve_ms: 0,
     ghl_contact_get_ms: 0,
     ghl_contact_put_phone_ms: 0,
@@ -699,6 +803,8 @@ export default async function handler(req, res) {
       perf,
       blockSlotUserId,
       trace,
+      address,
+      resolvedContactId: contactId,
     });
     perf.selected_slots_validate_ms = Date.now() - tSel0;
     if (!v.ok) {
@@ -719,7 +825,7 @@ export default async function handler(req, res) {
   } else {
     perf.invite_path = 'pick_block_invite_offers';
     const tPick0 = Date.now();
-    slots = await pickBlockInviteOffers(workType, perf, proposalConstraints);
+    slots = await pickBlockInviteOffers(workType, perf, proposalConstraints, address, contactId);
     perf.pick_block_wall_ms = Date.now() - tPick0;
   }
   if (slots.length === 0) {

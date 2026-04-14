@@ -42,6 +42,8 @@ import {
   proposalConstraintsPassCandidate,
 } from '../lib/proposal-constraints.js';
 import { rankProposalCandidates } from '../lib/proposal-ranking.js';
+import { isGeoValid } from '../lib/geo-gate.js';
+import { geocode, geocodeEvents } from '../lib/geo-utils.js';
 const GHL_API_KEY = process.env.GHL_API_KEY;
 const PROPOSAL_CLUSTERING_FIRST = String(process.env.PROPOSAL_CLUSTERING_FIRST || '').toLowerCase() === 'true';
 
@@ -64,7 +66,6 @@ async function ghlFetchWith429Backoff(url, headers, max429Attempts = 6) {
   }
   return fetch(url, { headers });
 }
-const MAPS_KEY = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_KEY;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 
 /** 3 weken vooruit (21 dagen). */
@@ -96,19 +97,6 @@ function haversine(lat1, lon1, lat2, lon2) {
     Math.sin(dLat / 2) ** 2 +
     Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-async function geocode(address) {
-  try {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${MAPS_KEY}`;
-    const r = await fetch(url);
-    const d = await r.json();
-    if (d.status === 'OK' && d.results[0]) {
-      const loc = d.results[0].geometry.location;
-      return { lat: loc.lat, lng: loc.lng };
-    }
-  } catch {}
-  return null;
 }
 
 function nearestDistanceKm(newCoord, existingCoords) {
@@ -564,10 +552,6 @@ export default async function handler(req, res) {
     }
     perf.contact_fetch_ms += Date.now() - tWorkType0;
 
-    const tGeoAddr0 = Date.now();
-    const newCoord = address ? await geocode(address) : null;
-    perf.geocode_address_ms = Date.now() - tGeoAddr0;
-
     const startDate = addAmsterdamCalendarDays(formatYyyyMmDdInAmsterdam(new Date()), 1);
     if (!startDate) return res.status(500).json({ error: 'Datumfout' });
     const endDate = addAmsterdamCalendarDays(startDate, FREE_SLOTS_DAYS - 1);
@@ -588,7 +572,7 @@ export default async function handler(req, res) {
         windowAmsterdamYmd: [startDate, endDate],
         windowMs: { start: startBounds.startMs, end: endBounds.endMs },
         timeZone: 'Europe/Amsterdam',
-        geocodeOk: !!newCoord,
+        geocodeOk: !!address,
         engine: 'block-capacity-offers',
       });
     }
@@ -600,17 +584,6 @@ export default async function handler(req, res) {
       calendarId: calId,
       apiKey: GHL_API_KEY,
       assignedUserId: blockSlotUserId,
-    };
-
-    const geocodeEvents = async (evList) => {
-      const coords = [];
-      for (const e of evList) {
-        if (e.address) {
-          const c = await geocode(e.address);
-          if (c) coords.push(c);
-        }
-      }
-      return coords;
     };
 
     const dayLoadCache = new Map();
@@ -700,6 +673,20 @@ export default async function handler(req, res) {
     const scanCandidateTarget = maxSuggest + 4;
 
     const processSuggestDay = async (cursor, i) => {
+      const geocodeCache = new Map();
+      async function cachedGeocode(addressLine) {
+        const key = String(addressLine || '').trim();
+        if (!key) return null;
+        if (geocodeCache.has(key)) return geocodeCache.get(key);
+        const coord = await geocode(key);
+        geocodeCache.set(key, coord ?? null);
+        return geocodeCache.get(key);
+      }
+
+      const tGeoAddr0 = Date.now();
+      const newCoord = address ? await cachedGeocode(address) : null;
+      perf.geocode_address_ms += Date.now() - tGeoAddr0;
+
       try {
         const tDayBlk = Date.now();
         const dayBlk = await isCustomerBookingBlockedOnAmsterdamDate(GHL_BASE, availabilityCtx, cursor);
@@ -768,11 +755,30 @@ export default async function handler(req, res) {
         const evalScore = Number(evaluation.score ?? 0);
         let legacyScore = evalScore + i * 0.02;
         let nearestDistanceForCandidate = null;
+        const customerEvents = eventsForCapacity.filter((e) => !e._hkGhlBlockSlot);
+        const morningEvents = customerEvents.filter((e) => isEventInCustomerBlock(e, 'morning'));
+        const afternoonEvents = customerEvents.filter((e) => isEventInCustomerBlock(e, 'afternoon'));
+        const [morningCoords, afternoonCoords] = await Promise.all([
+          geocodeEvents(morningEvents, cachedGeocode),
+          geocodeEvents(afternoonEvents, cachedGeocode),
+        ]);
+        const geoCheck = isGeoValid(newCoord, {
+          morning: morningCoords,
+          afternoon: afternoonCoords,
+          targetBlock: block,
+        });
+        if (!geoCheck.valid) {
+          console.info(
+            `[geo-gate] Skipped ${cursor} ${block} for contact ${resolvedContactId || 'unknown'}: ` +
+              `${geoCheck.reason} (coord: ${JSON.stringify(newCoord)})`
+          );
+          continue;
+        }
+
         if (newCoord) {
-          const customerEvents = eventsForCapacity.filter((e) => !e._hkGhlBlockSlot);
-          const blockEvents = customerEvents.filter((e) => isEventInCustomerBlock(e, block));
+          const blockEvents = block === 'morning' ? morningEvents : afternoonEvents;
           const tRg = Date.now();
-          const existingCoords = await geocodeEvents(blockEvents);
+          const existingCoords = block === 'morning' ? morningCoords : afternoonCoords;
           perf.geocode_route_fit_sum_ms += Date.now() - tRg;
           nearestDistanceForCandidate = nearestDistanceKm(newCoord, existingCoords);
           if (Number.isFinite(nearestDistanceForCandidate)) {
