@@ -481,10 +481,8 @@
   }
   .appt-card.done .appt-time { color: var(--muted); }
   .appt-card.done .btn-done,
-  .appt-card.done .btn-prijs,
   .appt-card.done .btn-confirm,
-  .appt-card.done .btn-cancel,
-  .appt-card.done .complete-bar { display: none !important; }
+  .appt-card.done .btn-cancel { display: none !important; }
 
   .time-window-badge {
     display: inline-block;
@@ -5957,12 +5955,14 @@ function renderApptCard(a, i) {
           </div>
           <div class="appt-footer-right">
             ${a.priceLabel ? `<span class="appt-price">${a.priceLabel}</span>` : ''}
-            ${!isDone ? `<div class="appt-footer-actions-touch">
+            <div class="appt-footer-actions-touch">
               <div class="appt-footer-cta-row">
                 <button type="button" class="btn-prijs ${barVisible&&!isOnderweg?'active':''}" onclick='togglePrijs(${idQ})' title="Prijsoverzicht bekijken">Prijs</button>
+                ${!isDone ? `
                 <button type="button" class="btn-done ${isOnderweg?'active':''}" onclick='${isOnderweg ? `scrollToPrijs(${idQ})` : `askOnderweg(${idQ})`}' title="${isOnderweg ? 'Naar prijs en afronden' : 'Markeer onderweg'}">Onderweg</button>
+                ` : ''}
               </div>
-            </div>` : ''}
+            </div>
           </div>
         </div>
       </div>

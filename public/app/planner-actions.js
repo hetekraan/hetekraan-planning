@@ -124,7 +124,6 @@
       } catch {}
     }
     a.status = 'klaar';
-    a.priceVisible = false;
     saveKlaarStatus(a.id, a.contactId, getDateStr(getCurrentDate()));
     render();
     requestAnimationFrame(() => {
