@@ -28,6 +28,7 @@ import {
   cachedFetchCalendarEventsForDay,
   cachedListConfirmedSyntheticEventsForDate,
 } from '../lib/amsterdam-day-read-cache.js';
+import { readCanonicalAddressLine } from '../lib/ghl-contact-canonical.js';
 import {
   GHL_CONFIG_MISSING_MSG,
   ghlCalendarIdFromEnv,
@@ -461,12 +462,7 @@ export default async function handler(req, res) {
             : contact.name || contactName;
           contactPhone = contact.phone || contactPhone;
           if (!address) {
-            const straat = getField(contact, FIELD_IDS.straatnaam);
-            const huisnr = getField(contact, FIELD_IDS.huisnummer);
-            const postcode = getField(contact, FIELD_IDS.postcode);
-            const woonplaats = getField(contact, FIELD_IDS.woonplaats) || contact.city || '';
-            address =
-              [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ') || contact.address1 || '';
+            address = readCanonicalAddressLine(contact) || contact.address1 || '';
           }
         }
       } catch {}
@@ -489,12 +485,7 @@ export default async function handler(req, res) {
                 : c.name || contactName;
               contactPhone = c.phone || contactPhone;
               if (!address) {
-                const straat = getField(c, FIELD_IDS.straatnaam);
-                const huisnr = getField(c, FIELD_IDS.huisnummer);
-                const postcode = getField(c, FIELD_IDS.postcode);
-                const woonplaats = getField(c, FIELD_IDS.woonplaats) || c.city || '';
-                address =
-                  [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ') || c.address1 || '';
+                address = readCanonicalAddressLine(c) || c.address1 || '';
               }
             }
           }
@@ -517,12 +508,7 @@ export default async function handler(req, res) {
                 : c.name || contactName;
               contactPhone = c.phone || contactPhone;
               if (!address) {
-                const straat = getField(c, FIELD_IDS.straatnaam);
-                const huisnr = getField(c, FIELD_IDS.huisnummer);
-                const postcode = getField(c, FIELD_IDS.postcode);
-                const woonplaats = getField(c, FIELD_IDS.woonplaats) || c.city || '';
-                address =
-                  [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ') || c.address1 || '';
+                address = readCanonicalAddressLine(c) || c.address1 || '';
               }
             }
           }

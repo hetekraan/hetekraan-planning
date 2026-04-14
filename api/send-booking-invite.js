@@ -20,7 +20,11 @@ import { fetchWithRetry } from '../lib/retry.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { signBookingToken } from '../lib/session.js';
 import { availabilityDebugEnabled, logAvailability } from '../lib/availability-debug.js';
-import { buildCanonicalAddressWritePayload, logCanonicalAddressWrite } from '../lib/ghl-contact-canonical.js';
+import {
+  buildCanonicalAddressWritePayload,
+  logCanonicalAddressWrite,
+  readCanonicalAddressLine,
+} from '../lib/ghl-contact-canonical.js';
 import {
   appendBookingCanonFields,
   formatPriceRulesStructuredString,
@@ -728,12 +732,12 @@ export default async function handler(req, res) {
     : (contact.name || nameParam || 'Klant');
   const firstName = contact.firstName || name.split(' ')[0];
 
-  const straat     = getField(contact, FIELD_IDS.straatnaam);
-  const huisnr     = getField(contact, FIELD_IDS.huisnummer);
-  const postcode   = getField(contact, FIELD_IDS.postcode);
-  const woonplaats = getField(contact, FIELD_IDS.woonplaats) || contact.city || '';
-  const address    = [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ')
-    || contact.address1 || addressParam || '';
+  const address = readCanonicalAddressLine(contact) || contact.address1 || addressParam || '';
+  const canonicalAddr = buildCanonicalAddressWritePayload(address);
+  const straat = String(canonicalAddr?.parts?.straatnaam || '').trim();
+  const huisnr = String(canonicalAddr?.parts?.huisnummer || '').trim();
+  const postcode = String(canonicalAddr?.parts?.postcode || '').trim();
+  const woonplaats = String(canonicalAddr?.parts?.woonplaats || '').trim();
 
   /** E164-mobiel: formulier wint (suggest vult 06… in terwijl GHL-contact soms leeg/fout is). */
   const phoneFromRequest = normalizeNlPhone(String(phoneParam || '').replace(/\s/g, ''));
