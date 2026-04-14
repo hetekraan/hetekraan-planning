@@ -29,6 +29,11 @@
     const tm = ctx.normalizeTimeStr(a.timeSlot || '08:00');
     document.getElementById('deApptTime').value = tm.length >= 5 ? tm : '08:00';
     document.getElementById('deDuration').value = String(ctx.jobDurationForType(a.jobType));
+    const fixedEl = document.getElementById(
+      'deInternalFixedStart');
+    if (fixedEl) {
+      fixedEl.value = a.internalFixedStartTime || '';
+    }
     document.getElementById('daanEditOverlay').classList.add('visible');
   }
 
@@ -79,6 +84,9 @@
       if (data.calendarSynced) msg += ' · agenda bijgewerkt';
       if (data.calendarError) msg += ' · agenda: ' + String(data.calendarError).slice(0, 100);
       ctx.showToast(msg, 'success');
+      const fixedVal = document.getElementById(
+        'deInternalFixedStart')?.value || '';
+      setAppointmentInternalFixedStart(apptIdRaw, fixedVal);
       await ctx.loadAppointments(ctx.getCurrentDate());
     } catch (e) {
       ctx.showToast('Opslaan mislukt: ' + e.message, 'info');

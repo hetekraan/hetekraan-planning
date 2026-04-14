@@ -1492,6 +1492,17 @@
     white-space: nowrap;
   }
 
+  .route-pin-badge {
+    display: inline-block;
+    background: #BA7517;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 6px;
+  }
+
   .route-violation {
     margin-left: 6px;
     font-size: 12px;
@@ -4411,6 +4422,32 @@
         <input class="form-input" type="number" id="deDuration" min="15" max="480" step="5">
       </div>
     </div>
+    <div class="de-field-group">
+      <label class="de-label">VASTE AANKOMSTTIJD</label>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <input type="time" id="deInternalFixedStart"
+          style="background:var(--color-background-secondary);
+          border:0.5px solid var(--color-border-secondary);
+          border-radius:var(--border-radius-md);
+          color:var(--color-text-primary);
+          padding:8px 10px;font-size:14px;width:130px;">
+        <span style="font-size:12px;
+          color:var(--color-text-secondary);">
+          optioneel — mag buiten 09-17 vallen
+        </span>
+        <button type="button"
+          onclick="document.getElementById(
+            'deInternalFixedStart').value='';
+            this.closest('.de-field-group')
+            .querySelector('input').dispatchEvent(
+            new Event('change'))"
+          style="font-size:11px;
+          color:var(--color-text-tertiary);
+          background:none;border:none;cursor:pointer;">
+          wissen
+        </button>
+      </div>
+    </div>
     <p style="font-size:11px;color:var(--muted);margin:8px 0 0">Agenda: alleen als er een kalender-id is; duur standaard uit type (onderhoud 30, reparatie 45, installatie 60).</p>
     <div class="modal-actions" style="margin-top:16px">
       <button type="button" class="btn-cancel" onclick="closeDaanEditModal()">Annuleren</button>
@@ -5098,21 +5135,6 @@ function validateInternalFixedForAppointment(a, hhmmNorm) {
   if (!hhmmNorm) return { ok: true };
   const mins = internalFixedMinutesFromHhMm(hhmmNorm);
   if (mins == null) return { ok: false, message: 'Ongeldige tijd (gebruik HH:mm).' };
-  const job = JOB_DURATION[a.jobType] || 30;
-  const isAfternoon = (a.dayPart ?? 1) !== 0;
-  if (isAfternoon && mins < 13 * 60) {
-    return {
-      ok: false,
-      message: 'Middagafspraak: interne start moet vanaf 13:00 (past bij het klantslot “middag”).',
-    };
-  }
-  const blockEnd = isAfternoon ? 17 * 60 : 13 * 60;
-  if (mins + job > blockEnd) {
-    return {
-      ok: false,
-      message: 'Interne start + klusduur past niet in het dagdeel (ochtend t/m 13:00 / middag t/m 17:00).',
-    };
-  }
   return { ok: true };
 }
 
@@ -5914,8 +5936,6 @@ function renderApptCard(a, i) {
     if (a.datumOnderhoud) metaItems.push(`<div class="meta-item"><div class="meta-label">Laatste onderhoud</div><div class="meta-value">${a.datumOnderhoud}</div></div>`);
 
     const slotHint = (a.dayPart ?? 1) === 0 ? 'Ochtend 09–13' : 'Middag 13–17';
-    const routeOpLockedUi = isRouteOperationalLockedForDate(routeYmdPlanner);
-    const internalStartVal = a.internalFixedStartTime ? normalizeTimeStr(String(a.internalFixedStartTime)) : '';
     return `
     <div class="appt-card ${isDone?'done':''} ${isOnderweg?'onderweg':''} ${isViolation?'violation':''}" id="card-${domId}">
       <div class="appt-number">#${a.routeStop != null ? a.routeStop : i + 1}</div>
@@ -5934,11 +5954,9 @@ function renderApptCard(a, i) {
             <button type="button" class="icon-btn appt-action-icon" onclick='deleteAppt(${idQ})' title="Verwijderen">${APPT_ACTION_SVG.close}</button>
           </div>
         </div>
-        ${!isDone ? `<div class="appt-internal-slot" title="Interne vaste start voor route-optimalisatie (niet automatisch klantbericht)">
-          <label class="appt-internal-slot__label" for="internal-start-${domId}">Route vast</label>
-          <input type="time" id="internal-start-${domId}" class="appt-internal-slot__input" value="${internalStartVal}"
-            step="300" ${routeOpLockedUi ? 'disabled' : ''} onchange="setAppointmentInternalFixedStart(${idQ}, this.value)" />
-        </div>` : ''}
+        ${a.internalFixedStartTime ? `
+          <span class="route-pin-badge">${a.internalFixedStartTime}</span>
+        ` : ''}
         <div class="appt-body">
           ${a.fullAddressLine ? `<div class="appt-address">${a.fullAddressLine}</div>` : ''}
           <div class="appt-name">${a.name}</div>
