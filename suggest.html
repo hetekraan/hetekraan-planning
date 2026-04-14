@@ -228,6 +228,10 @@
       user-select: none;
     }
     .btn-send:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
+    .btn-send-spoed {
+      background: #E24B4A;
+    }
+    .btn-send-spoed:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
 
     .hk-stale-banner {
       display: none;
@@ -375,8 +379,15 @@
   <div id="hkPreviewStaleBanner" class="hk-stale-banner hidden" role="status">
     Beperkingen gewijzigd — bereken de tijdsloten opnieuw.
   </div>
+  <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;color:var(--color-text-secondary);margin-bottom:10px;">
+    <input type="checkbox" id="spoedToggle">
+    Spoedboeking — soepelere planning
+  </label>
   <button type="button" class="btn-send" id="sendBtn">
     <span>📲</span> Stuur WhatsApp
+  </button>
+  <button type="button" class="btn-send btn-send-spoed hidden" id="sendSpoedBtn">
+    <span>🚨</span> Stuur spoed tijdsloten
   </button>
   <button type="button" class="btn-back" onclick="resetForm()">← Andere klant</button>
 </div>
@@ -424,8 +435,21 @@
 
   function applySendButtonEnabledState() {
     const btn = document.getElementById('sendBtn');
-    if (!btn || sendInviteInFlight) return;
-    btn.disabled = previewStale === true;
+    const spoedBtn = document.getElementById('sendSpoedBtn');
+    if (sendInviteInFlight) return;
+    if (btn) btn.disabled = previewStale === true;
+    if (spoedBtn) spoedBtn.disabled = previewStale === true;
+  }
+
+  function isSpoedEnabled() {
+    return document.getElementById('spoedToggle')?.checked === true;
+  }
+
+  function syncSpoedUi() {
+    const spoedBtn = document.getElementById('sendSpoedBtn');
+    if (!spoedBtn) return;
+    if (isSpoedEnabled()) spoedBtn.classList.remove('hidden');
+    else spoedBtn.classList.add('hidden');
   }
 
   function updateStaleUi() {
@@ -496,8 +520,9 @@
 
   function resetSendButton() {
     const btn = document.getElementById('sendBtn');
-    if (!btn) return;
-    btn.innerHTML = '<span>📲</span> Stuur WhatsApp';
+    const spoedBtn = document.getElementById('sendSpoedBtn');
+    if (btn) btn.innerHTML = '<span>📲</span> Stuur WhatsApp';
+    if (spoedBtn) spoedBtn.innerHTML = '<span>🚨</span> Stuur spoed tijdsloten';
     applySendButtonEnabledState();
   }
 
@@ -595,10 +620,10 @@
   }
 
   function onSendBtnClick(ev) {
-    const btn = ev.target && ev.target.closest && ev.target.closest('#sendBtn');
+    const btn = ev.target && ev.target.closest && ev.target.closest('#sendBtn, #sendSpoedBtn');
     if (!btn || btn.disabled) return;
     ev.preventDefault();
-    void sendInvite();
+    void sendInvite(btn.id === 'sendSpoedBtn' || isSpoedEnabled());
   }
 
   // Als GHL het contactId meestuurt, vul alvast naam/telefoon in
@@ -625,6 +650,8 @@
     // Delegatie + pointer: betrouwbaarder dan één listener op de knop (WebKit / webviews).
     const msgCard = document.getElementById('messageCard');
     if (msgCard) msgCard.addEventListener('click', onSendBtnClick);
+    const spoedToggle = document.getElementById('spoedToggle');
+    if (spoedToggle) spoedToggle.addEventListener('change', syncSpoedUi);
     const catalogSearch = document.getElementById('suggestCatalogSearch');
     if (catalogSearch) {
       catalogSearch.addEventListener('focus', () => { void onSuggestCatalogSearchInput(); });
@@ -701,6 +728,7 @@
     const name    = document.getElementById('inputName').value.trim();
     const phone   = document.getElementById('inputPhone').value.trim();
     const address = document.getElementById('inputAddress').value.trim();
+    const spoedMode = isSpoedEnabled();
     if (!name && !phone && !resolvedContactId) {
       showError('Vul de naam of het telefoonnummer in.', '');
       return;
@@ -734,6 +762,9 @@
       if (proposalConstraints) {
         const enc = encodeURIComponent(JSON.stringify(proposalConstraints));
         url += url.endsWith('?') ? `proposalConstraints=${enc}` : `&proposalConstraints=${enc}`;
+      }
+      if (spoedMode) {
+        url += url.endsWith('?') ? 'spoed=true' : '&spoed=true';
       }
 
       const res = await fetch(url);
@@ -818,15 +849,18 @@
     }
   }
 
-  async function sendInvite() {
+  async function sendInvite(spoedMode = false) {
     if (sendInviteInFlight) return;
     if (previewStale) return;
     sendInviteInFlight = true;
     const btn = document.getElementById('sendBtn');
+    const spoedBtn = document.getElementById('sendSpoedBtn');
     try {
       if (!btn) return;
       btn.disabled = true;
-      btn.innerHTML = '<span>⏳</span> Versturen…';
+      if (spoedBtn) spoedBtn.disabled = true;
+      if (spoedMode && spoedBtn) spoedBtn.innerHTML = '<span>⏳</span> Versturen…';
+      else btn.innerHTML = '<span>⏳</span> Versturen…';
 
       const name    = document.getElementById('inputName').value.trim();
       const phone   = document.getElementById('inputPhone').value.trim();
@@ -861,6 +895,7 @@
         }));
       }
       if (pendingProposalConstraints) body.proposalConstraints = pendingProposalConstraints;
+      if (spoedMode) body.spoedMode = true;
 
       const ac = new AbortController();
       const to = setTimeout(() => ac.abort(), 120000);
@@ -932,6 +967,9 @@
     });
     const ta = document.getElementById('hkSuggestSpecificDates');
     if (ta) ta.value = '';
+    const spoedToggle = document.getElementById('spoedToggle');
+    if (spoedToggle) spoedToggle.checked = false;
+    syncSpoedUi();
     document.getElementById('inputName').value    = '';
     document.getElementById('inputPhone').value   = '';
     document.getElementById('inputAddress').value = '';

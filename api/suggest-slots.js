@@ -400,7 +400,8 @@ export default async function handler(req, res) {
   };
 
   try {
-    const q = req.method === 'POST' ? req.body : req.query;
+    const body = req.method === 'POST' ? req.body || {} : {};
+    const q = req.method === 'POST' ? body : req.query;
     const {
       contactId,
       address: addressParam,
@@ -410,6 +411,7 @@ export default async function handler(req, res) {
       workType: workTypeQ,
       proposalConstraints: proposalConstraintsRaw,
     } = q;
+    const spoedMode = req.query?.spoed === 'true' || body?.spoedMode === true;
     const proposalConstraints = parseProposalConstraints(proposalConstraintsRaw);
 
     if (availabilityDebugEnabled()) {
@@ -656,7 +658,7 @@ export default async function handler(req, res) {
     const maxSuggest = effectiveMaxOptions(proposalConstraints, 2, 2);
     const scanCandidateTarget = maxSuggest + 4;
 
-    const processSuggestDay = async (cursor, i) => {
+    const processSuggestDay = async (cursor, i, useSpoedMode = false) => {
       const geocodeCache = new Map();
       async function cachedGeocode(addressLine) {
         const key = String(addressLine || '').trim();
@@ -791,11 +793,15 @@ export default async function handler(req, res) {
             cachedGeocode
           ),
         ]);
-        const geoCheck = isGeoValid(newCoord, {
-          morning: morningCoords,
-          afternoon: afternoonCoords,
-          targetBlock: block,
-        });
+        const geoCheck = isGeoValid(
+          newCoord,
+          {
+            morning: morningCoords,
+            afternoon: afternoonCoords,
+            targetBlock: block,
+          },
+          useSpoedMode
+        );
         if (!geoCheck.valid) {
           console.info(
             `[geo-gate] Skipped ${cursor} ${block} for contact ${resolvedContactId || 'unknown'}: ` +
@@ -843,7 +849,7 @@ export default async function handler(req, res) {
     if (schedule.kind === 'list') {
       for (let j = 0; j < schedule.dates.length; j++) {
         const cursor = schedule.dates[j];
-        const status = await processSuggestDay(cursor, j);
+        const status = await processSuggestDay(cursor, j, spoedMode);
         if (status === 'availability_error') {
           return res.status(503).json({
             success: false,
@@ -874,7 +880,7 @@ export default async function handler(req, res) {
           cursor = addAmsterdamCalendarDays(cursor, 1);
           continue;
         }
-        const status = await processSuggestDay(cursor, i);
+        const status = await processSuggestDay(cursor, i, spoedMode);
         if (status === 'availability_error') {
           return res.status(503).json({
             success: false,

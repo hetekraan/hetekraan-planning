@@ -60,3 +60,15 @@ test('geo-gate: null coord => altijd valid no-coord-skip', () => {
   assert.equal(out.valid, true);
   assert.equal(out.reason, 'no-coord-skip');
 });
+
+test('geo-gate: spoed aan, Haarlem buiten normale radius maar binnen dubbele radius => valid', () => {
+  const out = isGeoValid(COORDS.haarlem, ctx({ morning: [COORDS.alkmaar], targetBlock: 'morning' }), true);
+  assert.equal(out.valid, true);
+  assert.equal(out.reason, 'ok');
+});
+
+test('geo-gate: spoed aan, Den Helder t.o.v. Amsterdam blijft buiten dubbele radius => invalid', () => {
+  const out = isGeoValid(COORDS.denHelder, ctx({ morning: [{ lat: 52.3676, lng: 4.9041 }], targetBlock: 'morning' }), true);
+  assert.equal(out.valid, false);
+  assert.equal(out.reason, 'block-centroid-exceeded');
+});
