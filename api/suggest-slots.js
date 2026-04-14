@@ -73,10 +73,6 @@ const GHL_BASE = 'https://services.leadconnectorhq.com';
 const FREE_SLOTS_DAYS = 21;
 
 const FIELD_IDS = {
-  straatnaam: 'ZwIMY4VPelG5rKROb5NR',
-  huisnummer: 'co5Mr16rF6S6ay5hJOSJ',
-  postcode: '3bCi5hL0rR9XGG33x2Gv',
-  woonplaats: 'mFRQjlUppycMfyjENKF9',
   type_onderhoud: 'EXSQmlt7BqkXJMs8F3Qk',
 };
 

@@ -197,10 +197,6 @@ function dedupeGhlEventsForDashboard(list) {
 
 // Custom field ID mapping
 const FIELD_IDS = {
-  straatnaam:          'ZwIMY4VPelG5rKROb5NR',
-  huisnummer:          'co5Mr16rF6S6ay5hJOSJ',
-  postcode:            '3bCi5hL0rR9XGG33x2Gv',
-  woonplaats:          'mFRQjlUppycMfyjENKF9',
   type_onderhoud:      'EXSQmlt7BqkXJMs8F3Qk',
   probleemomschrijving:'BBcbPCNA9Eu0Kyi4U1LN',
   prijs:               'HGjlT6ofaBiMz3j2HsXL',
@@ -976,10 +972,6 @@ export default async function handler(req, res) {
           customFields.push({ id, field_value: s });
         };
 
-        pushField(FIELD_IDS.straatnaam, straatnaam);
-        pushField(FIELD_IDS.huisnummer, huisnummer);
-        pushField(FIELD_IDS.postcode, postcode);
-        pushField(FIELD_IDS.woonplaats, woonplaats);
         pushField(FIELD_IDS.type_onderhoud, typeOnderhoud);
         pushField(FIELD_IDS.probleemomschrijving, probleemomschrijving);
         pushField(FIELD_IDS.tijdafspraak, tijdafspraak);

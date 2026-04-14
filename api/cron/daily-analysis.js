@@ -24,10 +24,6 @@ const OPENROUTER_BASE    = 'https://openrouter.ai/api/v1';
 // GHL custom field IDs
 const FIELDS = {
   probleemomschrijving: 'BBcbPCNA9Eu0Kyi4U1LN',
-  woonplaats:           'mFRQjlUppycMfyjENKF9',
-  straatnaam:           'ZwIMY4VPelG5rKROb5NR',
-  huisnummer:           'co5Mr16rF6S6ay5hJOSJ',
-  postcode:             '3bCi5hL0rR9XGG33x2Gv',
   type_onderhoud:       'EXSQmlt7BqkXJMs8F3Qk',
   afgesproken_prijs:    'HGjlT6ofaBiMz3j2HsXL',
   prijs_regels:         'gPjrUG2eH81PeALh8tVS',
