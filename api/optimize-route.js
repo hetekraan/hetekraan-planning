@@ -483,6 +483,8 @@ async function handlePartitionedDay(req, res, key, appointments, returnToDepot) 
   const globalEtasMin = [];
   const globalLegInfo = [];
   const violations = [];
+  let morningOrderLocal = [];
+  let morningEtasMin = [];
 
   /** Ochtendfase */
   if (mApps.length > 0) {
@@ -516,6 +518,8 @@ async function handlePartitionedDay(req, res, key, appointments, returnToDepot) 
     if (!r) {
       return res.status(500).json({ error: 'DISTANCE_MATRIX_FAILED', message: 'Afstands-matrix tijdelijk niet beschikbaar' });
     }
+    morningOrderLocal = Array.isArray(r.order) ? r.order : [];
+    morningEtasMin = Array.isArray(r.etas) ? r.etas : [];
 
     const twM = mApps.map(() => MORNING_BLOCK);
     violations.push(
@@ -548,13 +552,18 @@ async function handlePartitionedDay(req, res, key, appointments, returnToDepot) 
     let afternoonClock = AFTERNOON_BLOCK.start;
 
     if (mApps.length > 0) {
-      const lastLocalMorningIdx = mApps.length - 1;
+      const lastLocalMorningIdx = morningOrderLocal.length > 0
+        ? morningOrderLocal[morningOrderLocal.length - 1]
+        : mApps.length - 1;
       const lastMorningGlobal = morningOrigIndices[lastLocalMorningIdx];
       const lastMorningAddr = String(appointments[lastMorningGlobal]?.address || '').trim();
       if (lastMorningAddr) afternoonOrigin = lastMorningAddr;
 
-      const lastMorningEta = globalEtasMin[globalEtasMin.length - 1];
-      const lastMorningJob = mApps[lastLocalMorningIdx].jobDuration || 30;
+      const lastMorningEta = morningEtasMin.length > 0
+        ? morningEtasMin[morningEtasMin.length - 1]
+        : globalEtasMin[globalEtasMin.length - 1];
+      const lastMorningJob =
+        mApps[lastLocalMorningIdx]?.jobDuration || 30;
       afternoonClock = Math.max(AFTERNOON_BLOCK.start, lastMorningEta + lastMorningJob);
     }
 
