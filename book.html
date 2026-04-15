@@ -536,11 +536,13 @@
         knownEmailFromToken = rawTokenEmail.toLowerCase();
       }
 
-      // Zelfde idee als e-mail: alleen “bekend” als de token een niet-lege waarde heeft (getrimd).
+      // Zelfde idee als e-mail: alleen “bekend” als het token-adres voldoende compleet is.
+      let prefillCityFromToken = '';
       knownAddressFromToken = '';
       if (bookingData.address != null) {
         const t = String(bookingData.address).replace(/\s+/g, ' ').trim();
-        if (t) knownAddressFromToken = t;
+        if (isAddressComplete(t)) knownAddressFromToken = t;
+        else if (t) prefillCityFromToken = t;
       }
 
       document.getElementById('emailBlock').hidden = true;
@@ -555,6 +557,10 @@
           el.classList.remove('invalid');
         }
       });
+      if (!knownAddressFromToken && prefillCityFromToken) {
+        const cityEl = document.getElementById('bookingCity');
+        if (cityEl) cityEl.value = prefillCityFromToken;
+      }
 
       // Vul info rows (geen vaste datum – elk slot heeft eigen datum)
       const infoRows = document.getElementById('infoRows');
@@ -612,6 +618,15 @@
 
     function hasMobileFromToken(p) {
       return isValidNlMobile(String(p || ''));
+    }
+
+    function isAddressComplete(address) {
+      if (!address) return false;
+      const a = String(address).trim();
+      const hasPostcode = /\d{4}\s?[A-Za-z]{2}/.test(a);
+      const hasNumber = /\d/.test(a);
+      const hasStreet = /[a-zA-Z]/.test(a);
+      return hasPostcode && hasNumber && hasStreet;
     }
 
     function updateConfirmButtonState() {
