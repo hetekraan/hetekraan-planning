@@ -176,6 +176,8 @@
     const emailInput = document.getElementById('mEmail');
     const descInput = document.getElementById('mDesc');
     const contactIdInput = document.getElementById('mContactId');
+    const modalPinTypeInput = document.getElementById('modalInternalFixedType');
+    const modalPinTimeInput = document.getElementById('modalInternalFixedStart');
     const activeDateInput = document.getElementById('dateInput');
 
     if (nameInput) nameInput.value = '';
@@ -184,6 +186,11 @@
     if (addressInput) addressInput.value = '';
     if (descInput) descInput.value = '';
     if (contactIdInput) contactIdInput.value = '';
+    if (modalPinTypeInput) modalPinTypeInput.value = '';
+    if (modalPinTimeInput) modalPinTimeInput.value = '';
+    if (typeof global.syncModalInternalFixedControls === 'function') {
+      global.syncModalInternalFixedControls();
+    }
 
     if (typeInput) {
       typeInput.selectedIndex = 0;
@@ -209,6 +216,7 @@
       delete overlayReset.dataset.hkEditContactId;
       delete overlayReset.dataset.hkEditPrevDate;
       delete overlayReset.dataset.hkEditPrevSlot;
+      delete overlayReset.dataset.hkEditApptId;
     }
 
     if (global.HKPlannerCatalogV1?.resetModal) {
@@ -411,6 +419,17 @@
       if (!res.ok || !data.success) {
         throw new Error(data.error || data.detail || `Opslaan mislukt (${res.status})`);
       }
+      const apptId = String(editMeta?.apptId || overlay?.dataset?.hkEditApptId || '').trim();
+      if (apptId && typeof global.setAppointmentInternalFixedStart === 'function') {
+        const pinType = document.getElementById(
+          'modalInternalFixedType')?.value || '';
+        const pinTime = document.getElementById(
+          'modalInternalFixedStart')?.value || '';
+        const pinValue = pinType && pinTime
+          ? JSON.stringify({ type: pinType, time: pinTime })
+          : '';
+        global.setAppointmentInternalFixedStart(apptId, pinValue);
+      }
 
       const targetDate = normalizeYmdToDate(form.date);
       if (targetDate) {
@@ -506,6 +525,7 @@
     resetManualAppointmentForm({ dateYmd: activeDate });
     setModalUiMode('edit');
     editingMeta = {
+      apptId: String(a.id || apptId),
       contactId: String(a.contactId),
       prevDate: activeDate,
       prevSlotKey: slotCfg.key || slotKey,
@@ -516,6 +536,7 @@
       overlayOpen.dataset.hkEditContactId = String(a.contactId);
       overlayOpen.dataset.hkEditPrevDate = activeDate;
       overlayOpen.dataset.hkEditPrevSlot = String(slotCfg.key || slotKey);
+      overlayOpen.dataset.hkEditApptId = String(a.id || apptId);
     }
     traceEditAddress('[open_address]', {
       apptId,
@@ -548,6 +569,19 @@
     }
     if (descInput) descInput.value = baseLineDesc;
     if (contactIdInput) contactIdInput.value = String(a.contactId || '');
+    const pin = a.internalFixedPin ||
+      (a.internalFixedStartTime
+        ? { type: 'exact', time: a.internalFixedStartTime }
+        : null);
+    const typeEl = document.getElementById(
+      'modalInternalFixedType');
+    const timeEl = document.getElementById(
+      'modalInternalFixedStart');
+    if (typeEl) typeEl.value = pin?.type || '';
+    if (timeEl) timeEl.value = pin?.time || '';
+    if (typeof global.syncModalInternalFixedControls === 'function') {
+      global.syncModalInternalFixedControls();
+    }
 
     if (global.HKPlannerCatalogV1?.setModalLines) {
       global.HKPlannerCatalogV1.setModalLines(lines);

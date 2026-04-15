@@ -4486,6 +4486,37 @@
         </select>
       </div>
     </div>
+    <div class="de-field-group" style="margin-top:12px;">
+      <label class="de-label">VASTE AANKOMSTTIJD</label>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <select id="modalInternalFixedType"
+          onchange="syncModalInternalFixedControls()"
+          style="background:var(--color-background-secondary);
+          border:0.5px solid var(--color-border-secondary);
+          border-radius:var(--border-radius-md);
+          color:var(--color-text-primary);
+          padding:8px 10px;font-size:14px;">
+          <option value="">— geen vaste tijd —</option>
+          <option value="exact">Op</option>
+          <option value="after">Na</option>
+          <option value="before">Voor</option>
+        </select>
+        <input type="time" id="modalInternalFixedStart"
+          style="background:var(--color-background-secondary);
+          border:0.5px solid var(--color-border-secondary);
+          border-radius:var(--border-radius-md);
+          color:var(--color-text-primary);
+          padding:8px 10px;font-size:14px;width:120px;">
+        <button type="button"
+          onclick="document.getElementById('modalInternalFixedType').value='';
+            document.getElementById('modalInternalFixedStart').value='';
+            syncModalInternalFixedControls();"
+          style="font-size:11px;color:var(--color-text-tertiary);
+          background:none;border:none;cursor:pointer;">
+          wissen
+        </button>
+      </div>
+    </div>
     <div class="form-row">
       <label class="form-label">Type</label>
       <select class="form-select" id="mType">
@@ -4618,6 +4649,16 @@ let plannerCustomerDayFull = false;
 let plannerCustomerDayFullStoreConfigured = false;
 let globalSearchTimer = null;
 let globalSearchResultsCache = [];
+
+function syncModalInternalFixedControls() {
+  const typeEl = document.getElementById(
+    'modalInternalFixedType');
+  const timeEl = document.getElementById(
+    'modalInternalFixedStart');
+  if (!typeEl || !timeEl) return;
+  timeEl.disabled = !typeEl.value;
+  timeEl.style.opacity = typeEl.value ? '1' : '0.4';
+}
 
 function escapeHtml(s) {
   return String(s || '')
