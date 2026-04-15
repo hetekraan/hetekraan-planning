@@ -1119,7 +1119,7 @@
 
   .route-flow-scroll {
     flex: 1 1 auto;
-    min-height: 120px;
+    min-height: 0;
     overflow-x: clip;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
@@ -1263,9 +1263,11 @@
   .route-toolbar {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 6px;
     align-items: stretch;
+    margin-top: 8px;
     margin-bottom: 0;
+    padding: 0 0 8px 0;
   }
   .route-toolbar .btn-optimize {
     flex: 1 1 140px;
@@ -1274,7 +1276,7 @@
   .route-toolbar .btn-unlock-route,
   .route-toolbar .btn-confirm-route {
     flex: 1 1 auto;
-    min-height: 44px;
+    min-height: unset;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1284,12 +1286,12 @@
     background: var(--accent);
     color: white;
     border: none;
-    padding: 12px 10px;
-    min-height: 48px;
+    padding: 8px 10px;
+    min-height: unset;
     border-radius: 8px;
     font-family: var(--font-display);
     font-weight: 600;
-    font-size: 13px;
+    font-size: 12px;
     cursor: pointer;
     width: 100%;
     letter-spacing: 0.5px;
@@ -1308,7 +1310,8 @@
     color: var(--muted);
     padding: 8px 10px;
     border-radius: 8px;
-    font-size: 11px;
+    font-size: 12px;
+    min-height: unset;
     cursor: pointer;
     text-align: center;
     line-height: 1.25;
@@ -1319,10 +1322,11 @@
     background: rgba(0,212,170,0.1);
     border: 1px solid var(--accent2);
     color: var(--accent2);
-    padding: 8px 12px;
+    padding: 8px 10px;
     border-radius: 8px;
     font-family: var(--font-body);
     font-size: 12px;
+    min-height: unset;
     font-weight: 600;
     cursor: pointer;
     text-align: center;
@@ -4241,17 +4245,17 @@
           </div>
           <span class="route-status-badge" id="routePanelStatusBadge" hidden></span>
         </div>
-        <div class="route-toolbar route-toolbar--card">
-          <button type="button" class="btn-optimize" id="btnOptimize" onclick="optimizeRoute()">Optimaliseer</button>
-          <button type="button" class="btn-unlock-route" id="btnUnlock" style="display:none" onclick="unlockRoute()" title="Ontgrendel route (centraal) of handmatige volgorde">Ontgrendel</button>
-          <button type="button" class="btn-confirm-route" id="btnConfirmRoute" onclick="confirmRoute()" title="Sla geplande tijden op in GHL zodat ochtendmeldingen de juiste aankomsttijd sturen">Bevestig route</button>
-        </div>
         <div id="routeLocalHint" class="route-local-hint" style="display:none"></div>
         <button type="button" class="route-reset-link" onclick="resetLocalRouteTimes()" id="btnResetLocalRoute" style="display:none">↺ Reset naar GHL-agenda (wis lokale tijden)</button>
       </div>
     </div>
     <div class="route-flow-scroll">
       <div class="route-list" id="routeList"></div>
+    </div>
+    <div class="route-toolbar route-toolbar--card">
+      <button type="button" class="btn-optimize" id="btnOptimize" onclick="optimizeRoute()">Optimaliseer</button>
+      <button type="button" class="btn-unlock-route" id="btnUnlock" style="display:none" onclick="unlockRoute()" title="Ontgrendel route (centraal) of handmatige volgorde">Ontgrendel</button>
+      <button type="button" class="btn-confirm-route" id="btnConfirmRoute" onclick="confirmRoute()" title="Sla geplande tijden op in GHL zodat ochtendmeldingen de juiste aankomsttijd sturen">Bevestig route</button>
     </div>
     <div class="route-panel-footer">
       <div class="route-summary" id="routeSummary" aria-live="polite"></div>
