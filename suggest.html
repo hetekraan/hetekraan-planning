@@ -350,6 +350,10 @@
     <label class="field-label">Totaalprijs</label>
     <input class="field-input" type="text" id="inputTotaalprijs" value="0" readonly>
   </div>
+  <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;color:var(--color-text-secondary);margin-bottom:10px;">
+    <input type="checkbox" id="spoedToggle">
+    Spoedboeking — soepelere planning
+  </label>
   <button type="button" class="btn-search" id="searchBtn">Tijdsloten berekenen →</button>
 </div>
 
@@ -379,10 +383,6 @@
   <div id="hkPreviewStaleBanner" class="hk-stale-banner hidden" role="status">
     Beperkingen gewijzigd — bereken de tijdsloten opnieuw.
   </div>
-  <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;color:var(--color-text-secondary);margin-bottom:10px;">
-    <input type="checkbox" id="spoedToggle">
-    Spoedboeking — soepelere planning
-  </label>
   <button type="button" class="btn-send btn-send-spoed hidden" id="sendSpoedBtn">
     <span>🚨</span> Stuur spoed tijdsloten
   </button>
