@@ -80,6 +80,7 @@
     let lastMaintenance = String(sdateEl?.value || '').trim();
     if (!lastMaintenance) lastMaintenance = String(a.lastService || '').trim();
     if (!lastMaintenance) lastMaintenance = routeDate;
+    let moneybirdHandled = false;
     if (a.contactId) {
       try {
         const ghlRes = await fetch('/api/ghl?action=completeAppointment', {
@@ -98,12 +99,20 @@
             routeDate,
           }),
         });
+        const ghlData = await ghlRes.json().catch(() => ({}));
+        const moneybirdState = ghlData?.moneybird || {};
+        const moneybirdHasOutcome =
+          !!moneybirdState.created ||
+          !!moneybirdState.invoiceId ||
+          !!moneybirdState.skipped;
+        // Als Moneybird al een uitkomst heeft, geen legacy Mollie-flow starten.
+        moneybirdHandled = moneybirdHasOutcome;
         if (!ghlRes.ok) showToast(`⚠ GHL kon niet worden bijgewerkt (${ghlRes.status}) — afspraak wel klaar gezet`, 'info');
       } catch {
         showToast('⚠ GHL niet bereikbaar — afspraak wel klaar gezet', 'info');
       }
     }
-    if (a.contactId && total > 0) {
+    if (a.contactId && total > 0 && !moneybirdHandled) {
       try {
         const resp = await fetch('/api/create-payment', {
           method: 'POST',

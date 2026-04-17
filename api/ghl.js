@@ -1124,6 +1124,8 @@ export default async function handler(req, res) {
               findOrCreateContact,
               findExistingInvoiceByReference,
               createSalesInvoice,
+              getSalesInvoiceById,
+              resolveSalesInvoicePaymentUrl,
               sendSalesInvoiceByEmail,
             } = await import('../lib/moneybird.js');
 
@@ -1157,6 +1159,17 @@ export default async function handler(req, res) {
               serviceDay: moneybirdServiceDay,
             });
             const description = `${type || 'Onderhoud'} - ${name}`;
+            const logMb = (event, extra = {}, level = 'info') => {
+              const payload = {
+                contactId,
+                appointmentId: String(appointmentId || ''),
+                reference: reference || '',
+                ...extra,
+              };
+              if (level === 'warn') console.warn(`[moneybird] ${event}`, payload);
+              else if (level === 'error') console.error(`[moneybird] ${event}`, payload);
+              else console.info(`[moneybird] ${event}`, payload);
+            };
 
             const extrasLines = normalizePriceLineItems(Array.isArray(extras) ? extras : []);
             const baseFromReq = toPriceNumber(basePrice);
@@ -1201,7 +1214,17 @@ export default async function handler(req, res) {
                   invoiceId: existingInvoiceId,
                   reference: existingRefToUse || reference,
                 });
-                moneybirdResult = { skipped: true, reason: 'already_linked', invoiceId: existingInvoiceId, invoiceUrl: existingInvoiceUrl };
+                moneybirdResult = {
+                  skipped: true,
+                  reason: 'already_linked',
+                  invoiceId: existingInvoiceId,
+                  invoiceUrl: existingInvoiceUrl,
+                  invoiceUrlSource: existingInvoiceUrl ? 'stored-metadata' : '',
+                };
+                logMb('invoice_reused', {
+                  invoiceId: existingInvoiceId,
+                  source: existingInvoiceUrl ? 'stored-metadata' : '',
+                });
               } else {
                 const existingByRef = reference
                   ? await findExistingInvoiceByReference(reference)
@@ -1209,7 +1232,8 @@ export default async function handler(req, res) {
 
                 if (existingByRef?.found && existingByRef?.invoice?.id) {
                   const foundInvoiceId = String(existingByRef.invoice.id);
-                  const foundInvoiceUrl = existingByRef.invoice?.url || existingByRef.invoice?.public_view_url || '';
+                  const foundInvoiceResolved = resolveSalesInvoicePaymentUrl(existingByRef.invoice);
+                  const foundInvoiceUrl = foundInvoiceResolved.url || existingByRef.invoice?.url || existingByRef.invoice?.public_view_url || '';
                   console.info('[moneybird] duplicate-skip reference', { reference });
                   console.info('[moneybird] factuur overgeslagen: referentie bestaat al', {
                     contactId,
@@ -1217,7 +1241,17 @@ export default async function handler(req, res) {
                     reference,
                     invoiceId: foundInvoiceId,
                   });
-                  moneybirdResult = { skipped: true, reason: 'reference_exists', invoiceId: foundInvoiceId, invoiceUrl: foundInvoiceUrl };
+                  logMb('invoice_reused', {
+                    invoiceId: foundInvoiceId,
+                    source: foundInvoiceResolved.source || (foundInvoiceUrl ? 'query-result' : ''),
+                  });
+                  moneybirdResult = {
+                    skipped: true,
+                    reason: 'reference_exists',
+                    invoiceId: foundInvoiceId,
+                    invoiceUrl: foundInvoiceUrl,
+                    invoiceUrlSource: foundInvoiceResolved.source || (foundInvoiceUrl ? 'query-result' : ''),
+                  };
                 } else {
                   const mbContact = await findOrCreateContact(name, email, phone, address);
                   if (!mbContact?.contactId) {
@@ -1241,7 +1275,19 @@ export default async function handler(req, res) {
                     });
                     if (created?.created && created?.invoice?.id) {
                       const invoiceId = String(created.invoice.id);
-                      const invoiceUrl = created.invoice?.url || created.invoice?.public_view_url || '';
+                      const resolvedFromCreate = resolveSalesInvoicePaymentUrl(created.invoice);
+                      let invoiceUrl = resolvedFromCreate.url;
+                      let invoiceUrlSource = resolvedFromCreate.url ? 'create-response' : '';
+                      if (!invoiceUrl) {
+                        try {
+                          const invoiceRead = await getSalesInvoiceById(invoiceId);
+                          const resolvedFromRead = resolveSalesInvoicePaymentUrl(invoiceRead?.invoice);
+                          if (resolvedFromRead.url) {
+                            invoiceUrl = resolvedFromRead.url;
+                            invoiceUrlSource = 'read-call';
+                          }
+                        } catch (_) {}
+                      }
                       const invoiceNumber = String(created.invoice?.invoice_id || '').trim() || null;
                       console.info('[moneybird] factuur aangemaakt (concept)', {
                         contactId,
@@ -1250,14 +1296,26 @@ export default async function handler(req, res) {
                         invoiceId,
                         invoiceNumber,
                         invoiceUrl,
+                        invoiceUrlSource,
                       });
                       moneybirdResult = {
                         created: true,
                         invoiceId,
                         invoiceUrl,
+                        invoiceUrlSource,
                         invoiceNumber,
                         reference,
                       };
+                      logMb('invoice_created', {
+                        invoiceId,
+                        source: invoiceUrlSource || '',
+                      });
+                      if (invoiceUrlSource === 'url') {
+                        logMb('payment_url_missing_using_url_fallback', {
+                          invoiceId,
+                          source: 'url',
+                        }, 'warn');
+                      }
 
                       // Veilige default: alleen bij nieuw aangemaakte factuur automatisch e-mail versturen.
                       const emailNorm = String(email || '').trim().toLowerCase();
@@ -1333,6 +1391,50 @@ export default async function handler(req, res) {
                             status: putMb.status,
                             detail: mbDetail,
                           });
+                        }
+                      }
+
+                      // WhatsApp via bestaande tag-flow; nooit losse Mollie-link.
+                      const phoneNorm = normalizePhoneForGhl(phone);
+                      if (!phoneNorm) {
+                        logMb('missing_phone', {
+                          invoiceId,
+                          source: invoiceUrlSource || '',
+                        });
+                      } else if (!invoiceUrl) {
+                        logMb('missing_invoice_url', {
+                          invoiceId,
+                          source: invoiceUrlSource || '',
+                        });
+                      } else {
+                        try {
+                          if (invoiceUrlFieldId) {
+                            await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
+                              method: 'PUT',
+                              headers: {
+                                Authorization: `Bearer ${GHL_API_KEY}`,
+                                'Content-Type': 'application/json',
+                                Version: '2021-04-15',
+                              },
+                              body: JSON.stringify({
+                                customFields: [{ id: invoiceUrlFieldId, field_value: invoiceUrl }],
+                              }),
+                              _allowPostRetry: false,
+                            });
+                          }
+                          const waTagOk = await pulseContactTag(contactId, 'stuur-betaallink', '[moneybird whatsapp]');
+                          if (!waTagOk) throw new Error('pulseContactTag returned false');
+                          logMb('whatsapp_payment_link_sent', {
+                            invoiceId,
+                            source: invoiceUrlSource || '',
+                          });
+                          moneybirdResult.whatsappSent = true;
+                        } catch (waErr) {
+                          logMb('whatsapp_send_failed', {
+                            invoiceId,
+                            source: invoiceUrlSource || '',
+                            message: waErr?.message || String(waErr),
+                          }, 'error');
                         }
                       }
                     } else {
