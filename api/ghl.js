@@ -233,6 +233,64 @@ async function resolvePlannerNotitiesFieldId() {
   });
 }
 
+async function resolveMoneybirdFieldIds() {
+  const [invoiceIdFieldId, invoiceUrlFieldId, referenceFieldId] = await Promise.all([
+    resolveContactCustomFieldId({
+      baseUrl: GHL_BASE,
+      apiKey: GHL_API_KEY,
+      locationId: ghlLocationIdFromEnv(),
+      fieldKey: 'moneybird_invoice_id',
+      objectType: 'contact',
+      envOverride: String(process.env.GHL_FIELD_ID_MONEYBIRD_INVOICE_ID || '').trim(),
+    }),
+    resolveContactCustomFieldId({
+      baseUrl: GHL_BASE,
+      apiKey: GHL_API_KEY,
+      locationId: ghlLocationIdFromEnv(),
+      fieldKey: 'moneybird_invoice_url',
+      objectType: 'contact',
+      envOverride: String(process.env.GHL_FIELD_ID_MONEYBIRD_INVOICE_URL || '').trim(),
+    }),
+    resolveContactCustomFieldId({
+      baseUrl: GHL_BASE,
+      apiKey: GHL_API_KEY,
+      locationId: ghlLocationIdFromEnv(),
+      fieldKey: 'moneybird_invoice_reference',
+      objectType: 'contact',
+      envOverride: String(process.env.GHL_FIELD_ID_MONEYBIRD_INVOICE_REFERENCE || '').trim(),
+    }),
+  ]);
+  return { invoiceIdFieldId, invoiceUrlFieldId, referenceFieldId };
+}
+
+function buildMoneybirdReference({ appointmentId, contactId, serviceDay }) {
+  const appt = String(appointmentId || '').trim();
+  if (appt) return `hk-appt:${appt}`;
+  const cid = String(contactId || '').trim();
+  const day = String(serviceDay || '').trim();
+  if (cid && day) return `hk-contact:${cid}:${day}`;
+  return '';
+}
+
+function parseMoneybirdInvoiceFromPlannerNotes(notes) {
+  const raw = String(notes || '');
+  if (!raw) return { invoiceId: '', invoiceUrl: '', reference: '' };
+  const m = raw.match(/\[moneybird\]\s+invoiceId=([^\s]+)\s+reference=([^\s]+)(?:\s+url=(\S+))?/i);
+  return {
+    invoiceId: m?.[1] ? String(m[1]).trim() : '',
+    reference: m?.[2] ? String(m[2]).trim() : '',
+    invoiceUrl: m?.[3] ? String(m[3]).trim() : '',
+  };
+}
+
+function appendMoneybirdPlannerNote(existing, { invoiceId, reference, invoiceUrl }) {
+  const marker = `[moneybird] invoiceId=${String(invoiceId || '').trim()} reference=${String(reference || '').trim()}${invoiceUrl ? ` url=${String(invoiceUrl).trim()}` : ''}`;
+  const base = String(existing || '').trim();
+  if (!base) return marker;
+  if (base.includes(marker)) return base;
+  return `${base}\n${marker}`;
+}
+
 /**
  * GHL: start/einde van een kalender-item zetten.
  * Sommige omgevingen gebruiken PUT …/appointments/:id, andere …/events/:id — we proberen beide + API-versies.
@@ -1008,7 +1066,7 @@ export default async function handler(req, res) {
       }
 
       case 'completeAppointment': {
-        const { contactId, appointmentId, type, sendReview, lastService, totalPrice, extras, routeDate } =
+        const { contactId, appointmentId, type, sendReview, lastService, totalPrice, extras, routeDate, basePrice, appointmentDesc } =
           req.body || {};
         if (!contactId) return res.status(400).json({ error: 'contactId vereist' });
 
@@ -1056,6 +1114,248 @@ export default async function handler(req, res) {
           return res.status(502).json({ error: 'Kon afsluitvelden niet opslaan in GHL', detail });
         }
 
+        let moneybirdResult = null;
+        // Moneybird factuur aanmaken (niet-fataal voor complete-flow)
+        const MB_TOKEN = process.env.MONEYBIRD_API_TOKEN;
+        const MB_ADMIN = process.env.MONEYBIRD_ADMINISTRATION_ID;
+        if (MB_TOKEN && MB_ADMIN) {
+          try {
+            const {
+              findOrCreateContact,
+              findExistingInvoiceByReference,
+              createSalesInvoice,
+              sendSalesInvoiceByEmail,
+            } = await import('../lib/moneybird.js');
+
+            const contactRes = await fetchWithRetry(
+              `${GHL_BASE}/contacts/${contactId}`,
+              {
+                headers: {
+                  Authorization: `Bearer ${GHL_API_KEY}`,
+                  Version: '2021-04-15',
+                },
+              }
+            );
+            const contactData = await contactRes.json().catch(() => ({}));
+            const contact = contactData?.contact || contactData;
+
+            const plannerNotitiesFieldId = await resolvePlannerNotitiesFieldId();
+            const { invoiceIdFieldId, invoiceUrlFieldId, referenceFieldId } = await resolveMoneybirdFieldIds();
+
+            const name = [contact.firstName, contact.lastName]
+              .filter(Boolean).join(' ') || 'Klant';
+            const email = contact.email || '';
+            const phone = contact.phone || '';
+            const address = readCanonicalAddressLine(contact) || contact.address1 || '';
+            const moneybirdServiceDay =
+              normalizeYyyyMmDdInput(String(serviceDay || '').trim()) ||
+              normalizeYyyyMmDdInput(String(routeDate || '').trim()) ||
+              formatYyyyMmDdInAmsterdam(new Date());
+            const reference = buildMoneybirdReference({
+              appointmentId,
+              contactId,
+              serviceDay: moneybirdServiceDay,
+            });
+            const description = `${type || 'Onderhoud'} - ${name}`;
+
+            const extrasLines = normalizePriceLineItems(Array.isArray(extras) ? extras : []);
+            const baseFromReq = toPriceNumber(basePrice);
+            const extrasSum = Math.round(extrasLines.reduce((s, r) => s + Number(r.price || 0), 0) * 100) / 100;
+            const totalNum = toPriceNumber(totalPrice);
+            const baseFromDiff = totalNum !== null ? Math.round((totalNum - extrasSum) * 100) / 100 : null;
+            const effectiveBase = baseFromReq !== null
+              ? baseFromReq
+              : (baseFromDiff !== null && baseFromDiff > 0 ? baseFromDiff : null);
+            const baseDesc = String(appointmentDesc || type || 'Werkzaamheden').trim();
+            const lines = [
+              ...(effectiveBase && effectiveBase > 0 ? [{ desc: baseDesc, price: effectiveBase }] : []),
+              ...extrasLines,
+            ].filter((l) => l.desc && Number(l.price) > 0);
+
+            const linesSum = Math.round(lines.reduce((s, r) => s + Number(r.price || 0), 0) * 100) / 100;
+            if (totalNum !== null && Math.abs(linesSum - totalNum) > 0.01) {
+              console.warn('[moneybird] regel-som wijkt af van totalPrice', {
+                contactId,
+                appointmentId: String(appointmentId || ''),
+                linesSum,
+                totalPrice: totalNum,
+              });
+            }
+
+            const existingId = invoiceIdFieldId ? getField(contact, invoiceIdFieldId) : '';
+            const existingUrl = invoiceUrlFieldId ? getField(contact, invoiceUrlFieldId) : '';
+            const existingRef = referenceFieldId ? getField(contact, referenceFieldId) : '';
+            const existingNote = plannerNotitiesFieldId ? getField(contact, plannerNotitiesFieldId) : '';
+            const noteMarker = parseMoneybirdInvoiceFromPlannerNotes(existingNote);
+
+            if (lines.length > 0) {
+              const existingRefToUse = existingRef || noteMarker.reference;
+              const existingInvoiceId = existingId || noteMarker.invoiceId;
+              const existingInvoiceUrl = existingUrl || noteMarker.invoiceUrl;
+              const existingMatchesCurrent =
+                !reference || (existingRefToUse && existingRefToUse === reference);
+              if (existingInvoiceId && existingMatchesCurrent) {
+                console.info('[moneybird] factuur overgeslagen: al gekoppeld in GHL', {
+                  contactId,
+                  appointmentId: String(appointmentId || ''),
+                  invoiceId: existingInvoiceId,
+                  reference: existingRefToUse || reference,
+                });
+                moneybirdResult = { skipped: true, reason: 'already_linked', invoiceId: existingInvoiceId, invoiceUrl: existingInvoiceUrl };
+              } else {
+                const existingByRef = reference
+                  ? await findExistingInvoiceByReference(reference)
+                  : { found: false, invoice: null };
+
+                if (existingByRef?.found && existingByRef?.invoice?.id) {
+                  const foundInvoiceId = String(existingByRef.invoice.id);
+                  const foundInvoiceUrl = existingByRef.invoice?.url || existingByRef.invoice?.public_view_url || '';
+                  console.info('[moneybird] duplicate-skip reference', { reference });
+                  console.info('[moneybird] factuur overgeslagen: referentie bestaat al', {
+                    contactId,
+                    appointmentId: String(appointmentId || ''),
+                    reference,
+                    invoiceId: foundInvoiceId,
+                  });
+                  moneybirdResult = { skipped: true, reason: 'reference_exists', invoiceId: foundInvoiceId, invoiceUrl: foundInvoiceUrl };
+                } else {
+                  const mbContact = await findOrCreateContact(name, email, phone, address);
+                  if (!mbContact?.contactId) {
+                    console.warn('[moneybird] factuur overgeslagen: geen match/create contact', {
+                      contactId,
+                      appointmentId: String(appointmentId || ''),
+                      reason: mbContact?.reason || 'missing_contact',
+                    });
+                    moneybirdResult = { skipped: true, reason: mbContact?.reason || 'missing_contact' };
+                  } else {
+                    console.info(mbContact.created ? '[moneybird] contact aangemaakt' : '[moneybird] contact gematcht', {
+                      contactId,
+                      appointmentId: String(appointmentId || ''),
+                      mbContactId: mbContact.contactId,
+                    });
+                    const created = await createSalesInvoice({
+                      contactId: mbContact.contactId,
+                      lines,
+                      reference,
+                      description,
+                    });
+                    if (created?.created && created?.invoice?.id) {
+                      const invoiceId = String(created.invoice.id);
+                      const invoiceUrl = created.invoice?.url || created.invoice?.public_view_url || '';
+                      const invoiceNumber = String(created.invoice?.invoice_id || '').trim() || null;
+                      console.info('[moneybird] factuur aangemaakt (concept)', {
+                        contactId,
+                        appointmentId: String(appointmentId || ''),
+                        reference,
+                        invoiceId,
+                        invoiceNumber,
+                        invoiceUrl,
+                      });
+                      moneybirdResult = {
+                        created: true,
+                        invoiceId,
+                        invoiceUrl,
+                        invoiceNumber,
+                        reference,
+                      };
+
+                      // Veilige default: alleen bij nieuw aangemaakte factuur automatisch e-mail versturen.
+                      const emailNorm = String(email || '').trim().toLowerCase();
+                      const hasValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm);
+                      if (!hasValidEmail) {
+                        console.info('[moneybird] missing_email', {
+                          contactId,
+                          appointmentId: String(appointmentId || ''),
+                          invoiceId,
+                        });
+                      } else {
+                        try {
+                          const mailResult = await sendSalesInvoiceByEmail({
+                            invoiceId,
+                            emailAddress: emailNorm,
+                            emailMessage: `Beste ${name}, hierbij ontvang je je factuur.`,
+                          });
+                          if (mailResult?.sent) {
+                            console.info('[moneybird] invoice email sent', {
+                              contactId,
+                              appointmentId: String(appointmentId || ''),
+                              invoiceId,
+                              email: emailNorm,
+                            });
+                            moneybirdResult.emailSent = true;
+                          } else if (mailResult?.reason === 'missing_email') {
+                            console.info('[moneybird] missing_email', {
+                              contactId,
+                              appointmentId: String(appointmentId || ''),
+                              invoiceId,
+                            });
+                          }
+                        } catch (mailErr) {
+                          console.error('[moneybird] email_send_failed', {
+                            contactId,
+                            appointmentId: String(appointmentId || ''),
+                            invoiceId,
+                            email: emailNorm,
+                            message: mailErr?.message || String(mailErr),
+                            status: mailErr?.status,
+                          });
+                        }
+                      }
+
+                      const mbFields = [];
+                      if (invoiceIdFieldId) mbFields.push({ id: invoiceIdFieldId, field_value: invoiceId });
+                      if (invoiceUrlFieldId && invoiceUrl) mbFields.push({ id: invoiceUrlFieldId, field_value: invoiceUrl });
+                      if (referenceFieldId && reference) mbFields.push({ id: referenceFieldId, field_value: reference });
+                      if (plannerNotitiesFieldId) {
+                        const nextNotes = appendMoneybirdPlannerNote(existingNote, {
+                          invoiceId,
+                          reference,
+                          invoiceUrl,
+                        });
+                        if (nextNotes) mbFields.push({ id: plannerNotitiesFieldId, field_value: nextNotes });
+                      }
+                      if (mbFields.length > 0) {
+                        const putMb = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
+                          method: 'PUT',
+                          headers: {
+                            Authorization: `Bearer ${GHL_API_KEY}`,
+                            'Content-Type': 'application/json',
+                            Version: '2021-04-15',
+                          },
+                          body: JSON.stringify({ customFields: mbFields }),
+                          _allowPostRetry: false,
+                        });
+                        if (!putMb.ok) {
+                          const mbDetail = (await putMb.text().catch(() => '')).slice(0, 300);
+                          console.warn('[moneybird] metadata niet opgeslagen in GHL', {
+                            contactId,
+                            appointmentId: String(appointmentId || ''),
+                            status: putMb.status,
+                            detail: mbDetail,
+                          });
+                        }
+                      }
+                    } else {
+                      moneybirdResult = { skipped: true, reason: created?.reason || 'invoice_not_created' };
+                    }
+                  }
+                }
+              }
+            } else {
+              moneybirdResult = { skipped: true, reason: 'no_billable_lines' };
+            }
+          } catch (err) {
+            // Niet fataal — factuur mislukt stopt niet de klaar-flow
+            console.error('[moneybird] factuur error:', {
+              contactId,
+              appointmentId: String(appointmentId || ''),
+              message: err?.message || String(err),
+              status: err?.status,
+              details: err?.details,
+            });
+          }
+        }
+
         const tagErrors = [];
         const tagOk = await addTag(contactId, 'factuur-versturen').catch((e) => { tagErrors.push(e.message); return false; });
         if (sendReview) {
@@ -1071,6 +1371,7 @@ export default async function handler(req, res) {
           success: true,
           tagOk: tagOk !== false,
           tagErrors: tagErrors.length ? tagErrors : undefined,
+          moneybird: moneybirdResult || undefined,
         });
       }
 

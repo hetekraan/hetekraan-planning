@@ -93,6 +93,8 @@
             lastService: lastMaintenance,
             totalPrice: total,
             extras: lines,
+            basePrice: Number(a.price) || 0,
+            appointmentDesc: String(a.jobDescription || '').trim(),
             routeDate,
           }),
         });
