@@ -797,6 +797,7 @@ export default async function handler(req, res) {
           normalizeYyyyMmDdInput(String(req.query?.endDate || '')) ||
           addAmsterdamCalendarDays(today, 180) ||
           today;
+        console.info('[search] query:', qRaw, 'startDate:', startDate, 'endDate:', endDate);
         const startBounds = amsterdamCalendarDayBoundsMs(startDate);
         const endBounds = amsterdamCalendarDayBoundsMs(endDate);
         if (!startBounds || !endBounds) {
@@ -815,6 +816,7 @@ export default async function handler(req, res) {
           return res.status(502).json({ error: 'Afspraken zoeken mislukt', detail: eventsData });
         }
         let events = Array.isArray(eventsData?.events) ? eventsData.events : [];
+        console.info('[search] events count:', events.length, 'url:', url);
         markBlockLikeOnCalendarEvents(events);
 
         // Neem ook B1-reserveringen mee (geen GHL timed appointment).
@@ -860,6 +862,7 @@ export default async function handler(req, res) {
             } catch (_) {}
           })
         );
+        console.info('[search] contacts fetched:', Object.keys(contactMap).length);
 
         const out = [];
         for (const e of events) {
@@ -932,6 +935,7 @@ export default async function handler(req, res) {
           });
         }
         out.sort((a, b) => `${b.date} ${b.timeSlot}`.localeCompare(`${a.date} ${a.timeSlot}`));
+        console.info('[search] results count:', out.length);
         return res.status(200).json({ results: out.slice(0, 80) });
       }
 
