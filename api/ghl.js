@@ -919,6 +919,10 @@ export default async function handler(req, res) {
           const phoneMatch =
             qPhoneVariants.length > 0 &&
             qPhoneVariants.some((qv) => phoneNorm.some((pv) => pv.includes(qv)));
+          console.info('[search] haystack sample:', haystack.slice(0, 200));
+          console.info('[search] q normalized:', q);
+          console.info('[search] textMatch:', textMatch);
+          console.info('[search] phoneMatch:', phoneMatch);
           if (!textMatch && !phoneMatch) continue;
 
           out.push({
