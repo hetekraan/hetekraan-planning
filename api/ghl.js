@@ -213,15 +213,31 @@ const FIELD_IDS = {
   planner_notities:    String(process.env.GHL_FIELD_ID_PLANNER_NOTITIES || '').trim(),
 };
 
-function getField(contact, fieldId) {
-  if (!contact?.customFields) return '';
-  const fid = String(fieldId);
-  const field = contact.customFields.find((f) => {
-    const rid = String(f?.id ?? f?.fieldId ?? f?.customFieldId ?? '').trim();
-    return rid === fid;
-  });
-  const raw = field?.value ?? field?.field_value;
-  return raw != null && raw !== '' ? String(raw) : '';
+/**
+ * Leest custom field van GHL contact-response.
+ * Sommige responses matchen beter op `key`/`fieldKey` dan op id (of id is number vs string).
+ */
+function getField(contact, fieldId, fieldKeyHint) {
+  if (!contact?.customFields || !Array.isArray(contact.customFields)) return '';
+  const fid = String(fieldId || '').trim();
+  if (fid) {
+    const field = contact.customFields.find((f) => {
+      const rid = String(f?.id ?? f?.fieldId ?? f?.customFieldId ?? '').trim();
+      return rid === fid;
+    });
+    const raw = field?.value ?? field?.field_value;
+    if (raw != null && String(raw).trim() !== '') return String(raw);
+  }
+  const hint = String(fieldKeyHint || '').trim();
+  if (hint) {
+    const byKey = contact.customFields.find((f) => {
+      const k = String(f?.key || f?.fieldKey || '').trim();
+      return k === hint;
+    });
+    const raw2 = byKey?.value ?? byKey?.field_value;
+    if (raw2 != null && String(raw2).trim() !== '') return String(raw2);
+  }
+  return '';
 }
 
 async function resolvePlannerNotitiesFieldId() {
@@ -353,6 +369,20 @@ function mbTryParseGhlJson(text) {
   }
 }
 
+/** GHL gebruikt soms `succeded` (typo) i.p.v. `success` in JSON bodies. */
+function mbGhlBodyIndicatesWriteOk(parsed) {
+  if (!parsed || typeof parsed !== 'object') return true;
+  if ('success' in parsed && parsed.success === false) return false;
+  if ('succeded' in parsed && parsed.succeded === false) return false;
+  if ('succeeded' in parsed && parsed.succeeded === false) return false;
+  return true;
+}
+
+/**
+ * GHL UI schrijft contact custom fields via dezelfde route: PUT …/contacts/:contactId
+ * met body `{ "customFields": [ { "id": "<uuid>", "value": "…", "field_value": "…" } ] }`.
+ * Zie ook `appendBookingCanonFields` (lib/booking-canon-fields.js) — daar zitten beide keys op elke regel.
+ */
 function mbGhlContactGetUrl(contactId) {
   const cid = encodeURIComponent(String(contactId || '').trim());
   const loc = mbGhlLocationIdForLog();
@@ -383,7 +413,7 @@ async function mbReadbackMoneybirdCustomFields({ contactId, checks, phase }) {
       const fid = String(c.fieldId || '').trim();
       const exp = String(c.expectedValue ?? '').trim();
       if (!fid) continue;
-      const got = String(getField(contact, fid) || '').trim();
+      const got = String(getField(contact, fid, c.fieldKey) || '').trim();
       if (got !== exp) {
         missing.push({
           name: c.name || 'unknown',
@@ -427,6 +457,109 @@ async function mbReadbackMoneybirdCustomFields({ contactId, checks, phase }) {
     );
     return { ok: false, missing: checks.map((c) => ({ name: c.name, fieldId: c.fieldId })), httpStatus: 0 };
   }
+}
+
+/**
+ * Laatste redmiddel: sequentieel payload-varianten proberen tot readback voor moneybird_invoice_token slaagt.
+ */
+async function mbTryMoneybirdInvoiceTokenWriteStrategies({
+  contactId,
+  fieldId,
+  fieldKey,
+  tok,
+  phase,
+}) {
+  const id = String(fieldId || '').trim();
+  const key = String(fieldKey || 'moneybird_invoice_token').trim();
+  const v = String(tok || '').trim();
+  if (!contactId || !id || !v) return { ok: false, strategy: null, readback: null };
+
+  const endpoint = `${GHL_BASE}/contacts/${contactId}`;
+  const versions = ['2021-07-28', '2021-04-15'];
+  const strategies = [
+    { name: 'id_value_field_value', fields: [{ id, value: v, field_value: v }] },
+    { name: 'id_value_only', fields: [{ id, value: v }] },
+    { name: 'id_field_value_only', fields: [{ id, field_value: v }] },
+    { name: 'key_value_field_value', fields: [{ key, value: v, field_value: v }] },
+    { name: 'fieldKey_value_field_value', fields: [{ fieldKey: key, value: v, field_value: v }] },
+    { name: 'customFieldId_with_value', fields: [{ customFieldId: id, value: v, field_value: v }] },
+  ];
+
+  for (const ver of versions) {
+    for (const strat of strategies) {
+      console.info(
+        '[moneybird] ghl_contact_update_strategy_attempt',
+        JSON.stringify({
+          contactId,
+          phase,
+          strategy: strat.name,
+          versionHeader: ver,
+        })
+      );
+      try {
+        const putRes = await fetchWithRetry(endpoint, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${GHL_API_KEY}`,
+            'Content-Type': 'application/json',
+            Version: ver,
+          },
+          body: JSON.stringify({ customFields: strat.fields }),
+          _allowPostRetry: false,
+        });
+        const resText = await putRes.text().catch(() => '');
+        const parsed = mbTryParseGhlJson(resText);
+        const bodyOk = putRes.ok && mbGhlBodyIndicatesWriteOk(parsed);
+        console.info(
+          '[moneybird] ghl_contact_update_strategy_result',
+          JSON.stringify({
+            contactId,
+            phase,
+            strategy: strat.name,
+            versionHeader: ver,
+            httpStatus: putRes.status,
+            bodyOk,
+            responseBody: mbSummarizeGhlResponseText(resText, 600),
+          })
+        );
+        if (!bodyOk) continue;
+        const rb = await mbReadbackMoneybirdCustomFields({
+          contactId,
+          checks: [
+            {
+              name: 'moneybird_invoice_token',
+              fieldId: id,
+              fieldKey: key,
+              expectedValue: v,
+            },
+          ],
+          phase: `${phase}:strategy:${strat.name}`,
+        });
+        console.info(
+          '[moneybird] ghl_contact_readback_after_strategy',
+          JSON.stringify({
+            contactId,
+            strategy: strat.name,
+            versionHeader: ver,
+            readbackOk: rb.ok,
+          })
+        );
+        if (rb.ok) return { ok: true, strategy: strat.name, versionUsed: ver, readback: rb };
+      } catch (e) {
+        console.warn(
+          '[moneybird] ghl_contact_update_strategy_result',
+          JSON.stringify({
+            contactId,
+            phase,
+            strategy: strat.name,
+            versionHeader: ver,
+            error: e?.message || String(e),
+          })
+        );
+      }
+    }
+  }
+  return { ok: false, strategy: null, readback: null, versionUsed: null };
 }
 
 async function mbGhlContactPutWithLogs({
@@ -475,8 +608,7 @@ async function mbGhlContactPutWithLogs({
   const evaluatePut = async (putRes, version) => {
     const resText = await putRes.text().catch(() => '');
     const parsed = mbTryParseGhlJson(resText);
-    const bodySuccess =
-      parsed && typeof parsed === 'object' && 'success' in parsed ? parsed.success !== false : true;
+    const bodySuccess = mbGhlBodyIndicatesWriteOk(parsed);
     const validationErrors =
       parsed?.meta?.errors ||
       parsed?.errors ||
@@ -519,7 +651,7 @@ async function mbGhlContactPutWithLogs({
         versionUsed: version,
       };
     }
-    if (bodySuccess === false) {
+    if (!bodySuccess) {
       console.error(
         '[moneybird] ghl_contact_update_failed',
         JSON.stringify({
@@ -557,8 +689,7 @@ async function mbGhlContactPutWithLogs({
       const putB = await doPut('2021-07-28');
       const resB = await putB.text().catch(() => '');
       const parsedB = mbTryParseGhlJson(resB);
-      const bodySuccessB =
-        parsedB && typeof parsedB === 'object' && 'success' in parsedB ? parsedB.success !== false : true;
+      const bodySuccessB = mbGhlBodyIndicatesWriteOk(parsedB);
       console.info(
         '[moneybird] ghl_contact_update_response',
         JSON.stringify({
@@ -572,7 +703,7 @@ async function mbGhlContactPutWithLogs({
           note: 'retry_after_readback_mismatch',
         })
       );
-      if (!putB.ok || bodySuccessB === false) {
+      if (!putB.ok || !bodySuccessB) {
         console.error(
           '[moneybird] ghl_contact_update_failed',
           JSON.stringify({
@@ -1631,20 +1762,40 @@ export default async function handler(req, res) {
                   {
                     name: 'moneybird_invoice_token',
                     fieldId: invoiceTokenFieldId,
+                    fieldKey: 'moneybird_invoice_token',
                     expectedValue: tok,
                   },
                 ],
                 resolvedFieldMap: { moneybird_invoice_token: invoiceTokenFieldId },
               });
-              if (!put.ok) {
+              if (put.ok) return true;
+              logMb('invoice_token_ghl_write_primary_failed', {
+                invoiceId: invId || undefined,
+                token: tok,
+                status: put.status,
+                detail: put.bodySnippet,
+              }, 'warn');
+              const strat = await mbTryMoneybirdInvoiceTokenWriteStrategies({
+                contactId,
+                fieldId: invoiceTokenFieldId,
+                fieldKey: 'moneybird_invoice_token',
+                tok,
+                phase: 'moneybird_invoice_token_only',
+              });
+              if (!strat.ok) {
                 logMb('invoice_token_ghl_write_failed', {
                   invoiceId: invId || undefined,
                   token: tok,
-                  status: put.status,
-                  detail: put.bodySnippet,
+                  reason: 'all_strategies_failed',
                 }, 'warn');
                 return false;
               }
+              logMb('invoice_token_ghl_write_strategy_recovered', {
+                invoiceId: invId || undefined,
+                token: tok,
+                strategy: strat.strategy,
+                version: strat.versionUsed,
+              });
               return true;
             };
 
@@ -2013,6 +2164,7 @@ export default async function handler(req, res) {
                         mbReadbackChecks.push({
                           name: 'moneybird_invoice_id',
                           fieldId: invoiceIdFieldId,
+                          fieldKey: 'moneybird_invoice_id',
                           expectedValue: invoiceId,
                         });
                       }
@@ -2020,6 +2172,7 @@ export default async function handler(req, res) {
                         mbReadbackChecks.push({
                           name: 'moneybird_invoice_url',
                           fieldId: invoiceUrlFieldId,
+                          fieldKey: 'moneybird_invoice_url',
                           expectedValue: invoiceUrl,
                         });
                       }
@@ -2027,6 +2180,7 @@ export default async function handler(req, res) {
                         mbReadbackChecks.push({
                           name: 'moneybird_invoice_reference',
                           fieldId: referenceFieldId,
+                          fieldKey: 'moneybird_invoice_reference',
                           expectedValue: reference,
                         });
                       }
@@ -2034,6 +2188,7 @@ export default async function handler(req, res) {
                         mbReadbackChecks.push({
                           name: 'moneybird_invoice_token',
                           fieldId: invoiceTokenFieldId,
+                          fieldKey: 'moneybird_invoice_token',
                           expectedValue: payTokenCreate,
                         });
                       }
