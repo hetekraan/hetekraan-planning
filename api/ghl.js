@@ -85,6 +85,7 @@ import {
 } from '../lib/route-lock-store.js';
 import { buildCompleteAppointmentPayload } from '../lib/usecases/complete-appointment.js';
 import { resolveContactCustomFieldId } from '../lib/ghl-custom-fields.js';
+import { getOrCreateMoneybirdPayTokenMapping } from '../lib/moneybird-pay-token-store.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -234,7 +235,7 @@ async function resolvePlannerNotitiesFieldId() {
 }
 
 async function resolveMoneybirdFieldIds() {
-  const [invoiceIdFieldId, invoiceUrlFieldId, referenceFieldId] = await Promise.all([
+  const [invoiceIdFieldId, invoiceUrlFieldId, referenceFieldId, invoiceTokenFieldId] = await Promise.all([
     resolveContactCustomFieldId({
       baseUrl: GHL_BASE,
       apiKey: GHL_API_KEY,
@@ -259,8 +260,16 @@ async function resolveMoneybirdFieldIds() {
       objectType: 'contact',
       envOverride: String(process.env.GHL_FIELD_ID_MONEYBIRD_INVOICE_REFERENCE || '').trim(),
     }),
+    resolveContactCustomFieldId({
+      baseUrl: GHL_BASE,
+      apiKey: GHL_API_KEY,
+      locationId: ghlLocationIdFromEnv(),
+      fieldKey: 'moneybird_invoice_token',
+      objectType: 'contact',
+      envOverride: String(process.env.GHL_FIELD_ID_MONEYBIRD_INVOICE_TOKEN || '').trim(),
+    }),
   ]);
-  return { invoiceIdFieldId, invoiceUrlFieldId, referenceFieldId };
+  return { invoiceIdFieldId, invoiceUrlFieldId, referenceFieldId, invoiceTokenFieldId };
 }
 
 function buildMoneybirdReference({ appointmentId, contactId, serviceDay }) {
@@ -1142,7 +1151,7 @@ export default async function handler(req, res) {
             const contact = contactData?.contact || contactData;
 
             const plannerNotitiesFieldId = await resolvePlannerNotitiesFieldId();
-            const { invoiceIdFieldId, invoiceUrlFieldId, referenceFieldId } = await resolveMoneybirdFieldIds();
+            const { invoiceIdFieldId, invoiceUrlFieldId, referenceFieldId, invoiceTokenFieldId } = await resolveMoneybirdFieldIds();
 
             const name = [contact.firstName, contact.lastName]
               .filter(Boolean).join(' ') || 'Klant';
@@ -1169,6 +1178,174 @@ export default async function handler(req, res) {
               if (level === 'warn') console.warn(`[moneybird] ${event}`, payload);
               else if (level === 'error') console.error(`[moneybird] ${event}`, payload);
               else console.info(`[moneybird] ${event}`, payload);
+            };
+
+            const issueMoneybirdInvoicePayToken = async ({
+              invoiceId,
+              invoiceUrl,
+              invoiceUrlSource,
+              moneybirdResultRef,
+            }) => {
+              const invId = String(invoiceId || '').trim();
+              const invUrl = String(invoiceUrl || '').trim();
+              if (!invUrl) {
+                logMb('invoice_token_missing_url', {
+                  invoiceId: invId || undefined,
+                  source: invoiceUrlSource || '',
+                });
+                return null;
+              }
+              if (!invId) {
+                logMb('invoice_token_missing_invoice_id', {
+                  source: invoiceUrlSource || '',
+                }, 'warn');
+                return null;
+              }
+
+              try {
+                const mapping = await getOrCreateMoneybirdPayTokenMapping({
+                  invoiceId: invId,
+                  invoiceUrl: invUrl,
+                  contactId: String(contactId || ''),
+                  appointmentId: String(appointmentId || ''),
+                  reference: String(reference || ''),
+                });
+                if (!mapping?.token) {
+                  logMb('invoice_token_store_unavailable', {
+                    invoiceId: invId,
+                    source: invoiceUrlSource || '',
+                  }, 'warn');
+                  return null;
+                }
+                const payToken = mapping.token;
+                if (mapping.reused) {
+                  logMb('invoice_token_reused', {
+                    invoiceId: invId,
+                    token: payToken,
+                    source: invoiceUrlSource || '',
+                  });
+                } else {
+                  logMb('invoice_token_created', {
+                    invoiceId: invId,
+                    token: payToken,
+                    source: invoiceUrlSource || '',
+                  });
+                }
+                if (moneybirdResultRef && typeof moneybirdResultRef === 'object') {
+                  moneybirdResultRef.invoicePayToken = payToken;
+                }
+                return payToken;
+              } catch (e) {
+                logMb('invoice_token_store_error', {
+                  invoiceId: invId,
+                  source: invoiceUrlSource || '',
+                  message: e?.message || String(e),
+                }, 'error');
+                return null;
+              }
+            };
+
+            const writeMoneybirdInvoiceTokenToGhl = async ({ invoiceId, payToken }) => {
+              const invId = String(invoiceId || '').trim();
+              const tok = String(payToken || '').trim();
+              if (!tok) return false;
+              if (!invoiceTokenFieldId) {
+                logMb('invoice_token_field_missing', {
+                  invoiceId: invId || undefined,
+                  token: tok,
+                }, 'warn');
+                return false;
+              }
+              try {
+                const putTok = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
+                  method: 'PUT',
+                  headers: {
+                    Authorization: `Bearer ${GHL_API_KEY}`,
+                    'Content-Type': 'application/json',
+                    Version: '2021-04-15',
+                  },
+                  body: JSON.stringify({
+                    customFields: [{ id: invoiceTokenFieldId, field_value: tok }],
+                  }),
+                  _allowPostRetry: false,
+                });
+                if (!putTok.ok) {
+                  const detail = (await putTok.text().catch(() => '')).slice(0, 300);
+                  logMb('invoice_token_ghl_write_failed', {
+                    invoiceId: invId || undefined,
+                    token: tok,
+                    status: putTok.status,
+                    detail,
+                  }, 'warn');
+                  return false;
+                }
+                return true;
+              } catch (e) {
+                logMb('invoice_token_ghl_write_failed', {
+                  invoiceId: invId || undefined,
+                  token: tok,
+                  message: e?.message || String(e),
+                }, 'warn');
+                return false;
+              }
+            };
+
+            const pulseMoneybirdPaymentWhatsapp = async ({
+              invoiceId,
+              invoiceUrl,
+              invoiceUrlSource,
+              payToken,
+              moneybirdResultRef,
+            }) => {
+              const invId = String(invoiceId || '').trim();
+              const invUrl = String(invoiceUrl || '').trim();
+              const tok = String(payToken || '').trim();
+              if (!tok) {
+                return;
+              }
+              if (!invoiceTokenFieldId) {
+                logMb('invoice_token_field_missing', {
+                  invoiceId: invId || undefined,
+                  token: tok,
+                }, 'warn');
+                return;
+              }
+              if (!invUrl) {
+                logMb('missing_invoice_url', {
+                  invoiceId: invId || undefined,
+                  token: tok || undefined,
+                  source: invoiceUrlSource || '',
+                });
+                return;
+              }
+              const phoneNorm = normalizePhoneForGhl(phone);
+              if (!phoneNorm) {
+                logMb('missing_phone', {
+                  invoiceId: invId || undefined,
+                  token: tok || undefined,
+                  source: invoiceUrlSource || '',
+                });
+                return;
+              }
+              try {
+                const waTagOk = await pulseContactTag(contactId, 'stuur-betaallink', '[moneybird whatsapp]');
+                if (!waTagOk) throw new Error('pulseContactTag returned false');
+                logMb('whatsapp_payment_link_sent', {
+                  invoiceId: invId || undefined,
+                  token: tok || undefined,
+                  source: invoiceUrlSource || '',
+                });
+                if (moneybirdResultRef && typeof moneybirdResultRef === 'object') {
+                  moneybirdResultRef.whatsappSent = true;
+                }
+              } catch (waErr) {
+                logMb('whatsapp_send_failed', {
+                  invoiceId: invId || undefined,
+                  token: tok || undefined,
+                  source: invoiceUrlSource || '',
+                  message: waErr?.message || String(waErr),
+                }, 'error');
+              }
             };
 
             const extrasLines = normalizePriceLineItems(Array.isArray(extras) ? extras : []);
@@ -1225,6 +1402,27 @@ export default async function handler(req, res) {
                   invoiceId: existingInvoiceId,
                   source: existingInvoiceUrl ? 'stored-metadata' : '',
                 });
+                const payTokenAlready = await issueMoneybirdInvoicePayToken({
+                  invoiceId: existingInvoiceId,
+                  invoiceUrl: existingInvoiceUrl,
+                  invoiceUrlSource: existingInvoiceUrl ? 'stored-metadata' : '',
+                  moneybirdResultRef: moneybirdResult,
+                });
+                if (payTokenAlready) {
+                  const tokenWritten = await writeMoneybirdInvoiceTokenToGhl({
+                    invoiceId: existingInvoiceId,
+                    payToken: payTokenAlready,
+                  });
+                  if (tokenWritten) {
+                    await pulseMoneybirdPaymentWhatsapp({
+                      invoiceId: existingInvoiceId,
+                      invoiceUrl: existingInvoiceUrl,
+                      invoiceUrlSource: existingInvoiceUrl ? 'stored-metadata' : '',
+                      payToken: payTokenAlready,
+                      moneybirdResultRef: moneybirdResult,
+                    });
+                  }
+                }
               } else {
                 const existingByRef = reference
                   ? await findExistingInvoiceByReference(reference)
@@ -1252,6 +1450,27 @@ export default async function handler(req, res) {
                     invoiceUrl: foundInvoiceUrl,
                     invoiceUrlSource: foundInvoiceResolved.source || (foundInvoiceUrl ? 'query-result' : ''),
                   };
+                  const payTokenRef = await issueMoneybirdInvoicePayToken({
+                    invoiceId: foundInvoiceId,
+                    invoiceUrl: foundInvoiceUrl,
+                    invoiceUrlSource: foundInvoiceResolved.source || (foundInvoiceUrl ? 'query-result' : ''),
+                    moneybirdResultRef: moneybirdResult,
+                  });
+                  if (payTokenRef) {
+                    const tokenWrittenRef = await writeMoneybirdInvoiceTokenToGhl({
+                      invoiceId: foundInvoiceId,
+                      payToken: payTokenRef,
+                    });
+                    if (tokenWrittenRef) {
+                      await pulseMoneybirdPaymentWhatsapp({
+                        invoiceId: foundInvoiceId,
+                        invoiceUrl: foundInvoiceUrl,
+                        invoiceUrlSource: foundInvoiceResolved.source || (foundInvoiceUrl ? 'query-result' : ''),
+                        payToken: payTokenRef,
+                        moneybirdResultRef: moneybirdResult,
+                      });
+                    }
+                  }
                 } else {
                   const mbContact = await findOrCreateContact(name, email, phone, address);
                   if (!mbContact?.contactId) {
@@ -1360,10 +1579,20 @@ export default async function handler(req, res) {
                         }
                       }
 
+                      const payTokenCreate = await issueMoneybirdInvoicePayToken({
+                        invoiceId,
+                        invoiceUrl,
+                        invoiceUrlSource,
+                        moneybirdResultRef: moneybirdResult,
+                      });
+
                       const mbFields = [];
                       if (invoiceIdFieldId) mbFields.push({ id: invoiceIdFieldId, field_value: invoiceId });
                       if (invoiceUrlFieldId && invoiceUrl) mbFields.push({ id: invoiceUrlFieldId, field_value: invoiceUrl });
                       if (referenceFieldId && reference) mbFields.push({ id: referenceFieldId, field_value: reference });
+                      if (invoiceTokenFieldId && payTokenCreate) {
+                        mbFields.push({ id: invoiceTokenFieldId, field_value: payTokenCreate });
+                      }
                       if (plannerNotitiesFieldId) {
                         const nextNotes = appendMoneybirdPlannerNote(existingNote, {
                           invoiceId,
@@ -1372,6 +1601,7 @@ export default async function handler(req, res) {
                         });
                         if (nextNotes) mbFields.push({ id: plannerNotitiesFieldId, field_value: nextNotes });
                       }
+                      let mbMetadataSaved = mbFields.length === 0;
                       if (mbFields.length > 0) {
                         const putMb = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
                           method: 'PUT',
@@ -1383,6 +1613,7 @@ export default async function handler(req, res) {
                           body: JSON.stringify({ customFields: mbFields }),
                           _allowPostRetry: false,
                         });
+                        mbMetadataSaved = putMb.ok;
                         if (!putMb.ok) {
                           const mbDetail = (await putMb.text().catch(() => '')).slice(0, 300);
                           console.warn('[moneybird] metadata niet opgeslagen in GHL', {
@@ -1394,48 +1625,20 @@ export default async function handler(req, res) {
                         }
                       }
 
-                      // WhatsApp via bestaande tag-flow; nooit losse Mollie-link.
-                      const phoneNorm = normalizePhoneForGhl(phone);
-                      if (!phoneNorm) {
-                        logMb('missing_phone', {
+                      if (mbMetadataSaved) {
+                        await pulseMoneybirdPaymentWhatsapp({
                           invoiceId,
-                          source: invoiceUrlSource || '',
+                          invoiceUrl,
+                          invoiceUrlSource,
+                          payToken: payTokenCreate || '',
+                          moneybirdResultRef: moneybirdResult,
                         });
-                      } else if (!invoiceUrl) {
-                        logMb('missing_invoice_url', {
+                      } else if (payTokenCreate) {
+                        logMb('whatsapp_skipped_metadata_write_failed', {
                           invoiceId,
+                          token: payTokenCreate,
                           source: invoiceUrlSource || '',
-                        });
-                      } else {
-                        try {
-                          if (invoiceUrlFieldId) {
-                            await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
-                              method: 'PUT',
-                              headers: {
-                                Authorization: `Bearer ${GHL_API_KEY}`,
-                                'Content-Type': 'application/json',
-                                Version: '2021-04-15',
-                              },
-                              body: JSON.stringify({
-                                customFields: [{ id: invoiceUrlFieldId, field_value: invoiceUrl }],
-                              }),
-                              _allowPostRetry: false,
-                            });
-                          }
-                          const waTagOk = await pulseContactTag(contactId, 'stuur-betaallink', '[moneybird whatsapp]');
-                          if (!waTagOk) throw new Error('pulseContactTag returned false');
-                          logMb('whatsapp_payment_link_sent', {
-                            invoiceId,
-                            source: invoiceUrlSource || '',
-                          });
-                          moneybirdResult.whatsappSent = true;
-                        } catch (waErr) {
-                          logMb('whatsapp_send_failed', {
-                            invoiceId,
-                            source: invoiceUrlSource || '',
-                            message: waErr?.message || String(waErr),
-                          }, 'error');
-                        }
+                        }, 'warn');
                       }
                     } else {
                       moneybirdResult = { skipped: true, reason: created?.reason || 'invoice_not_created' };

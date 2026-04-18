@@ -9,6 +9,11 @@
       "source": "/book/:token",
       "destination": "/book?token=:token",
       "permanent": false
+    },
+    {
+      "source": "/pay/:token",
+      "destination": "/api/pay/:token",
+      "permanent": false
     }
   ],
   "headers": [
