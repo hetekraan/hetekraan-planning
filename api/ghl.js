@@ -1233,6 +1233,7 @@ export default async function handler(req, res) {
                 }
                 if (moneybirdResultRef && typeof moneybirdResultRef === 'object') {
                   moneybirdResultRef.invoicePayToken = payToken;
+                  moneybirdResultRef.invoiceToken = payToken;
                 }
                 return payToken;
               } catch (e) {
@@ -1676,7 +1677,9 @@ export default async function handler(req, res) {
           success: true,
           tagOk: tagOk !== false,
           tagErrors: tagErrors.length ? tagErrors : undefined,
-          moneybird: moneybirdResult || undefined,
+          // Altijd key meesturen (ook `null`) zodat clients betrouwbaar kunnen detecteren
+          // of Moneybird überhaupt een outcome heeft teruggegeven.
+          moneybird: moneybirdResult,
         });
       }
 

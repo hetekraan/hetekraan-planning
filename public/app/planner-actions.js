@@ -81,6 +81,8 @@
     if (!lastMaintenance) lastMaintenance = String(a.lastService || '').trim();
     if (!lastMaintenance) lastMaintenance = routeDate;
     let moneybirdHandled = false;
+    /** @type {Record<string, unknown>|null} */
+    let ghlDataAfterComplete = null;
     if (a.contactId) {
       try {
         const ghlRes = await fetch('/api/ghl?action=completeAppointment', {
@@ -99,18 +101,98 @@
             routeDate,
           }),
         });
-        const ghlData = await ghlRes.json().catch(() => ({}));
-        const moneybirdState = ghlData?.moneybird || {};
-        const moneybirdHasOutcome =
-          !!moneybirdState.created ||
-          !!moneybirdState.invoiceId ||
-          !!moneybirdState.skipped;
-        // Als Moneybird al een uitkomst heeft, geen legacy Mollie-flow starten.
-        moneybirdHandled = moneybirdHasOutcome;
+        let ghlData = /** @type {Record<string, unknown>} */ ({});
+        let jsonParseFailed = false;
+        try {
+          ghlData = await ghlRes.json();
+        } catch {
+          jsonParseFailed = true;
+          ghlData = {};
+        }
+        ghlDataAfterComplete = ghlData;
+        const rawKeys = Object.keys(ghlData || {});
+        const mbRaw = Object.prototype.hasOwnProperty.call(ghlData, 'moneybird')
+          ? ghlData.moneybird
+          : undefined;
+        const mb = mbRaw != null && typeof mbRaw === 'object' && !Array.isArray(mbRaw) ? mbRaw : null;
+        const invoiceIdStr = mb && mb.invoiceId != null ? String(mb.invoiceId).trim() : '';
+        const tokenStr =
+          mb && (mb.invoiceToken != null || mb.invoicePayToken != null)
+            ? String(mb.invoiceToken != null ? mb.invoiceToken : mb.invoicePayToken).trim()
+            : '';
+        moneybirdHandled =
+          mb != null &&
+          (mb.created === true ||
+            invoiceIdStr !== '' ||
+            mb.skipped === true ||
+            tokenStr !== '');
+        console.log(
+          '[planner] completeAppointment_response',
+          JSON.stringify({
+            contactId: a.contactId,
+            appointmentId: a.id != null ? String(a.id) : undefined,
+            ghlStatus: ghlRes.status,
+            ghlOk: ghlRes.ok,
+            jsonParseFailed,
+            rawKeys,
+            hasMoneybirdObject: mb != null,
+            moneybirdCreated: mb ? mb.created === true : false,
+            moneybirdInvoiceId: invoiceIdStr || undefined,
+            moneybirdSkipped: mb ? mb.skipped === true : false,
+            moneybirdInvoiceToken: tokenStr || undefined,
+            moneybirdHandled,
+          })
+        );
         if (!ghlRes.ok) showToast(`⚠ GHL kon niet worden bijgewerkt (${ghlRes.status}) — afspraak wel klaar gezet`, 'info');
       } catch {
         showToast('⚠ GHL niet bereikbaar — afspraak wel klaar gezet', 'info');
       }
+    }
+    const mbForLegacy = (() => {
+      const d = ghlDataAfterComplete;
+      if (!d || !Object.prototype.hasOwnProperty.call(d, 'moneybird')) return null;
+      const m = d.moneybird;
+      if (m == null || typeof m !== 'object' || Array.isArray(m)) return null;
+      return m;
+    })();
+    const invoiceIdForLegacy = mbForLegacy && mbForLegacy.invoiceId != null ? String(mbForLegacy.invoiceId).trim() : '';
+    const tokenForLegacy =
+      mbForLegacy && (mbForLegacy.invoiceToken != null || mbForLegacy.invoicePayToken != null)
+        ? String(
+            mbForLegacy.invoiceToken != null ? mbForLegacy.invoiceToken : mbForLegacy.invoicePayToken
+          ).trim()
+        : '';
+    const willCallCreatePayment = Boolean(
+      a.contactId && total > 0 && !moneybirdHandled
+    );
+    console.log(
+      '[planner] legacy_mollie_check',
+      JSON.stringify({
+        contactId: a.contactId,
+        appointmentId: a.id != null ? String(a.id) : undefined,
+        total,
+        hasMoneybirdObject: mbForLegacy != null,
+        moneybirdCreated: mbForLegacy ? mbForLegacy.created === true : false,
+        moneybirdInvoiceId: invoiceIdForLegacy || undefined,
+        moneybirdSkipped: mbForLegacy ? mbForLegacy.skipped === true : false,
+        moneybirdInvoiceToken: tokenForLegacy || undefined,
+        willCallCreatePayment,
+      })
+    );
+    if (a.contactId && total > 0 && moneybirdHandled) {
+      console.log(
+        '[planner] legacy_mollie_skipped_due_to_moneybird',
+        JSON.stringify({
+          contactId: a.contactId,
+          appointmentId: a.id != null ? String(a.id) : undefined,
+          total,
+          hasMoneybirdObject: mbForLegacy != null,
+          moneybirdCreated: mbForLegacy ? mbForLegacy.created === true : false,
+          moneybirdInvoiceId: invoiceIdForLegacy || undefined,
+          moneybirdSkipped: mbForLegacy ? mbForLegacy.skipped === true : false,
+          moneybirdInvoiceToken: tokenForLegacy || undefined,
+        })
+      );
     }
     if (a.contactId && total > 0 && !moneybirdHandled) {
       try {
