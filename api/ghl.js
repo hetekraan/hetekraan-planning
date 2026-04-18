@@ -392,22 +392,36 @@ function mbGhlContactGetUrl(contactId) {
   return `${GHL_BASE}/contacts/${cid}`;
 }
 
+/** Eén GET …/contacts/:id — gedeeld door readback en token-field logging. */
+async function mbGhlContactGetParsed(contactId) {
+  const getRes = await fetchWithRetry(mbGhlContactGetUrl(contactId), {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${GHL_API_KEY}`,
+      Version: '2021-04-15',
+    },
+    _allowPostRetry: false,
+  });
+  const raw = await getRes.text().catch(() => '');
+  const j = mbTryParseGhlJson(raw);
+  const contact = j?.contact || j || {};
+  return { httpStatus: getRes.status, contact };
+}
+
+/** GET contact en lees één custom field (id + optionele key-hint). */
+async function mbFetchContactAndGetField({ contactId, fieldId, fieldKeyHint }) {
+  const { httpStatus, contact } = await mbGhlContactGetParsed(contactId);
+  const val = String(getField(contact, fieldId, fieldKeyHint) || '').trim();
+  return { httpStatus, value: val, contact };
+}
+
 async function mbReadbackMoneybirdCustomFields({ contactId, checks, phase }) {
   if (!contactId || !Array.isArray(checks) || checks.length === 0) {
     return { ok: true, missing: [], httpStatus: 0 };
   }
   try {
-    const getRes = await fetchWithRetry(mbGhlContactGetUrl(contactId), {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${GHL_API_KEY}`,
-        Version: '2021-04-15',
-      },
-      _allowPostRetry: false,
-    });
-    const raw = await getRes.text().catch(() => '');
-    const j = mbTryParseGhlJson(raw);
-    const contact = j?.contact || j || {};
+    const { httpStatus, contact } = await mbGhlContactGetParsed(contactId);
+
     const missing = [];
     for (const c of checks) {
       const fid = String(c.fieldId || '').trim();
@@ -429,22 +443,22 @@ async function mbReadbackMoneybirdCustomFields({ contactId, checks, phase }) {
         JSON.stringify({
           contactId,
           phase,
-          httpStatus: getRes.status,
+          httpStatus,
           checked: checks.length,
         })
       );
-      return { ok: true, missing: [], httpStatus: getRes.status };
+      return { ok: true, missing: [], httpStatus };
     }
     console.warn(
       '[moneybird] ghl_contact_readback_missing_fields',
       JSON.stringify({
         contactId,
         phase,
-        httpStatus: getRes.status,
+        httpStatus,
         missing,
       })
     );
-    return { ok: false, missing, httpStatus: getRes.status };
+    return { ok: false, missing, httpStatus };
   } catch (e) {
     console.warn(
       '[moneybird] ghl_contact_readback_missing_fields',
@@ -1754,30 +1768,78 @@ export default async function handler(req, res) {
                 }, 'warn');
                 return false;
               }
+              const fieldIdUsed = String(invoiceTokenFieldId || '').trim();
+              let currentFieldValueBeforeWrite = '';
+              try {
+                const snap = await mbFetchContactAndGetField({
+                  contactId,
+                  fieldId: fieldIdUsed,
+                  fieldKeyHint: 'moneybird_invoice_token',
+                });
+                currentFieldValueBeforeWrite = snap.value || '';
+              } catch (preErr) {
+                logMb('moneybird_invoice_token_prefetch_failed', {
+                  invoiceId: invId || undefined,
+                  message: preErr?.message || String(preErr),
+                }, 'warn');
+              }
+              logMb('moneybird_invoice_token_write_context', {
+                invoiceId: invId || undefined,
+                fieldId: fieldIdUsed,
+                currentFieldValueBeforeWrite,
+                attemptedToken: tok,
+              });
+              const logReadbackOutcome = async (via) => {
+                try {
+                  const after = await mbFetchContactAndGetField({
+                    contactId,
+                    fieldId: fieldIdUsed,
+                    fieldKeyHint: 'moneybird_invoice_token',
+                  });
+                  logMb('moneybird_invoice_token_write_readback', {
+                    invoiceId: invId || undefined,
+                    fieldId: fieldIdUsed,
+                    via,
+                    valueBeforeWrite: currentFieldValueBeforeWrite,
+                    valueAfterWrite: after.value,
+                    matchesAttempted: after.value === tok,
+                  });
+                } catch (rbErr) {
+                  logMb('moneybird_invoice_token_post_readback_failed', {
+                    invoiceId: invId || undefined,
+                    message: rbErr?.message || String(rbErr),
+                  }, 'warn');
+                }
+              };
               const put = await mbGhlContactPutWithLogs({
                 contactId,
-                customFields: [{ id: invoiceTokenFieldId, field_value: tok }],
+                customFields: [{ id: fieldIdUsed, field_value: tok }],
                 phase: 'moneybird_invoice_token_only',
                 readbackChecks: [
                   {
                     name: 'moneybird_invoice_token',
-                    fieldId: invoiceTokenFieldId,
+                    fieldId: fieldIdUsed,
                     fieldKey: 'moneybird_invoice_token',
                     expectedValue: tok,
                   },
                 ],
-                resolvedFieldMap: { moneybird_invoice_token: invoiceTokenFieldId },
+                resolvedFieldMap: { moneybird_invoice_token: fieldIdUsed },
               });
-              if (put.ok) return true;
+              if (put.ok) {
+                await logReadbackOutcome('primary_put');
+                return true;
+              }
+              await logReadbackOutcome('after_primary_failed');
               logMb('invoice_token_ghl_write_primary_failed', {
                 invoiceId: invId || undefined,
                 token: tok,
                 status: put.status,
                 detail: put.bodySnippet,
+                readbackReason: put.readback && !put.readback.ok ? 'readback_missing_fields' : undefined,
               }, 'warn');
               const strat = await mbTryMoneybirdInvoiceTokenWriteStrategies({
                 contactId,
-                fieldId: invoiceTokenFieldId,
+                fieldId: fieldIdUsed,
                 fieldKey: 'moneybird_invoice_token',
                 tok,
                 phase: 'moneybird_invoice_token_only',
@@ -1796,6 +1858,7 @@ export default async function handler(req, res) {
                 strategy: strat.strategy,
                 version: strat.versionUsed,
               });
+              await logReadbackOutcome(`strategy:${strat.strategy}`);
               return true;
             };
 
@@ -2142,9 +2205,8 @@ export default async function handler(req, res) {
                       if (invoiceIdFieldId) mbFields.push({ id: invoiceIdFieldId, field_value: invoiceId });
                       if (invoiceUrlFieldId && invoiceUrl) mbFields.push({ id: invoiceUrlFieldId, field_value: invoiceUrl });
                       if (referenceFieldId && reference) mbFields.push({ id: referenceFieldId, field_value: reference });
-                      if (invoiceTokenFieldId && payTokenCreate) {
-                        mbFields.push({ id: invoiceTokenFieldId, field_value: payTokenCreate });
-                      }
+                      // moneybird_invoice_token: niet in batch — aparte single-field PUT + readback
+                      // voorkomt dat een mislukte readback op url/id/reference de token overslaat.
                       if (plannerNotitiesFieldId) {
                         const nextNotes = appendMoneybirdPlannerNote(existingNote, {
                           invoiceId,
@@ -2184,14 +2246,6 @@ export default async function handler(req, res) {
                           expectedValue: reference,
                         });
                       }
-                      if (invoiceTokenFieldId && payTokenCreate) {
-                        mbReadbackChecks.push({
-                          name: 'moneybird_invoice_token',
-                          fieldId: invoiceTokenFieldId,
-                          fieldKey: 'moneybird_invoice_token',
-                          expectedValue: payTokenCreate,
-                        });
-                      }
 
                       let mbMetadataSaved = mbFields.length === 0;
                       let mbPutResult = { ok: true, readback: null };
@@ -2214,22 +2268,35 @@ export default async function handler(req, res) {
                         }
                       }
 
-                      if (mbMetadataSaved) {
+                      let tokenDedicatedWriteOk = true;
+                      if (payTokenCreate && invoiceTokenFieldId) {
+                        tokenDedicatedWriteOk = await writeMoneybirdInvoiceTokenToGhl({
+                          invoiceId,
+                          payToken: payTokenCreate,
+                        });
+                      } else if (payTokenCreate && !invoiceTokenFieldId) {
+                        tokenDedicatedWriteOk = false;
+                      }
+
+                      const allowWhatsappPaymentPulse =
+                        Boolean(payTokenCreate && invoiceUrl) && tokenDedicatedWriteOk;
+
+                      if (allowWhatsappPaymentPulse) {
                         await pulseMoneybirdPaymentWhatsapp({
                           invoiceId,
                           invoiceUrl,
                           invoiceUrlSource,
                           payToken: payTokenCreate || '',
-                          tokenPersistedOk:
-                            !payTokenCreate || (!!invoiceTokenFieldId && mbMetadataSaved),
-                          readbackOk: mbPutResult.readback ? mbPutResult.readback.ok : true,
+                          tokenPersistedOk: tokenDedicatedWriteOk,
+                          readbackOk: tokenDedicatedWriteOk,
                           moneybirdResultRef: moneybirdResult,
                         });
-                      } else if (payTokenCreate) {
+                      } else if (payTokenCreate && !tokenDedicatedWriteOk) {
                         logMb('whatsapp_skipped_metadata_write_failed', {
                           invoiceId,
                           token: payTokenCreate,
                           source: invoiceUrlSource || '',
+                          reason: 'dedicated_token_write_failed',
                         }, 'warn');
                       }
                     } else {
