@@ -90,6 +90,12 @@ import {
 } from '../lib/usecases/complete-appointment.js';
 import { resolveContactCustomFieldId } from '../lib/ghl-custom-fields.js';
 import { getOrCreateMoneybirdPayTokenMapping } from '../lib/moneybird-pay-token-store.js';
+import {
+  appendInvoicePartyWritesToCustomFields,
+  buildInvoicePartyFromContact,
+  formatMoneybirdInvoiceMetadataSuffix,
+  resolveInvoicePartyFieldIds,
+} from '../lib/invoice-party-ghl.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -1513,6 +1519,31 @@ export default async function handler(req, res) {
         pushField(FIELD_IDS.tijdafspraak, tijdafspraak);
         pushField(FIELD_IDS.opmerkingen, opmerkingen);
         pushField(FIELD_IDS.prijs, prijs);
+        const invoicePatch = {
+          factuurType: req.body?.factuurType,
+          factuurBedrijfsnaam: req.body?.factuurBedrijfsnaam,
+          factuurTav: req.body?.factuurTav,
+          factuurKvk: req.body?.factuurKvk,
+          factuurBtwNummer: req.body?.factuurBtwNummer,
+          factuurEmail: req.body?.factuurEmail,
+          factuurAdres: req.body?.factuurAdres,
+          factuurPostcode: req.body?.factuurPostcode,
+          factuurPlaats: req.body?.factuurPlaats,
+          factuurReferentie: req.body?.factuurReferentie,
+        };
+        const hasInvoicePatch = Object.values(invoicePatch).some((v) => v !== undefined && v !== null);
+        if (hasInvoicePatch) {
+          try {
+            const invoiceIds = await resolveInvoicePartyFieldIds({
+              baseUrl: GHL_BASE,
+              apiKey: GHL_API_KEY,
+              locationId: ghlLocationIdFromEnv(),
+            });
+            appendInvoicePartyWritesToCustomFields(customFields, invoiceIds, invoicePatch);
+          } catch (invErr) {
+            console.warn('[updateContactDashboard] invoice_party_fields_skip', invErr?.message || invErr);
+          }
+        }
         const canonStraatHuisnummer = [straatnaam, huisnummer]
           .map((x) => String(x || '').trim())
           .filter(Boolean)
@@ -1680,7 +1711,6 @@ export default async function handler(req, res) {
               resolveSalesInvoicePaymentUrl,
               sendSalesInvoiceByEmail,
             } = await import('../lib/moneybird.js');
-
             const contactRes = await fetchWithRetry(
               `${GHL_BASE}/contacts/${contactId}`,
               {
@@ -1692,6 +1722,16 @@ export default async function handler(req, res) {
             );
             const contactData = await contactRes.json().catch(() => ({}));
             const contact = contactData?.contact || contactData;
+
+            const invoicePartyFieldIds = await resolveInvoicePartyFieldIds({
+              baseUrl: GHL_BASE,
+              apiKey: GHL_API_KEY,
+              locationId: ghlLocationIdFromEnv(),
+            });
+            const invoiceParty = buildInvoicePartyFromContact(contact, invoicePartyFieldIds, {
+              contactId: String(contactId),
+              appointmentId: String(appointmentId || ''),
+            });
 
             const plannerNotitiesFieldId = await resolvePlannerNotitiesFieldId();
             const { invoiceIdFieldId, invoiceUrlFieldId, referenceFieldId, invoiceTokenFieldId } = await resolveMoneybirdFieldIds();
@@ -1723,6 +1763,7 @@ export default async function handler(req, res) {
               serviceDay: moneybirdServiceDay,
             });
             const description = `${type || 'Onderhoud'} - ${name}`;
+            const descriptionForMb = `${description}${formatMoneybirdInvoiceMetadataSuffix(invoiceParty)}`;
             const logMb = (event, extra = {}, level = 'info') => {
               const payload = {
                 contactId,
@@ -2131,7 +2172,7 @@ export default async function handler(req, res) {
                     }
                   }
                 } else {
-                  const mbContact = await findOrCreateContact(name, email, phone, address);
+                  const mbContact = await findOrCreateContact(name, email, phone, address, { invoiceParty });
                   if (!mbContact?.contactId) {
                     console.warn('[moneybird] factuur overgeslagen: geen match/create contact', {
                       contactId,
@@ -2149,7 +2190,7 @@ export default async function handler(req, res) {
                       contactId: mbContact.contactId,
                       lines,
                       reference,
-                      description,
+                      description: descriptionForMb,
                     });
                     if (created?.created && created?.invoice?.id) {
                       const invoiceId = String(created.invoice.id);
