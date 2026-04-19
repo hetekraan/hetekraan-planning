@@ -4549,6 +4549,55 @@
       </div>
     </div>
     <div class="form-row">
+      <label class="form-label">Factuurtype</label>
+      <select class="form-select" id="mFactuurType" onchange="window.HKPlannerManualAppointment?.syncModalInvoiceFactuurFields?.()">
+        <option value="particulier">Particulier</option>
+        <option value="bedrijf">Bedrijf</option>
+      </select>
+    </div>
+    <div id="mFactuurCompanyWrap" style="display:none">
+      <div class="form-row">
+        <label class="form-label">Bedrijfsnaam</label>
+        <input class="form-input" type="text" id="mFactuurBedrijfsnaam" autocomplete="organization" placeholder="Handelsnaam op de factuur">
+      </div>
+      <div class="form-row">
+        <label class="form-label">t.a.v.</label>
+        <input class="form-input" type="text" id="mFactuurTav" autocomplete="name" placeholder="Contactpersoon">
+      </div>
+      <div class="form-row">
+        <label class="form-label">Factuur e-mail</label>
+        <input class="form-input" type="email" id="mFactuurEmail" autocomplete="email" placeholder="Leeg = standaard e-mail contact">
+      </div>
+      <div class="form-row-2">
+        <div>
+          <label class="form-label">KvK-nummer</label>
+          <input class="form-input" type="text" id="mFactuurKvk" inputmode="numeric" placeholder="optioneel">
+        </div>
+        <div>
+          <label class="form-label">BTW-nummer</label>
+          <input class="form-input" type="text" id="mFactuurBtwNummer" placeholder="optioneel">
+        </div>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Factuuradres</label>
+        <input class="form-input" type="text" id="mFactuurAdres" autocomplete="street-address" placeholder="Straat + huisnummer">
+      </div>
+      <div class="form-row-2">
+        <div>
+          <label class="form-label">Postcode</label>
+          <input class="form-input" type="text" id="mFactuurPostcode" autocomplete="postal-code">
+        </div>
+        <div>
+          <label class="form-label">Plaats</label>
+          <input class="form-input" type="text" id="mFactuurPlaats" autocomplete="address-level2">
+        </div>
+      </div>
+      <div class="form-row">
+        <label class="form-label">Referentie</label>
+        <input class="form-input" type="text" id="mFactuurReferentie" placeholder="Interne / klant PO">
+      </div>
+    </div>
+    <div class="form-row">
       <div>
         <label class="form-label">Totaalprijs (€)</label>
         <input class="form-input" type="number" id="mPrice" placeholder="0" min="0" step="0.01">
@@ -7022,6 +7071,7 @@ function openModal() {
     const currentDateYmd = getDateStr(currentDate);
     window.HKPlannerManualAppointment.resetManualAppointmentForm({ dateYmd: currentDateYmd });
   }
+  window.HKPlannerManualAppointment?.notifyInvoiceUiOpened?.({ mode: 'create' });
   return out;
 }
 

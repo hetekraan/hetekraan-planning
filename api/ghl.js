@@ -94,6 +94,7 @@ import {
   appendInvoicePartyWritesToCustomFields,
   buildInvoicePartyFromContact,
   formatMoneybirdInvoiceMetadataSuffix,
+  readInvoicePartyField,
   resolveInvoicePartyFieldIds,
 } from '../lib/invoice-party-ghl.js';
 
@@ -103,6 +104,60 @@ const GHL_BASE = 'https://services.leadconnectorhq.com';
 
 /** Alleen diagnostiek: laatste contactId na succesvolle updatePlannerBookingDetails PUT (voor [TRACE][mapped_address_after_edit]). */
 let _traceLastEditedContactId = null;
+
+function normalizePlannerInvoiceTypeFromBody(raw) {
+  const t = String(raw || '').trim().toLowerCase();
+  if (t === 'bedrijf' || t === 'zakelijk' || t === 'business') return 'bedrijf';
+  return 'particulier';
+}
+
+function plannerBodyIncludesInvoiceKeys(body) {
+  if (!body || typeof body !== 'object') return false;
+  return [
+    'factuurType',
+    'factuurBedrijfsnaam',
+    'factuurTav',
+    'factuurEmail',
+    'factuurKvk',
+    'factuurBtwNummer',
+    'factuurAdres',
+    'factuurPostcode',
+    'factuurPlaats',
+    'factuurReferentie',
+  ].some((k) => body[k] !== undefined);
+}
+
+/**
+ * Schrijft factuur-* custom fields mee op het contact (planner modal / booking update).
+ * Alleen als de client minstens één factuur-key meestuurt — zo worden oude clients niet gedwongen leeg te schrijven.
+ */
+async function appendPlannerInvoicePartyFieldsToCustomFields(customFields, body) {
+  if (!Array.isArray(customFields) || !body || typeof body !== 'object') return;
+  if (!plannerBodyIncludesInvoiceKeys(body)) return;
+  const ft = normalizePlannerInvoiceTypeFromBody(body.factuurType);
+  const patch = {
+    factuurType: ft,
+    factuurBedrijfsnaam: ft === 'bedrijf' ? String(body.factuurBedrijfsnaam ?? '').trim() : '',
+    factuurTav: ft === 'bedrijf' ? String(body.factuurTav ?? '').trim() : '',
+    factuurEmail: ft === 'bedrijf' ? String(body.factuurEmail ?? '').trim() : '',
+    factuurKvk: ft === 'bedrijf' ? String(body.factuurKvk ?? '').trim() : '',
+    factuurBtwNummer: ft === 'bedrijf' ? String(body.factuurBtwNummer ?? '').trim() : '',
+    factuurAdres: ft === 'bedrijf' ? String(body.factuurAdres ?? '').trim() : '',
+    factuurPostcode: ft === 'bedrijf' ? String(body.factuurPostcode ?? '').trim() : '',
+    factuurPlaats: ft === 'bedrijf' ? String(body.factuurPlaats ?? '').trim() : '',
+    factuurReferentie: ft === 'bedrijf' ? String(body.factuurReferentie ?? '').trim() : '',
+  };
+  try {
+    const invoiceIds = await resolveInvoicePartyFieldIds({
+      baseUrl: GHL_BASE,
+      apiKey: GHL_API_KEY,
+      locationId: ghlLocationIdFromEnv(),
+    });
+    appendInvoicePartyWritesToCustomFields(customFields, invoiceIds, patch);
+  } catch (invErr) {
+    console.warn('[planner_booking] invoice_party_fields_skip', invErr?.message || invErr);
+  }
+}
 
 function effectiveCalendarId() {
   return ghlCalendarIdFromEnv();
@@ -1014,6 +1069,11 @@ export default async function handler(req, res) {
 
       case 'getAppointments': {
         const plannerNotitiesFieldId = await resolvePlannerNotitiesFieldId();
+        const invoicePartyFieldIdsForPlanner = await resolveInvoicePartyFieldIds({
+          baseUrl: GHL_BASE,
+          apiKey: GHL_API_KEY,
+          locationId: ghlLocationIdFromEnv(),
+        });
         const gaT0 = Date.now();
         const gaPerf = { route: 'getAppointments', ghl_calendar_events_ms: 0, blocked_slots_ms: 0, redis_b1_synthetic_ms: 0, contact_fetch_sum_ms: 0, filter_dedupe_map_ms: 0 };
 
@@ -1222,6 +1282,18 @@ export default async function handler(req, res) {
             parsedPrijsRegels = parseStructuredPriceRulesString(prijsRegelsRaw);
           }
           e.parsedExtras = parsedPrijsRegels;
+          e.invoiceFields = {
+            factuurType: readInvoicePartyField(contact, 'factuur_type', invoicePartyFieldIdsForPlanner),
+            factuurBedrijfsnaam: readInvoicePartyField(contact, 'factuur_bedrijfsnaam', invoicePartyFieldIdsForPlanner),
+            factuurTav: readInvoicePartyField(contact, 'factuur_tav', invoicePartyFieldIdsForPlanner),
+            factuurEmail: readInvoicePartyField(contact, 'factuur_email', invoicePartyFieldIdsForPlanner),
+            factuurKvk: readInvoicePartyField(contact, 'factuur_kvk', invoicePartyFieldIdsForPlanner),
+            factuurBtwNummer: readInvoicePartyField(contact, 'factuur_btw_nummer', invoicePartyFieldIdsForPlanner),
+            factuurAdres: readInvoicePartyField(contact, 'factuur_adres', invoicePartyFieldIdsForPlanner),
+            factuurPostcode: readInvoicePartyField(contact, 'factuur_postcode', invoicePartyFieldIdsForPlanner),
+            factuurPlaats: readInvoicePartyField(contact, 'factuur_plaats', invoicePartyFieldIdsForPlanner),
+            factuurReferentie: readInvoicePartyField(contact, 'factuur_referentie', invoicePartyFieldIdsForPlanner),
+          };
         }
 
         const tEnrich0 = Date.now();
@@ -2507,6 +2579,12 @@ export default async function handler(req, res) {
         if (!cid) return res.status(400).json({ error: 'contactId vereist' });
         const dateNorm = normalizeYyyyMmDdInput(String(date || ''));
         if (!dateNorm) return res.status(400).json({ error: 'date verplicht (YYYY-MM-DD)' });
+        if (plannerBodyIncludesInvoiceKeys(req.body || {})) {
+          const ftInv = normalizePlannerInvoiceTypeFromBody(req.body?.factuurType);
+          if (ftInv === 'bedrijf' && !String(req.body?.factuurBedrijfsnaam || '').trim()) {
+            return res.status(400).json({ error: 'Bij factuurtype Bedrijf is bedrijfsnaam verplicht.' });
+          }
+        }
 
         const nameNorm = String(name || '').trim() || 'Onbekende klant';
         const nameParts = nameNorm.split(/\s+/).filter(Boolean);
@@ -2609,6 +2687,7 @@ export default async function handler(req, res) {
             });
           }
         }
+        await appendPlannerInvoicePartyFieldsToCustomFields(bookingCanon.customFields, req.body);
         const payload = {
           firstName,
           lastName,
@@ -2922,6 +3001,12 @@ export default async function handler(req, res) {
         if (!addressNorm) return res.status(400).json({ error: 'address verplicht' });
         if (!dateNorm) return res.status(400).json({ error: 'date verplicht (YYYY-MM-DD)' });
         if (!/^\d{2}:\d{2}$/.test(timeNorm)) return res.status(400).json({ error: 'time verplicht (HH:mm)' });
+        if (plannerBodyIncludesInvoiceKeys(req.body || {})) {
+          const ftInv = normalizePlannerInvoiceTypeFromBody(req.body?.factuurType);
+          if (ftInv === 'bedrijf' && !String(req.body?.factuurBedrijfsnaam || '').trim()) {
+            return res.status(400).json({ error: 'Bij factuurtype Bedrijf is bedrijfsnaam verplicht.' });
+          }
+        }
         const normalizedLines = normalizePriceLineItems(Array.isArray(priceLines) ? priceLines : []);
         const slotLabelNorm =
           slotKey === 'afternoon'
@@ -3121,6 +3206,7 @@ export default async function handler(req, res) {
               });
             }
           }
+          await appendPlannerInvoicePartyFieldsToCustomFields(bookingCanon.customFields, req.body);
           console.log('[BOOKING_CANON_WRITE]', {
             typeOnderhoud: bookingCanon.written.type_onderhoud || '',
             probleemomschrijving: bookingCanon.written.probleemomschrijving || '',

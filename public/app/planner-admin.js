@@ -1,10 +1,4 @@
 (function initPlannerAdmin(global) {
-  /**
-   * Factuur op bedrijf (GHL → Moneybird): backend ondersteunt optionele velden op
-   * `updateContactDashboard` (camelCase: factuurType, factuurBedrijfsnaam, factuurTav, …).
-   * UI: uitbreiden `saveDaanEditToGhl` body + modal met dezelfde keys wanneer velden in GHL bestaan.
-   * Zie `lib/invoice-party-ghl.js` → INVOICE_PARTY_GHL_FIELD_KEYS.
-   */
   function syncInternalFixedControls() {
     const typeEl = document.getElementById('deInternalFixedType');
     const timeEl = document.getElementById('deInternalFixedStart');
@@ -69,6 +63,7 @@
     btn.textContent = '⏳ Opslaan...';
     const selType = document.getElementById('deType').value;
     const durVal = parseInt(document.getElementById('deDuration').value, 10);
+
     const body = {
       editedBy: 'daan',
       contactId: a.contactId,

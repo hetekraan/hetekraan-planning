@@ -20,6 +20,112 @@
     } catch (_) {}
   }
 
+  function normalizeFactuurTypeFromAppt(raw) {
+    const t = String(raw || '').trim().toLowerCase();
+    if (t === 'bedrijf' || t === 'zakelijk' || t === 'business') return 'bedrijf';
+    return 'particulier';
+  }
+
+  function syncModalInvoiceFactuurFields() {
+    const sel = document.getElementById('mFactuurType');
+    const wrap = document.getElementById('mFactuurCompanyWrap');
+    if (!sel || !wrap) return;
+    wrap.style.display = sel.value === 'bedrijf' ? 'block' : 'none';
+  }
+
+  function readInvoiceFieldsFromModalDom() {
+    const typeEl = document.getElementById('mFactuurType');
+    const type = typeEl && typeEl.value === 'bedrijf' ? 'bedrijf' : 'particulier';
+    const read = (id) => document.getElementById(id)?.value?.trim() ?? '';
+    if (type === 'particulier') {
+      return {
+        factuurType: 'particulier',
+        factuurBedrijfsnaam: '',
+        factuurTav: '',
+        factuurEmail: '',
+        factuurKvk: '',
+        factuurBtwNummer: '',
+        factuurAdres: '',
+        factuurPostcode: '',
+        factuurPlaats: '',
+        factuurReferentie: '',
+      };
+    }
+    return {
+      factuurType: 'bedrijf',
+      factuurBedrijfsnaam: read('mFactuurBedrijfsnaam'),
+      factuurTav: read('mFactuurTav'),
+      factuurEmail: read('mFactuurEmail'),
+      factuurKvk: read('mFactuurKvk'),
+      factuurBtwNummer: read('mFactuurBtwNummer'),
+      factuurAdres: read('mFactuurAdres'),
+      factuurPostcode: read('mFactuurPostcode'),
+      factuurPlaats: read('mFactuurPlaats'),
+      factuurReferentie: read('mFactuurReferentie'),
+    };
+  }
+
+  function applyInvoiceFieldsToModalDom(a) {
+    const type = normalizeFactuurTypeFromAppt(a?.factuurType);
+    const typeEl = document.getElementById('mFactuurType');
+    if (typeEl) typeEl.value = type;
+    const set = (id, v) => {
+      const el = document.getElementById(id);
+      if (el) el.value = v != null ? String(v) : '';
+    };
+    set('mFactuurBedrijfsnaam', a?.factuurBedrijfsnaam);
+    set('mFactuurTav', a?.factuurTav);
+    set('mFactuurEmail', a?.factuurEmail);
+    set('mFactuurKvk', a?.factuurKvk);
+    set('mFactuurBtwNummer', a?.factuurBtwNummer);
+    set('mFactuurAdres', a?.factuurAdres);
+    set('mFactuurPostcode', a?.factuurPostcode);
+    set('mFactuurPlaats', a?.factuurPlaats);
+    set('mFactuurReferentie', a?.factuurReferentie);
+    syncModalInvoiceFactuurFields();
+  }
+
+  function resetModalInvoiceFields() {
+    const typeEl = document.getElementById('mFactuurType');
+    if (typeEl) typeEl.value = 'particulier';
+    const clearIds = [
+      'mFactuurBedrijfsnaam',
+      'mFactuurTav',
+      'mFactuurEmail',
+      'mFactuurKvk',
+      'mFactuurBtwNummer',
+      'mFactuurAdres',
+      'mFactuurPostcode',
+      'mFactuurPlaats',
+      'mFactuurReferentie',
+    ];
+    for (const id of clearIds) {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    }
+    syncModalInvoiceFactuurFields();
+  }
+
+  function notifyInvoiceUiOpened(meta = {}) {
+    try {
+      console.info(
+        '[planner] invoice_ui_opened',
+        JSON.stringify({
+          mode: meta.mode || 'unknown',
+          contactId: meta.contactId != null ? String(meta.contactId) : null,
+          appointmentId: meta.appointmentId != null ? String(meta.appointmentId) : null,
+        })
+      );
+    } catch (_) {}
+  }
+
+  function validateInvoiceFields(form) {
+    if (form.factuurType === 'bedrijf' && !String(form.factuurBedrijfsnaam || '').trim()) {
+      return 'Bij factuurtype Bedrijf is bedrijfsnaam verplicht.';
+    }
+    return null;
+  }
+
   /** Zet in console: localStorage.setItem('hk_trace_edit_address','1') — adres-flow end-to-end. */
   function traceEditAddress(tag, payload) {
     try {
@@ -98,6 +204,8 @@
         ? roundPrice(totalPriceManualValue)
         : autoTotalPrice;
 
+    const invoice = readInvoiceFieldsFromModalDom();
+
     return {
       date:
         dateInput?.value ||
@@ -117,6 +225,7 @@
       totalPrice,
       totalPriceAuto: autoTotalPrice,
       totalPriceManual,
+      ...invoice,
     };
   }
 
@@ -226,6 +335,7 @@
       global.HKPlannerCatalogV1.closeModalDropdown?.('form_reset');
     }
 
+    resetModalInvoiceFields();
     updatePricePreview();
   }
 
@@ -274,12 +384,6 @@
     const modeAtSaveStart = modalMode;
 
     const form = collectFormValues();
-    const validationError = validateInput(form);
-    if (validationError) {
-      showToast(validationError, 'info');
-      return;
-    }
-
     const overlay = document.getElementById('modalOverlay');
     const addrInputEl = document.getElementById('mAddress');
     const editMeta =
@@ -291,6 +395,27 @@
             prevSlotKey: String(overlay.dataset.hkEditPrevSlot || 'morning').trim(),
           }
         : null);
+
+    const invoiceValidationError = validateInvoiceFields(form);
+    if (invoiceValidationError) {
+      try {
+        console.warn(
+          '[planner] invoice_fields_validation_failed',
+          JSON.stringify({
+            reason: 'bedrijfsnaam_verplicht',
+            invoiceType: form.factuurType,
+            contactId: editMeta?.contactId || form.contactId || null,
+          })
+        );
+      } catch (_) {}
+      showToast(invoiceValidationError, 'info');
+      return;
+    }
+    const validationError = validateInput(form);
+    if (validationError) {
+      showToast(validationError, 'info');
+      return;
+    }
     traceEditAddress('[save_address_input]', {
       modalMode,
       mAddressValue: addrInputEl ? String(addrInputEl.value || '').trim() : null,
@@ -364,6 +489,16 @@
           desc: form.desc || '—',
           price: form.totalPrice,
           priceLines: form.priceLines,
+          factuurType: form.factuurType,
+          factuurBedrijfsnaam: form.factuurBedrijfsnaam,
+          factuurTav: form.factuurTav,
+          factuurEmail: form.factuurEmail,
+          factuurKvk: form.factuurKvk,
+          factuurBtwNummer: form.factuurBtwNummer,
+          factuurAdres: form.factuurAdres,
+          factuurPostcode: form.factuurPostcode,
+          factuurPlaats: form.factuurPlaats,
+          factuurReferentie: form.factuurReferentie,
         };
         debug('edit_save_address_payload', {
           contactId: editMeta.contactId,
@@ -400,6 +535,16 @@
           contactId: form.contactId || '',
           price: form.totalPrice,
           priceLines: form.priceLines,
+          factuurType: form.factuurType,
+          factuurBedrijfsnaam: form.factuurBedrijfsnaam,
+          factuurTav: form.factuurTav,
+          factuurEmail: form.factuurEmail,
+          factuurKvk: form.factuurKvk,
+          factuurBtwNummer: form.factuurBtwNummer,
+          factuurAdres: form.factuurAdres,
+          factuurPostcode: form.factuurPostcode,
+          factuurPlaats: form.factuurPlaats,
+          factuurReferentie: form.factuurReferentie,
         };
         res = await fetch('/api/ghl?action=createAppointment', {
           method: 'POST',
@@ -419,6 +564,26 @@
       if (!res.ok || !data.success) {
         throw new Error(data.error || data.detail || `Opslaan mislukt (${res.status})`);
       }
+      try {
+        const cidLog = String(data?.contactId || editMeta?.contactId || '').trim() || null;
+        const apptLog =
+          String(editMeta?.apptId || overlay?.dataset?.hkEditApptId || data?.appointmentId || '').trim() || null;
+        console.info(
+          '[planner] invoice_fields_saved',
+          JSON.stringify({
+            contactId: cidLog,
+            appointmentId: apptLog,
+            invoiceType: form.factuurType,
+            hasCompanyName: Boolean(String(form.factuurBedrijfsnaam || '').trim()),
+            hasInvoiceEmail: Boolean(String(form.factuurEmail || '').trim()),
+            hasInvoiceAddress: Boolean(
+              String(form.factuurAdres || '').trim() ||
+                String(form.factuurPostcode || '').trim() ||
+                String(form.factuurPlaats || '').trim()
+            ),
+          })
+        );
+      } catch (_) {}
       const apptId = String(editMeta?.apptId || overlay?.dataset?.hkEditApptId || '').trim();
       if (apptId && typeof global.setAppointmentInternalFixedStart === 'function') {
         const pinType = document.getElementById(
@@ -569,6 +734,7 @@
     }
     if (descInput) descInput.value = baseLineDesc;
     if (contactIdInput) contactIdInput.value = String(a.contactId || '');
+    applyInvoiceFieldsToModalDom(a);
     const pin = a.internalFixedPin ||
       (a.internalFixedStartTime
         ? { type: 'exact', time: a.internalFixedStartTime }
@@ -592,6 +758,30 @@
     } else {
       updatePricePreview();
     }
+
+    const invNorm = normalizeFactuurTypeFromAppt(a?.factuurType);
+    try {
+      console.info(
+        '[planner] invoice_fields_loaded',
+        JSON.stringify({
+          contactId: a.contactId || null,
+          appointmentId: String(a.id || apptId),
+          invoiceType: invNorm,
+          hasCompanyName: Boolean(String(a?.factuurBedrijfsnaam || '').trim()),
+          hasInvoiceEmail: Boolean(String(a?.factuurEmail || '').trim()),
+          hasInvoiceAddress: Boolean(
+            String(a?.factuurAdres || '').trim() ||
+              String(a?.factuurPostcode || '').trim() ||
+              String(a?.factuurPlaats || '').trim()
+          ),
+        })
+      );
+    } catch (_) {}
+    notifyInvoiceUiOpened({
+      mode: 'edit',
+      contactId: a.contactId,
+      appointmentId: String(a.id || apptId),
+    });
   }
 
   global.HKPlannerManualAppointment = {
@@ -603,5 +793,7 @@
     resetManualAppointmentForm,
     syncTotalPriceModeFromExisting,
     openForEdit,
+    syncModalInvoiceFactuurFields,
+    notifyInvoiceUiOpened,
   };
 })(window);
