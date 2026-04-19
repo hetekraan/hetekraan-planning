@@ -42,6 +42,7 @@ import {
 import {
   mapEnrichedGhlEventToAppointment,
   plannerServiceMarkedCompleteOnRouteDay,
+  readContactCustomFieldById,
 } from '../lib/planning/appointment.js';
 import {
   buildCanonicalAddressWritePayload,
@@ -83,7 +84,10 @@ import {
   isRouteLockStoreConfigured,
   setRouteLock,
 } from '../lib/route-lock-store.js';
-import { buildCompleteAppointmentPayload } from '../lib/usecases/complete-appointment.js';
+import {
+  buildCompleteAppointmentPayload,
+  LEGACY_COMPLETE_FIELD_IDS,
+} from '../lib/usecases/complete-appointment.js';
 import { resolveContactCustomFieldId } from '../lib/ghl-custom-fields.js';
 import { getOrCreateMoneybirdPayTokenMapping } from '../lib/moneybird-pay-token-store.js';
 
@@ -1297,6 +1301,33 @@ export default async function handler(req, res) {
             syntheticRows: appointments.filter((a) => a.isSyntheticBlockBooking).length,
           })
         );
+        const completionSamples = clientRows.slice(0, 8).map((a) => {
+          const cid = String(a.contactId || '').trim();
+          const c = cid ? contactMap[cid] : null;
+          const datumRaw = c ? readContactCustomFieldById(c, LEGACY_COMPLETE_FIELD_IDS.datum_laatste_onderhoud) : '';
+          const leg = c ? readContactCustomFieldById(c, LEGACY_COMPLETE_FIELD_IDS.legacy_betalingsstatus) : '';
+          return {
+            contactId: cid || null,
+            appointmentId: String(a.id || ''),
+            serviceDay: date,
+            status: a.status,
+            datumLen: datumRaw ? String(datumRaw).length : 0,
+            datumMatchesRoute: plannerServiceMarkedCompleteOnRouteDay(datumRaw, date),
+            legacyAfgerondLen: leg ? String(leg).length : 0,
+            synthetic: !!a.isSyntheticBlockBooking,
+          };
+        });
+        console.log(
+          '[planner] completion_state_loaded',
+          JSON.stringify({
+            dateStr: date,
+            klaarCount: nKlaarFromContact,
+            clientRows: clientRows.length,
+            sourceOfTruth:
+              'GHL datum_laatste_onderhoud == routeDay (value|field_value); fallback betaal/legacy Afgerond zonder datum; browser localStorage cid:contact:day (niet verlopen)',
+            samples: completionSamples,
+          })
+        );
         let customerDayFull = false;
         try {
           customerDayFull = await getCustomerDayFullFlag(locId, date);
@@ -1621,6 +1652,19 @@ export default async function handler(req, res) {
           console.error('[completeAppointment] GHL contact PUT mislukt:', putRes.status, detail);
           return res.status(502).json({ error: 'Kon afsluitvelden niet opslaan in GHL', detail });
         }
+
+        console.log(
+          '[planner] completion_state_written',
+          JSON.stringify({
+            contactId,
+            appointmentId: appointmentId != null ? String(appointmentId) : null,
+            serviceDay: datumLaatsteOnderhoud,
+            routeDateRequested: routeDate != null ? String(routeDate) : null,
+            storedDatumLaatsteOnderhoud: datumLaatsteOnderhoud,
+            storedLegacyBetalingsstatus: 'Afgerond',
+            ghlContactPutOk: true,
+          })
+        );
 
         let moneybirdResult = null;
         // Moneybird factuur aanmaken (niet-fataal voor complete-flow)

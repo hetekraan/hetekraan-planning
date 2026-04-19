@@ -218,6 +218,15 @@
     }
     a.status = 'klaar';
     saveKlaarStatus(a.id, a.contactId, getDateStr(getCurrentDate()));
+    console.info(
+      '[planner] completion_state_written',
+      JSON.stringify({
+        contactId: a.contactId || null,
+        appointmentId: a.id != null ? String(a.id) : null,
+        serviceDay: routeDate,
+        layer: 'client_ui_and_localStorage',
+      })
+    );
     render();
     requestAnimationFrame(() => {
       const card = document.getElementById('card-' + appointmentDomSafeId(id));

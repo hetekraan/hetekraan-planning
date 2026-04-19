@@ -14,8 +14,10 @@
       if (ghlId) map[String(ghlId)] = Date.now();
       const cd = klaarStorageKeyContactDate(contactId, routeYmd);
       if (cd) map[cd] = Date.now();
-      const cutoff = Date.now() - 60 * 24 * 60 * 60 * 1000;
+      /** `cid:…` = permanente route-dag afronding (niet op leeftijd wissen). Overige keys: 365 dagen. */
+      const cutoff = Date.now() - 365 * 24 * 60 * 60 * 1000;
       for (const [k, v] of Object.entries(map)) {
+        if (String(k).startsWith('cid:')) continue;
         if (v < cutoff) delete map[k];
       }
       localStorage.setItem(HK_KLAAR_KEY, JSON.stringify(map));
