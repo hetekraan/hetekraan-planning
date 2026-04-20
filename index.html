@@ -6185,7 +6185,7 @@ function renderApptCard(a, i) {
             ${a.priceLabel ? `<span class="appt-price">${a.priceLabel}</span>` : ''}
             <div class="appt-footer-actions-touch">
               <div class="appt-footer-cta-row">
-                <button type="button" class="btn-prijs ${barVisible&&!isOnderweg?'active':''}" onclick='togglePrijs(${idQ})' title="Prijsoverzicht bekijken">Prijs</button>
+                <button type="button" class="btn-prijs ${barVisible&&!isOnderweg?'active':''}" onclick='togglePrijs(event, ${idQ})' title="Prijsoverzicht bekijken">Prijs</button>
                 ${!isDone ? `
                 <button type="button" class="btn-done ${isOnderweg?'active':''}" onclick='${isOnderweg ? `scrollToPrijs(${idQ})` : `askOnderweg(${idQ})`}' title="${isOnderweg ? 'Naar prijs en afronden' : 'Markeer onderweg'}">Onderweg</button>
                 ` : ''}
@@ -6805,12 +6805,70 @@ function cancelOnderweg(id) {
 
 let _onderwegId = null;
 
-function togglePrijs(id) {
+function togglePrijs(evt, id) {
+  if (evt && typeof evt.preventDefault === 'function') evt.preventDefault();
+  if (evt && typeof evt.stopPropagation === 'function') evt.stopPropagation();
   const a = appointments.find(x => String(x.id) === String(id));
   if (!a) return;
+  const beforeY = (() => {
+    if (typeof window === 'undefined') return 0;
+    return Number(window.scrollY || window.pageYOffset || 0);
+  })();
+  const activeBefore =
+    document.activeElement && document.activeElement.tagName
+      ? `${document.activeElement.tagName.toLowerCase()}#${document.activeElement.id || ''}`
+      : '';
+  try {
+    console.info(
+      '[planner] price_panel_open_clicked',
+      JSON.stringify({
+        appointmentId: String(id),
+        scrollYBefore: beforeY,
+        activeElement: activeBefore || null,
+        preventDefaultUsed: true,
+        userAgent: String(navigator?.userAgent || '').slice(0, 160),
+      })
+    );
+  } catch (_) {}
   a.priceVisible = !a.priceVisible;
   render();
-  if (a.priceVisible) setTimeout(() => scrollToPrijs(id), 80);
+  requestAnimationFrame(() => {
+    const afterY = Number(window.scrollY || window.pageYOffset || 0);
+    const delta = Math.abs(afterY - beforeY);
+    if (a.priceVisible) {
+      if (delta > 120) {
+        window.scrollTo({ top: beforeY, behavior: 'auto' });
+        try {
+          console.warn(
+            '[planner] price_panel_scroll_jump_detected',
+            JSON.stringify({
+              appointmentId: String(id),
+              scrollYBefore: beforeY,
+              scrollYAfter: afterY,
+              deltaY: delta,
+            })
+          );
+        } catch (_) {}
+      }
+      try {
+        console.info(
+          '[planner] price_panel_opened',
+          JSON.stringify({
+            appointmentId: String(id),
+            scrollYAfterOpen: Number(window.scrollY || window.pageYOffset || 0),
+          })
+        );
+        console.info(
+          '[planner] price_panel_scroll_preserved',
+          JSON.stringify({
+            appointmentId: String(id),
+            scrollYBefore: beforeY,
+            scrollYAfter: Number(window.scrollY || window.pageYOffset || 0),
+          })
+        );
+      } catch (_) {}
+    }
+  });
 }
 
 function askOnderweg(id) {
@@ -6888,7 +6946,18 @@ function toggleOnderweg(id) {
 
 function scrollToPrijs(id) {
   const el = document.getElementById('price-' + appointmentDomSafeId(id));
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if (el) {
+    try {
+      console.info(
+        '[planner] price_panel_focus_applied',
+        JSON.stringify({
+          appointmentId: String(id),
+          mode: 'scrollIntoView',
+        })
+      );
+    } catch (_) {}
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 }
 
 function toggleReview(id) {
