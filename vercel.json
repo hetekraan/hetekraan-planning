@@ -40,6 +40,24 @@
       "headers": [
         { "key": "Cache-Control", "value": "no-store, must-revalidate, max-age=0" }
       ]
+    },
+    {
+      "source": "/app/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, must-revalidate, max-age=0" }
+      ]
+    },
+    {
+      "source": "/styles/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, must-revalidate, max-age=0" }
+      ]
+    },
+    {
+      "source": "/manifest.webmanifest",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, must-revalidate, max-age=0" }
+      ]
     }
   ],
   "crons": [

@@ -21,6 +21,8 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
@@ -28,11 +30,19 @@ export default async function handler(req, res) {
   const ghlIosContactAppUrlTemplate = sanitizeGhlIosContactAppUrlTemplate(
     process.env.GHL_IOS_CONTACT_APP_URL_TEMPLATE || ''
   );
+  const appVersion =
+    String(
+      process.env.VERCEL_GIT_COMMIT_SHA ||
+      process.env.VERCEL_DEPLOYMENT_ID ||
+      ''
+    ).trim() || null;
   return res.status(200).json({
     ghlLocationId,
     /** Zonder location-id zijn contactlinks in het dashboard niet te bouwen. */
     ghlLinksOk: Boolean(ghlLocationId),
     /** Leeg tenzij GHL_IOS_CONTACT_APP_URL_TEMPLATE gezet is (mobiele app, zie sanitize-functie). */
     ghlIosContactAppUrlTemplate,
+    /** Publieke deployversie voor client-side update checks (homescreen stale-cache guard). */
+    appVersion,
   });
 }

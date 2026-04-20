@@ -4678,10 +4678,52 @@
 let GHL_BASE_URL = '';
 /** Optioneel: template voor mobiele app-link (env GHL_IOS_CONTACT_APP_URL_TEMPLATE). */
 let GHL_IOS_CONTACT_APP_URL_TEMPLATE = '';
+/** Build versie uit HTML (geinjecteerd tijdens build). */
+const HK_APP_BUILD_VERSION =
+  document.querySelector('meta[name="hk-app-version"]')?.getAttribute('content') || '';
+let HK_REMOTE_APP_VERSION = '';
 let GHL_PLANNING_CONFIG_FETCHED = false;
 
 async function refreshGhlContactBaseUrl() {
   if (GHL_PLANNING_CONFIG_FETCHED) return;
+  return fetchPlanningRuntimeConfig({ allowReload: false });
+}
+
+function isStandaloneLikeMode() {
+  try {
+    return Boolean(
+      window.matchMedia?.('(display-mode: standalone)')?.matches ||
+      window.navigator?.standalone === true
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
+function maybeReloadOnVersionMismatch(remoteVersion) {
+  const remote = String(remoteVersion || '').trim();
+  const local = String(HK_APP_BUILD_VERSION || '').trim();
+  if (!remote || !local || remote === local) return false;
+  // Force one hard refresh on iPad homescreen stale HTML.
+  const key = `hk_version_reload_once_${remote}`;
+  try {
+    if (sessionStorage.getItem(key) === '1') return false;
+    sessionStorage.setItem(key, '1');
+  } catch (_) {}
+  console.info(
+    '[planner] app_version_mismatch_reload',
+    JSON.stringify({
+      localVersion: local,
+      remoteVersion: remote,
+      standalone: isStandaloneLikeMode(),
+    })
+  );
+  window.location.reload();
+  return true;
+}
+
+async function fetchPlanningRuntimeConfig(opts = {}) {
+  const allowReload = opts?.allowReload !== false;
   try {
     const r = await fetch('/api/planning-config?_=' + Date.now(), { cache: 'no-store' });
     const d = await r.json().catch(() => ({}));
@@ -4693,8 +4735,20 @@ async function refreshGhlContactBaseUrl() {
     if (d.ghlIosContactAppUrlTemplate != null) {
       GHL_IOS_CONTACT_APP_URL_TEMPLATE = String(d.ghlIosContactAppUrlTemplate || '').trim();
     }
+    HK_REMOTE_APP_VERSION = String(d.appVersion || '').trim();
+    if (allowReload) maybeReloadOnVersionMismatch(HK_REMOTE_APP_VERSION);
   } catch (_) {}
 }
+
+function startPlannerVersionWatch() {
+  const check = () => fetchPlanningRuntimeConfig({ allowReload: true });
+  window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') check();
+  });
+  window.addEventListener('pageshow', () => check());
+  setInterval(check, 60 * 1000);
+}
+startPlannerVersionWatch();
 
 let currentDate = new Date();
 let appointments = [];
