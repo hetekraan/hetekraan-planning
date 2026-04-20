@@ -2309,15 +2309,25 @@ export default async function handler(req, res) {
                       }
 
                       // Veilige default: alleen bij nieuw aangemaakte factuur automatisch e-mail versturen.
-                      const emailNorm = String(email || '').trim().toLowerCase();
+                      const emailNorm = String(
+                        mbContact?.contact?.email || email || ''
+                      )
+                        .trim()
+                        .toLowerCase();
                       const hasValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm);
                       if (!hasValidEmail) {
-                        console.info('[moneybird] missing_email', {
+                        console.info('[moneybird] invoice_send_skipped_missing_email', {
                           contactId,
                           appointmentId: String(appointmentId || ''),
                           invoiceId,
                         });
                       } else {
+                        console.info('[moneybird] invoice_send_ready_after_contact_sync', {
+                          contactId,
+                          appointmentId: String(appointmentId || ''),
+                          invoiceId,
+                          moneybirdContactId: String(mbContact?.contactId || ''),
+                        });
                         try {
                           const mailResult = await sendSalesInvoiceByEmail({
                             invoiceId,
@@ -2333,7 +2343,7 @@ export default async function handler(req, res) {
                             });
                             moneybirdResult.emailSent = true;
                           } else if (mailResult?.reason === 'missing_email') {
-                            console.info('[moneybird] missing_email', {
+                            console.info('[moneybird] invoice_send_skipped_missing_email', {
                               contactId,
                               appointmentId: String(appointmentId || ''),
                               invoiceId,
