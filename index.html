@@ -4944,6 +4944,7 @@ function createPlannerCtx() {
     closeModal,
     setLastPartitionedRoutePlan: (dateStr, plan) => setLastPartitionedRoutePlan(dateStr, plan),
     clearLastPartitionedRoutePlan: (dateStr) => clearLastPartitionedRoutePlan(dateStr),
+    logRouteOrder,
   };
 }
 window.createPlannerCtx = createPlannerCtx;
@@ -5142,6 +5143,20 @@ function getServerRouteLock(dateStr) {
   if (!dateStr) return null;
   const hit = serverRouteLockByDate.get(String(dateStr));
   return hit && typeof hit === 'object' ? hit : null;
+}
+
+function routeOrderIdsFromAppointments(list) {
+  const src = Array.isArray(list) ? list : [];
+  return src
+    .filter((a) => a?.contactId && !a?.isCalBlock)
+    .map((a) => String(a.contactId || '').trim())
+    .filter(Boolean);
+}
+
+function logRouteOrder(event, payload) {
+  try {
+    console.info(`[planner] ${event}`, JSON.stringify(payload || {}));
+  } catch (_) {}
 }
 
 function isRouteOperationalLockedForDate(dateStr) {
@@ -5349,14 +5364,54 @@ function saveRouteSnapshot(dateStr) {
 
 function applyRouteSnapshot(dateStr) {
   if (!window.HKPlannerRouteSnapshot?.applyRouteSnapshot) return false;
+  const srv = getServerRouteLock(dateStr);
+  const enforceServerOrder = routeLockRedisStoreConfigured === true && !!(srv && srv.locked === true);
   const applied = window.HKPlannerRouteSnapshot.applyRouteSnapshot({
     dateStr,
     routeSnapshotKey,
     getAppointmentsRef: () => appointments,
     normalizeTimeStr,
+    operationalLockOverride: enforceServerOrder ? srv : null,
+    allowLooseSnapshot: !routeLockRedisStoreConfigured,
   });
-  if (applied.contactIdsOrder?.length) {
-    applyAppointmentsOrder(applied.contactIdsOrder);
+  const sourceOfTruth = enforceServerOrder
+    ? 'server_route_lock'
+    : applied.routeOperationalLock?.locked
+      ? 'local_route_operational_lock'
+      : applied.contactIdsOrder?.length
+        ? 'local_snapshot_order'
+        : 'fallback_sort';
+  const sourceOrder = enforceServerOrder
+    ? (Array.isArray(srv?.orderContactIds) ? srv.orderContactIds.map((x) => String(x || '').trim()).filter(Boolean) : [])
+    : (Array.isArray(applied.contactIdsOrder) ? applied.contactIdsOrder : []);
+  logRouteOrder('route_order_source', {
+    routeDate: String(dateStr || ''),
+    sourceOfTruth,
+    confirmedOrderIds: sourceOrder,
+    routeLockStoreConfigured: routeLockRedisStoreConfigured === true,
+  });
+  if (sourceOrder.length) {
+    applyAppointmentsOrder(sourceOrder);
+  }
+  const loadedOrderIds = routeOrderIdsFromAppointments(appointments);
+  logRouteOrder('route_order_loaded', {
+    routeDate: String(dateStr || ''),
+    sourceOfTruth,
+    loadedOrderIds,
+    confirmedOrderIds: sourceOrder,
+  });
+  if (sourceOrder.length) {
+    const canonLoaded = loadedOrderIds.slice(0, sourceOrder.length);
+    const mismatch = canonLoaded.join('|') !== sourceOrder.join('|');
+    if (mismatch) {
+      logRouteOrder('route_order_mismatch', {
+        routeDate: String(dateStr || ''),
+        sourceOfTruth,
+        confirmedOrderIds: sourceOrder,
+        loadedOrderIds,
+        fallbackReason: 'apply_order_result_differs',
+      });
+    }
   }
   return !!applied.hasData;
 }
@@ -5387,6 +5442,22 @@ function getRouteStopsForSidebar() {
       }
     }
     return ordered;
+  }
+  if (routeLockRedisStoreConfigured === true) {
+    const active = appointments.filter((a) => a?.fullAddressLine && a?.status !== 'klaar');
+    const fallback = [...active].sort(
+      (a, b) =>
+        (a?.dayPart ?? 0) - (b?.dayPart ?? 0) ||
+        (a?.startMs ?? 0) - (b?.startMs ?? 0) ||
+        String(a?.timeSlot || '').localeCompare(String(b?.timeSlot || ''))
+    );
+    logRouteOrder('route_order_fallback_sort_used', {
+      routeDate: dateStr,
+      sourceOfTruth: 'server_sort_without_lock',
+      fallbackReason: 'route_lock_missing_with_central_store_enabled',
+      loadedOrderIds: routeOrderIdsFromAppointments(fallback),
+    });
+    return fallback;
   }
   const base = window.HKPlannerRouteLocalUi.getRouteStopsForSidebar({
     appointments,

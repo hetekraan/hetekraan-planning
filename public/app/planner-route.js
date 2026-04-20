@@ -151,6 +151,15 @@
           orderContactIds
         );
       }
+      if (typeof ctx.logRouteOrder === 'function') {
+        ctx.logRouteOrder('route_order_confirmed', {
+          routeDate,
+          sourceOfTruth: 'server_route_lock',
+          appointmentIds: routeSequence.map((a) => (a?.id != null ? String(a.id) : '')).filter(Boolean),
+          confirmedOrderIds: orderContactIds,
+          loadedOrderIds: orderContactIds,
+        });
+      }
       if (typeof ctx.saveRouteOperationalLock === 'function') {
         ctx.saveRouteOperationalLock(routeDate, {
           orderContactIds,

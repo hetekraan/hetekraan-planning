@@ -70,6 +70,14 @@
           optimized.map((a) => (a?.contactId ? String(a.contactId) : '')).filter(Boolean)
         );
       }
+      if (typeof ctx.logRouteOrder === 'function') {
+        ctx.logRouteOrder('route_order_optimized', {
+          routeDate: dateStr,
+          sourceOfTruth: 'client_partitionedDay_optimization_pre_confirm',
+          appointmentIds: optimized.map((a) => (a?.id != null ? String(a.id) : '')).filter(Boolean),
+          confirmedOrderIds: optimized.map((a) => (a?.contactId ? String(a.contactId) : '')).filter(Boolean),
+        });
+      }
 
       if (typeof ctx.setLastPartitionedRoutePlan === 'function') {
         ctx.setLastPartitionedRoutePlan(dateStr, {

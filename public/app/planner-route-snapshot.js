@@ -243,12 +243,15 @@
     }
 
     const snap = readSnapshot(routeSnapshotKey(dateStr));
-    if (!snap) return { hasData: false, contactIdsOrder: [], routeOperationalLock: null };
+    const hasSnap = !!snap;
+    const opLockOverride = normalizeOperationalLock(input?.operationalLockOverride);
+    const allowLooseSnapshot = input?.allowLooseSnapshot !== false;
+    if (!hasSnap && !opLockOverride) return { hasData: false, contactIdsOrder: [], routeOperationalLock: null };
 
-    const opLock = normalizeOperationalLock(snap.routeOperationalLock);
+    const opLock = opLockOverride || normalizeOperationalLock(snap?.routeOperationalLock);
 
     let appliedCount = 0;
-    const byContactId = snap.byContactId;
+    const byContactId = allowLooseSnapshot ? snap?.byContactId : null;
     if (byContactId && typeof byContactId === 'object') {
       for (const a of getAppointmentsRef() || []) {
         const row = byContactId[a?.contactId];
@@ -297,7 +300,7 @@
       }
     }
 
-    const looseOrder = Array.isArray(snap.contactIdsOrder) ? snap.contactIdsOrder : [];
+    const looseOrder = allowLooseSnapshot && Array.isArray(snap?.contactIdsOrder) ? snap.contactIdsOrder : [];
     const contactIdsOrder =
       opLock?.locked && opLock.orderContactIds?.length ? opLock.orderContactIds : looseOrder;
 
