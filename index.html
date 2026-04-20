@@ -6429,6 +6429,197 @@ function toggleMobileApptActionMenu(ev, domId) {
   }
 }
 
+/** Alleen de inhoud van `#price-{domId}` (geen volledige kaart/lijst). */
+function buildAppointmentPriceSectionInnerHtml(a) {
+  if (!a || a.isCalBlock) return '';
+  const idQ = JSON.stringify(a.id);
+  const domId = appointmentDomSafeId(a.id);
+  const isDone = a.status === 'klaar';
+  const extras = Array.isArray(a.extras) ? a.extras : [];
+  const extrasHtml = extras
+    .map(
+      (e, i) => `
+            <div class="extra-item" style="align-items:center">
+              <input class="form-input" type="text" value="${escapePriceAttr(e.desc)}" style="flex:1;min-width:0" inputmode="text" autocomplete="off"
+                oninput='onExtraDescInput(${idQ},${i},this.value)' onchange='updateExtraLine(${idQ},${i},this.value,null)' />
+              <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+                <span style="font-size:13px;color:var(--muted)">€</span>
+                <input class="form-input price-input" type="number" inputmode="decimal" step="0.01" min="0" value="${Number.isFinite(Number(e.price)) ? e.price : ''}"
+                  style="width:88px" placeholder="0"
+                  oninput='onExtraPriceInput(${idQ},${i},this.value)' onchange='updateExtraLine(${idQ},${i},null,parseFloat(this.value))' />
+                <button type="button" class="extra-remove" title="Regel verwijderen" onclick='removeExtra(${idQ},${i})'>✕</button>
+              </div>
+            </div>`
+    )
+    .join('');
+  return `
+          <div class="price-section-label">Prijsoverzicht${extras.length === 0 && !a.price ? '<span style="color:var(--muted);font-size:10px;font-weight:400;margin-left:6px">Nog geen prijs uit chat</span>' : ''}</div>
+          ${a.price > 0 ? `<div class="extra-item extra-item--basis"><span>Basis</span><span>€${euroDisplay(a.price)}</span></div>` : ''}
+          ${extrasHtml}
+          <button type="button" class="btn-add-price-line" onclick='addEmptyPriceLine(event, ${idQ})'>+ Regel toevoegen</button>
+          <div class="add-extra-row" style="flex-direction:column;gap:5px;margin-top:6px">
+            <input class="form-input" type="text" id="catalog-search-${domId}" placeholder="Zoek product of service..." oninput='onCatalogSearchInput(${idQ}, this.value)'>
+            <div class="catalog-v1-results" id="catalog-results-${domId}"></div>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input class="form-input" type="text" id="extra-desc-${domId}" placeholder="Snel: omschrijving" style="flex:1">
+              <input class="form-input price-input" type="number" id="extra-price-${domId}" placeholder="€" min="0" step="0.01" inputmode="decimal">
+              <button type="button" class="btn-add-extra" onclick='addExtra(${idQ})' title="Regel toevoegen (ingevuld)">+</button>
+            </div>
+          </div>
+          <div class="price-total-row">
+            <span>Totaal</span>
+            <span id="price-total-amt-${domId}">€${euroDisplay(calcTotalPrice(a))}</span>
+          </div>
+          ${
+            isDone
+              ? `
+          <div class="complete-row" style="justify-content:flex-end;margin-top:6px">
+            <button type="button" class="btn-cancel" onclick='retryInvoiceForDone(${idQ}, this)' title="Factuur opnieuw verzenden">
+              Factuur opnieuw verzenden
+            </button>
+          </div>`
+              : ''
+          }`;
+}
+
+function mountAppointmentPriceSection(id) {
+  const a = appointments.find((x) => String(x.id) === String(id));
+  if (!a || a.isCalBlock) return false;
+  const domId = appointmentDomSafeId(id);
+  const el = document.getElementById('price-' + domId);
+  if (!el) return false;
+  el.innerHTML = buildAppointmentPriceSectionInnerHtml(a);
+  updatePriceTotalLabel(id);
+  return true;
+}
+
+const _priceLineInputLogTimers = {};
+function logPriceLineInputChangedDebounced(appointmentId, idx, field) {
+  const k = `${appointmentId}|${idx}|${field}`;
+  clearTimeout(_priceLineInputLogTimers[k]);
+  _priceLineInputLogTimers[k] = setTimeout(() => {
+    try {
+      console.info(
+        '[planner] price_line_input_changed',
+        JSON.stringify({
+          appointmentId: String(appointmentId),
+          actionType: 'live_input',
+          index: idx,
+          field,
+          scrollY: plannerSnapshotScrollY(),
+          mobile: plannerIsMobileViewport639(),
+          activeElement: plannerPricePanelActiveElementSnapshot(),
+        })
+      );
+    } catch (_) {}
+  }, 400);
+}
+
+function remountPriceSectionWithEditorScrollLogging(id, actionType) {
+  const appointmentId = String(id);
+  const beforeY = plannerSnapshotScrollY();
+  const mobile = plannerIsMobileViewport639();
+  const activeBefore = plannerPricePanelActiveElementSnapshot();
+  try {
+    console.info(
+      '[planner] price_editor_before_action_scroll',
+      JSON.stringify({
+        appointmentId,
+        actionType,
+        scrollYBefore: beforeY,
+        activeElement: activeBefore,
+        mobile,
+      })
+    );
+  } catch (_) {}
+
+  const mounted = mountAppointmentPriceSection(id);
+  if (!mounted) {
+    try {
+      console.warn(
+        '[planner] price_editor_mount_failed_fallback_render',
+        JSON.stringify({ appointmentId, actionType, mobile })
+      );
+    } catch (_) {}
+    render();
+  }
+
+  const afterY = plannerSnapshotScrollY();
+  try {
+    console.info(
+      '[planner] price_editor_after_action_scroll',
+      JSON.stringify({
+        appointmentId,
+        actionType,
+        scrollYBefore: beforeY,
+        scrollYAfter: afterY,
+        usedMount: mounted,
+        mobile,
+      })
+    );
+  } catch (_) {}
+  try {
+    console.info(
+      '[planner] price_editor_focus_target',
+      JSON.stringify({
+        appointmentId,
+        actionType,
+        activeElement: plannerPricePanelActiveElementSnapshot(),
+        mobile,
+      })
+    );
+  } catch (_) {}
+
+  let jumpRestored = false;
+  const scheduleSample = (delayMs) => {
+    setTimeout(() => {
+      const y = plannerSnapshotScrollY();
+      const evName = delayMs === 150 ? 'price_editor_after_t150_scroll' : 'price_editor_after_t300_scroll';
+      try {
+        console.info(
+          `[planner] ${evName}`,
+          JSON.stringify({
+            appointmentId,
+            actionType,
+            scrollY: y,
+            scrollYBefore: beforeY,
+            mobile,
+          })
+        );
+      } catch (_) {}
+      const d = Math.abs(y - beforeY);
+      if (d > 12) {
+        try {
+          console.warn(
+            '[planner] price_editor_scroll_jump_detected',
+            JSON.stringify({
+              appointmentId,
+              actionType,
+              phase: delayMs === 150 ? 't150' : 't300',
+              scrollYBefore: beforeY,
+              scrollYAfter: y,
+              deltaY: d,
+              mobile,
+            })
+          );
+        } catch (_) {}
+        if (delayMs === 300 && !jumpRestored) {
+          jumpRestored = true;
+          window.scrollTo({ top: beforeY, behavior: 'auto' });
+          try {
+            console.info(
+              '[planner] price_editor_scroll_restored',
+              JSON.stringify({ appointmentId, actionType, scrollYTarget: beforeY, mobile })
+            );
+          } catch (_) {}
+        }
+      }
+    }, delayMs);
+  };
+  scheduleSample(150);
+  scheduleSample(300);
+}
+
 function renderApptCard(a, i) {
     const domId = appointmentDomSafeId(a.id);
     const idQ = JSON.stringify(a.id);
@@ -6578,40 +6769,7 @@ function renderApptCard(a, i) {
         </div>` : ''}
 
         <div class="price-section" id="price-${domId}">
-          <div class="price-section-label">Prijsoverzicht${(a.extras||[]).length === 0 && !a.price ? '<span style="color:var(--muted);font-size:10px;font-weight:400;margin-left:6px">Nog geen prijs uit chat</span>' : ''}</div>
-          ${a.price > 0 ? `<div class="extra-item extra-item--basis"><span>Basis</span><span>€${euroDisplay(a.price)}</span></div>` : ''}
-          ${(a.extras||[]).map((e,i) => `
-            <div class="extra-item" style="align-items:center">
-              <input class="form-input" type="text" value="${escapePriceAttr(e.desc)}" style="flex:1;min-width:0" inputmode="text" autocomplete="off"
-                oninput='onExtraDescInput(${idQ},${i},this.value)' onchange='updateExtraLine(${idQ},${i},this.value,null)' />
-              <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
-                <span style="font-size:13px;color:var(--muted)">€</span>
-                <input class="form-input price-input" type="number" inputmode="decimal" step="0.01" min="0" value="${Number.isFinite(Number(e.price)) ? e.price : ''}"
-                  style="width:88px" placeholder="0"
-                  oninput='onExtraPriceInput(${idQ},${i},this.value)' onchange='updateExtraLine(${idQ},${i},null,parseFloat(this.value))' />
-                <button type="button" class="extra-remove" title="Regel verwijderen" onclick='removeExtra(${idQ},${i})'>✕</button>
-              </div>
-            </div>`).join('')}
-          <button type="button" class="btn-add-price-line" onclick='addEmptyPriceLine(event, ${idQ})'>+ Regel toevoegen</button>
-          <div class="add-extra-row" style="flex-direction:column;gap:5px;margin-top:6px">
-            <input class="form-input" type="text" id="catalog-search-${domId}" placeholder="Zoek product of service..." oninput='onCatalogSearchInput(${idQ}, this.value)'>
-            <div class="catalog-v1-results" id="catalog-results-${domId}"></div>
-            <div style="display:flex;gap:6px;align-items:center">
-              <input class="form-input" type="text" id="extra-desc-${domId}" placeholder="Snel: omschrijving" style="flex:1">
-              <input class="form-input price-input" type="number" id="extra-price-${domId}" placeholder="€" min="0" step="0.01" inputmode="decimal">
-              <button type="button" class="btn-add-extra" onclick='addExtra(${idQ})' title="Regel toevoegen (ingevuld)">+</button>
-            </div>
-          </div>
-          <div class="price-total-row">
-            <span>Totaal</span>
-            <span id="price-total-amt-${domId}">€${euroDisplay(calcTotalPrice(a))}</span>
-          </div>
-          ${isDone ? `
-          <div class="complete-row" style="justify-content:flex-end;margin-top:6px">
-            <button type="button" class="btn-cancel" onclick='retryInvoiceForDone(${idQ}, this)' title="Factuur opnieuw verzenden">
-              Factuur opnieuw verzenden
-            </button>
-          </div>` : ''}
+          ${buildAppointmentPriceSectionInnerHtml(a)}
         </div>
 
         <div class="complete-row">
@@ -7577,6 +7735,8 @@ function updatePriceTotalLabel(id) {
         total,
         base: Number.isFinite(Number(a.price)) ? Number(a.price) : 0,
         extrasCount: Array.isArray(a.extras) ? a.extras.length : 0,
+        scrollY: plannerSnapshotScrollY(),
+        mobile: plannerIsMobileViewport639(),
       })
     );
   } catch (_) {}
@@ -7595,6 +7755,7 @@ function onExtraDescInput(id, idx, value) {
   const a = appointments.find((x) => String(x.id) === String(id));
   if (!a || !a.extras || !a.extras[idx]) return;
   a.extras[idx].desc = String(value ?? '');
+  logPriceLineInputChangedDebounced(id, idx, 'desc');
   updatePriceTotalLabel(id);
   debouncedPersistPriceLinesForAppt(id);
 }
@@ -7611,6 +7772,7 @@ function onExtraPriceInput(id, idx, raw) {
       a.extras[idx].price = Math.max(0, Math.round(n * 100) / 100);
     }
   }
+  logPriceLineInputChangedDebounced(id, idx, 'price');
   updatePriceTotalLabel(id);
   debouncedPersistPriceLinesForAppt(id);
 }
@@ -7620,6 +7782,17 @@ function addEmptyPriceLine(evt, id) {
   if (evt && typeof evt.stopPropagation === 'function') evt.stopPropagation();
   const a = appointments.find((x) => String(x.id) === String(id));
   if (!a) return;
+  try {
+    console.info(
+      '[planner] price_line_add_clicked',
+      JSON.stringify({
+        appointmentId: String(id),
+        actionType: 'empty_row_button',
+        scrollYBefore: plannerSnapshotScrollY(),
+        mobile: plannerIsMobileViewport639(),
+      })
+    );
+  } catch (_) {}
   if (!a.extras) a.extras = [];
   a.extras.push({ desc: '', price: 0 });
   try {
@@ -7633,7 +7806,7 @@ function addEmptyPriceLine(evt, id) {
       })
     );
   } catch (_) {}
-  render();
+  remountPriceSectionWithEditorScrollLogging(id, 'add_empty_row');
   debouncedPersistPriceLinesForAppt(id);
 }
 
@@ -7644,7 +7817,7 @@ function updateExtraLine(id, idx, desc, price) {
   if (price !== null && price !== undefined && !Number.isNaN(Number(price))) {
     a.extras[idx].price = Math.max(0, Math.round(Number(price) * 100) / 100);
   }
-  render();
+  remountPriceSectionWithEditorScrollLogging(id, 'commit_extra_line');
   debouncedPersistPriceLinesForAppt(id);
 }
 
@@ -7674,6 +7847,17 @@ function addExtra(id) {
     showToast('Vul omschrijving én bedrag in', 'info');
     return;
   }
+  try {
+    console.info(
+      '[planner] price_line_add_clicked',
+      JSON.stringify({
+        appointmentId: String(id),
+        actionType: 'quick_form_plus',
+        scrollYBefore: plannerSnapshotScrollY(),
+        mobile: plannerIsMobileViewport639(),
+      })
+    );
+  } catch (_) {}
   if (!a.extras) a.extras = [];
   a.extras.push({ desc, price });
   try {
@@ -7690,7 +7874,7 @@ function addExtra(id) {
   // Reset velden
   if (descEl)   descEl.value  = '';
   if (priceEl)  priceEl.value = '';
-  render();
+  remountPriceSectionWithEditorScrollLogging(id, 'add_quick_form');
   debouncedPersistPriceLinesForAppt(id);
 }
 
@@ -7700,6 +7884,17 @@ function addExtraFromCatalog(id, item) {
   const desc = String(item.desc || '').trim();
   const price = Number(item.price);
   if (!desc || !Number.isFinite(price) || price <= 0) return;
+  try {
+    console.info(
+      '[planner] price_line_add_clicked',
+      JSON.stringify({
+        appointmentId: String(id),
+        actionType: 'catalog_select',
+        scrollYBefore: plannerSnapshotScrollY(),
+        mobile: plannerIsMobileViewport639(),
+      })
+    );
+  } catch (_) {}
   if (!a.extras) a.extras = [];
   a.extras.push({ desc, price: Math.round(price * 100) / 100 });
   try {
@@ -7713,7 +7908,7 @@ function addExtraFromCatalog(id, item) {
       })
     );
   } catch (_) {}
-  render();
+  remountPriceSectionWithEditorScrollLogging(id, 'add_catalog');
   debouncedPersistPriceLinesForAppt(id);
 }
 
@@ -7731,7 +7926,7 @@ function removeExtra(id, idx) {
       })
     );
   } catch (_) {}
-  render();
+  remountPriceSectionWithEditorScrollLogging(id, 'remove_extra_line');
   debouncedPersistPriceLinesForAppt(id);
 }
 
