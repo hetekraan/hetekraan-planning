@@ -276,6 +276,8 @@ const FIELD_IDS = {
   opmerkingen:         'LCIFALarX3WZI5jsBbDA',
   /** Niet hardcoded: runtime resolve via key `planner_notities` (optioneel env override). */
   planner_notities:    String(process.env.GHL_FIELD_ID_PLANNER_NOTITIES || '').trim(),
+  /** Interne vaste aankomsttijd/pin (operationeel). */
+  planner_internal_fixed_start: String(process.env.GHL_FIELD_ID_PLANNER_INTERNAL_FIXED_START || '').trim(),
 };
 
 /**
@@ -314,6 +316,51 @@ async function resolvePlannerNotitiesFieldId() {
     objectType: 'contact',
     envOverride: FIELD_IDS.planner_notities,
   });
+}
+
+async function resolvePlannerInternalFixedStartFieldId() {
+  return resolveContactCustomFieldId({
+    baseUrl: GHL_BASE,
+    apiKey: GHL_API_KEY,
+    locationId: ghlLocationIdFromEnv(),
+    fieldKey: 'planner_internal_fixed_start',
+    objectType: 'contact',
+    envOverride: FIELD_IDS.planner_internal_fixed_start,
+  });
+}
+
+function normalizeInternalFixedPinFromBody(raw) {
+  if (raw == null || raw === '') return null;
+  let type = 'exact';
+  let timeRaw = '';
+  if (typeof raw === 'object') {
+    type = String(raw.type || '').trim().toLowerCase() || 'exact';
+    timeRaw = String(raw.time || '').trim();
+  } else {
+    const s = String(raw || '').trim();
+    if (!s) return null;
+    if (s.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(s);
+        type = String(parsed?.type || '').trim().toLowerCase() || 'exact';
+        timeRaw = String(parsed?.time || '').trim();
+      } catch {
+        type = 'exact';
+        timeRaw = s;
+      }
+    } else {
+      type = 'exact';
+      timeRaw = s;
+    }
+  }
+  if (type !== 'exact' && type !== 'after' && type !== 'before') return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(timeRaw || '').replace(/^~/, '').trim());
+  if (!m) return null;
+  const h = parseInt(m[1], 10);
+  const mm = parseInt(m[2], 10);
+  if (!Number.isFinite(h) || !Number.isFinite(mm) || h > 23 || mm > 59) return null;
+  const time = `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+  return { type, time };
 }
 
 async function resolveMoneybirdFieldIds() {
@@ -1119,6 +1166,7 @@ export default async function handler(req, res) {
 
       case 'getAppointments': {
         const plannerNotitiesFieldId = await resolvePlannerNotitiesFieldId();
+        const plannerInternalFixedStartFieldId = await resolvePlannerInternalFixedStartFieldId();
         const invoicePartyFieldIdsForPlanner = await resolveInvoicePartyFieldIds({
           baseUrl: GHL_BASE,
           apiKey: GHL_API_KEY,
@@ -1307,6 +1355,26 @@ export default async function handler(req, res) {
             getField(contact, BOOKING_FORM_FIELD_IDS.tijdslot) ||
             getField(contact, FIELD_IDS.tijdafspraak) ||
             null;
+          const rawInternalFixed =
+            plannerInternalFixedStartFieldId
+              ? getField(contact, plannerInternalFixedStartFieldId, 'planner_internal_fixed_start')
+              : '';
+          const parsedInternalFixed = normalizeInternalFixedPinFromBody(rawInternalFixed);
+          e.internalFixedPin = parsedInternalFixed;
+          e.internalFixedStartTime = parsedInternalFixed?.time || '';
+          try {
+            console.info(
+              '[planner] fixed_time_loaded',
+              JSON.stringify({
+                contactId: contact?.id ? String(contact.id) : null,
+                appointmentId: e?.id ? String(e.id) : null,
+                fieldId: plannerInternalFixedStartFieldId || null,
+                hasValue: Boolean(parsedInternalFixed),
+                pinType: parsedInternalFixed?.type || null,
+                pinTime: parsedInternalFixed?.time || null,
+              })
+            );
+          } catch (_) {}
           const confirmedDayPartRaw = String(
             getField(contact, BOOKING_FORM_FIELD_IDS.boeking_bevestigd_dagdeel) || ''
           )
@@ -2929,6 +2997,57 @@ export default async function handler(req, res) {
         return res.status(200).json({ success: true, savedLines: extrasArr.length, totalPrice: totalNum });
       }
 
+      case 'setInternalFixedStart': {
+        if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+        const cid = String(req.body?.contactId || '').trim();
+        const routeDate = normalizeYyyyMmDdInput(String(req.body?.routeDate || ''));
+        if (!cid) return res.status(400).json({ error: 'contactId vereist' });
+        const fieldId = await resolvePlannerInternalFixedStartFieldId();
+        if (!fieldId) {
+          console.warn(
+            '[planner] fixed_time_missing_bug',
+            JSON.stringify({
+              reason: 'planner_internal_fixed_start_field_not_configured',
+              contactId: cid,
+              routeDate: routeDate || null,
+            })
+          );
+          return res.status(503).json({
+            error: 'planner_internal_fixed_start custom field ontbreekt in GHL',
+            code: 'MISSING_INTERNAL_FIXED_FIELD',
+          });
+        }
+        const pin = normalizeInternalFixedPinFromBody(req.body?.internalFixedStart);
+        const putRes = await fetchWithRetry(`${GHL_BASE}/contacts/${encodeURIComponent(cid)}`, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${GHL_API_KEY}`,
+            'Content-Type': 'application/json',
+            Version: '2021-04-15',
+          },
+          body: JSON.stringify({
+            customFields: [{ id: fieldId, field_value: pin ? JSON.stringify(pin) : '' }],
+          }),
+          _allowPostRetry: false,
+        });
+        if (!putRes.ok) {
+          const detail = (await putRes.text().catch(() => '')).slice(0, 400);
+          return res.status(502).json({ error: 'Kon vaste tijd niet opslaan in GHL', detail });
+        }
+        console.info(
+          '[planner] fixed_time_saved',
+          JSON.stringify({
+            contactId: cid,
+            appointmentId: req.body?.appointmentId ? String(req.body.appointmentId) : null,
+            routeDate: routeDate || null,
+            fieldId,
+            pinType: pin?.type || null,
+            pinTime: pin?.time || null,
+          })
+        );
+        return res.status(200).json({ success: true, internalFixedStart: pin || null });
+      }
+
       case 'updatePlannerBookingDetails': {
         const {
           contactId,
@@ -3007,8 +3126,11 @@ export default async function handler(req, res) {
             : [];
         const structuredPriceRules = formatPriceRulesStructuredString(linesForCanon);
         const plannerNotitiesFieldId = await resolvePlannerNotitiesFieldId();
+        const plannerInternalFixedStartFieldId = await resolvePlannerInternalFixedStartFieldId();
         const plannerNotitiesRaw = req.body?.notities ?? req.body?.plannerNotities ?? descNorm ?? '';
         const plannerNotitiesNorm = String(plannerNotitiesRaw).trim();
+        const internalFixedPinRaw = req.body?.internalFixedStart;
+        const internalFixedPin = normalizeInternalFixedPinFromBody(internalFixedPinRaw);
         console.log('[updatePlannerBookingDetails][normalized]', {
           contactId: cid,
           dateNorm,
@@ -3039,6 +3161,23 @@ export default async function handler(req, res) {
         ];
         if (plannerNotitiesFieldId && plannerNotitiesNorm) {
           customFields.push({ id: plannerNotitiesFieldId, field_value: plannerNotitiesNorm });
+        }
+        if (plannerInternalFixedStartFieldId && req.body && Object.prototype.hasOwnProperty.call(req.body, 'internalFixedStart')) {
+          customFields.push({
+            id: plannerInternalFixedStartFieldId,
+            field_value: internalFixedPin ? JSON.stringify(internalFixedPin) : '',
+          });
+          console.info(
+            '[planner] fixed_time_saved',
+            JSON.stringify({
+              contactId: cid,
+              appointmentId: null,
+              routeDate: dateNorm,
+              fieldId: plannerInternalFixedStartFieldId,
+              pinType: internalFixedPin?.type || null,
+              pinTime: internalFixedPin?.time || null,
+            })
+          );
         }
         if (totalNum !== null) {
           customFields.push({ id: FIELD_IDS.prijs, field_value: String(totalNum) });
@@ -3414,8 +3553,11 @@ export default async function handler(req, res) {
           : null;
         const priceNum = priceNumFromLines ?? toPriceNumber(price);
         const plannerNotitiesFieldId = await resolvePlannerNotitiesFieldId();
+        const plannerInternalFixedStartFieldId = await resolvePlannerInternalFixedStartFieldId();
         const plannerNotitiesRaw = req.body?.notities ?? req.body?.plannerNotities ?? desc ?? '';
         const plannerNotitiesNorm = String(plannerNotitiesRaw).trim();
+        const internalFixedPinRaw = req.body?.internalFixedStart;
+        const internalFixedPin = normalizeInternalFixedPinFromBody(internalFixedPinRaw);
 
         // Stap 1: contact resolven via upsert -> duplicate search -> force create
         const readResolvedContactId = (payload) =>
@@ -3541,6 +3683,23 @@ export default async function handler(req, res) {
           ];
           if (plannerNotitiesFieldId && plannerNotitiesNorm) {
             customFields.push({ id: plannerNotitiesFieldId, field_value: plannerNotitiesNorm });
+          }
+          if (plannerInternalFixedStartFieldId && req.body && Object.prototype.hasOwnProperty.call(req.body, 'internalFixedStart')) {
+            customFields.push({
+              id: plannerInternalFixedStartFieldId,
+              field_value: internalFixedPin ? JSON.stringify(internalFixedPin) : '',
+            });
+            console.info(
+              '[planner] fixed_time_saved',
+              JSON.stringify({
+                contactId: String(contactId),
+                appointmentId: null,
+                routeDate: dateNorm,
+                fieldId: plannerInternalFixedStartFieldId,
+                pinType: internalFixedPin?.type || null,
+                pinTime: internalFixedPin?.time || null,
+              })
+            );
           }
           if (slotLabelNorm) {
             customFields.push({ id: FIELD_IDS.tijdafspraak, field_value: slotLabelNorm });

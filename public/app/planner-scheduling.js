@@ -30,6 +30,20 @@
 
     ctx.showToast('⏳ Route wordt geoptimaliseerd...', 'loading');
     try {
+      const pinnedByContactId = {};
+      active.forEach((a) => {
+        const cid = a?.contactId ? String(a.contactId) : '';
+        const pin = a?.internalFixedPin && typeof a.internalFixedPin === 'object'
+          ? a.internalFixedPin
+          : a?.internalFixedStartTime
+            ? { type: 'exact', time: String(a.internalFixedStartTime) }
+            : null;
+        if (!cid || !pin?.time) return;
+        pinnedByContactId[cid] = {
+          type: String(pin.type || 'exact').toLowerCase(),
+          time: String(pin.time),
+        };
+      });
       const res = await fetch('/api/optimize-route', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -52,7 +66,25 @@
       data.order.forEach((apptIdx, step) => {
         const appt = active[apptIdx];
         if (appt) {
-          appt.timeSlot = data.etas[step];
+          const cid = appt?.contactId ? String(appt.contactId) : '';
+          const pin = cid ? pinnedByContactId[cid] : null;
+          if (pin && pin.type === 'exact' && pin.time) {
+            appt.timeSlot = pin.time;
+            try {
+              console.info(
+                '[planner] fixed_time_overwrite_blocked',
+                JSON.stringify({
+                  appointmentId: appt?.id != null ? String(appt.id) : null,
+                  contactId: cid || null,
+                  routeDate: dateStr,
+                  attemptedEta: data.etas[step] || null,
+                  preservedTime: pin.time,
+                })
+              );
+            } catch (_) {}
+          } else {
+            appt.timeSlot = data.etas[step];
+          }
           appt.estimated = true;
         }
       });
@@ -78,6 +110,16 @@
           confirmedOrderIds: optimized.map((a) => (a?.contactId ? String(a.contactId) : '')).filter(Boolean),
         });
       }
+      try {
+        console.info(
+          '[planner] fixed_time_preserved_after_optimize',
+          JSON.stringify({
+            routeDate: dateStr,
+            pinnedCount: Object.keys(pinnedByContactId).length,
+            pinnedContactIds: Object.keys(pinnedByContactId),
+          })
+        );
+      } catch (_) {}
 
       if (typeof ctx.setLastPartitionedRoutePlan === 'function') {
         ctx.setLastPartitionedRoutePlan(dateStr, {

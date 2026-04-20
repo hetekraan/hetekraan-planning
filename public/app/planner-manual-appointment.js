@@ -206,6 +206,13 @@
         : autoTotalPrice;
 
     const invoice = readInvoiceFieldsFromModalDom();
+    const pinType = String(document.getElementById('modalInternalFixedType')?.value || '').trim().toLowerCase();
+    const pinTimeRaw = String(document.getElementById('modalInternalFixedStart')?.value || '').trim();
+    const pinTime = /^\d{2}:\d{2}$/.test(pinTimeRaw) ? pinTimeRaw : '';
+    const internalFixedStart =
+      (pinType === 'exact' || pinType === 'after' || pinType === 'before') && pinTime
+        ? { type: pinType, time: pinTime }
+        : null;
 
     return {
       date:
@@ -227,6 +234,7 @@
       totalPrice,
       totalPriceAuto: autoTotalPrice,
       totalPriceManual,
+      internalFixedStart,
       ...invoice,
     };
   }
@@ -504,6 +512,7 @@
           factuurPostcode: form.factuurPostcode,
           factuurPlaats: form.factuurPlaats,
           factuurReferentie: form.factuurReferentie,
+          internalFixedStart: form.internalFixedStart,
         };
         debug('edit_save_address_payload', {
           contactId: editMeta.contactId,
@@ -551,6 +560,7 @@
           factuurPostcode: form.factuurPostcode,
           factuurPlaats: form.factuurPlaats,
           factuurReferentie: form.factuurReferentie,
+          internalFixedStart: form.internalFixedStart,
         };
         res = await fetch('/api/ghl?action=createAppointment', {
           method: 'POST',
@@ -757,6 +767,19 @@
       'modalInternalFixedStart');
     if (typeEl) typeEl.value = pin?.type || '';
     if (timeEl) timeEl.value = pin?.time || '';
+    try {
+      console.info(
+        '[planner] fixed_time_loaded',
+        JSON.stringify({
+          contactId: a.contactId || null,
+          appointmentId: String(a.id || apptId),
+          hasValue: Boolean(pin?.time),
+          pinType: pin?.type || null,
+          pinTime: pin?.time || null,
+          sourceOfTruth: 'appointment_payload',
+        })
+      );
+    } catch (_) {}
     if (typeof global.syncModalInternalFixedControls === 'function') {
       global.syncModalInternalFixedControls();
     }

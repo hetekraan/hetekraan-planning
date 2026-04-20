@@ -5319,7 +5319,7 @@ function validateInternalFixedForAppointment(a, hhmmNorm) {
   return { ok: true };
 }
 
-function setAppointmentInternalFixedStart(id, domValue) {
+async function setAppointmentInternalFixedStart(id, domValue) {
   function parseInternalFixedInput(raw) {
     if (!raw) return null;
     if (typeof raw === 'object' && raw.type) return raw;
@@ -5345,6 +5345,12 @@ function setAppointmentInternalFixedStart(id, domValue) {
     return;
   }
   const parsed = parseInternalFixedInput(domValue);
+  const prevPin =
+    a.internalFixedPin && typeof a.internalFixedPin === 'object'
+      ? { type: String(a.internalFixedPin.type || ''), time: String(a.internalFixedPin.time || '') }
+      : a.internalFixedStartTime
+        ? { type: 'exact', time: String(a.internalFixedStartTime) }
+        : null;
   if (!parsed) {
     delete a.internalFixedStartTime;
     delete a.internalFixedPin;
@@ -5365,6 +5371,52 @@ function setAppointmentInternalFixedStart(id, domValue) {
     }
     a.internalFixedStartTime = norm;
     a.internalFixedPin = { type: pinType, time: norm };
+  }
+  try {
+    const res = await fetch('/api/ghl?action=setInternalFixedStart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
+      body: JSON.stringify({
+        contactId: String(a.contactId || ''),
+        appointmentId: String(a.id || ''),
+        routeDate: dateStr,
+        internalFixedStart: a.internalFixedPin || null,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success) {
+      throw new Error(data?.error || `Opslaan mislukt (${res.status})`);
+    }
+    console.info(
+      '[planner] fixed_time_saved',
+      JSON.stringify({
+        contactId: String(a.contactId || ''),
+        appointmentId: String(a.id || ''),
+        routeDate: dateStr,
+        pinType: a.internalFixedPin?.type || null,
+        pinTime: a.internalFixedPin?.time || null,
+      })
+    );
+  } catch (e) {
+    if (prevPin) {
+      a.internalFixedPin = prevPin;
+      a.internalFixedStartTime = prevPin.time;
+    } else {
+      delete a.internalFixedPin;
+      delete a.internalFixedStartTime;
+    }
+    console.warn(
+      '[planner] fixed_time_missing_bug',
+      JSON.stringify({
+        contactId: String(a.contactId || ''),
+        appointmentId: String(a.id || ''),
+        routeDate: dateStr,
+        message: String(e?.message || e),
+      })
+    );
+    showToast(`Vaste tijd kon niet centraal worden opgeslagen: ${e?.message || e}`, 'info');
+    render();
+    return;
   }
   mergeRouteOrderIntoSnapshot(dateStr);
   saveRouteSnapshot(dateStr);
@@ -6699,11 +6751,38 @@ async function recalculateRouteTimesPreservingOrder(active) {
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || data.error || 'Route-API fout');
 
+  const pinnedByContactId = {};
+  active.forEach((a) => {
+    const cid = a?.contactId ? String(a.contactId) : '';
+    const pin = a?.internalFixedPin && typeof a.internalFixedPin === 'object'
+      ? a.internalFixedPin
+      : a?.internalFixedStartTime
+        ? { type: 'exact', time: String(a.internalFixedStartTime) }
+        : null;
+    if (!cid || !pin?.time) return;
+    pinnedByContactId[cid] = { type: String(pin.type || 'exact').toLowerCase(), time: String(pin.time) };
+  });
+
   active.forEach(a => { a.violation = false; });
   data.order.forEach((apptIdx, step) => {
     const appt = active[apptIdx];
     if (appt) {
-      appt.timeSlot  = data.etas[step];
+      const cid = appt?.contactId ? String(appt.contactId) : '';
+      const pin = cid ? pinnedByContactId[cid] : null;
+      if (pin && pin.type === 'exact' && pin.time) {
+        appt.timeSlot = pin.time;
+        try {
+          console.info('[planner] fixed_time_overwrite_blocked', JSON.stringify({
+            appointmentId: appt?.id != null ? String(appt.id) : null,
+            contactId: cid || null,
+            routeDate: dateStr,
+            attemptedEta: data.etas[step] || null,
+            preservedTime: pin.time,
+          }));
+        } catch (_) {}
+      } else {
+        appt.timeSlot = data.etas[step];
+      }
       appt.estimated = true;
     }
   });
@@ -6713,6 +6792,13 @@ async function recalculateRouteTimesPreservingOrder(active) {
       if (appt) appt.violation = true;
     });
   }
+  try {
+    console.info('[planner] fixed_time_preserved_after_optimize', JSON.stringify({
+      routeDate: dateStr,
+      pinnedCount: Object.keys(pinnedByContactId).length,
+      pinnedContactIds: Object.keys(pinnedByContactId),
+    }));
+  } catch (_) {}
 }
 
 let _dragSrcId = null;

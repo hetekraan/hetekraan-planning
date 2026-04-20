@@ -94,8 +94,18 @@ function calcETAs(order, travel, timeWindows, jobDurations, appointments, opts) 
     const travelMin = travel[currentIdx][i + 1];
     const tw = timeWindows[i];
 
+    const internalPin = parseInternalFixedStartMinutes(appointments[i]);
     let eta;
-    if (pinFirst && step === 0 && isMorningStopForFirstCustomerPin(appointments[i], tw)) {
+    if (internalPin) {
+      const earliest = roundUpQuarter(Math.max(currentTime + travelMin, tw?.start ?? 0));
+      if (internalPin.type === 'exact') {
+        eta = internalPin.minutes;
+      } else if (internalPin.type === 'after') {
+        eta = Math.max(earliest, internalPin.minutes);
+      } else {
+        eta = earliest;
+      }
+    } else if (pinFirst && step === 0 && isMorningStopForFirstCustomerPin(appointments[i], tw)) {
       eta = firstMorningCustomerArrivalMinutes(tw);
     } else {
       let arrival = currentTime + travelMin;
@@ -666,6 +676,7 @@ export default async function handler(req, res) {
   const fixedOrder = preserveOrder === true ? appointments.map((_, i) => i) : null;
 
   const defaultScheduleOpts = { initialClockMinutes: START_TIME, pinFirstMorningCustomer: true };
+  const hasInternalPins = appointments.some((a) => parseInternalFixedStartMinutes(a) != null);
 
   // ── Poging 1: Distance Matrix API ──────────────────────────────────────────
   let order;
@@ -674,15 +685,34 @@ export default async function handler(req, res) {
   let usedDistanceMatrix = false;
 
   try {
-    const travel = await fetchDistanceMatrixTravelMinutes(key, allLocations);
-    if (travel) {
-      order = fixedOrder || greedySchedule(n, travel, timeWindows, jobDurations, appointments, defaultScheduleOpts);
-      etas = calcETAs(order, travel, timeWindows, jobDurations, appointments, defaultScheduleOpts);
-      legInfo = order.map((apptIdx, i) => {
-        const fromIdx = i === 0 ? 0 : order[i - 1] + 1;
-        return { durationSeconds: travel[fromIdx][apptIdx + 1] * 60 };
+    if (hasInternalPins && !fixedOrder) {
+      const pinnedResult = await optimizeSubsetMatrixWithInternalPins({
+        key,
+        origin,
+        appointments,
+        scheduleOpts: defaultScheduleOpts,
+        partBlock: { start: 0, end: 24 * 60 },
       });
-      usedDistanceMatrix = true;
+      if (pinnedResult?.error) {
+        return res.status(400).json({ error: pinnedResult.error });
+      }
+      if (pinnedResult) {
+        order = pinnedResult.order;
+        etas = pinnedResult.etas;
+        legInfo = pinnedResult.legInfo;
+        usedDistanceMatrix = true;
+      }
+    } else {
+      const travel = await fetchDistanceMatrixTravelMinutes(key, allLocations);
+      if (travel) {
+        order = fixedOrder || greedySchedule(n, travel, timeWindows, jobDurations, appointments, defaultScheduleOpts);
+        etas = calcETAs(order, travel, timeWindows, jobDurations, appointments, defaultScheduleOpts);
+        legInfo = order.map((apptIdx, i) => {
+          const fromIdx = i === 0 ? 0 : order[i - 1] + 1;
+          return { durationSeconds: travel[fromIdx][apptIdx + 1] * 60 };
+        });
+        usedDistanceMatrix = true;
+      }
     }
   } catch (_) {}
 
