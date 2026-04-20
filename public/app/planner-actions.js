@@ -1,5 +1,6 @@
 (function initPlannerActions(global) {
   let hkGhlBlockDayInFlight = false;
+  const invoiceRetryInFlightByApptId = new Set();
 
   async function confirmDeleteAppt(ctx) {
     const {
@@ -237,6 +238,93 @@
     });
   }
 
+  async function retryInvoiceForDone(ctx, id, btnEl) {
+    const {
+      findAppointmentById,
+      showToast,
+      calcTotalPrice,
+      hkAuthHeader,
+      getDateStr,
+      getCurrentDate,
+      loadAppointments,
+    } = ctx;
+    const a = findAppointmentById(id);
+    if (!a) return;
+    if (a.status !== 'klaar') {
+      showToast('Alleen afgeronde afspraken kunnen een factuur-retry doen.', 'info');
+      return;
+    }
+    if (!a.contactId) {
+      showToast('Geen GHL-contact gekoppeld aan deze afspraak.', 'info');
+      return;
+    }
+    const key = String(a.id || id);
+    if (invoiceRetryInFlightByApptId.has(key)) return;
+    invoiceRetryInFlightByApptId.add(key);
+    const btn = btnEl && typeof btnEl === 'object' ? btnEl : null;
+    const prevTitle = btn?.title || 'Factuur opnieuw verzenden';
+    if (btn) {
+      btn.disabled = true;
+      btn.title = 'Factuur retry bezig...';
+      btn.setAttribute('aria-busy', 'true');
+      btn.style.opacity = '0.6';
+      btn.style.cursor = 'progress';
+    }
+    showToast('⏳ Factuur opnieuw verzenden...', 'loading');
+    try {
+      const total = calcTotalPrice(a);
+      const lines = Array.isArray(a.extras) ? a.extras : [];
+      const routeDate = getDateStr(getCurrentDate());
+      const res = await fetch('/api/ghl?action=retryInvoice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
+        body: JSON.stringify({
+          contactId: a.contactId,
+          appointmentId: a.id || undefined,
+          type: a.jobType,
+          totalPrice: total,
+          extras: lines,
+          basePrice: Number(a.price) || 0,
+          appointmentDesc: String(a.jobDescription || '').trim(),
+          routeDate,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(data.error || `Factuur kon niet verzonden worden (${res.status})`, 'info');
+        return;
+      }
+      const action = String(data?.actionTaken || '').trim();
+      if (action === 'created_and_sent_email') {
+        showToast('Factuur aangemaakt en verzonden', 'success');
+      } else if (action === 'reused_and_sent_email') {
+        showToast('Bestaande factuur opnieuw verzonden', 'success');
+      } else if (action === 'already_sent_noop') {
+        showToast('Factuur bestond al en was al verzonden', 'info');
+      } else if (action === 'missing_email') {
+        showToast('Geen e-mailadres beschikbaar', 'info');
+      } else if (action === 'whatsapp_sent') {
+        showToast('WhatsApp opnieuw verstuurd', 'success');
+      } else if (String(data?.message || '').trim()) {
+        showToast(String(data.message).trim(), 'info');
+      } else {
+        showToast('Factuur retry afgerond', 'success');
+      }
+      await loadAppointments(getCurrentDate());
+    } catch (e) {
+      showToast('Factuur kon niet verzonden worden', 'info');
+    } finally {
+      invoiceRetryInFlightByApptId.delete(key);
+      if (btn) {
+        btn.disabled = false;
+        btn.title = prevTitle;
+        btn.removeAttribute('aria-busy');
+        btn.style.opacity = '';
+        btn.style.cursor = '';
+      }
+    }
+  }
+
   function dayIsBlockedForCtx(ctx) {
     const dateStr = ctx.getDateStr(ctx.getCurrentDate());
     const blocks = ctx.getAppointmentsRef().filter((x) => x.isCalBlock);
@@ -386,6 +474,7 @@
   global.HKPlannerActions = {
     confirmDeleteAppt,
     confirmDone,
+    retryInvoiceForDone,
     onBlockDayButtonClick,
     dayIsBlockedForCtx,
     openDayBlockChoiceModal,

@@ -6025,6 +6025,7 @@ const APPT_ACTION_SVG = {
   map: '<svg xmlns="http://www.w3.org/2000/svg" class="appt-action-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><path stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/></svg>',
   link: '<svg xmlns="http://www.w3.org/2000/svg" class="appt-action-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.08 1.08"/><path stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.08-1.08"/></svg>',
   eye: '<svg xmlns="http://www.w3.org/2000/svg" class="appt-action-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+  retry: '<svg xmlns="http://www.w3.org/2000/svg" class="appt-action-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M23 4v6h-6"/><path stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M20.49 15A9 9 0 1 1 23 10"/></svg>',
   pencil: '<svg xmlns="http://www.w3.org/2000/svg" class="appt-action-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5m-1.414-9.414a2 2 0 1 1 2.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>',
   close: '<svg xmlns="http://www.w3.org/2000/svg" class="appt-action-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 6L6 18M6 6l12 12"/></svg>'
 };
@@ -6080,6 +6081,7 @@ function renderApptCard(a, i) {
             ${a.mapsLink ? `<a class="icon-btn appt-action-icon" href="${a.mapsLink}" target="_blank" rel="noopener noreferrer" title="Maps">${APPT_ACTION_SVG.map}</a>` : ''}
             ${a.ghlUrl ? `<a class="icon-btn appt-action-icon" href="${a.ghlUrl}"${a.ghlAppUrl ? ` data-ghl-app="${escapeHtml(a.ghlAppUrl)}" onclick="return hkOpenGhlContact(event,this)"` : ''} target="_blank" rel="noopener noreferrer" title="Open in GHL">${APPT_ACTION_SVG.link}</a>` : ''}
             ${isDone ? `<button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentDetailsModal(${idQ})' title="Bekijk details">${APPT_ACTION_SVG.eye}</button>` : ''}
+            ${isDone ? `<button type="button" class="icon-btn appt-action-icon" onclick='retryInvoiceForDone(${idQ}, this)' title="Factuur opnieuw verzenden">${APPT_ACTION_SVG.retry}</button>` : ''}
             <button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">${APPT_ACTION_SVG.pencil}</button>
             <button type="button" class="icon-btn appt-action-icon" onclick='deleteAppt(${idQ})' title="Verwijderen">${APPT_ACTION_SVG.close}</button>
           </div>
@@ -6933,6 +6935,12 @@ async function confirmDone(id) {
   const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
   if (!window.HKPlannerActions?.confirmDone) return;
   return window.HKPlannerActions.confirmDone(ctx, id);
+}
+
+async function retryInvoiceForDone(id, btnEl) {
+  const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
+  if (!window.HKPlannerActions?.retryInvoiceForDone) return;
+  return window.HKPlannerActions.retryInvoiceForDone(ctx, id, btnEl || null);
 }
 
 /**

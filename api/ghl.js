@@ -864,6 +864,21 @@ async function mbGhlContactPutWithLogs({
   }
 }
 
+function mbInvoiceLooksAlreadySent(invoice) {
+  if (!invoice || typeof invoice !== 'object') return false;
+  const sentAt = String(invoice.sent_at || invoice.sentAt || invoice.sent_on || '').trim();
+  if (sentAt) return true;
+  const state = String(invoice.state || invoice.status || '').trim().toLowerCase();
+  if (!state) return false;
+  return (
+    state.includes('sent') ||
+    state.includes('open') ||
+    state.includes('paid') ||
+    state.includes('late') ||
+    state.includes('reminder')
+  );
+}
+
 /**
  * GHL: start/einde van een kalender-item zetten.
  * Sommige omgevingen gebruiken PUT …/appointments/:id, andere …/events/:id — we proberen beide + API-versies.
@@ -2506,6 +2521,277 @@ export default async function handler(req, res) {
           // of Moneybird überhaupt een outcome heeft teruggegeven.
           moneybird: moneybirdResult,
         });
+      }
+
+      case 'retryInvoice': {
+        const { contactId, appointmentId, type, totalPrice, extras, routeDate, basePrice, appointmentDesc } =
+          req.body || {};
+        if (!contactId) return res.status(400).json({ error: 'contactId vereist' });
+        const MB_TOKEN = process.env.MONEYBIRD_API_TOKEN;
+        const MB_ADMIN = process.env.MONEYBIRD_ADMINISTRATION_ID;
+        if (!MB_TOKEN || !MB_ADMIN) {
+          return res.status(503).json({ error: 'Moneybird niet geconfigureerd' });
+        }
+        const logRetry = (event, extra = {}, level = 'info') => {
+          const payload = {
+            contactId,
+            appointmentId: String(appointmentId || ''),
+            ...extra,
+          };
+          if (level === 'warn') console.warn(`[moneybird] ${event}`, payload);
+          else if (level === 'error') console.error(`[moneybird] ${event}`, payload);
+          else console.info(`[moneybird] ${event}`, payload);
+        };
+        try {
+          const {
+            findOrCreateContact,
+            findExistingInvoiceByReference,
+            createSalesInvoice,
+            getSalesInvoiceById,
+            resolveSalesInvoicePaymentUrl,
+            sendSalesInvoiceByEmail,
+          } = await import('../lib/moneybird.js');
+          const contactRes = await fetchWithRetry(
+            `${GHL_BASE}/contacts/${contactId}`,
+            {
+              headers: {
+                Authorization: `Bearer ${GHL_API_KEY}`,
+                Version: '2021-04-15',
+              },
+            }
+          );
+          const contactData = await contactRes.json().catch(() => ({}));
+          const contact = contactData?.contact || contactData;
+          const invoicePartyFieldIds = await resolveInvoicePartyFieldIds({
+            baseUrl: GHL_BASE,
+            apiKey: GHL_API_KEY,
+            locationId: ghlLocationIdFromEnv(),
+          });
+          const invoiceParty = buildInvoicePartyFromContact(contact, invoicePartyFieldIds, {
+            contactId: String(contactId),
+            appointmentId: String(appointmentId || ''),
+          });
+          const plannerNotitiesFieldId = await resolvePlannerNotitiesFieldId();
+          const { invoiceIdFieldId, invoiceUrlFieldId, referenceFieldId, invoiceTokenFieldId } = await resolveMoneybirdFieldIds();
+          const name = [contact.firstName, contact.lastName]
+            .filter(Boolean).join(' ') || 'Klant';
+          const email = contact.email || '';
+          const phone = contact.phone || '';
+          const address = readCanonicalAddressLine(contact) || contact.address1 || '';
+          const serviceDay =
+            normalizeYyyyMmDdInput(String(routeDate || '').trim()) ||
+            formatYyyyMmDdInAmsterdam(new Date());
+          const reference = buildMoneybirdReference({
+            appointmentId,
+            contactId,
+            serviceDay,
+          });
+          logRetry('invoice_retry_started', { reference });
+          const extrasLines = normalizePriceLineItems(Array.isArray(extras) ? extras : []);
+          const baseFromReq = toPriceNumber(basePrice);
+          const extrasSum = Math.round(extrasLines.reduce((s, r) => s + Number(r.price || 0), 0) * 100) / 100;
+          const totalNum = toPriceNumber(totalPrice);
+          const baseFromDiff = totalNum !== null ? Math.round((totalNum - extrasSum) * 100) / 100 : null;
+          const effectiveBase = baseFromReq !== null
+            ? baseFromReq
+            : (baseFromDiff !== null && baseFromDiff > 0 ? baseFromDiff : null);
+          const baseDesc = String(appointmentDesc || type || 'Werkzaamheden').trim();
+          const lines = [
+            ...(effectiveBase && effectiveBase > 0 ? [{ desc: baseDesc, price: effectiveBase }] : []),
+            ...extrasLines,
+          ].filter((l) => l.desc && Number(l.price) > 0);
+          if (lines.length === 0) {
+            return res.status(200).json({
+              success: true,
+              actionTaken: 'no_billable_lines',
+              message: 'Geen factureerbare regels beschikbaar.',
+            });
+          }
+          const existingId = invoiceIdFieldId ? getField(contact, invoiceIdFieldId) : '';
+          const existingUrl = invoiceUrlFieldId ? getField(contact, invoiceUrlFieldId) : '';
+          const existingRef = referenceFieldId ? getField(contact, referenceFieldId) : '';
+          const existingNote = plannerNotitiesFieldId ? getField(contact, plannerNotitiesFieldId) : '';
+          const noteMarker = parseMoneybirdInvoiceFromPlannerNotes(existingNote);
+          const existingRefToUse = existingRef || noteMarker.reference;
+          const existingInvoiceId = existingId || noteMarker.invoiceId;
+          let invoice = null;
+          let invoiceId = '';
+          let invoiceUrl = '';
+          let invoiceUrlSource = '';
+          let actionTaken = 'unknown';
+          const mbContact = await findOrCreateContact(name, email, phone, address, { invoiceParty });
+          if (!mbContact?.contactId) {
+            return res.status(200).json({
+              success: true,
+              actionTaken: 'missing_contact',
+              message: 'Factuur kon niet verzonden worden',
+            });
+          }
+          if (existingInvoiceId && (!reference || existingRefToUse === reference)) {
+            const byId = await getSalesInvoiceById(existingInvoiceId).catch(() => ({ found: false, invoice: null }));
+            if (byId?.found && byId?.invoice) {
+              invoice = byId.invoice;
+              invoiceId = String(invoice.id);
+              const resolved = resolveSalesInvoicePaymentUrl(invoice);
+              invoiceUrl = resolved.url || existingUrl || '';
+              invoiceUrlSource = resolved.source || (existingUrl ? 'stored-metadata' : '');
+              actionTaken = 'reused_existing';
+              logRetry('invoice_retry_reused_existing', { reference, invoiceId, actionTaken });
+            }
+          }
+          if (!invoice && reference) {
+            const existingByRef = await findExistingInvoiceByReference(reference);
+            if (existingByRef?.found && existingByRef?.invoice?.id) {
+              invoice = existingByRef.invoice;
+              invoiceId = String(invoice.id);
+              const resolved = resolveSalesInvoicePaymentUrl(invoice);
+              invoiceUrl = resolved.url || '';
+              invoiceUrlSource = resolved.source || (invoiceUrl ? 'query-result' : '');
+              actionTaken = 'reused_existing';
+              logRetry('invoice_retry_reused_existing', { reference, invoiceId, actionTaken });
+            }
+          }
+          if (!invoice) {
+            const description = `${type || 'Onderhoud'} - ${name}${formatMoneybirdInvoiceMetadataSuffix(invoiceParty)}`;
+            const created = await createSalesInvoice({
+              contactId: mbContact.contactId,
+              lines,
+              reference,
+              description,
+            });
+            if (!created?.created || !created?.invoice?.id) {
+              return res.status(200).json({
+                success: true,
+                actionTaken: 'create_failed',
+                message: 'Factuur kon niet verzonden worden',
+              });
+            }
+            invoice = created.invoice;
+            invoiceId = String(invoice.id);
+            const resolved = resolveSalesInvoicePaymentUrl(invoice);
+            invoiceUrl = resolved.url || '';
+            invoiceUrlSource = resolved.source || (invoiceUrl ? 'create-response' : '');
+            actionTaken = 'created_new';
+            logRetry('invoice_retry_created_new', { reference, invoiceId, actionTaken });
+          }
+          const mbFields = [];
+          if (invoiceIdFieldId && invoiceId) mbFields.push({ id: invoiceIdFieldId, field_value: invoiceId });
+          if (invoiceUrlFieldId && invoiceUrl) mbFields.push({ id: invoiceUrlFieldId, field_value: invoiceUrl });
+          if (referenceFieldId && reference) mbFields.push({ id: referenceFieldId, field_value: reference });
+          if (plannerNotitiesFieldId && invoiceId && reference) {
+            const nextNotes = appendMoneybirdPlannerNote(existingNote, { invoiceId, reference, invoiceUrl });
+            if (nextNotes) mbFields.push({ id: plannerNotitiesFieldId, field_value: nextNotes });
+          }
+          if (mbFields.length > 0) {
+            await mbGhlContactPutWithLogs({
+              contactId,
+              customFields: mbFields,
+              phase: 'moneybird_invoice_retry_metadata_batch',
+              readbackChecks: [],
+              resolvedFieldMap: {
+                moneybird_invoice_id: invoiceIdFieldId || null,
+                moneybird_invoice_url: invoiceUrlFieldId || null,
+                moneybird_invoice_reference: referenceFieldId || null,
+              },
+            });
+          }
+          const latestInvoiceRead = await getSalesInvoiceById(invoiceId).catch(() => ({ found: false, invoice: null }));
+          const latestInvoice = latestInvoiceRead?.invoice || invoice;
+          const alreadySent = mbInvoiceLooksAlreadySent(latestInvoice);
+          const emailNorm = String(
+            mbContact?.contact?.email || email || ''
+          ).trim().toLowerCase();
+          const hasValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm);
+          let hadWhatsapp = false;
+          let emailSentNow = false;
+          if (alreadySent) {
+            actionTaken = 'already_sent_noop';
+            logRetry('invoice_retry_noop_already_sent', { reference, invoiceId, actionTaken, hadEmail: hasValidEmail });
+          } else if (hasValidEmail) {
+            const mailResult = await sendSalesInvoiceByEmail({
+              invoiceId,
+              emailAddress: emailNorm,
+              emailMessage: `Beste ${name}, hierbij ontvang je je factuur.`,
+            }).catch(() => ({ sent: false }));
+            if (mailResult?.sent) {
+              emailSentNow = true;
+              actionTaken = actionTaken === 'created_new' ? 'created_and_sent_email' : 'reused_and_sent_email';
+              logRetry('invoice_retry_sent_email', { reference, invoiceId, hadEmail: true, actionTaken });
+            }
+          } else {
+            actionTaken = 'missing_email';
+          }
+          let payToken = '';
+          if (invoiceId && invoiceUrl) {
+            const mapping = await getOrCreateMoneybirdPayTokenMapping({
+              invoiceId,
+              invoiceUrl,
+              contactId: String(contactId || ''),
+              appointmentId: String(appointmentId || ''),
+              reference: String(reference || ''),
+            }).catch(() => null);
+            payToken = String(mapping?.token || '').trim();
+          }
+          if (payToken && invoiceTokenFieldId) {
+            const tokenPut = await mbGhlContactPutWithLogs({
+              contactId,
+              customFields: [{ id: invoiceTokenFieldId, field_value: payToken }],
+              phase: 'moneybird_invoice_retry_token_only',
+              readbackChecks: [
+                {
+                  name: 'moneybird_invoice_token',
+                  fieldId: invoiceTokenFieldId,
+                  fieldKey: 'moneybird_invoice_token',
+                  expectedValue: payToken,
+                },
+              ],
+              resolvedFieldMap: { moneybird_invoice_token: invoiceTokenFieldId },
+            });
+            if (tokenPut.ok) {
+              try {
+                const waTagOk = await pulseContactTag(
+                  contactId,
+                  'stuur-betaallink',
+                  '[moneybird whatsapp retry]',
+                  { on: () => {} }
+                );
+                if (waTagOk) {
+                  hadWhatsapp = true;
+                  logRetry('invoice_retry_sent_whatsapp', { reference, invoiceId, actionTaken: 'whatsapp_sent' });
+                  if (!emailSentNow) actionTaken = 'whatsapp_sent';
+                }
+              } catch (_) {}
+            }
+          }
+          const messageByAction = {
+            created_and_sent_email: 'Factuur aangemaakt en verzonden',
+            reused_and_sent_email: 'Bestaande factuur opnieuw verzonden',
+            already_sent_noop: 'Factuur bestond al en was al verzonden',
+            missing_email: 'Geen e-mailadres beschikbaar',
+            whatsapp_sent: 'WhatsApp opnieuw verstuurd',
+            created_new: 'Factuur aangemaakt',
+            reused_existing: 'Bestaande factuur hergebruikt',
+          };
+          return res.status(200).json({
+            success: true,
+            actionTaken,
+            message: messageByAction[actionTaken] || 'Factuur retry afgerond',
+            invoiceId: invoiceId || null,
+            reference: reference || null,
+            hadEmail: hasValidEmail,
+            hadWhatsapp,
+          });
+        } catch (err) {
+          logRetry(
+            'invoice_retry_failed',
+            {
+              message: err?.message || String(err),
+              status: err?.status || null,
+            },
+            'error'
+          );
+          return res.status(500).json({ error: 'Factuur kon niet verzonden worden' });
+        }
       }
 
       case 'updatePriceLines': {
