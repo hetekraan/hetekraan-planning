@@ -6081,7 +6081,6 @@ function renderApptCard(a, i) {
             ${a.mapsLink ? `<a class="icon-btn appt-action-icon" href="${a.mapsLink}" target="_blank" rel="noopener noreferrer" title="Maps">${APPT_ACTION_SVG.map}</a>` : ''}
             ${a.ghlUrl ? `<a class="icon-btn appt-action-icon" href="${a.ghlUrl}"${a.ghlAppUrl ? ` data-ghl-app="${escapeHtml(a.ghlAppUrl)}" onclick="return hkOpenGhlContact(event,this)"` : ''} target="_blank" rel="noopener noreferrer" title="Open in GHL">${APPT_ACTION_SVG.link}</a>` : ''}
             ${isDone ? `<button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentDetailsModal(${idQ})' title="Bekijk details">${APPT_ACTION_SVG.eye}</button>` : ''}
-            ${isDone ? `<button type="button" class="icon-btn appt-action-icon" onclick='retryInvoiceForDone(${idQ}, this)' title="Factuur opnieuw verzenden">${APPT_ACTION_SVG.retry}</button>` : ''}
             <button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">${APPT_ACTION_SVG.pencil}</button>
             <button type="button" class="icon-btn appt-action-icon" onclick='deleteAppt(${idQ})' title="Verwijderen">${APPT_ACTION_SVG.close}</button>
           </div>
@@ -6165,6 +6164,12 @@ function renderApptCard(a, i) {
             <span>Totaal</span>
             <span>€${euroDisplay(calcTotalPrice(a))}</span>
           </div>
+          ${isDone ? `
+          <div class="complete-row" style="justify-content:flex-end;margin-top:6px">
+            <button type="button" class="btn-cancel" onclick='retryInvoiceForDone(${idQ}, this)' title="Factuur opnieuw verzenden">
+              Factuur opnieuw verzenden
+            </button>
+          </div>` : ''}
         </div>
 
         <div class="complete-row">

@@ -879,6 +879,41 @@ function mbInvoiceLooksAlreadySent(invoice) {
   );
 }
 
+function mbInvoiceIsConcept(invoice) {
+  if (!invoice || typeof invoice !== 'object') return false;
+  const state = String(invoice.state || invoice.status || '').trim().toLowerCase();
+  if (!state) return false;
+  return state.includes('draft') || state.includes('concept');
+}
+
+function mbInvoiceTotalNumber(invoice) {
+  if (!invoice || typeof invoice !== 'object') return null;
+  const direct = [
+    invoice.total_price_incl_tax,
+    invoice.total_price_excl_tax,
+    invoice.totalPriceInclTax,
+    invoice.totalPrice,
+  ];
+  for (const v of direct) {
+    const n = toPriceNumber(v);
+    if (n !== null) return n;
+  }
+  const details = Array.isArray(invoice.details) ? invoice.details : (Array.isArray(invoice.details_attributes) ? invoice.details_attributes : []);
+  if (!details.length) return null;
+  let sum = 0;
+  let has = false;
+  for (const d of details) {
+    const p = toPriceNumber(d?.price ?? d?.price_excl_tax ?? d?.price_incl_tax ?? d?.unit_price);
+    const amount = toPriceNumber(d?.amount ?? 1);
+    if (p === null) continue;
+    const qty = amount === null ? 1 : amount;
+    sum += Number(p) * Number(qty);
+    has = true;
+  }
+  if (!has) return null;
+  return Math.round(sum * 100) / 100;
+}
+
 /**
  * GHL: start/einde van een kalender-item zetten.
  * Sommige omgevingen gebruiken PUT …/appointments/:id, andere …/events/:id — we proberen beide + API-versies.
@@ -2547,6 +2582,7 @@ export default async function handler(req, res) {
             findOrCreateContact,
             findExistingInvoiceByReference,
             createSalesInvoice,
+            updateSalesInvoiceDraft,
             getSalesInvoiceById,
             resolveSalesInvoicePaymentUrl,
             sendSalesInvoiceByEmail,
@@ -2587,6 +2623,7 @@ export default async function handler(req, res) {
             serviceDay,
           });
           logRetry('invoice_retry_started', { reference });
+          logRetry('invoice_retry_confirmed', { reference });
           const extrasLines = normalizePriceLineItems(Array.isArray(extras) ? extras : []);
           const baseFromReq = toPriceNumber(basePrice);
           const extrasSum = Math.round(extrasLines.reduce((s, r) => s + Number(r.price || 0), 0) * 100) / 100;
@@ -2674,6 +2711,54 @@ export default async function handler(req, res) {
             actionTaken = 'created_new';
             logRetry('invoice_retry_created_new', { reference, invoiceId, actionTaken });
           }
+          const currentTotal = Math.round(lines.reduce((s, r) => s + Number(r.price || 0), 0) * 100) / 100;
+          const invoiceTotal = mbInvoiceTotalNumber(invoice);
+          const totalsDiffer =
+            invoiceTotal !== null &&
+            Math.abs(Number(invoiceTotal) - Number(currentTotal)) > 0.01;
+          const invoiceIsConcept = mbInvoiceIsConcept(invoice);
+          const invoiceAlreadySent = mbInvoiceLooksAlreadySent(invoice);
+          if (invoiceAlreadySent && totalsDiffer) {
+            actionTaken = 'blocked_sent_price_mismatch';
+            logRetry(
+              'invoice_retry_blocked_price_mismatch_sent_invoice',
+              {
+                reference,
+                invoiceId,
+                invoiceTotal,
+                currentTotal,
+                actionTaken,
+              },
+              'warn'
+            );
+            return res.status(200).json({
+              success: true,
+              actionTaken,
+              message:
+                'De factuur is al verzonden en het bedrag in de app is gewijzigd. Pas de factuur handmatig aan in Moneybird of maak een correctie.',
+              invoiceId: invoiceId || null,
+              reference: reference || null,
+            });
+          }
+          if (invoiceIsConcept && totalsDiffer) {
+            const description = `${type || 'Onderhoud'} - ${name}${formatMoneybirdInvoiceMetadataSuffix(invoiceParty)}`;
+            const upd = await updateSalesInvoiceDraft({
+              invoiceId,
+              lines,
+              reference,
+              description,
+            });
+            if (upd?.updated && upd?.invoice) {
+              invoice = upd.invoice;
+              actionTaken = 'concept_updated';
+              logRetry('invoice_retry_concept_updated_before_send', {
+                reference,
+                invoiceId,
+                invoiceTotalBefore: invoiceTotal,
+                currentTotal,
+              });
+            }
+          }
           const mbFields = [];
           if (invoiceIdFieldId && invoiceId) mbFields.push({ id: invoiceIdFieldId, field_value: invoiceId });
           if (invoiceUrlFieldId && invoiceUrl) mbFields.push({ id: invoiceUrlFieldId, field_value: invoiceUrl });
@@ -2715,7 +2800,12 @@ export default async function handler(req, res) {
             }).catch(() => ({ sent: false }));
             if (mailResult?.sent) {
               emailSentNow = true;
-              actionTaken = actionTaken === 'created_new' ? 'created_and_sent_email' : 'reused_and_sent_email';
+              actionTaken =
+                actionTaken === 'created_new'
+                  ? 'created_and_sent_email'
+                  : actionTaken === 'concept_updated'
+                    ? 'concept_updated_and_sent'
+                    : 'reused_and_sent_email';
               logRetry('invoice_retry_sent_email', { reference, invoiceId, hadEmail: true, actionTaken });
             }
           } else {
@@ -2766,7 +2856,10 @@ export default async function handler(req, res) {
           const messageByAction = {
             created_and_sent_email: 'Factuur aangemaakt en verzonden',
             reused_and_sent_email: 'Bestaande factuur opnieuw verzonden',
+            concept_updated_and_sent: 'Conceptfactuur bijgewerkt en verzonden',
             already_sent_noop: 'Factuur bestond al en was al verzonden',
+            blocked_sent_price_mismatch:
+              'De factuur is al verzonden en het bedrag in de app is gewijzigd. Pas de factuur handmatig aan in Moneybird of maak een correctie.',
             missing_email: 'Geen e-mailadres beschikbaar',
             whatsapp_sent: 'WhatsApp opnieuw verstuurd',
             created_new: 'Factuur aangemaakt',

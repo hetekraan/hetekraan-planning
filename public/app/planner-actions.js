@@ -258,6 +258,21 @@
       showToast('Geen GHL-contact gekoppeld aan deze afspraak.', 'info');
       return;
     }
+    const confirmed = confirm(
+      'Weet je het zeker? We proberen de factuur opnieuw aan te maken of te versturen op basis van de huidige afspraak.'
+    );
+    if (!confirmed) {
+      try {
+        console.info(
+          '[moneybird] invoice_retry_cancelled',
+          JSON.stringify({
+            contactId: a.contactId || null,
+            appointmentId: String(a.id || id),
+          })
+        );
+      } catch (_) {}
+      return;
+    }
     const key = String(a.id || id);
     if (invoiceRetryInFlightByApptId.has(key)) return;
     invoiceRetryInFlightByApptId.add(key);
@@ -301,6 +316,10 @@
         showToast('Bestaande factuur opnieuw verzonden', 'success');
       } else if (action === 'already_sent_noop') {
         showToast('Factuur bestond al en was al verzonden', 'info');
+      } else if (action === 'concept_updated_and_sent') {
+        showToast('Conceptfactuur bijgewerkt en verzonden', 'success');
+      } else if (action === 'blocked_sent_price_mismatch') {
+        showToast('Retry geblokkeerd: prijs wijkt af van verzonden factuur', 'info');
       } else if (action === 'missing_email') {
         showToast('Geen e-mailadres beschikbaar', 'info');
       } else if (action === 'whatsapp_sent') {
