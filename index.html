@@ -4617,6 +4617,10 @@
       <input class="form-input" type="text" id="mDesc" placeholder="Kort omschrijven">
     </div>
     <div class="form-row">
+      <label class="form-label">Monteur notitie</label>
+      <input class="form-input" type="text" id="mMonteurNotitie" placeholder="Praktische info voor onderweg">
+    </div>
+    <div class="form-row">
       <label class="form-label">GHL Contact ID (optioneel)</label>
       <input class="form-input" type="text" id="mContactId" placeholder="GHL contact ID">
     </div>
@@ -6227,7 +6231,13 @@ function renderApptCard(a, i) {
           <div class="appt-desc">${a.jobDescription || ''}</div>
         </div>
         ${metaItems.length ? `<div class="appt-meta">${metaItems.join('')}</div>` : ''}
-        ${a.notes ? `<div class="appt-notes">💬 ${a.notes}</div>` : ''}
+        ${(() => {
+          const note = String(a.notes || '').trim();
+          const desc = String(a.jobDescription || '').trim();
+          if (!note) return '';
+          if (note.toLowerCase() === desc.toLowerCase()) return '';
+          return `<div class="appt-notes">💬 ${note}</div>`;
+        })()}
         <div class="appt-footer">
           <div class="appt-footer-left">
             <div class="appt-tags">

@@ -188,6 +188,7 @@
     const phoneInput = document.getElementById('mPhone');
     const emailInput = document.getElementById('mEmail');
     const descInput = document.getElementById('mDesc');
+    const monteurNotitieInput = document.getElementById('mMonteurNotitie');
     const contactIdInput = document.getElementById('mContactId');
     const activeDateInput = document.getElementById('dateInput');
     const slotKey = (slotInput?.value || 'morning').trim();
@@ -220,6 +221,7 @@
       phone: (phoneInput?.value || '').trim(),
       email: (emailInput?.value || '').trim().toLowerCase(),
       desc: (descInput?.value || '').trim(),
+      plannerNotities: (monteurNotitieInput?.value || '').trim(),
       contactId: (contactIdInput?.value || '').trim(),
       priceLines,
       totalPrice,
@@ -284,6 +286,7 @@
     const phoneInput = document.getElementById('mPhone');
     const emailInput = document.getElementById('mEmail');
     const descInput = document.getElementById('mDesc');
+    const monteurNotitieInput = document.getElementById('mMonteurNotitie');
     const contactIdInput = document.getElementById('mContactId');
     const modalPinTypeInput = document.getElementById('modalInternalFixedType');
     const modalPinTimeInput = document.getElementById('modalInternalFixedStart');
@@ -294,6 +297,7 @@
     if (emailInput) emailInput.value = '';
     if (addressInput) addressInput.value = '';
     if (descInput) descInput.value = '';
+    if (monteurNotitieInput) monteurNotitieInput.value = '';
     if (contactIdInput) contactIdInput.value = '';
     if (modalPinTypeInput) modalPinTypeInput.value = '';
     if (modalPinTimeInput) modalPinTimeInput.value = '';
@@ -487,6 +491,7 @@
           slotLabel: form.slotLabel,
           type: form.type,
           desc: form.desc || '—',
+          plannerNotities: form.plannerNotities || '',
           price: form.totalPrice,
           priceLines: form.priceLines,
           factuurType: form.factuurType,
@@ -532,6 +537,7 @@
           timeWindow: form.slotLabel,
           type: form.type,
           desc: form.desc || '—',
+          plannerNotities: form.plannerNotities || '',
           contactId: form.contactId || '',
           price: form.totalPrice,
           priceLines: form.priceLines,
@@ -717,6 +723,7 @@
     const phoneInput = document.getElementById('mPhone');
     const emailInput = document.getElementById('mEmail');
     const descInput = document.getElementById('mDesc');
+    const monteurNotitieInput = document.getElementById('mMonteurNotitie');
     const contactIdInput = document.getElementById('mContactId');
     if (dateInput) dateInput.value = activeDate;
     if (slotInput) slotInput.value = slotCfg.key || slotKey;
@@ -733,6 +740,11 @@
       emailInput.value = emailVal;
     }
     if (descInput) descInput.value = baseLineDesc;
+    if (monteurNotitieInput) {
+      const rawNote = String(a.notes || '').trim();
+      monteurNotitieInput.value =
+        rawNote && rawNote.toLowerCase() !== baseLineDesc.toLowerCase() ? rawNote : '';
+    }
     if (contactIdInput) contactIdInput.value = String(a.contactId || '');
     applyInvoiceFieldsToModalDom(a);
     const pin = a.internalFixedPin ||
