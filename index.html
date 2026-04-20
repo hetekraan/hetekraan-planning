@@ -2110,6 +2110,9 @@
   #apptList {
     overflow-anchor: none;
   }
+  .appt-card {
+    overflow-anchor: none;
+  }
 
   /* PRIJS SECTIE */
   .price-section {
@@ -6456,7 +6459,6 @@ function renderApptCard(a, i) {
     const barVisible = isOnderweg || !!a.priceVisible;
     const routeYmdPlanner = getDateStr(currentDate);
     const lastServiceInputVal = String(a.lastService || '').trim() || routeYmdPlanner;
-    const lastMaintRowVisible = barVisible && !isDone;
 
     const metaItems = [];
     if (a.datumInstallatie) metaItems.push(`<div class="meta-item"><div class="meta-label">Installatie</div><div class="meta-value">${a.datumInstallatie}</div></div>`);
@@ -6569,7 +6571,7 @@ function renderApptCard(a, i) {
             <span>Review mail versturen (morgen)</span>
           </label>
         </div>
-        ${lastMaintRowVisible ? `
+        ${!isDone ? `
         <div class="service-date-row service-date-row--last-maint">
           <label for="sdate-${domId}">Laatste onderhoud</label>
           <input type="date" id="sdate-${domId}" name="lastService" value="${escapeHtml(lastServiceInputVal)}" onchange='setLastService(${idQ}, this.value)'>
@@ -7208,32 +7210,87 @@ function cancelOnderweg(id) {
 
 let _onderwegId = null;
 
+function plannerSnapshotScrollY() {
+  if (typeof window === 'undefined') return 0;
+  return Number(window.scrollY || window.pageYOffset || 0);
+}
+
+function plannerIsMobileViewport639() {
+  try {
+    return !!(window.matchMedia && window.matchMedia('(max-width: 639px)').matches);
+  } catch (_) {
+    return false;
+  }
+}
+
+function plannerPricePanelActiveElementSnapshot() {
+  const el = document.activeElement;
+  if (!el || !el.tagName) return null;
+  const rawClass = typeof el.className === 'string' ? el.className : '';
+  const cls = rawClass.trim() ? rawClass.trim().split(/\s+/).filter(Boolean).slice(0, 5).join('.') : null;
+  return {
+    tag: el.tagName.toLowerCase(),
+    id: el.id || null,
+    name: el.getAttribute ? el.getAttribute('name') : null,
+    class: cls,
+  };
+}
+
+/**
+ * Zet .complete-bar + Prijs-knop visueel gelijk met `a` zonder `render()` / innerHTML-refresh.
+ * Voorkomt document-scroll jumps (vooral mobile) bij open/dicht prijspaneel.
+ */
+function syncAppointmentPriceBarDom(a) {
+  if (!a || a.isCalBlock) return false;
+  const domId = appointmentDomSafeId(a.id);
+  const bar = document.getElementById('bar-' + domId);
+  const card = document.getElementById('card-' + domId);
+  if (!bar || !card) return false;
+  const isOnderweg = a.status === 'onderweg';
+  const barVisible = isOnderweg || !!a.priceVisible;
+  bar.classList.toggle('visible', barVisible);
+  const btnPrijs = card.querySelector('.btn-prijs');
+  if (btnPrijs) btnPrijs.classList.toggle('active', barVisible && !isOnderweg);
+  return true;
+}
+
 function togglePrijs(evt, id) {
   if (evt && typeof evt.preventDefault === 'function') evt.preventDefault();
   if (evt && typeof evt.stopPropagation === 'function') evt.stopPropagation();
   const a = appointments.find(x => String(x.id) === String(id));
   if (!a) return;
   const wasOpen = !!a.priceVisible;
-  const beforeY = (() => {
-    if (typeof window === 'undefined') return 0;
-    return Number(window.scrollY || window.pageYOffset || 0);
-  })();
-  const activeBefore =
-    document.activeElement && document.activeElement.tagName
-      ? `${document.activeElement.tagName.toLowerCase()}#${document.activeElement.id || ''}`
-      : '';
+  const beforeY = plannerSnapshotScrollY();
+  const mobile = plannerIsMobileViewport639();
+  const activeSnap0 = plannerPricePanelActiveElementSnapshot();
+  const domId = appointmentDomSafeId(a.id);
+  const barEl = document.getElementById('bar-' + domId);
+
   try {
     console.info(
       '[planner] price_panel_open_clicked',
       JSON.stringify({
         appointmentId: String(id),
         scrollYBefore: beforeY,
-        activeElement: activeBefore || null,
+        activeElement: activeSnap0,
+        mobile,
         preventDefaultUsed: true,
-        userAgent: String(navigator?.userAgent || '').slice(0, 160),
       })
     );
   } catch (_) {}
+  try {
+    console.info(
+      '[planner] price_panel_before_open_scroll',
+      JSON.stringify({
+        appointmentId: String(id),
+        scrollYBefore: beforeY,
+        activeElement: activeSnap0,
+        mobile,
+        wasOpen,
+      })
+    );
+  } catch (_) {}
+
   if (wasOpen) {
     try {
       console.info(
@@ -7246,58 +7303,122 @@ function togglePrijs(evt, id) {
         })
       );
     } catch (_) {}
-  }
-  a.priceVisible = !a.priceVisible;
-  render();
-  const opening = !!a.priceVisible;
-  if (!opening) return;
-
-  /** iOS/Safari: layout + scroll anchoring kan later pas landen — meerdere ticks + korte timeout. */
-  const checkScroll = (phase) => {
-    const afterY = Number(window.scrollY || window.pageYOffset || 0);
-    const delta = Math.abs(afterY - beforeY);
-    if (delta > 8) {
-      window.scrollTo({ top: beforeY, behavior: 'auto' });
+    if (barEl && document.activeElement && document.activeElement.nodeType === 1 && barEl.contains(document.activeElement)) {
       try {
-        console.warn(
-          '[planner] price_panel_scroll_jump_detected',
-          JSON.stringify({
-            appointmentId: String(id),
-            phase,
-            scrollYBefore: beforeY,
-            scrollYAfter: afterY,
-            deltaY: delta,
-          })
-        );
+        document.activeElement.blur();
       } catch (_) {}
     }
+  }
+
+  a.priceVisible = !a.priceVisible;
+  const opening = !!a.priceVisible;
+
+  const synced = syncAppointmentPriceBarDom(a);
+  const usedFullRender = !synced;
+  if (usedFullRender) render();
+
+  const scrollAfterSync = plannerSnapshotScrollY();
+  try {
+    console.info(
+      '[planner] price_panel_after_render_scroll',
+      JSON.stringify({
+        appointmentId: String(id),
+        scrollYAfterRender: scrollAfterSync,
+        scrollYBefore: beforeY,
+        usedFullRender,
+        mobile,
+        opening,
+      })
+    );
+  } catch (_) {}
+  try {
+    console.info(
+      '[planner] price_panel_focus_target',
+      JSON.stringify({
+        appointmentId: String(id),
+        phase: 'afterSync',
+        activeElement: plannerPricePanelActiveElementSnapshot(),
+        mobile,
+        opening,
+      })
+    );
+  } catch (_) {}
+
+  let jumpRestored = false;
+  const logJumpIfAny = (phase, y, doRestore) => {
+    const delta = Math.abs(y - beforeY);
+    if (delta <= 12) return;
     try {
-      const y = Number(window.scrollY || window.pageYOffset || 0);
-      console.info(
-        '[planner] price_panel_opened',
-        JSON.stringify({
-          appointmentId: String(id),
-          phase,
-          scrollYAfterOpen: y,
-        })
-      );
-      console.info(
-        '[planner] price_panel_scroll_preserved',
+      console.warn(
+        '[planner] price_panel_scroll_jump_detected',
         JSON.stringify({
           appointmentId: String(id),
           phase,
           scrollYBefore: beforeY,
           scrollYAfter: y,
+          deltaY: delta,
+          mobile,
+          opening,
         })
       );
     } catch (_) {}
+    if (doRestore && !jumpRestored) {
+      jumpRestored = true;
+      window.scrollTo({ top: beforeY, behavior: 'auto' });
+      try {
+        console.info(
+          '[planner] price_panel_scroll_restored',
+          JSON.stringify({
+            appointmentId: String(id),
+            phase,
+            scrollYTarget: beforeY,
+            mobile,
+          })
+        );
+      } catch (_) {}
+    }
   };
+
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      checkScroll('raf2');
-      setTimeout(() => checkScroll('t150'), 150);
+      const yRaf = plannerSnapshotScrollY();
+      logJumpIfAny('raf2', yRaf, false);
     });
   });
+
+  setTimeout(() => {
+    const y150 = plannerSnapshotScrollY();
+    try {
+      console.info(
+        '[planner] price_panel_after_t150_scroll',
+        JSON.stringify({
+          appointmentId: String(id),
+          scrollY: y150,
+          scrollYBefore: beforeY,
+          mobile,
+          opening,
+        })
+      );
+    } catch (_) {}
+    logJumpIfAny('t150', y150, false);
+  }, 150);
+
+  setTimeout(() => {
+    const y300 = plannerSnapshotScrollY();
+    try {
+      console.info(
+        '[planner] price_panel_after_t300_scroll',
+        JSON.stringify({
+          appointmentId: String(id),
+          scrollY: y300,
+          scrollYBefore: beforeY,
+          mobile,
+          opening,
+        })
+      );
+    } catch (_) {}
+    logJumpIfAny('t300', y300, true);
+  }, 300);
 }
 
 function askOnderweg(id) {
