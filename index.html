@@ -2042,6 +2042,11 @@
   .toast.info { border-color: var(--blue); }
   .toast.loading { border-color: var(--accent); }
 
+  /* Voorkomt scroll-anchoring jumps op iOS/Safari bij DOM-wissel in de kaartenlijst */
+  #apptList {
+    overflow-anchor: none;
+  }
+
   /* PRIJS SECTIE */
   .price-section {
     border-top: 1px solid var(--border);
@@ -2100,6 +2105,34 @@
     transition: all 0.15s;
   }
   .btn-add-extra:hover { border-color: var(--accent2); background: rgba(0,212,170,0.1); }
+  .btn-add-price-line {
+    width: 100%;
+    margin-top: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 8px;
+    border: 1px dashed var(--border);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--accent2);
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn-add-price-line:hover {
+    border-color: var(--accent2);
+    background: rgba(0, 212, 170, 0.08);
+  }
+  .extra-item--basis {
+    font-weight: 500;
+    opacity: 0.95;
+  }
+  @media (max-width: 720px) {
+    .price-section .form-input,
+    .price-section .price-input {
+      font-size: 16px; /* iOS: voorkomt zoom op focus */
+    }
+  }
   .catalog-v1-results {
     display: none;
     border: 1px solid var(--border);
@@ -6301,7 +6334,7 @@ function renderApptCard(a, i) {
             ${a.priceLabel ? `<span class="appt-price">${a.priceLabel}</span>` : ''}
             <div class="appt-footer-actions-touch">
               <div class="appt-footer-cta-row">
-                <button type="button" class="btn-prijs ${barVisible&&!isOnderweg?'active':''}" onclick='togglePrijs(event, ${idQ})' title="Prijsoverzicht bekijken">Prijs</button>
+                <button type="button" class="btn-prijs ${barVisible&&!isOnderweg?'active':''}" onclick='togglePrijs(event, ${idQ})' title="Prijsoverzicht bekijken" style="touch-action:manipulation">Prijs</button>
                 ${!isDone ? `
                 <button type="button" class="btn-done ${isOnderweg?'active':''}" onclick='${isOnderweg ? `scrollToPrijs(${idQ})` : `askOnderweg(${idQ})`}' title="${isOnderweg ? 'Naar prijs en afronden' : 'Markeer onderweg'}">Onderweg</button>
                 ` : ''}
@@ -6326,30 +6359,32 @@ function renderApptCard(a, i) {
 
         <div class="price-section" id="price-${domId}">
           <div class="price-section-label">Prijsoverzicht${(a.extras||[]).length === 0 && !a.price ? '<span style="color:var(--muted);font-size:10px;font-weight:400;margin-left:6px">Nog geen prijs uit chat</span>' : ''}</div>
-          ${a.price && (a.extras||[]).length === 0 ? `<div class="extra-item"><span>Basis</span><span>€${euroDisplay(a.price)}</span></div>` : ''}
+          ${a.price > 0 ? `<div class="extra-item extra-item--basis"><span>Basis</span><span>€${euroDisplay(a.price)}</span></div>` : ''}
           ${(a.extras||[]).map((e,i) => `
             <div class="extra-item" style="align-items:center">
-              <input class="form-input" type="text" value="${escapePriceAttr(e.desc)}" style="flex:1;min-width:0"
-                onchange='updateExtraLine(${idQ},${i},this.value,null)' />
+              <input class="form-input" type="text" value="${escapePriceAttr(e.desc)}" style="flex:1;min-width:0" inputmode="text" autocomplete="off"
+                oninput='onExtraDescInput(${idQ},${i},this.value)' onchange='updateExtraLine(${idQ},${i},this.value,null)' />
               <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
                 <span style="font-size:13px;color:var(--muted)">€</span>
-                <input class="form-input price-input" type="number" step="0.01" min="0" value="${Number.isFinite(Number(e.price)) ? e.price : 0}"
-                  style="width:88px" onchange='updateExtraLine(${idQ},${i},null,parseFloat(this.value))' />
-                <span class="extra-remove" onclick='removeExtra(${idQ},${i})'>✕</span>
+                <input class="form-input price-input" type="number" inputmode="decimal" step="0.01" min="0" value="${Number.isFinite(Number(e.price)) ? e.price : ''}"
+                  style="width:88px" placeholder="0"
+                  oninput='onExtraPriceInput(${idQ},${i},this.value)' onchange='updateExtraLine(${idQ},${i},null,parseFloat(this.value))' />
+                <button type="button" class="extra-remove" title="Regel verwijderen" onclick='removeExtra(${idQ},${i})'>✕</button>
               </div>
             </div>`).join('')}
-          <div class="add-extra-row" style="flex-direction:column;gap:5px">
+          <button type="button" class="btn-add-price-line" onclick='addEmptyPriceLine(event, ${idQ})'>+ Regel toevoegen</button>
+          <div class="add-extra-row" style="flex-direction:column;gap:5px;margin-top:6px">
             <input class="form-input" type="text" id="catalog-search-${domId}" placeholder="Zoek product of service..." oninput='onCatalogSearchInput(${idQ}, this.value)'>
             <div class="catalog-v1-results" id="catalog-results-${domId}"></div>
-            <div style="display:flex;gap:6px">
-              <input class="form-input" type="text" id="extra-desc-${domId}" placeholder="Omschrijving" style="flex:1">
-              <input class="form-input price-input" type="number" id="extra-price-${domId}" placeholder="€" min="0">
-              <button class="btn-add-extra" onclick='addExtra(${idQ})'>+</button>
+            <div style="display:flex;gap:6px;align-items:center">
+              <input class="form-input" type="text" id="extra-desc-${domId}" placeholder="Snel: omschrijving" style="flex:1">
+              <input class="form-input price-input" type="number" id="extra-price-${domId}" placeholder="€" min="0" step="0.01" inputmode="decimal">
+              <button type="button" class="btn-add-extra" onclick='addExtra(${idQ})' title="Regel toevoegen (ingevuld)">+</button>
             </div>
           </div>
           <div class="price-total-row">
             <span>Totaal</span>
-            <span>€${euroDisplay(calcTotalPrice(a))}</span>
+            <span id="price-total-amt-${domId}">€${euroDisplay(calcTotalPrice(a))}</span>
           </div>
           ${isDone ? `
           <div class="complete-row" style="justify-content:flex-end;margin-top:6px">
@@ -6960,6 +6995,7 @@ function togglePrijs(evt, id) {
   if (evt && typeof evt.stopPropagation === 'function') evt.stopPropagation();
   const a = appointments.find(x => String(x.id) === String(id));
   if (!a) return;
+  const wasOpen = !!a.priceVisible;
   const beforeY = (() => {
     if (typeof window === 'undefined') return 0;
     return Number(window.scrollY || window.pageYOffset || 0);
@@ -6980,44 +7016,69 @@ function togglePrijs(evt, id) {
       })
     );
   } catch (_) {}
+  if (wasOpen) {
+    try {
+      console.info(
+        '[planner] price_lines_persisted_after_collapse',
+        JSON.stringify({
+          appointmentId: String(id),
+          contactId: a.contactId || null,
+          extrasCount: Array.isArray(a.extras) ? a.extras.length : 0,
+          total: calcTotalPrice(a),
+        })
+      );
+    } catch (_) {}
+  }
   a.priceVisible = !a.priceVisible;
   render();
-  requestAnimationFrame(() => {
+  const opening = !!a.priceVisible;
+  if (!opening) return;
+
+  /** iOS/Safari: layout + scroll anchoring kan later pas landen — meerdere ticks + korte timeout. */
+  const checkScroll = (phase) => {
     const afterY = Number(window.scrollY || window.pageYOffset || 0);
     const delta = Math.abs(afterY - beforeY);
-    if (a.priceVisible) {
-      if (delta > 120) {
-        window.scrollTo({ top: beforeY, behavior: 'auto' });
-        try {
-          console.warn(
-            '[planner] price_panel_scroll_jump_detected',
-            JSON.stringify({
-              appointmentId: String(id),
-              scrollYBefore: beforeY,
-              scrollYAfter: afterY,
-              deltaY: delta,
-            })
-          );
-        } catch (_) {}
-      }
+    if (delta > 8) {
+      window.scrollTo({ top: beforeY, behavior: 'auto' });
       try {
-        console.info(
-          '[planner] price_panel_opened',
+        console.warn(
+          '[planner] price_panel_scroll_jump_detected',
           JSON.stringify({
             appointmentId: String(id),
-            scrollYAfterOpen: Number(window.scrollY || window.pageYOffset || 0),
-          })
-        );
-        console.info(
-          '[planner] price_panel_scroll_preserved',
-          JSON.stringify({
-            appointmentId: String(id),
+            phase,
             scrollYBefore: beforeY,
-            scrollYAfter: Number(window.scrollY || window.pageYOffset || 0),
+            scrollYAfter: afterY,
+            deltaY: delta,
           })
         );
       } catch (_) {}
     }
+    try {
+      const y = Number(window.scrollY || window.pageYOffset || 0);
+      console.info(
+        '[planner] price_panel_opened',
+        JSON.stringify({
+          appointmentId: String(id),
+          phase,
+          scrollYAfterOpen: y,
+        })
+      );
+      console.info(
+        '[planner] price_panel_scroll_preserved',
+        JSON.stringify({
+          appointmentId: String(id),
+          phase,
+          scrollYBefore: beforeY,
+          scrollYAfter: y,
+        })
+      );
+    } catch (_) {}
+  };
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      checkScroll('raf2');
+      setTimeout(() => checkScroll('t150'), 150);
+    });
   });
 }
 
@@ -7160,6 +7221,83 @@ function calcTotalPrice(a) {
   return window.HKPlannerPricing.calcTotalPrice(a);
 }
 
+function updatePriceTotalLabel(id) {
+  const a = appointments.find((x) => String(x.id) === String(id));
+  if (!a) return;
+  const domId = appointmentDomSafeId(id);
+  const el = document.getElementById(`price-total-amt-${domId}`);
+  const total = calcTotalPrice(a);
+  if (el) el.textContent = `€${euroDisplay(total)}`;
+  if (typeof calcStats === 'function') calcStats();
+  try {
+    console.info(
+      '[planner] price_total_recalculated',
+      JSON.stringify({
+        appointmentId: String(id),
+        contactId: a.contactId || null,
+        total,
+        base: Number.isFinite(Number(a.price)) ? Number(a.price) : 0,
+        extrasCount: Array.isArray(a.extras) ? a.extras.length : 0,
+      })
+    );
+  } catch (_) {}
+}
+
+function debouncedPersistPriceLinesForAppt(id) {
+  const a = appointments.find((x) => String(x.id) === String(id));
+  if (!a || !a.contactId || !window.HKPlannerPricing?.debouncedPersistPriceLines) return;
+  window.HKPlannerPricing.debouncedPersistPriceLines({
+    appointment: a,
+    authHeader: hkAuthHeader(),
+  });
+}
+
+function onExtraDescInput(id, idx, value) {
+  const a = appointments.find((x) => String(x.id) === String(id));
+  if (!a || !a.extras || !a.extras[idx]) return;
+  a.extras[idx].desc = String(value ?? '');
+  updatePriceTotalLabel(id);
+  debouncedPersistPriceLinesForAppt(id);
+}
+
+function onExtraPriceInput(id, idx, raw) {
+  const a = appointments.find((x) => String(x.id) === String(id));
+  if (!a || !a.extras || !a.extras[idx]) return;
+  const s = String(raw ?? '').trim().replace(',', '.');
+  if (s === '' || s === '.') {
+    a.extras[idx].price = 0;
+  } else {
+    const n = parseFloat(s);
+    if (!Number.isNaN(n)) {
+      a.extras[idx].price = Math.max(0, Math.round(n * 100) / 100);
+    }
+  }
+  updatePriceTotalLabel(id);
+  debouncedPersistPriceLinesForAppt(id);
+}
+
+function addEmptyPriceLine(evt, id) {
+  if (evt && typeof evt.preventDefault === 'function') evt.preventDefault();
+  if (evt && typeof evt.stopPropagation === 'function') evt.stopPropagation();
+  const a = appointments.find((x) => String(x.id) === String(id));
+  if (!a) return;
+  if (!a.extras) a.extras = [];
+  a.extras.push({ desc: '', price: 0 });
+  try {
+    console.info(
+      '[planner] price_line_added',
+      JSON.stringify({
+        appointmentId: String(id),
+        contactId: a.contactId || null,
+        mode: 'empty_row',
+        index: a.extras.length - 1,
+      })
+    );
+  } catch (_) {}
+  render();
+  debouncedPersistPriceLinesForAppt(id);
+}
+
 function updateExtraLine(id, idx, desc, price) {
   const a = appointments.find((x) => String(x.id) === String(id));
   if (!a || !a.extras || !a.extras[idx]) return;
@@ -7168,7 +7306,7 @@ function updateExtraLine(id, idx, desc, price) {
     a.extras[idx].price = Math.max(0, Math.round(Number(price) * 100) / 100);
   }
   render();
-  void persistPriceLines(id);
+  debouncedPersistPriceLinesForAppt(id);
 }
 
 async function persistPriceLines(id) {
@@ -7199,11 +7337,22 @@ function addExtra(id) {
   }
   if (!a.extras) a.extras = [];
   a.extras.push({ desc, price });
+  try {
+    console.info(
+      '[planner] price_line_added',
+      JSON.stringify({
+        appointmentId: String(id),
+        contactId: a.contactId || null,
+        mode: 'quick_form',
+        descLen: desc.length,
+      })
+    );
+  } catch (_) {}
   // Reset velden
   if (descEl)   descEl.value  = '';
   if (priceEl)  priceEl.value = '';
   render();
-  void persistPriceLines(id);
+  debouncedPersistPriceLinesForAppt(id);
 }
 
 function addExtraFromCatalog(id, item) {
@@ -7214,16 +7363,37 @@ function addExtraFromCatalog(id, item) {
   if (!desc || !Number.isFinite(price) || price <= 0) return;
   if (!a.extras) a.extras = [];
   a.extras.push({ desc, price: Math.round(price * 100) / 100 });
+  try {
+    console.info(
+      '[planner] price_line_added',
+      JSON.stringify({
+        appointmentId: String(id),
+        contactId: a.contactId || null,
+        mode: 'catalog',
+        descLen: desc.length,
+      })
+    );
+  } catch (_) {}
   render();
-  void persistPriceLines(id);
+  debouncedPersistPriceLinesForAppt(id);
 }
 
 function removeExtra(id, idx) {
   const a = appointments.find(x => String(x.id) === String(id));
   if (!a || !a.extras) return;
   a.extras.splice(idx, 1);
+  try {
+    console.info(
+      '[planner] price_line_removed',
+      JSON.stringify({
+        appointmentId: String(id),
+        contactId: a.contactId || null,
+        removedIndex: idx,
+      })
+    );
+  } catch (_) {}
   render();
-  void persistPriceLines(id);
+  debouncedPersistPriceLinesForAppt(id);
 }
 
 async function confirmDone(id) {

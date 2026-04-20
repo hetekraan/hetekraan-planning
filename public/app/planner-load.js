@@ -60,6 +60,26 @@
         return;
       }
       const rows = Array.isArray(data?.appointments) ? data.appointments : [];
+      try {
+        let extraLinesTotal = 0;
+        let clientsWithExtras = 0;
+        for (const row of rows) {
+          const n = Array.isArray(row?.extras) ? row.extras.length : 0;
+          if (n > 0) {
+            clientsWithExtras += 1;
+            extraLinesTotal += n;
+          }
+        }
+        console.info(
+          '[planner] price_lines_loaded',
+          JSON.stringify({
+            serviceDay: dateStr,
+            appointmentsCount: rows.length,
+            clientsWithExtras,
+            extraLinesTotal,
+          })
+        );
+      } catch (_) {}
       if (typeof ctx.setPlannerCustomerDayFull === 'function') {
         ctx.setPlannerCustomerDayFull(!!data.customerDayFull, !!data.customerDayFullStoreConfigured);
       }

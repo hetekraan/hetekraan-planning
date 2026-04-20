@@ -71,6 +71,12 @@
     } = ctx;
     const a = findAppointmentById(id);
     if (!a) return;
+    if (global.HKPlannerPricing?.flushDebouncedPersistPriceLines) {
+      await global.HKPlannerPricing.flushDebouncedPersistPriceLines({
+        appointment: a,
+        authHeader: hkAuthHeader(),
+      });
+    }
     showToast('⏳ Bezig met afronden...', 'loading');
     const total = calcTotalPrice(a);
     const lines = a.extras || [];
@@ -145,6 +151,20 @@
           })
         );
         if (!ghlRes.ok) showToast(`⚠ GHL kon niet worden bijgewerkt (${ghlRes.status}) — afspraak wel klaar gezet`, 'info');
+        else {
+          try {
+            console.info(
+              '[planner] price_lines_persisted_after_complete',
+              JSON.stringify({
+                contactId: a.contactId || null,
+                appointmentId: a.id != null ? String(a.id) : null,
+                totalPrice: total,
+                extrasLineCount: Array.isArray(lines) ? lines.length : 0,
+                basePrice: Number(a.price) || 0,
+              })
+            );
+          } catch (_) {}
+        }
       } catch {
         showToast('⚠ GHL niet bereikbaar — afspraak wel klaar gezet', 'info');
       }
@@ -287,6 +307,12 @@
     }
     showToast('⏳ Factuur opnieuw verzenden...', 'loading');
     try {
+      if (global.HKPlannerPricing?.flushDebouncedPersistPriceLines) {
+        await global.HKPlannerPricing.flushDebouncedPersistPriceLines({
+          appointment: a,
+          authHeader: hkAuthHeader(),
+        });
+      }
       const total = calcTotalPrice(a);
       const lines = Array.isArray(a.extras) ? a.extras : [];
       const routeDate = getDateStr(getCurrentDate());
