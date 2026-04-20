@@ -584,6 +584,70 @@
     color: var(--appt-action-icon-fg-hover);
   }
 
+  .appt-actions__icons {
+    display: flex;
+    align-items: center;
+    gap: inherit;
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+    min-width: 0;
+  }
+  .appt-actions__mobile {
+    display: none;
+    position: relative;
+    flex-shrink: 0;
+  }
+  .appt-actions__dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 80;
+    min-width: min(220px, calc(100vw - 32px));
+    padding: 6px;
+    margin: 0;
+    list-style: none;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  }
+  .appt-actions__dropdown.is-open {
+    display: block;
+  }
+  .appt-actions__menu-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 12px 14px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 600;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  .appt-actions__menu-item:hover,
+  .appt-actions__menu-item:focus-visible {
+    background: rgba(255, 255, 255, 0.06);
+    outline: none;
+  }
+  .appt-actions__menu-item--danger {
+    color: var(--reparatie);
+  }
+  .appt-actions__menu-item--danger:hover,
+  .appt-actions__menu-item--danger:focus-visible {
+    background: rgba(255, 80, 80, 0.12);
+  }
+
   .icon-btn {
     background: var(--surface2);
     border: 1px solid var(--border);
@@ -3661,6 +3725,62 @@
     }
   }
 
+  /**
+   * Telefoon (≤639px): ná max-width 1179-blok zodat deze regels winnen op smalle viewports.
+   * iPad portrait (768px) blijft buiten deze query.
+   */
+  @media (max-width: 639px) {
+    .appt-actions {
+      overflow-x: visible;
+      flex-wrap: nowrap;
+    }
+    .appt-actions__icons {
+      display: none !important;
+    }
+    .appt-actions__mobile {
+      display: block !important;
+    }
+    .appt-actions__menu-btn .appt-action-svg {
+      width: calc(var(--appt-action-icon-size) * 0.5);
+      height: calc(var(--appt-action-icon-size) * 0.5);
+    }
+    .appt-footer {
+      flex-wrap: nowrap;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+      row-gap: 10px;
+    }
+    .appt-footer-left {
+      width: 100%;
+    }
+    .appt-footer-right {
+      width: 100%;
+      max-width: none;
+      align-items: flex-end;
+      flex-direction: column;
+      gap: 6px;
+      text-align: right;
+    }
+    .appt-price {
+      width: 100%;
+      text-align: right;
+      line-height: 1.2;
+    }
+    .appt-footer-actions-touch {
+      width: 100%;
+      max-width: 260px;
+      margin-left: auto;
+    }
+    .appt-footer-cta-row {
+      width: 100%;
+      max-width: 260px;
+      margin-left: auto;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+  }
+
   /*
    * ── Account jerry: primaire schaal (staat laatst in deze stylesheet → wint op ui-scale-large / jerry-mode)
    * Zelfde layout/hiërarchie; alleen grotere type, tikdoelen en lucht.
@@ -4160,6 +4280,36 @@
       min-height: 56px !important;
       font-size: 19px !important;
       padding: 12px 14px !important;
+    }
+  }
+
+  /* Telefoon (≤639px): onderaan zodat Jerry/ui-scale de footer-breedte niet terugzet naar `width:auto`. */
+  @media (max-width: 639px) {
+    .appt-card .appt-footer {
+      flex-direction: column !important;
+      align-items: stretch !important;
+      flex-wrap: nowrap !important;
+    }
+    .appt-card .appt-footer-right {
+      width: 100% !important;
+      max-width: none !important;
+      align-items: flex-end !important;
+    }
+    .appt-card .appt-footer-actions-touch {
+      width: 100% !important;
+      max-width: 260px !important;
+      margin-left: auto !important;
+    }
+    .appt-card .appt-footer-cta-row {
+      width: 100% !important;
+      max-width: 260px !important;
+      margin-left: auto !important;
+    }
+    .appt-card .appt-actions__icons {
+      display: none !important;
+    }
+    .appt-card .appt-actions__mobile {
+      display: block !important;
     }
   }
 
@@ -6244,6 +6394,38 @@ const APPT_ACTION_SVG = {
   close: '<svg xmlns="http://www.w3.org/2000/svg" class="appt-action-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 6L6 18M6 6l12 12"/></svg>'
 };
 
+const APPT_MOBILE_MENU_KEBAB_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" class="appt-action-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="5" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="19" r="1.5" fill="currentColor"/></svg>';
+
+/** Sluit alle compacte mobiele actiemenu’s op afspraakkaarten (breakpoint ≤639px). */
+function closeMobileApptActionMenus() {
+  document.querySelectorAll('.appt-actions__dropdown.is-open').forEach((dd) => {
+    dd.classList.remove('is-open');
+    const btn = dd.closest('.appt-actions__mobile')?.querySelector('.appt-actions__menu-btn');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  });
+}
+
+function toggleMobileApptActionMenu(ev, domId) {
+  if (ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+  }
+  if (!window.matchMedia || !window.matchMedia('(max-width: 639px)').matches) return;
+  const dd = document.getElementById('mob-menu-' + domId);
+  const btn = dd?.closest('.appt-actions__mobile')?.querySelector('.appt-actions__menu-btn');
+  if (!dd || !btn) return;
+  const willOpen = !dd.classList.contains('is-open');
+  closeMobileApptActionMenus();
+  if (willOpen) {
+    dd.classList.add('is-open');
+    btn.setAttribute('aria-expanded', 'true');
+    try {
+      console.info('[planner] mobile_card_action_menu_opened', JSON.stringify({ cardId: String(domId || '') }));
+    } catch (_) {}
+  }
+}
+
 function renderApptCard(a, i) {
     const domId = appointmentDomSafeId(a.id);
     const idQ = JSON.stringify(a.id);
@@ -6281,6 +6463,36 @@ function renderApptCard(a, i) {
     if (a.datumOnderhoud) metaItems.push(`<div class="meta-item"><div class="meta-label">Laatste onderhoud</div><div class="meta-value">${a.datumOnderhoud}</div></div>`);
 
     const slotHint = (a.dayPart ?? 1) === 0 ? 'Ochtend 09–13' : 'Middag 13–17';
+    const ghlMenuAttrs = a.ghlUrl
+      ? a.ghlAppUrl
+        ? ` data-ghl-app="${escapeHtml(a.ghlAppUrl)}" onclick="closeMobileApptActionMenus();return hkOpenGhlContact(event,this)"`
+        : ` onclick="closeMobileApptActionMenus()"`
+      : '';
+    const mobileMenuRows = [];
+    if (a.phone) {
+      mobileMenuRows.push(
+        `<a role="menuitem" class="appt-actions__menu-item" href="tel:${escapeHtml(a.phone)}" onclick="closeMobileApptActionMenus()">Bellen</a>`
+      );
+    }
+    if (a.mapsLink) {
+      mobileMenuRows.push(
+        `<a role="menuitem" class="appt-actions__menu-item" href="${escapeHtml(a.mapsLink)}" target="_blank" rel="noopener noreferrer" onclick="closeMobileApptActionMenus()">Navigeren</a>`
+      );
+    }
+    if (a.ghlUrl) {
+      mobileMenuRows.push(
+        `<a role="menuitem" class="appt-actions__menu-item" href="${escapeHtml(a.ghlUrl)}" target="_blank" rel="noopener noreferrer"${ghlMenuAttrs}>Open in GHL</a>`
+      );
+    }
+    if (isDone) {
+      mobileMenuRows.push(
+        `<button type="button" role="menuitem" class="appt-actions__menu-item" onclick="closeMobileApptActionMenus();openAppointmentDetailsModal(${idQ})">Bekijk details</button>`
+      );
+    }
+    mobileMenuRows.push(
+      `<button type="button" role="menuitem" class="appt-actions__menu-item" onclick="closeMobileApptActionMenus();openAppointmentEditModal(${idQ})">Bewerken</button>`,
+      `<button type="button" role="menuitem" class="appt-actions__menu-item appt-actions__menu-item--danger" onclick="closeMobileApptActionMenus();deleteAppt(${idQ})">Verwijderen</button>`
+    );
     return `
     <div class="appt-card ${isDone?'done':''} ${isOnderweg?'onderweg':''} ${isViolation?'violation':''}" id="card-${domId}">
       <div class="appt-number">#${a.routeStop != null ? a.routeStop : i + 1}</div>
@@ -6291,12 +6503,18 @@ function renderApptCard(a, i) {
             <span class="ghl-cal-time-hint" title="Starttijd in GHL (ter referentie)"> ${a.estimated ? '~' : ''}${a.timeSlot}</span>
           </div>
           <div class="appt-actions">
+            <div class="appt-actions__icons">
             ${a.phone ? `<a class="icon-btn appt-action-icon" href="tel:${a.phone}" title="Bellen">${APPT_ACTION_SVG.phone}</a>` : ''}
             ${a.mapsLink ? `<a class="icon-btn appt-action-icon" href="${a.mapsLink}" target="_blank" rel="noopener noreferrer" title="Maps">${APPT_ACTION_SVG.map}</a>` : ''}
             ${a.ghlUrl ? `<a class="icon-btn appt-action-icon" href="${a.ghlUrl}"${a.ghlAppUrl ? ` data-ghl-app="${escapeHtml(a.ghlAppUrl)}" onclick="return hkOpenGhlContact(event,this)"` : ''} target="_blank" rel="noopener noreferrer" title="Open in GHL">${APPT_ACTION_SVG.link}</a>` : ''}
             ${isDone ? `<button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentDetailsModal(${idQ})' title="Bekijk details">${APPT_ACTION_SVG.eye}</button>` : ''}
             <button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">${APPT_ACTION_SVG.pencil}</button>
             <button type="button" class="icon-btn appt-action-icon" onclick='deleteAppt(${idQ})' title="Verwijderen">${APPT_ACTION_SVG.close}</button>
+            </div>
+            <div class="appt-actions__mobile">
+              <button type="button" class="icon-btn appt-action-icon appt-actions__menu-btn" id="mob-menu-btn-${domId}" aria-label="Meer acties" aria-expanded="false" aria-haspopup="true" aria-controls="mob-menu-${domId}" onclick="toggleMobileApptActionMenu(event,'${domId}')">${APPT_MOBILE_MENU_KEBAB_SVG}</button>
+              <div class="appt-actions__dropdown" id="mob-menu-${domId}" role="menu" aria-labelledby="mob-menu-btn-${domId}">${mobileMenuRows.join('')}</div>
+            </div>
           </div>
         </div>
         ${(() => {
@@ -7745,6 +7963,37 @@ async function doLogin() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  try {
+    const mqMobileCard = window.matchMedia('(max-width: 639px)');
+    let plannerMobileCardLayoutLogged = mqMobileCard.matches;
+    if (plannerMobileCardLayoutLogged) {
+      console.info('[planner] mobile_layout_variant_applied', JSON.stringify({ breakpoint: 'max639' }));
+    }
+    const onMqMobileCard = () => {
+      if (!mqMobileCard.matches) {
+        closeMobileApptActionMenus();
+        plannerMobileCardLayoutLogged = false;
+        return;
+      }
+      if (!plannerMobileCardLayoutLogged) {
+        plannerMobileCardLayoutLogged = true;
+        console.info('[planner] mobile_layout_variant_applied', JSON.stringify({ breakpoint: 'max639' }));
+      }
+    };
+    if (mqMobileCard.addEventListener) mqMobileCard.addEventListener('change', onMqMobileCard);
+    else mqMobileCard.addListener(onMqMobileCard);
+  } catch (_) {}
+
+  document.addEventListener(
+    'click',
+    (e) => {
+      if (!window.matchMedia?.('(max-width: 639px)')?.matches) return;
+      if (e.target.closest?.('.appt-actions__mobile')) return;
+      closeMobileApptActionMenus();
+    },
+    true
+  );
+
   const lp = document.getElementById('loginPass');
   if (lp) lp.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
   if (window.HKPlannerCatalogV1?.init) {
@@ -7765,6 +8014,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
+    closeMobileApptActionMenus();
     const wrap = document.getElementById('globalSearchWrap');
     if (wrap && wrap.classList.contains('global-search--open')) {
       collapseGlobalSearchDock();
