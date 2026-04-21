@@ -396,6 +396,17 @@
     const modeAtSaveStart = modalMode;
 
     const form = collectFormValues();
+    if (typeof ctx.guardRouteMutation === 'function') {
+      const allowed = ctx.guardRouteMutation(
+        String(form.date || ''),
+        'save',
+        'route_locked_prevents_manual_appointment_save'
+      );
+      if (!allowed) {
+        showToast('Route is bevestigd. Ontgrendel eerst om de volgorde te wijzigen.', 'info');
+        return;
+      }
+    }
     const overlay = document.getElementById('modalOverlay');
     const addrInputEl = document.getElementById('mAddress');
     const editMeta =

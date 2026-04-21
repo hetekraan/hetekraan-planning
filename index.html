@@ -5152,6 +5152,8 @@ function createPlannerCtx() {
     setConfirmedRouteOrder: (dateStr, contactIdsOrder) => saveConfirmedRouteOrder(dateStr, contactIdsOrder),
     clearConfirmedRouteOrder: (dateStr) => clearConfirmedRouteOrder(dateStr),
     isRouteOperationalLocked: (dateStr) => isRouteOperationalLockedForDate(dateStr),
+    guardRouteMutation: (dateStr, mutationAction, fallbackReason) =>
+      guardRouteMutationForDate(dateStr, mutationAction, fallbackReason),
     syncCentralRouteLock: (dateStr, routeLock, storeConfigured) =>
       syncCentralRouteLockState(dateStr, routeLock, storeConfigured),
     saveRouteOperationalLock: (dateStr, payload) => {
@@ -5403,6 +5405,37 @@ function logRouteOrder(event, payload) {
   } catch (_) {}
 }
 
+function currentPlannerIdentity() {
+  return String(readPlannerUsernameRaw() || localStorage.getItem('hk_user') || '').trim() || null;
+}
+
+function guardRouteMutationForDate(dateStr, mutationAction, fallbackReason) {
+  const ds = String(dateStr || '').trim();
+  const locked = !!ds && isRouteOperationalLockedForDate(ds);
+  logRouteOrder('route_order_mutation_attempt', {
+    routeDate: ds,
+    mutationAction: mutationAction || 'other',
+    wasRouteLocked: locked,
+    userName: currentPlannerIdentity(),
+    sourceOfTruth: locked ? 'confirmed_route_lock' : 'unlocked_route',
+  });
+  if (!locked) return true;
+  logRouteOrder('route_order_mutation_blocked', {
+    routeDate: ds,
+    mutationAction: mutationAction || 'other',
+    wasRouteLocked: true,
+    fallbackReason: fallbackReason || 'unlock_required',
+    userName: currentPlannerIdentity(),
+  });
+  logRouteOrder('route_order_unlock_required', {
+    routeDate: ds,
+    mutationAction: mutationAction || 'other',
+    wasRouteLocked: true,
+    userName: currentPlannerIdentity(),
+  });
+  return false;
+}
+
 function isRouteOperationalLockedForDate(dateStr) {
   const srv = getServerRouteLock(dateStr);
   if (srv && srv.locked === true) return true;
@@ -5427,6 +5460,12 @@ function syncCentralRouteLockState(dateStr, routeLock, storeConfigured) {
         routeLock.internalFixedStartByContactId && typeof routeLock.internalFixedStartByContactId === 'object'
           ? routeLock.internalFixedStartByContactId
           : undefined;
+      logRouteOrder('route_lock_loaded', {
+        routeDate: ds,
+        sourceOfTruth: 'server_route_lock',
+        wasRouteLocked: true,
+        confirmedOrderIds: order,
+      });
       serverRouteLockByDate.set(ds, {
         ...routeLock,
         orderContactIds: order,
@@ -5445,11 +5484,35 @@ function syncCentralRouteLockState(dateStr, routeLock, storeConfigured) {
           : {}),
       });
       if (order.length) saveConfirmedRouteOrder(ds, order);
+      logRouteOrder('route_lock_applied', {
+        routeDate: ds,
+        sourceOfTruth: 'server_route_lock',
+        wasRouteLocked: true,
+        confirmedOrderIds: order,
+      });
       return;
     }
-    serverRouteLockByDate.set(ds, { locked: false, updatedAt: Date.now() });
-    window.HKPlannerRouteSnapshot?.clearRouteOperationalLock?.({ dateStr: ds, routeSnapshotKey });
-    clearConfirmedRouteOrder(ds);
+    const localLock = window.HKPlannerRouteSnapshot?.readRouteOperationalLock?.({ dateStr: ds, routeSnapshotKey });
+    const localConfirmed = readConfirmedRouteOrder(ds);
+    serverRouteLockByDate.set(ds, { locked: false, updatedAt: Date.now(), missingFromServer: true });
+    logRouteOrder('route_lock_missing', {
+      routeDate: ds,
+      sourceOfTruth: 'server_route_lock',
+      wasRouteLocked: false,
+      confirmedOrderIds: localConfirmed,
+      fallbackReason: 'route_lock_missing_with_central_store_enabled',
+      localLockPresent: !!(localLock && localLock.locked === true),
+    });
+    if (localLock?.locked || localConfirmed.length) {
+      logRouteOrder('route_lock_applied', {
+        routeDate: ds,
+        sourceOfTruth: localLock?.locked ? 'local_route_operational_lock' : 'local_confirmed_route_order',
+        wasRouteLocked: true,
+        confirmedOrderIds: localLock?.orderContactIds?.length ? localLock.orderContactIds : localConfirmed,
+        fallbackReason: 'server_lock_missing_keep_local_lock',
+      });
+      return;
+    }
     return;
   }
   // Geen centrale store => bestaande lokale lock blijft fallback.
@@ -5700,12 +5763,13 @@ function applyRouteSnapshot(dateStr) {
     const canonLoaded = loadedOrderIds.slice(0, sourceOrder.length);
     const mismatch = canonLoaded.join('|') !== sourceOrder.join('|');
     if (mismatch) {
-      logRouteOrder('route_order_mismatch', {
+      logRouteOrder('route_order_mismatch_after_confirm', {
         routeDate: String(dateStr || ''),
         sourceOfTruth,
         confirmedOrderIds: sourceOrder,
         loadedOrderIds,
         fallbackReason: 'apply_order_result_differs',
+        wasRouteLocked: true,
       });
     }
   }
@@ -5739,8 +5803,38 @@ function getRouteStopsForSidebar() {
     }
     return ordered;
   }
+  const active = appointments.filter((a) => a?.fullAddressLine && a?.status !== 'klaar');
   if (routeLockRedisStoreConfigured === true) {
-    const active = appointments.filter((a) => a?.fullAddressLine && a?.status !== 'klaar');
+    const localConfirmed = readConfirmedRouteOrder(dateStr);
+    if (localConfirmed.length) {
+      const byContact = Object.fromEntries(active.filter((a) => a?.contactId).map((a) => [String(a.contactId), a]));
+      const used = new Set();
+      const ordered = [];
+      for (const contactId of localConfirmed) {
+        const k = String(contactId || '').trim();
+        if (!k || used.has(k)) continue;
+        const hit = byContact[k];
+        if (!hit) continue;
+        ordered.push(hit);
+        used.add(k);
+      }
+      for (const a of active) {
+        const k = a?.contactId ? String(a.contactId).trim() : '';
+        if (!k || !used.has(k)) {
+          ordered.push(a);
+          if (k) used.add(k);
+        }
+      }
+      logRouteOrder('route_lock_applied', {
+        routeDate: dateStr,
+        sourceOfTruth: 'local_confirmed_route_order',
+        wasRouteLocked: true,
+        confirmedOrderIds: localConfirmed,
+        loadedOrderIds: routeOrderIdsFromAppointments(ordered),
+        fallbackReason: 'central_lock_missing_use_local_confirmed_order',
+      });
+      return ordered;
+    }
     const fallback = [...active].sort(
       (a, b) =>
         (a?.dayPart ?? 0) - (b?.dayPart ?? 0) ||

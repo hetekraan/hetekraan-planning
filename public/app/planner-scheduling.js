@@ -6,6 +6,13 @@
    */
   async function optimizeRoute(ctx) {
     const dateStr = ctx.getDateStr(ctx.getCurrentDate());
+    if (typeof ctx.guardRouteMutation === 'function') {
+      const allowed = ctx.guardRouteMutation(dateStr, 'optimize', 'route_locked_prevents_optimize');
+      if (!allowed) {
+        ctx.showToast('Route is bevestigd. Ontgrendel eerst om de volgorde te wijzigen.', 'info');
+        return;
+      }
+    }
     if (typeof ctx.isRouteOperationalLocked === 'function' && ctx.isRouteOperationalLocked(dateStr)) {
       ctx.showToast('Route is vergrendeld na “Bevestig route”. Ontgrendel eerst (🔓).', 'info');
       return;
@@ -157,6 +164,14 @@
     if (confirmReschedule._inFlight) return;
     const a = ctx.findAppointmentById(ctx.getRescheduleId());
     if (!a) return;
+    const routeDate = ctx.getDateStr(ctx.getCurrentDate());
+    if (typeof ctx.guardRouteMutation === 'function') {
+      const allowed = ctx.guardRouteMutation(routeDate, 'other', 'route_locked_prevents_reschedule');
+      if (!allowed) {
+        ctx.showToast('Route is bevestigd. Ontgrendel eerst om de volgorde te wijzigen.', 'info');
+        return;
+      }
+    }
     const newDate = document.getElementById('rDate')?.value;
     const slotKeyRaw = document.getElementById('rSlot')?.value;
     const slotConfig = window.HKPlannerUtils?.getPlannerSlotConfig

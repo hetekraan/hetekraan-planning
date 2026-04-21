@@ -21,6 +21,14 @@
     const a = findAppointmentById(rid);
     closeRescheduleModal();
     if (!a) return;
+    const routeDate = getDateStr(getCurrentDate());
+    if (typeof ctx.guardRouteMutation === 'function') {
+      const allowed = ctx.guardRouteMutation(routeDate, 'delete', 'route_locked_prevents_delete');
+      if (!allowed) {
+        showToast('Route is bevestigd. Ontgrendel eerst om de volgorde te wijzigen.', 'info');
+        return;
+      }
+    }
     showToast('⏳ Boeking verwijderen en GHL reset…', 'loading');
     if (!a.contactId) {
       setAppointments(getAppointmentsRef().filter((x) => String(x.id) !== String(a.id)));
@@ -34,7 +42,7 @@
         headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
         body: JSON.stringify({
           contactId: a.contactId,
-          routeDate: getDateStr(getCurrentDate()),
+          routeDate,
           rowId: a.id,
           isSyntheticB1: !!a.isSyntheticBlockBooking,
           isCalBlock: !!a.isCalBlock,
