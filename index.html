@@ -7503,20 +7503,38 @@ function plannerPricePanelActiveElementSnapshot() {
   };
 }
 
-function runPriceActionTelemetry(id, actionType, renderScope, domUpdateFn, updateFunctionName) {
+function runPriceActionTelemetry(id, actionType, renderScope, domUpdateFn, updateFunctionName, options = {}) {
   const appointmentId = String(id);
   const beforeY = plannerSnapshotScrollY();
   const mobile = plannerIsMobileViewport639();
   const activeBefore = plannerPricePanelActiveElementSnapshot();
+  const usedScrollIntoView = options.usedScrollIntoView === true;
+  const functionName = String(options.functionName || updateFunctionName || '').trim() || null;
   try {
     console.info('[planner] price_action_clicked', JSON.stringify({ appointmentId, actionType, mobile }));
     console.info(
       '[planner] price_action_before_scroll',
-      JSON.stringify({ appointmentId, actionType, mobile, scrollYBefore: beforeY, activeElement: activeBefore })
+      JSON.stringify({
+        appointmentId,
+        actionType,
+        mobile,
+        scrollYBefore: beforeY,
+        activeElement: activeBefore,
+        usedScrollIntoView,
+        functionName,
+      })
     );
     console.info(
       '[planner] price_action_render_scope',
-      JSON.stringify({ appointmentId, actionType, mobile, renderScope, updateFunction: updateFunctionName })
+      JSON.stringify({
+        appointmentId,
+        actionType,
+        mobile,
+        renderScope,
+        updateFunction: updateFunctionName,
+        functionName,
+        usedScrollIntoView,
+      })
     );
   } catch (_) {}
 
@@ -7537,6 +7555,8 @@ function runPriceActionTelemetry(id, actionType, renderScope, domUpdateFn, updat
         scrollYAfterDomUpdate: afterY,
         renderScope: afterScope,
         updateFunction: updateFunctionName,
+        functionName,
+        usedScrollIntoView,
       })
     );
     console.info(
@@ -7548,6 +7568,8 @@ function runPriceActionTelemetry(id, actionType, renderScope, domUpdateFn, updat
         activeElement: plannerPricePanelActiveElementSnapshot(),
         renderScope: afterScope,
         updateFunction: updateFunctionName,
+        functionName,
+        usedScrollIntoView,
       })
     );
   } catch (_) {}
@@ -7568,6 +7590,8 @@ function runPriceActionTelemetry(id, actionType, renderScope, domUpdateFn, updat
             scrollYAfter: y,
             renderScope: afterScope,
             updateFunction: updateFunctionName,
+            functionName,
+            usedScrollIntoView,
           })
         );
       } catch (_) {}
@@ -7586,6 +7610,8 @@ function runPriceActionTelemetry(id, actionType, renderScope, domUpdateFn, updat
             deltaY: delta,
             renderScope: afterScope,
             updateFunction: updateFunctionName,
+            functionName,
+            usedScrollIntoView,
           })
         );
       } catch (_) {}
@@ -7602,6 +7628,8 @@ function runPriceActionTelemetry(id, actionType, renderScope, domUpdateFn, updat
               scrollYTarget: beforeY,
               renderScope: afterScope,
               updateFunction: updateFunctionName,
+              functionName,
+              usedScrollIntoView,
             })
           );
         } catch (_) {}
@@ -7610,6 +7638,146 @@ function runPriceActionTelemetry(id, actionType, renderScope, domUpdateFn, updat
   };
   sample(150);
   sample(300);
+  return result;
+}
+
+async function runPriceActionTelemetryAsync(id, actionType, renderScope, asyncActionFn, functionName, options = {}) {
+  const appointmentId = String(id);
+  const beforeY = plannerSnapshotScrollY();
+  const mobile = plannerIsMobileViewport639();
+  const activeBefore = plannerPricePanelActiveElementSnapshot();
+  const usedScrollIntoView = options.usedScrollIntoView === true;
+  const fnName = String(functionName || '').trim() || null;
+  try {
+    console.info('[planner] price_action_clicked', JSON.stringify({ appointmentId, actionType, mobile }));
+    console.info(
+      '[planner] price_action_before_scroll',
+      JSON.stringify({
+        appointmentId,
+        actionType,
+        mobile,
+        scrollYBefore: beforeY,
+        activeElement: activeBefore,
+        usedScrollIntoView,
+        functionName: fnName,
+      })
+    );
+    console.info(
+      '[planner] price_action_render_scope',
+      JSON.stringify({
+        appointmentId,
+        actionType,
+        mobile,
+        renderScope,
+        updateFunction: functionName,
+        functionName: fnName,
+        usedScrollIntoView,
+      })
+    );
+  } catch (_) {}
+  let out = null;
+  let thrown = null;
+  try {
+    out = await asyncActionFn();
+  } catch (err) {
+    thrown = err;
+  }
+  const afterY = plannerSnapshotScrollY();
+  try {
+    console.info(
+      '[planner] price_action_after_dom_update',
+      JSON.stringify({
+        appointmentId,
+        actionType,
+        mobile,
+        scrollYBefore: beforeY,
+        scrollYAfterDomUpdate: afterY,
+        renderScope,
+        updateFunction: functionName,
+        functionName: fnName,
+        usedScrollIntoView,
+      })
+    );
+    console.info(
+      '[planner] price_action_focus_target',
+      JSON.stringify({
+        appointmentId,
+        actionType,
+        mobile,
+        activeElement: plannerPricePanelActiveElementSnapshot(),
+        renderScope,
+        updateFunction: functionName,
+        functionName: fnName,
+        usedScrollIntoView,
+      })
+    );
+  } catch (_) {}
+  let restored = false;
+  const sample = (delayMs) => {
+    setTimeout(() => {
+      const y = plannerSnapshotScrollY();
+      const phase = delayMs === 150 ? 't150' : 't300';
+      try {
+        console.info(
+          `[planner] price_action_after_${phase}`,
+          JSON.stringify({
+            appointmentId,
+            actionType,
+            mobile,
+            scrollYBefore: beforeY,
+            scrollYAfter: y,
+            renderScope,
+            updateFunction: functionName,
+            functionName: fnName,
+            usedScrollIntoView,
+          })
+        );
+      } catch (_) {}
+      const delta = Math.abs(y - beforeY);
+      if (delta <= 12) return;
+      try {
+        console.warn(
+          '[planner] price_action_scroll_jump_detected',
+          JSON.stringify({
+            appointmentId,
+            actionType,
+            mobile,
+            phase,
+            scrollYBefore: beforeY,
+            scrollYAfter: y,
+            deltaY: delta,
+            renderScope,
+            updateFunction: functionName,
+            functionName: fnName,
+            usedScrollIntoView,
+          })
+        );
+      } catch (_) {}
+      if (delayMs === 300 && mobile && !restored) {
+        restored = true;
+        window.scrollTo({ top: beforeY, behavior: 'auto' });
+        try {
+          console.info(
+            '[planner] price_action_scroll_restored',
+            JSON.stringify({
+              appointmentId,
+              actionType,
+              mobile,
+              scrollYTarget: beforeY,
+              renderScope,
+              updateFunction: functionName,
+              functionName: fnName,
+              usedScrollIntoView,
+            })
+          );
+        } catch (_) {}
+      }
+    }, delayMs);
+  };
+  sample(150);
+  sample(300);
+  if (thrown) throw thrown;
+  return out;
 }
 
 /**
@@ -7724,8 +7892,18 @@ async function onderwegJaStuur() {
   a.priceVisible = false;
   closeOnderwegModal();
   showToast(`📱 ETA doorgegeven — WhatsApp gaat via GHL-workflow (${result.workflowTag || 'monteur-eta'})`, 'success');
-  render();
-  setTimeout(() => scrollToPrijs(a.id), 80);
+  runPriceActionTelemetry(
+    a.id,
+    'onderweg_yes',
+    'full render',
+    () => {
+      render();
+      if (!plannerIsMobileViewport639()) setTimeout(() => scrollToPrijs(a.id), 80);
+      return { renderScope: 'full render' };
+    },
+    'onderwegJaStuur',
+    { usedScrollIntoView: !plannerIsMobileViewport639(), functionName: 'onderwegJaStuur' }
+  );
 }
 
 function onderwegJeenBericht() {
@@ -7734,8 +7912,18 @@ function onderwegJeenBericht() {
   a.status = 'onderweg';
   a.priceVisible = false;
   closeOnderwegModal();
-  render();
-  setTimeout(() => scrollToPrijs(a.id), 80);
+  runPriceActionTelemetry(
+    a.id,
+    'onderweg_no',
+    'full render',
+    () => {
+      render();
+      if (!plannerIsMobileViewport639()) setTimeout(() => scrollToPrijs(a.id), 80);
+      return { renderScope: 'full render' };
+    },
+    'onderwegJeenBericht',
+    { usedScrollIntoView: !plannerIsMobileViewport639(), functionName: 'onderwegJeenBericht' }
+  );
 }
 
 function toggleOnderweg(id) {
@@ -7745,12 +7933,39 @@ function toggleOnderweg(id) {
   if (a.status === 'onderweg') {
     // Klaar knop → open complete bar als die al niet open is
     a.priceVisible = false;
-    render();
-    setTimeout(() => scrollToPrijs(id), 80);
+    runPriceActionTelemetry(
+      id,
+      'other',
+      'full render',
+      () => {
+        render();
+        if (!plannerIsMobileViewport639()) setTimeout(() => scrollToPrijs(id), 80);
+        return { renderScope: 'full render' };
+      },
+      'toggleOnderweg',
+      { usedScrollIntoView: !plannerIsMobileViewport639(), functionName: 'toggleOnderweg' }
+    );
   }
 }
 
 function scrollToPrijs(id) {
+  if (plannerIsMobileViewport639()) {
+    try {
+      console.info(
+        '[planner] price_action_render_scope',
+        JSON.stringify({
+          appointmentId: String(id),
+          actionType: 'other',
+          mobile: true,
+          renderScope: 'none',
+          usedScrollIntoView: false,
+          functionName: 'scrollToPrijs_mobile_blocked',
+          updateFunction: 'scrollToPrijs_mobile_blocked',
+        })
+      );
+    } catch (_) {}
+    return;
+  }
   const el = document.getElementById('price-' + appointmentDomSafeId(id));
   if (el) {
     try {
@@ -8131,15 +8346,27 @@ async function confirmDone(id) {
       })
     );
   } catch (_) {}
-  runPriceActionTelemetry(id, 'complete', 'full render', () => ({ renderScope: 'full render' }), 'confirmDone');
-  return window.HKPlannerActions.confirmDone(ctx, id);
+  return runPriceActionTelemetryAsync(
+    id,
+    'complete',
+    'full render',
+    () => window.HKPlannerActions.confirmDone(ctx, id),
+    'confirmDone',
+    { usedScrollIntoView: false, functionName: 'confirmDone' }
+  );
 }
 
 async function retryInvoiceForDone(id, btnEl) {
   const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
   if (!window.HKPlannerActions?.retryInvoiceForDone) return;
-  runPriceActionTelemetry(id, 'save', 'full render', () => ({ renderScope: 'full render' }), 'retryInvoiceForDone');
-  return window.HKPlannerActions.retryInvoiceForDone(ctx, id, btnEl || null);
+  return runPriceActionTelemetryAsync(
+    id,
+    'retry_invoice',
+    'full render',
+    () => window.HKPlannerActions.retryInvoiceForDone(ctx, id, btnEl || null),
+    'retryInvoiceForDone',
+    { usedScrollIntoView: false, functionName: 'retryInvoiceForDone' }
+  );
 }
 
 /**
