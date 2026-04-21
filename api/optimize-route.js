@@ -77,6 +77,12 @@ function roundUpQuarter(m) {
   return Math.ceil(m / 15) * 15;
 }
 
+function logFixedTime(event, payload) {
+  try {
+    console.info(`[planner] ${event}`, JSON.stringify(payload || {}));
+  } catch (_) {}
+}
+
 /**
  * @typedef {{ initialClockMinutes: number, pinFirstMorningCustomer: boolean }} ScheduleOpts
  */
@@ -98,13 +104,55 @@ function calcETAs(order, travel, timeWindows, jobDurations, appointments, opts) 
     let eta;
     if (internalPin) {
       const earliest = roundUpQuarter(Math.max(currentTime + travelMin, tw?.start ?? 0));
+      const apptId = appointments?.[i]?.id != null ? String(appointments[i].id) : null;
+      const routeDate = String(appointments?.[i]?.routeDate || '');
+      logFixedTime('fixed_time_constraint_interpreted', {
+        appointmentId: apptId,
+        routeDate: routeDate || null,
+        fixedTime: minutesToTime(internalPin.minutes),
+        interpretedAs: 'arrival',
+        travelMinutesFromDepot: step === 0 ? travelMin : null,
+      });
       if (internalPin.type === 'exact') {
+        if (step === 0 && earliest > internalPin.minutes) {
+          const depBack = internalPin.minutes - travelMin;
+          logFixedTime('fixed_time_feasibility_incorrect_departure_mode', {
+            appointmentId: apptId,
+            routeDate: routeDate || null,
+            fixedTime: minutesToTime(internalPin.minutes),
+            interpretedAs: 'arrival',
+            travelMinutesFromDepot: travelMin,
+            computedDepartureFromDepot: minutesToTime(Math.max(depBack, 0)),
+            computedArrivalAtStop: minutesToTime(internalPin.minutes),
+            feasibilityResult: depBack >= 0 ? 'corrected_with_backward_departure' : 'failed_departure_before_midnight',
+          });
+          if (depBack >= 0) {
+            logFixedTime('fixed_time_backward_departure_computed', {
+              appointmentId: apptId,
+              routeDate: routeDate || null,
+              fixedTime: minutesToTime(internalPin.minutes),
+              interpretedAs: 'arrival',
+              travelMinutesFromDepot: travelMin,
+              computedDepartureFromDepot: minutesToTime(depBack),
+              computedArrivalAtStop: minutesToTime(internalPin.minutes),
+              feasibilityResult: 'ok',
+            });
+          }
+        }
         eta = internalPin.minutes;
       } else if (internalPin.type === 'after') {
         eta = Math.max(earliest, internalPin.minutes);
       } else {
         eta = earliest;
       }
+      logFixedTime('fixed_time_arrival_constraint_applied', {
+        appointmentId: apptId,
+        routeDate: routeDate || null,
+        fixedTime: minutesToTime(internalPin.minutes),
+        interpretedAs: 'arrival',
+        travelMinutesFromDepot: step === 0 ? travelMin : null,
+        computedArrivalAtStop: minutesToTime(eta),
+      });
     } else if (pinFirst && step === 0 && isMorningStopForFirstCustomerPin(appointments[i], tw)) {
       eta = firstMorningCustomerArrivalMinutes(tw);
     } else {
@@ -375,8 +423,90 @@ async function optimizeSubsetMatrixWithInternalPins({ key, origin, appointments,
     const tm = travelFromCursor(localIdx);
     legInfo.push({ durationSeconds: tm * 60 });
     const earliest = roundUpQuarter(cursorTime + tm);
+    const appt = appointments[localIdx] || {};
+    const appointmentId = appt?.id != null ? String(appt.id) : null;
+    const routeDate = String(appt?.routeDate || '');
+    logFixedTime('fixed_time_constraint_interpreted', {
+      appointmentId,
+      routeDate: routeDate || null,
+      fixedTime: minutesToTime(forcedMin),
+      interpretedAs: 'arrival',
+      travelMinutesFromDepot: order.length === 0 ? tm : null,
+    });
     if (mode === 'exact') {
+      if (order.length === 0) {
+        const depBack = forcedMin - tm;
+        logFixedTime('fixed_time_backward_departure_computed', {
+          appointmentId,
+          routeDate: routeDate || null,
+          fixedTime: minutesToTime(forcedMin),
+          interpretedAs: 'arrival',
+          travelMinutesFromDepot: tm,
+          computedDepartureFromDepot: depBack >= 0 ? minutesToTime(depBack) : null,
+          computedArrivalAtStop: minutesToTime(forcedMin),
+          feasibilityResult: depBack >= 0 ? 'ok' : 'departure_before_midnight',
+        });
+        if (depBack >= 0 && earliest > forcedMin) {
+          logFixedTime('fixed_time_feasibility_incorrect_departure_mode', {
+            appointmentId,
+            routeDate: routeDate || null,
+            fixedTime: minutesToTime(forcedMin),
+            interpretedAs: 'arrival',
+            travelMinutesFromDepot: tm,
+            computedDepartureFromDepot: minutesToTime(depBack),
+            computedArrivalAtStop: minutesToTime(forcedMin),
+            feasibilityResult: 'corrected_with_backward_departure',
+          });
+        }
+        if (depBack < 0) {
+          logFixedTime('fixed_time_feasibility_check', {
+            appointmentId,
+            routeDate: routeDate || null,
+            fixedTime: minutesToTime(forcedMin),
+            interpretedAs: 'arrival',
+            travelMinutesFromDepot: tm,
+            computedDepartureFromDepot: null,
+            computedArrivalAtStop: minutesToTime(forcedMin),
+            feasibilityResult: 'impossible_departure_before_midnight',
+          });
+          return `Intern vaste start ${minutesToTime(forcedMin)} niet haalbaar: vertrek vanaf depot zou vóór 00:00 moeten zijn.`;
+        }
+        order.push(localIdx);
+        etasMin.push(forcedMin);
+        cursorTime = forcedMin + jobDurations[localIdx];
+        cursorMatrixIdx = localIdx + 1;
+        remaining.delete(localIdx);
+        logFixedTime('fixed_time_arrival_constraint_applied', {
+          appointmentId,
+          routeDate: routeDate || null,
+          fixedTime: minutesToTime(forcedMin),
+          interpretedAs: 'arrival',
+          travelMinutesFromDepot: tm,
+          computedArrivalAtStop: minutesToTime(forcedMin),
+        });
+        logFixedTime('fixed_time_feasibility_check', {
+          appointmentId,
+          routeDate: routeDate || null,
+          fixedTime: minutesToTime(forcedMin),
+          interpretedAs: 'arrival',
+          travelMinutesFromDepot: tm,
+          computedDepartureFromDepot: minutesToTime(depBack),
+          computedArrivalAtStop: minutesToTime(forcedMin),
+          feasibilityResult: 'ok',
+        });
+        return null;
+      }
       if (earliest > forcedMin) {
+        logFixedTime('fixed_time_feasibility_check', {
+          appointmentId,
+          routeDate: routeDate || null,
+          fixedTime: minutesToTime(forcedMin),
+          interpretedAs: 'arrival',
+          travelMinutesFromDepot: null,
+          computedDepartureFromDepot: null,
+          computedArrivalAtStop: minutesToTime(earliest),
+          feasibilityResult: 'failed_travel_after_previous_stop',
+        });
         return `Intern vaste start ${minutesToTime(forcedMin)} niet haalbaar: vroegste aankomst ~${minutesToTime(earliest)} (reistijd).`;
       }
       order.push(localIdx);
@@ -384,6 +514,24 @@ async function optimizeSubsetMatrixWithInternalPins({ key, origin, appointments,
       cursorTime = forcedMin + jobDurations[localIdx];
       cursorMatrixIdx = localIdx + 1;
       remaining.delete(localIdx);
+      logFixedTime('fixed_time_arrival_constraint_applied', {
+        appointmentId,
+        routeDate: routeDate || null,
+        fixedTime: minutesToTime(forcedMin),
+        interpretedAs: 'arrival',
+        travelMinutesFromDepot: null,
+        computedArrivalAtStop: minutesToTime(forcedMin),
+      });
+      logFixedTime('fixed_time_feasibility_check', {
+        appointmentId,
+        routeDate: routeDate || null,
+        fixedTime: minutesToTime(forcedMin),
+        interpretedAs: 'arrival',
+        travelMinutesFromDepot: null,
+        computedDepartureFromDepot: null,
+        computedArrivalAtStop: minutesToTime(forcedMin),
+        feasibilityResult: 'ok',
+      });
       return null;
     }
     if (mode === 'after') {
