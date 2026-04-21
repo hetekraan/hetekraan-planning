@@ -3391,6 +3391,55 @@ export default async function handler(req, res) {
         if (!Array.isArray(routeTimes) || routeTimes.length === 0) {
           return res.status(400).json({ error: 'routeTimes array vereist' });
         }
+        let routeLockSaved = false;
+        let routeLockState = null;
+        if (routeLock && typeof routeLock === 'object') {
+          const lockDate = normalizeYyyyMmDdInput(String(routeLock.dateStr || ''));
+          if (!lockDate) {
+            return res.status(400).json({ error: 'routeLock.dateStr vereist (YYYY-MM-DD)' });
+          }
+          if (!isRouteLockStoreConfigured()) {
+            return res.status(503).json({
+              error:
+                'Route-lock gebruikt Upstash Redis. Zet UPSTASH_REDIS_REST_URL en UPSTASH_REDIS_REST_TOKEN op Vercel.',
+              code: 'NO_ROUTE_LOCK_STORE',
+            });
+          }
+          console.info('[planner] route_lock_write_started', JSON.stringify({
+            routeDate: lockDate,
+            expectedRevision: routeLock.expectedRevision ?? null,
+            locked: routeLock.locked === true,
+            orderLen: Array.isArray(routeLock.orderContactIds) ? routeLock.orderContactIds.length : 0,
+          }));
+          const lockWrite = await setRouteLock(locConfigured, lockDate, routeLock);
+          if (!lockWrite.ok && lockWrite.code === 'REVISION_CONFLICT') {
+            console.warn('[planner] route_lock_revision_conflict', JSON.stringify({
+              routeDate: lockDate,
+              expectedRevision: routeLock.expectedRevision ?? null,
+              currentRevision: lockWrite.currentLock?.revision ?? null,
+            }));
+            return res.status(409).json({
+              error: 'Route is intussen gewijzigd, laad opnieuw.',
+              code: 'ROUTE_LOCK_REVISION_CONFLICT',
+              currentLock: lockWrite.currentLock || null,
+            });
+          }
+          if (!lockWrite.ok) {
+            console.error('[planner] route_lock_write_failed', JSON.stringify({
+              routeDate: lockDate,
+              code: lockWrite.code || 'ROUTE_LOCK_SAVE_FAILED',
+            }));
+            return res.status(400).json({ error: 'Kon route-lock niet opslaan', code: lockWrite.code || 'ROUTE_LOCK_SAVE_FAILED' });
+          }
+          routeLockSaved = true;
+          routeLockState = lockWrite.lock;
+          console.info('[planner] route_lock_write_committed', JSON.stringify({
+            routeDate: lockDate,
+            revision: routeLockState?.revision ?? null,
+            orderChecksum: routeLockState?.orderChecksum || null,
+            locked: !!routeLockState?.locked,
+          }));
+        }
         const results = [];
         const calendarErrors = [];
         let calendarSynced = 0;
@@ -3433,32 +3482,6 @@ export default async function handler(req, res) {
           }
         }
         console.log(`[saveRouteTimes] ${results.length} contacten bijgewerkt, kalender OK: ${calendarSynced}, fouten: ${calendarErrors.length}`);
-        let routeLockSaved = false;
-        let routeLockState = null;
-        if (routeLock && typeof routeLock === 'object') {
-          const lockDate = normalizeYyyyMmDdInput(String(routeLock.dateStr || ''));
-          if (!lockDate) {
-            return res.status(400).json({ error: 'routeLock.dateStr vereist (YYYY-MM-DD)' });
-          }
-          if (!isRouteLockStoreConfigured()) {
-            return res.status(503).json({
-              error:
-                'Route-lock gebruikt Upstash Redis. Zet UPSTASH_REDIS_REST_URL en UPSTASH_REDIS_REST_TOKEN op Vercel.',
-              code: 'NO_ROUTE_LOCK_STORE',
-            });
-          }
-          const lockWrite = await setRouteLock(locConfigured, lockDate, routeLock);
-          if (!lockWrite.ok) {
-            return res.status(400).json({ error: 'Kon route-lock niet opslaan', code: lockWrite.code || 'ROUTE_LOCK_SAVE_FAILED' });
-          }
-          routeLockSaved = true;
-          routeLockState = lockWrite.lock;
-          console.log('[saveRouteTimes] routeLock saved', {
-            dateStr: lockDate,
-            locked: !!routeLockState?.locked,
-            orderLen: Array.isArray(routeLockState?.orderContactIds) ? routeLockState.orderContactIds.length : 0,
-          });
-        }
         return res.status(200).json({
           success: true,
           saved: results.length,
@@ -3483,13 +3506,41 @@ export default async function handler(req, res) {
         const routeLock = req.body?.routeLock && typeof req.body.routeLock === 'object'
           ? req.body.routeLock
           : { locked: false };
+        console.info('[planner] route_lock_write_started', JSON.stringify({
+          routeDate: dateStr,
+          expectedRevision: routeLock.expectedRevision ?? null,
+          locked: routeLock.locked === true,
+          orderLen: Array.isArray(routeLock.orderContactIds) ? routeLock.orderContactIds.length : 0,
+        }));
         const out = await setRouteLock(locConfigured, dateStr, {
           ...routeLock,
           dateStr,
         });
+        if (!out.ok && out.code === 'REVISION_CONFLICT') {
+          console.warn('[planner] route_lock_revision_conflict', JSON.stringify({
+            routeDate: dateStr,
+            expectedRevision: routeLock.expectedRevision ?? null,
+            currentRevision: out.currentLock?.revision ?? null,
+          }));
+          return res.status(409).json({
+            error: 'Route is intussen gewijzigd, laad opnieuw.',
+            code: 'ROUTE_LOCK_REVISION_CONFLICT',
+            currentLock: out.currentLock || null,
+          });
+        }
         if (!out.ok) {
+          console.error('[planner] route_lock_write_failed', JSON.stringify({
+            routeDate: dateStr,
+            code: out.code || 'ROUTE_LOCK_SAVE_FAILED',
+          }));
           return res.status(400).json({ error: 'Kon route-lock niet opslaan', code: out.code || 'ROUTE_LOCK_SAVE_FAILED' });
         }
+        console.info('[planner] route_lock_write_committed', JSON.stringify({
+          routeDate: dateStr,
+          revision: out.lock?.revision ?? null,
+          orderChecksum: out.lock?.orderChecksum || null,
+          locked: !!out.lock?.locked,
+        }));
         return res.status(200).json({
           success: true,
           dateStr,

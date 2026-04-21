@@ -130,6 +130,10 @@
             etasByContactId,
             internalFixedStartByContactId,
             updatedBy: plannerUser || 'unknown',
+            expectedRevision:
+              typeof ctx.getRouteLockRevisionForDate === 'function'
+                ? ctx.getRouteLockRevisionForDate(routeDate)
+                : undefined,
           },
         }),
       });
