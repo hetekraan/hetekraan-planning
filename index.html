@@ -6746,7 +6746,11 @@ function renderApptCard(a, i) {
             </div>
           </div>
           <div class="appt-footer-right">
-            ${a.priceLabel ? `<span class="appt-price">${a.priceLabel}</span>` : ''}
+            ${(() => {
+              const total = Math.round(calcTotalPrice(a) * 100) / 100;
+              const txt = total > 0 ? `€${euroDisplay(total)}` : String(a.priceLabel || '').trim();
+              return txt ? `<span class="appt-price" id="appt-price-${domId}">${txt}</span>` : '';
+            })()}
             <div class="appt-footer-actions-touch">
               <div class="appt-footer-cta-row">
                 <button type="button" class="btn-prijs ${barVisible&&!isOnderweg?'active':''}" onclick='togglePrijs(event, ${idQ})' title="Prijsoverzicht bekijken" style="touch-action:manipulation">Prijs</button>
@@ -7578,6 +7582,7 @@ function togglePrijs(evt, id) {
     'card',
     () => {
       a.priceVisible = !a.priceVisible;
+      syncAppointmentCardPriceLabel(id);
       const synced = syncAppointmentPriceBarDom(a);
       if (!synced) {
         render();
@@ -7741,6 +7746,81 @@ function calcTotalPrice(a) {
   return window.HKPlannerPricing.calcTotalPrice(a);
 }
 
+function calcAppointmentExtrasTotal(a) {
+  const extras = Array.isArray(a?.extras) ? a.extras : [];
+  const sum = extras.reduce((acc, row) => {
+    const p = Number(row?.price);
+    return acc + (Number.isFinite(p) ? p : 0);
+  }, 0);
+  return Math.round(sum * 100) / 100;
+}
+
+function syncAppointmentCardPriceLabel(id) {
+  const a = appointments.find((x) => String(x.id) === String(id));
+  if (!a) return;
+  const domId = appointmentDomSafeId(id);
+  const card = document.getElementById('card-' + domId);
+  if (!card) return;
+  const basePrice = Number.isFinite(Number(a.price)) ? Math.round(Number(a.price) * 100) / 100 : 0;
+  const extrasTotal = calcAppointmentExtrasTotal(a);
+  const totalPrice = Math.round(calcTotalPrice(a) * 100) / 100;
+  const rendered = card.querySelector(`#appt-price-${domId}`);
+  const renderedBefore = rendered ? String(rendered.textContent || '').trim() : null;
+  const nextText = totalPrice > 0 ? `€${euroDisplay(totalPrice)}` : '';
+
+  try {
+    console.info(
+      '[planner] price_card_total_before',
+      JSON.stringify({
+        appointmentId: String(id),
+        basePrice,
+        extrasTotal,
+        totalPrice,
+        renderedCardPriceBefore: renderedBefore,
+      })
+    );
+  } catch (_) {}
+
+  if (nextText) {
+    if (rendered) {
+      rendered.textContent = nextText;
+    } else {
+      const right = card.querySelector('.appt-footer-right');
+      if (right) {
+        right.insertAdjacentHTML('afterbegin', `<span class="appt-price" id="appt-price-${domId}">${nextText}</span>`);
+      }
+    }
+  } else if (rendered) {
+    rendered.remove();
+  }
+
+  const renderedAfterEl = card.querySelector(`#appt-price-${domId}`);
+  const renderedAfter = renderedAfterEl ? String(renderedAfterEl.textContent || '').trim() : null;
+  try {
+    console.info(
+      '[planner] price_card_total_after',
+      JSON.stringify({
+        appointmentId: String(id),
+        basePrice,
+        extrasTotal,
+        totalPrice,
+        renderedCardPriceAfter: renderedAfter,
+      })
+    );
+    console.info(
+      '[planner] price_card_total_synced',
+      JSON.stringify({
+        appointmentId: String(id),
+        basePrice,
+        extrasTotal,
+        totalPrice,
+        renderedCardPriceBefore: renderedBefore,
+        renderedCardPriceAfter: renderedAfter,
+      })
+    );
+  } catch (_) {}
+}
+
 function updatePriceTotalLabel(id) {
   const a = appointments.find((x) => String(x.id) === String(id));
   if (!a) return;
@@ -7748,6 +7828,7 @@ function updatePriceTotalLabel(id) {
   const el = document.getElementById(`price-total-amt-${domId}`);
   const total = calcTotalPrice(a);
   if (el) el.textContent = `€${euroDisplay(total)}`;
+  syncAppointmentCardPriceLabel(id);
   if (typeof calcStats === 'function') calcStats();
   try {
     console.info(
