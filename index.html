@@ -1716,6 +1716,29 @@
     width: 100%;
     min-height: 48px;
   }
+  .touch-price-overlay .modal {
+    max-width: 720px;
+  }
+  .touch-price-overlay-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .touch-price-overlay-sub {
+    margin: -6px 0 2px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .touch-price-overlay-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 14px;
+  }
+  .touch-price-overlay-footer > button {
+    min-height: 44px;
+  }
   .btn-cancel {
     background: var(--surface2);
     border: 1px solid var(--border);
@@ -4481,6 +4504,18 @@
   </div>
 </div>
 
+<div class="modal-overlay touch-price-overlay" id="touchPriceOverlay" onclick="if(event.target===this)cancelTouchPriceOverlay()">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="touchPriceOverlayTitle" onclick="event.stopPropagation()">
+    <div class="modal-title" id="touchPriceOverlayTitle">Prijs bewerken</div>
+    <div class="touch-price-overlay-sub" id="touchPriceOverlaySubtitle"></div>
+    <div class="touch-price-overlay-body" id="touchPriceOverlayBody"></div>
+    <div class="touch-price-overlay-footer">
+      <button type="button" class="btn-cancel" onclick="cancelTouchPriceOverlay()">Annuleren</button>
+      <button type="button" class="btn-save" onclick="saveTouchPriceOverlay()">Opslaan</button>
+    </div>
+  </div>
+</div>
+
 <!-- VERPLAATS / VERWIJDER MODAL -->
 <div class="modal-overlay" id="rescheduleOverlay">
   <div class="modal">
@@ -6575,6 +6610,13 @@ const APPT_ACTION_SVG = {
 
 const APPT_MOBILE_MENU_KEBAB_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" class="appt-action-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="5" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="19" r="1.5" fill="currentColor"/></svg>';
+const TOUCH_PRICE_OVERLAY_MAX_WIDTH = 1179;
+const touchPriceOverlayState = {
+  open: false,
+  appointmentId: null,
+  draft: null,
+  scrollYBeforeOpen: 0,
+};
 
 /** Sluit alle compacte mobiele actiemenu’s op afspraakkaarten (breakpoint ≤639px). */
 function closeMobileApptActionMenus() {
@@ -6603,6 +6645,250 @@ function toggleMobileApptActionMenu(ev, domId) {
       console.info('[planner] mobile_card_action_menu_opened', JSON.stringify({ cardId: String(domId || '') }));
     } catch (_) {}
   }
+}
+
+function plannerUsesTouchPriceOverlay() {
+  try {
+    return !!(window.matchMedia && window.matchMedia(`(max-width: ${TOUCH_PRICE_OVERLAY_MAX_WIDTH}px)`).matches);
+  } catch (_) {
+    return false;
+  }
+}
+
+function clonePriceLinesForDraft(lines) {
+  const src = Array.isArray(lines) ? lines : [];
+  return src.map((row) => ({
+    desc: String(row?.desc || ''),
+    price: Number.isFinite(Number(row?.price)) ? Math.max(0, Math.round(Number(row.price) * 100) / 100) : 0,
+  }));
+}
+
+function isTouchPriceOverlayOpenFor(id) {
+  return touchPriceOverlayState.open && String(touchPriceOverlayState.appointmentId) === String(id);
+}
+
+function calcTotalPriceForDraft(a, draft) {
+  const extrasTotal = Array.isArray(draft?.extras)
+    ? draft.extras.reduce((acc, row) => {
+        const p = Number(row?.price);
+        return acc + (Number.isFinite(p) ? p : 0);
+      }, 0)
+    : 0;
+  const base = Number.isFinite(Number(a?.price)) ? Number(a.price) : 0;
+  return Math.round((base + extrasTotal) * 100) / 100;
+}
+
+function buildTouchPriceOverlayInnerHtml(a, draft) {
+  const idQ = JSON.stringify(a.id);
+  const domId = appointmentDomSafeId(a.id);
+  const isDone = a.status === 'klaar';
+  const isOnderweg = a.status === 'onderweg';
+  const extras = Array.isArray(draft?.extras) ? draft.extras : [];
+  const extrasHtml = extras
+    .map(
+      (e, i) => `
+      <div class="extra-item" style="align-items:center">
+        <input class="form-input" type="text" value="${escapePriceAttr(e.desc)}" style="flex:1;min-width:0" inputmode="text" autocomplete="off"
+          oninput='onTouchOverlayExtraDescInput(${idQ},${i},this.value)' />
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+          <span style="font-size:13px;color:var(--muted)">€</span>
+          <input class="form-input price-input" type="number" inputmode="decimal" step="0.01" min="0" value="${Number.isFinite(Number(e.price)) ? e.price : ''}"
+            style="width:88px" placeholder="0"
+            oninput='onTouchOverlayExtraPriceInput(${idQ},${i},this.value)' />
+          <button type="button" class="extra-remove" title="Regel verwijderen" onclick='removeTouchOverlayExtra(${idQ},${i})'>✕</button>
+        </div>
+      </div>`
+    )
+    .join('');
+  const total = calcTotalPriceForDraft(a, draft);
+  return `
+    <div class="complete-row">
+      <label class="review-toggle" onclick='toggleTouchOverlayReview(${idQ})'>
+        <div class="toggle ${draft?.review ? 'on' : ''}"></div>
+        <span>Review mail versturen (morgen)</span>
+      </label>
+    </div>
+    ${!isDone ? `
+      <div class="service-date-row service-date-row--last-maint">
+        <label for="touch-sdate-${domId}">Laatste onderhoud</label>
+        <input type="date" id="touch-sdate-${domId}" name="touchLastService" value="${escapeHtml(String(draft?.lastService || '').trim())}" onchange='setTouchOverlayLastService(${idQ}, this.value)'>
+      </div>` : ''}
+    <div class="price-section" id="touch-price-${domId}">
+      <div class="price-section-label">Prijsoverzicht${extras.length === 0 && !a.price ? '<span style="color:var(--muted);font-size:10px;font-weight:400;margin-left:6px">Nog geen prijs uit chat</span>' : ''}</div>
+      ${a.price > 0 ? `<div class="extra-item extra-item--basis"><span>Basis</span><span>€${euroDisplay(a.price)}</span></div>` : ''}
+      ${extrasHtml}
+      <button type="button" class="btn-add-price-line" onclick='addTouchOverlayEmptyPriceLine(event, ${idQ})'>+ Regel toevoegen</button>
+      <div class="add-extra-row" style="flex-direction:column;gap:5px;margin-top:6px">
+        <input class="form-input" type="text" id="catalog-search-${domId}" placeholder="Zoek product of service..." oninput='onCatalogSearchInput(${idQ}, this.value)'>
+        <div class="catalog-v1-results" id="catalog-results-${domId}"></div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input class="form-input" type="text" id="extra-desc-${domId}" placeholder="Snel: omschrijving" style="flex:1">
+          <input class="form-input price-input" type="number" id="extra-price-${domId}" placeholder="€" min="0" step="0.01" inputmode="decimal">
+          <button type="button" class="btn-add-extra" onclick='addTouchOverlayQuickExtra(${idQ})' title="Regel toevoegen (ingevuld)">+</button>
+        </div>
+      </div>
+      <div class="price-total-row">
+        <span>Totaal</span>
+        <span id="price-total-amt-${domId}">€${euroDisplay(total)}</span>
+      </div>
+    </div>
+    <div class="complete-row" style="justify-content:flex-end;gap:8px;flex-wrap:wrap">
+      ${isOnderweg && !isDone ? `<button type="button" class="btn-cancel" onclick='cancelOnderweg(${idQ})'>✕ Annuleer onderweg</button>` : ''}
+      ${isDone ? `<button type="button" class="btn-cancel" onclick='retryInvoiceForDone(${idQ}, this)'>Factuur opnieuw verzenden</button>` : ''}
+      ${!isDone ? `<button type="button" class="btn-confirm" onclick='confirmDone(${idQ})'>✓ Bevestig klaar</button>` : ''}
+    </div>
+  `;
+}
+
+function mountTouchPriceOverlay(id) {
+  if (!isTouchPriceOverlayOpenFor(id)) return false;
+  const a = appointments.find((x) => String(x.id) === String(id));
+  const overlay = document.getElementById('touchPriceOverlay');
+  const body = document.getElementById('touchPriceOverlayBody');
+  const subtitle = document.getElementById('touchPriceOverlaySubtitle');
+  if (!a || !overlay || !body || !subtitle || !touchPriceOverlayState.draft) return false;
+  subtitle.textContent = `${String(a.name || 'Klant')} · ${String(a.timeSlot || '').trim() || '—'}`;
+  body.innerHTML = buildTouchPriceOverlayInnerHtml(a, touchPriceOverlayState.draft);
+  return true;
+}
+
+function openTouchPriceOverlay(id) {
+  if (!plannerUsesTouchPriceOverlay()) return false;
+  const a = appointments.find((x) => String(x.id) === String(id));
+  const overlay = document.getElementById('touchPriceOverlay');
+  if (!a || !overlay) return false;
+  a.priceVisible = false;
+  const routeYmdPlanner = getDateStr(currentDate);
+  touchPriceOverlayState.open = true;
+  touchPriceOverlayState.appointmentId = id;
+  touchPriceOverlayState.scrollYBeforeOpen = plannerSnapshotScrollY();
+  touchPriceOverlayState.draft = {
+    review: !!a.review,
+    lastService: String(a.lastService || '').trim() || routeYmdPlanner,
+    extras: clonePriceLinesForDraft(a.extras),
+  };
+  mountTouchPriceOverlay(id);
+  overlay.classList.add('visible');
+  try {
+    console.info('[planner] touch_price_overlay_opened', JSON.stringify({ appointmentId: String(id), mobile: plannerUsesTouchPriceOverlay() }));
+  } catch (_) {}
+  return true;
+}
+
+function closeTouchPriceOverlay(reason) {
+  const overlay = document.getElementById('touchPriceOverlay');
+  if (overlay) overlay.classList.remove('visible');
+  const shouldRestoreScroll = plannerUsesTouchPriceOverlay();
+  if (shouldRestoreScroll) {
+    const y = Number(touchPriceOverlayState.scrollYBeforeOpen || 0);
+    window.scrollTo({ top: y, behavior: 'auto' });
+  }
+  touchPriceOverlayState.open = false;
+  touchPriceOverlayState.appointmentId = null;
+  touchPriceOverlayState.draft = null;
+  touchPriceOverlayState.scrollYBeforeOpen = 0;
+  return reason || 'closed';
+}
+
+function cancelTouchPriceOverlay() {
+  const id = touchPriceOverlayState.appointmentId;
+  const reason = closeTouchPriceOverlay('cancelled');
+  try {
+    console.info('[planner] touch_price_overlay_cancelled', JSON.stringify({ appointmentId: id != null ? String(id) : null, reason }));
+  } catch (_) {}
+}
+
+async function saveTouchPriceOverlay() {
+  const synced = await syncTouchOverlayDraftToAppointment(touchPriceOverlayState.appointmentId, true);
+  if (!synced) return;
+  const id = touchPriceOverlayState.appointmentId;
+  const a = appointments.find((x) => String(x.id) === String(id));
+  closeTouchPriceOverlay('saved');
+  try {
+    console.info('[planner] touch_price_overlay_saved', JSON.stringify({ appointmentId: String(id), extrasCount: Array.isArray(a?.extras) ? a.extras.length : 0 }));
+    console.info('[planner] touch_price_overlay_price_synced', JSON.stringify({ appointmentId: String(id), total: a ? calcTotalPrice(a) : 0 }));
+  } catch (_) {}
+}
+
+async function syncTouchOverlayDraftToAppointment(id, persistNow) {
+  const apptId = touchPriceOverlayState.appointmentId != null ? touchPriceOverlayState.appointmentId : id;
+  const draft = touchPriceOverlayState.draft;
+  const a = appointments.find((x) => String(x.id) === String(apptId));
+  if (!a || !draft || !isTouchPriceOverlayOpenFor(apptId)) return false;
+  a.review = !!draft.review;
+  a.lastService = String(draft.lastService || '').trim();
+  a.extras = clonePriceLinesForDraft(draft.extras);
+  updatePriceTotalLabel(apptId);
+  syncAppointmentCardPriceLabel(apptId);
+  if (persistNow) await persistPriceLines(apptId);
+  return true;
+}
+
+function setTouchOverlayLastService(id, value) {
+  if (!isTouchPriceOverlayOpenFor(id) || !touchPriceOverlayState.draft) return;
+  touchPriceOverlayState.draft.lastService = String(value || '').trim();
+}
+
+function toggleTouchOverlayReview(id) {
+  if (!isTouchPriceOverlayOpenFor(id) || !touchPriceOverlayState.draft) return;
+  touchPriceOverlayState.draft.review = !touchPriceOverlayState.draft.review;
+  mountTouchPriceOverlay(id);
+}
+
+function onTouchOverlayExtraDescInput(id, idx, value) {
+  if (!isTouchPriceOverlayOpenFor(id) || !touchPriceOverlayState.draft?.extras?.[idx]) return;
+  touchPriceOverlayState.draft.extras[idx].desc = String(value ?? '');
+  updateTouchOverlayTotalLabel(id);
+}
+
+function onTouchOverlayExtraPriceInput(id, idx, raw) {
+  if (!isTouchPriceOverlayOpenFor(id) || !touchPriceOverlayState.draft?.extras?.[idx]) return;
+  const s = String(raw ?? '').trim().replace(',', '.');
+  if (s === '' || s === '.') {
+    touchPriceOverlayState.draft.extras[idx].price = 0;
+  } else {
+    const n = parseFloat(s);
+    if (!Number.isNaN(n)) touchPriceOverlayState.draft.extras[idx].price = Math.max(0, Math.round(n * 100) / 100);
+  }
+  updateTouchOverlayTotalLabel(id);
+}
+
+function updateTouchOverlayTotalLabel(id) {
+  const a = appointments.find((x) => String(x.id) === String(id));
+  if (!a || !isTouchPriceOverlayOpenFor(id) || !touchPriceOverlayState.draft) return;
+  const el = document.getElementById(`price-total-amt-${appointmentDomSafeId(id)}`);
+  const total = calcTotalPriceForDraft(a, touchPriceOverlayState.draft);
+  if (el) el.textContent = `€${euroDisplay(total)}`;
+}
+
+function addTouchOverlayEmptyPriceLine(evt, id) {
+  if (evt && typeof evt.preventDefault === 'function') evt.preventDefault();
+  if (evt && typeof evt.stopPropagation === 'function') evt.stopPropagation();
+  if (!isTouchPriceOverlayOpenFor(id) || !touchPriceOverlayState.draft) return;
+  if (!Array.isArray(touchPriceOverlayState.draft.extras)) touchPriceOverlayState.draft.extras = [];
+  touchPriceOverlayState.draft.extras.push({ desc: '', price: 0 });
+  mountTouchPriceOverlay(id);
+}
+
+function addTouchOverlayQuickExtra(id) {
+  if (!isTouchPriceOverlayOpenFor(id) || !touchPriceOverlayState.draft) return;
+  const sid = appointmentDomSafeId(id);
+  const descEl = document.getElementById(`extra-desc-${sid}`);
+  const priceEl = document.getElementById(`extra-price-${sid}`);
+  const desc = descEl?.value?.trim();
+  const price = parseFloat(priceEl?.value);
+  if (!desc || Number.isNaN(price) || price <= 0) {
+    showToast('Vul omschrijving én bedrag in', 'info');
+    return;
+  }
+  touchPriceOverlayState.draft.extras.push({ desc, price: Math.round(price * 100) / 100 });
+  mountTouchPriceOverlay(id);
+}
+
+function removeTouchOverlayExtra(id, idx) {
+  if (!isTouchPriceOverlayOpenFor(id) || !touchPriceOverlayState.draft?.extras) return;
+  touchPriceOverlayState.draft.extras.splice(idx, 1);
+  mountTouchPriceOverlay(id);
 }
 
 /** Alleen de inhoud van `#price-{domId}` (geen volledige kaart/lijst). */
@@ -6697,6 +6983,10 @@ function remountPriceSectionWithEditorScrollLogging(id, actionType) {
     actionType,
     '#price only',
     () => {
+      if (isTouchPriceOverlayOpenFor(id)) {
+        const mountedTouch = mountTouchPriceOverlay(id);
+        if (mountedTouch) return { renderScope: 'touch overlay' };
+      }
       const mounted = mountAppointmentPriceSection(id);
       if (mounted) return { renderScope: '#price only' };
       render();
@@ -6732,8 +7022,10 @@ function renderApptCard(a, i) {
 
     const isDone = a.status === 'klaar';
     const isOnderweg = a.status === 'onderweg';
+    const useTouchPriceOverlay = plannerUsesTouchPriceOverlay();
     const isViolation = !!a.violation;
-    const barVisible = isOnderweg || !!a.priceVisible;
+    const touchOverlayForCard = useTouchPriceOverlay && isTouchPriceOverlayOpenFor(a.id);
+    const barVisible = !useTouchPriceOverlay && (isOnderweg || !!a.priceVisible);
     const routeYmdPlanner = getDateStr(currentDate);
     const lastServiceInputVal = String(a.lastService || '').trim() || routeYmdPlanner;
 
@@ -6835,16 +7127,16 @@ function renderApptCard(a, i) {
             })()}
             <div class="appt-footer-actions-touch">
               <div class="appt-footer-cta-row">
-                <button type="button" class="btn-prijs ${barVisible&&!isOnderweg?'active':''}" onclick='togglePrijs(event, ${idQ})' title="Prijsoverzicht bekijken" style="touch-action:manipulation">Prijs</button>
+                <button type="button" class="btn-prijs ${(barVisible&&!isOnderweg)||touchOverlayForCard?'active':''}" onclick='togglePrijs(event, ${idQ})' title="Prijsoverzicht bekijken" style="touch-action:manipulation">Prijs</button>
                 ${!isDone ? `
-                <button type="button" class="btn-done ${isOnderweg?'active':''}" onclick='${isOnderweg ? `scrollToPrijs(${idQ})` : `askOnderweg(${idQ})`}' title="${isOnderweg ? 'Naar prijs en afronden' : 'Markeer onderweg'}">Onderweg</button>
+                <button type="button" class="btn-done ${isOnderweg?'active':''}" onclick='${isOnderweg ? (useTouchPriceOverlay ? `togglePrijs(event, ${idQ})` : `scrollToPrijs(${idQ})`) : `askOnderweg(${idQ})`}' title="${isOnderweg ? 'Naar prijs en afronden' : 'Markeer onderweg'}">Onderweg</button>
                 ` : ''}
               </div>
             </div>
           </div>
         </div>
       </div>
-
+      ${useTouchPriceOverlay ? '' : `
       <div class="complete-bar ${barVisible?'visible':''}" id="bar-${domId}">
         <div class="complete-row">
           <label class="review-toggle" onclick='toggleReview(${idQ})'>
@@ -6869,6 +7161,7 @@ function renderApptCard(a, i) {
           </div>
         </div>
       </div>
+      `}
     </div>`;
 }
 
@@ -7452,6 +7745,7 @@ function scrollToCard(id) {
 function cancelOnderweg(id) {
   const a = appointments.find(x => String(x.id) === String(id));
   if (!a) return;
+  if (isTouchPriceOverlayOpenFor(id)) closeTouchPriceOverlay('cancel_onderweg');
   runPriceActionTelemetry(
     id,
     'cancel',
@@ -7801,6 +8095,20 @@ function syncAppointmentPriceBarDom(a) {
 function togglePrijs(evt, id) {
   if (evt && typeof evt.preventDefault === 'function') evt.preventDefault();
   if (evt && typeof evt.stopPropagation === 'function') evt.stopPropagation();
+  if (plannerUsesTouchPriceOverlay()) {
+    const opened = openTouchPriceOverlay(id);
+    if (opened) {
+      runPriceActionTelemetry(
+        id,
+        'open_price',
+        'touch overlay',
+        () => ({ renderScope: 'touch overlay' }),
+        'togglePrijs',
+        { usedScrollIntoView: false, functionName: 'togglePrijs_touch_overlay' }
+      );
+    }
+    return;
+  }
   const a = appointments.find(x => String(x.id) === String(id));
   if (!a) return;
   const wasOpen = !!a.priceVisible;
@@ -8285,6 +8593,12 @@ function addExtraFromCatalog(id, item) {
   const desc = String(item.desc || '').trim();
   const price = Number(item.price);
   if (!desc || !Number.isFinite(price) || price <= 0) return;
+  if (isTouchPriceOverlayOpenFor(id) && touchPriceOverlayState.draft) {
+    if (!Array.isArray(touchPriceOverlayState.draft.extras)) touchPriceOverlayState.draft.extras = [];
+    touchPriceOverlayState.draft.extras.push({ desc, price: Math.round(price * 100) / 100 });
+    mountTouchPriceOverlay(id);
+    return;
+  }
   try {
     console.info(
       '[planner] price_line_add_clicked',
@@ -8334,6 +8648,10 @@ function removeExtra(id, idx) {
 async function confirmDone(id) {
   const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
   if (!window.HKPlannerActions?.confirmDone) return;
+  if (isTouchPriceOverlayOpenFor(id)) {
+    await syncTouchOverlayDraftToAppointment(id, true);
+    closeTouchPriceOverlay('complete');
+  }
   try {
     console.info(
       '[planner] price_action_render_scope',
@@ -8359,6 +8677,10 @@ async function confirmDone(id) {
 async function retryInvoiceForDone(id, btnEl) {
   const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
   if (!window.HKPlannerActions?.retryInvoiceForDone) return;
+  if (isTouchPriceOverlayOpenFor(id)) {
+    await syncTouchOverlayDraftToAppointment(id, true);
+    closeTouchPriceOverlay('retry_invoice');
+  }
   return runPriceActionTelemetryAsync(
     id,
     'retry_invoice',
@@ -8708,10 +9030,19 @@ async function doLogin() {
 document.addEventListener('DOMContentLoaded', () => {
   try {
     const mqMobileCard = window.matchMedia('(max-width: 639px)');
+    const mqTouchPriceOverlay = window.matchMedia(`(max-width: ${TOUCH_PRICE_OVERLAY_MAX_WIDTH}px)`);
     let plannerMobileCardLayoutLogged = mqMobileCard.matches;
+    let plannerTouchPriceVariant = mqTouchPriceOverlay.matches ? 'overlay' : 'inline';
     if (plannerMobileCardLayoutLogged) {
       console.info('[planner] mobile_layout_variant_applied', JSON.stringify({ breakpoint: 'max639' }));
     }
+    console.info(
+      '[planner] touch_price_overlay_variant_applied',
+      JSON.stringify({
+        variant: plannerTouchPriceVariant,
+        breakpoint: `max${TOUCH_PRICE_OVERLAY_MAX_WIDTH}`,
+      })
+    );
     const onMqMobileCard = () => {
       if (!mqMobileCard.matches) {
         closeMobileApptActionMenus();
@@ -8723,8 +9054,25 @@ document.addEventListener('DOMContentLoaded', () => {
         console.info('[planner] mobile_layout_variant_applied', JSON.stringify({ breakpoint: 'max639' }));
       }
     };
+    const onMqTouchPriceOverlay = () => {
+      const nextVariant = mqTouchPriceOverlay.matches ? 'overlay' : 'inline';
+      if (nextVariant === plannerTouchPriceVariant) return;
+      plannerTouchPriceVariant = nextVariant;
+      if (nextVariant === 'inline' && touchPriceOverlayState.open) {
+        closeTouchPriceOverlay('variant_switched_to_inline');
+      }
+      console.info(
+        '[planner] touch_price_overlay_variant_applied',
+        JSON.stringify({
+          variant: plannerTouchPriceVariant,
+          breakpoint: `max${TOUCH_PRICE_OVERLAY_MAX_WIDTH}`,
+        })
+      );
+    };
     if (mqMobileCard.addEventListener) mqMobileCard.addEventListener('change', onMqMobileCard);
     else mqMobileCard.addListener(onMqMobileCard);
+    if (mqTouchPriceOverlay.addEventListener) mqTouchPriceOverlay.addEventListener('change', onMqTouchPriceOverlay);
+    else mqTouchPriceOverlay.addListener(onMqTouchPriceOverlay);
   } catch (_) {}
 
   document.addEventListener(
