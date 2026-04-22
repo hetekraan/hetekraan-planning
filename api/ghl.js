@@ -88,6 +88,10 @@ import {
   buildCompleteAppointmentPayload,
   LEGACY_COMPLETE_FIELD_IDS,
 } from '../lib/usecases/complete-appointment.js';
+import {
+  ensureReviewMailTagOnComplete,
+  REVIEW_MAIL_TAG,
+} from '../lib/usecases/review-mail-tag.js';
 import { resolveContactCustomFieldId } from '../lib/ghl-custom-fields.js';
 import { getOrCreateMoneybirdPayTokenMapping } from '../lib/moneybird-pay-token-store.js';
 import {
@@ -2606,9 +2610,23 @@ export default async function handler(req, res) {
         }
 
         const tagErrors = [];
-        const tagOk = await addTag(contactId, 'factuur-versturen').catch((e) => { tagErrors.push(e.message); return false; });
-        if (sendReview) {
-          await addTag(contactId, 'review-mail-versturen').catch((e) => { tagErrors.push(e.message); });
+        const tagOk = await addTag(contactId, 'factuur-versturen').catch((e) => {
+          tagErrors.push(e.message);
+          return false;
+        });
+        const reviewAutomation = await ensureReviewMailTagOnComplete({
+          contactId,
+          appointmentId: appointmentId || null,
+          sendReview: sendReview === true,
+          status: 'klaar',
+          fetchImpl: fetchWithRetry,
+          apiKey: GHL_API_KEY,
+          locationId: GHL_LOCATION_ID,
+          baseUrl: process.env.GHL_BASE_URL || GHL_BASE,
+          tagName: REVIEW_MAIL_TAG,
+        });
+        if (reviewAutomation?.error) {
+          tagErrors.push(`review_tag:${reviewAutomation.error}`);
         }
         if (appointmentId) {
           await updateOpportunityStage(contactId, 'Uitgevoerd').catch((e) => {
@@ -2620,6 +2638,7 @@ export default async function handler(req, res) {
           success: true,
           tagOk: tagOk !== false,
           tagErrors: tagErrors.length ? tagErrors : undefined,
+          reviewAutomation,
           // Altijd key meesturen (ook `null`) zodat clients betrouwbaar kunnen detecteren
           // of Moneybird überhaupt een outcome heeft teruggegeven.
           moneybird: moneybirdResult,
