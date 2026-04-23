@@ -654,6 +654,20 @@ export default async function handler(req, res) {
       defaultHorizonDays: FREE_SLOTS_DAYS,
       proposalConstraints,
     });
+    if (
+      proposalConstraints?.datesOnly === true &&
+      Array.isArray(proposalConstraints.allowedDates) &&
+      proposalConstraints.allowedDates.length > 0 &&
+      schedule.kind === 'list' &&
+      schedule.dates.length === 0
+    ) {
+      return res.status(409).json({
+        success: false,
+        error:
+          'Conflicterende beperkingen: alle specifieke datums vallen vóór de vroegste startdatum. Kies latere datums of pas "Niet eerder dan" aan.',
+        code: 'CONSTRAINT_CONFLICT_MIN_START_DATE',
+      });
+    }
     const blocksToTry = proposalBlocksToEvaluate(proposalConstraints);
     const maxSuggest = effectiveMaxOptions(proposalConstraints, 2, 2);
     const scanCandidateTarget = maxSuggest + 4;

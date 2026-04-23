@@ -59,6 +59,17 @@ const PROPOSAL_CLUSTERING_FIRST = String(process.env.PROPOSAL_CLUSTERING_FIRST |
 
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+function mergeMinStartDateIntoProposalConstraints(existing, minStartDate) {
+  const merged = existing && typeof existing === 'object' ? { ...existing } : {};
+  const min = String(minStartDate || '').trim();
+  if (!YMD_RE.test(min)) return Object.keys(merged).length ? merged : null;
+  const prev = String(merged.scanStartDate || '').trim();
+  if (!YMD_RE.test(prev) || min > prev) {
+    merged.scanStartDate = min;
+  }
+  return merged;
+}
+
 function normalizeSelectedInviteSlots(raw) {
   if (!Array.isArray(raw)) return [];
   const out = [];
@@ -778,7 +789,15 @@ export default async function handler(req, res) {
   }
   const intakePriceRulesSerialized = formatPriceRulesStructuredString(intakePriceRules);
   const intakePriceTotal = toPriceNumber(priceTotalParam);
-  const proposalConstraints = parseProposalConstraints(body.proposalConstraints);
+  const intakeMinStartDateRaw = body?.intakeData && typeof body.intakeData === 'object'
+    ? String(body.intakeData.minStartDate || '').trim()
+    : '';
+  const intakeMinStartDate = YMD_RE.test(intakeMinStartDateRaw) ? intakeMinStartDateRaw : '';
+  const proposalConstraintsRaw = parseProposalConstraints(body.proposalConstraints);
+  const proposalConstraints = mergeMinStartDateIntoProposalConstraints(
+    proposalConstraintsRaw,
+    intakeMinStartDate
+  );
 
   const selectedRaw = body.selectedSlots;
   const selectedNormalized = normalizeSelectedInviteSlots(selectedRaw);
@@ -856,6 +875,9 @@ export default async function handler(req, res) {
     type: workType,
     inviteIssuedAt: Date.now(),
     tokenSchemaVersion: 2,
+    intakeData: {
+      minStartDate: intakeMinStartDate || '',
+    },
     slots: slots.map((s) => ({
       id: blockOfferKey(s.dateStr, s.block),
       dateStr: s.dateStr,

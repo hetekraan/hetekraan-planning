@@ -305,6 +305,11 @@
       <textarea class="field-input" id="hkSuggestSpecificDates" rows="3" style="resize:vertical;font-family:ui-monospace,monospace;font-size:12px" placeholder="2026-04-08&#10;2026-04-10"></textarea>
       <p style="font-size:11px;color:#555;margin-top:6px">Eén datum per regel, of gescheiden door komma/spatie. Alleen deze dagen worden gebruikt.</p>
     </div>
+    <div id="hkSuggestMinStartDateRow" style="margin-top:12px">
+      <label class="field-label" for="hkSuggestMinStartDate">Niet eerder dan</label>
+      <input class="field-input" type="date" id="hkSuggestMinStartDate" placeholder="Kies een vroegste startdatum">
+      <p style="font-size:11px;color:#555;margin-top:6px">Kies een vroegste startdatum</p>
+    </div>
   </details>
 </div>
 
@@ -374,11 +379,13 @@
   </div>
 
   <div class="section-label">Voorgestelde tijdsloten</div>
+  <div id="activeMinStartDateInfo" style="font-size:12px;color:#666;margin-bottom:8px;display:none"></div>
   <div id="slotList"></div>
 </div>
 
 <div class="card hidden" id="messageCard">
   <div class="preview-label">📱 WhatsApp bericht dat verstuurd wordt</div>
+  <div id="activeMinStartDateInfoPreview" style="font-size:12px;color:#666;margin-bottom:8px;display:none"></div>
   <div class="preview-bubble" id="previewText"></div>
   <div id="hkPreviewStaleBanner" class="hk-stale-banner hidden" role="status">
     Beperkingen gewijzigd — bereken de tijdsloten opnieuw.
@@ -430,7 +437,8 @@
       .sort()
       .join(',');
     const dates = (document.getElementById('hkSuggestSpecificDates')?.value || '').trim();
-    return JSON.stringify({ mode, dows, dates });
+    const minStartDate = (document.getElementById('hkSuggestMinStartDate')?.value || '').trim();
+    return JSON.stringify({ mode, dows, dates, minStartDate });
   }
 
   function applySendButtonEnabledState() {
@@ -479,12 +487,53 @@
     if (d) d.style.display = mode === 'dates' ? 'block' : 'none';
   }
 
+  function localDateYmdNow() {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  function normalizeUiMinStartDate(raw) {
+    const s = String(raw || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+    const today = localDateYmdNow();
+    return s < today ? today : s;
+  }
+
+  function parseUiSpecificDates() {
+    const raw = document.getElementById('hkSuggestSpecificDates')?.value?.trim() || '';
+    return [
+      ...new Set(
+        raw
+          .split(/[\s,;]+/)
+          .map((s) => s.trim())
+          .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s))
+      ),
+    ];
+  }
+
+  function formatYmdNl(ymd) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(ymd || ''))) return String(ymd || '');
+    const d = new Date(`${ymd}T12:00:00`);
+    return d.toLocaleDateString('nl-NL', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  }
+
   /**
    * @returns {object|null} proposalConstraints of null (= automatisch)
    */
   function buildSuggestProposalConstraintsFromUI() {
     const mode = document.getElementById('hkSuggestConstraintMode')?.value || 'auto';
-    if (mode === 'auto') return null;
+    const minStartDateRaw = document.getElementById('hkSuggestMinStartDate')?.value || '';
+    const minStartDate = normalizeUiMinStartDate(minStartDateRaw);
+    const base = {};
+    if (minStartDate) base.scanStartDate = minStartDate;
+    if (mode === 'auto') return Object.keys(base).length > 0 ? base : null;
     if (mode === 'weekdays') {
       const boxes = document.querySelectorAll('.hk-suggest-dow:checked');
       const days = [
@@ -494,23 +543,15 @@
             .filter((n) => Number.isFinite(n) && n >= 1 && n <= 5)
         ),
       ].sort((a, b) => a - b);
-      if (days.length === 0) return null;
-      return { allowedWeekdays: days };
+      if (days.length === 0) return Object.keys(base).length > 0 ? base : null;
+      return { ...base, allowedWeekdays: days };
     }
     if (mode === 'dates') {
-      const raw = document.getElementById('hkSuggestSpecificDates')?.value?.trim() || '';
-      const dates = [
-        ...new Set(
-          raw
-            .split(/[\s,;]+/)
-            .map((s) => s.trim())
-            .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s))
-        ),
-      ];
-      if (dates.length === 0) return null;
-      return { allowedDates: dates, datesOnly: true };
+      const dates = parseUiSpecificDates();
+      if (dates.length === 0) return Object.keys(base).length > 0 ? base : null;
+      return { ...base, allowedDates: dates, datesOnly: true };
     }
-    return null;
+    return Object.keys(base).length > 0 ? base : null;
   }
 
   /** iOS/Safari/Chrome: autofill zet .value vaak pas ná de huidige click-tick; één tick wachten voorkomt “eerste klik doet niks”. */
@@ -609,11 +650,13 @@
   function readPlannerIntakeState() {
     const typeOnderhoud = document.getElementById('inputTypeOnderhoud')?.value || 'onderhoud';
     const probleemomschrijving = document.getElementById('inputProbleemomschrijving')?.value?.trim() || '';
+    const minStartDate = normalizeUiMinStartDate(document.getElementById('hkSuggestMinStartDate')?.value || '');
     const selectedPriceItems = getSelectedPriceItems();
     const totaalprijs = getPriceTotal(selectedPriceItems);
     return {
       typeOnderhoud,
       probleemomschrijving,
+      minStartDate,
       selectedPriceItems,
       totaalprijs,
     };
@@ -647,6 +690,15 @@
     }
     const taDates = document.getElementById('hkSuggestSpecificDates');
     if (taDates) taDates.addEventListener('input', invalidatePreviewIfConstraintsChanged);
+    const minStartDateInput = document.getElementById('hkSuggestMinStartDate');
+    if (minStartDateInput) {
+      minStartDateInput.addEventListener('change', () => {
+        const normalized = normalizeUiMinStartDate(minStartDateInput.value);
+        if (normalized !== minStartDateInput.value) minStartDateInput.value = normalized;
+        invalidatePreviewIfConstraintsChanged();
+      });
+      minStartDateInput.addEventListener('input', invalidatePreviewIfConstraintsChanged);
+    }
     // Delegatie + pointer: betrouwbaarder dan één listener op de knop (WebKit / webviews).
     const msgCard = document.getElementById('messageCard');
     if (msgCard) msgCard.addEventListener('click', onSendBtnClick);
@@ -736,12 +788,23 @@
 
     const mode = document.getElementById('hkSuggestConstraintMode')?.value || 'auto';
     const proposalConstraints = buildSuggestProposalConstraintsFromUI();
-    if (mode === 'weekdays' && !proposalConstraints) {
+    const hasWeekdays = document.querySelectorAll('.hk-suggest-dow:checked').length > 0;
+    const specificDates = parseUiSpecificDates();
+    const hasSpecificDates = specificDates.length > 0;
+    const activeMinStartDate = normalizeUiMinStartDate(document.getElementById('hkSuggestMinStartDate')?.value || '');
+    if (mode === 'weekdays' && !hasWeekdays) {
       showError('Kies minstens één weekdag (ma–vr).', '');
       return;
     }
-    if (mode === 'dates' && !proposalConstraints) {
+    if (mode === 'dates' && !hasSpecificDates) {
       showError('Vul minstens één geldige datum (YYYY-MM-DD).', '');
+      return;
+    }
+    if (mode === 'dates' && activeMinStartDate && specificDates.every((d) => d < activeMinStartDate)) {
+      showError(
+        'Conflicterende beperkingen',
+        `Alle specifieke datums liggen vóór "Niet eerder dan" (${formatYmdNl(activeMinStartDate)}). Kies een latere datum of pas de specifieke datums aan.`
+      );
       return;
     }
 
@@ -784,6 +847,14 @@
       hide('loadingCard');
 
       if (!res.ok) {
+        if (res.status === 409 && data?.code === 'CONSTRAINT_CONFLICT_MIN_START_DATE') {
+          showError(
+            'Conflicterende beperkingen',
+            data?.error ||
+              'Alle specifieke datums liggen vóór de vroegste startdatum. Kies latere datums of pas "Niet eerder dan" aan.'
+          );
+          return;
+        }
         const errMsg = data.error || data.message || String(raw).slice(0, 200);
         showError('Kon tijdsloten niet laden', `HTTP ${res.status}: ${errMsg}`);
         return;
@@ -803,6 +874,19 @@
       pendingProposalConstraints = proposalConstraints;
       previewStale = false;
       lastConstraintsUiSnapshotAtPreview = getConstraintsUiSnapshot();
+      const activeMinInfoTargets = [
+        document.getElementById('activeMinStartDateInfo'),
+        document.getElementById('activeMinStartDateInfoPreview'),
+      ].filter(Boolean);
+      activeMinInfoTargets.forEach((el) => {
+        if (activeMinStartDate) {
+          el.textContent = `Planning vanaf ${formatYmdNl(activeMinStartDate)}`;
+          el.style.display = 'block';
+        } else {
+          el.textContent = '';
+          el.style.display = 'none';
+        }
+      });
 
       // Contact info
       const displayName = data.contactName || name || 'Klant';
@@ -895,6 +979,9 @@
         }));
       }
       if (pendingProposalConstraints) body.proposalConstraints = pendingProposalConstraints;
+      if (intake.minStartDate) {
+        body.intakeData = { ...(body.intakeData || {}), minStartDate: intake.minStartDate };
+      }
       if (spoedMode) body.spoedMode = true;
 
       const ac = new AbortController();
@@ -967,6 +1054,14 @@
     });
     const ta = document.getElementById('hkSuggestSpecificDates');
     if (ta) ta.value = '';
+    const minDate = document.getElementById('hkSuggestMinStartDate');
+    if (minDate) minDate.value = '';
+    [document.getElementById('activeMinStartDateInfo'), document.getElementById('activeMinStartDateInfoPreview')]
+      .filter(Boolean)
+      .forEach((el) => {
+        el.textContent = '';
+        el.style.display = 'none';
+      });
     const spoedToggle = document.getElementById('spoedToggle');
     if (spoedToggle) spoedToggle.checked = false;
     syncSpoedUi();
