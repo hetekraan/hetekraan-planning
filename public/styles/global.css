@@ -1,11 +1,22 @@
 :root {
-  --hk-bg: #0b0f14;
-  --hk-panel: #121923;
-  --hk-muted: #9aa6b2;
-  --hk-text: #eef2f6;
-  --hk-accent: #ffd000;
-  --hk-danger: #ff6b6b;
-  --hk-radius: 12px;
+  --bg-page: #faf8f4;
+  --bg-card: #ffffff;
+  --border: #eae5dc;
+  --border-strong: #d9d2c5;
+  --ink: #1a1512;
+  --ink-soft: #645c52;
+  --ink-muted: #8e867c;
+  --accent: #dc4a1a;
+  --accent-soft: #fbe9dd;
+  --accent-ink: #a02f08;
+  --green: #0f7a4b;
+  --green-soft: #e5f4ec;
+  --yellow: #a66a00;
+  --yellow-soft: #fbf0d4;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 0 rgba(0,0,0,0.02);
 }
 
 * {
@@ -15,8 +26,10 @@
 body {
   margin: 0;
   font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  background: var(--hk-bg);
-  color: var(--hk-text);
+  background: var(--bg-page);
+  color: var(--ink);
+  font-size: 13.5px;
+  line-height: 1.55;
 }
 
 .hk-container {
@@ -26,17 +39,19 @@ body {
 }
 
 .hk-card {
-  background: var(--hk-panel);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--hk-radius);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   padding: 14px;
+  box-shadow: var(--shadow-sm);
 }
 
 .hk-section-title {
   font-size: 11px;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--hk-muted);
+  color: var(--ink-muted);
+  font-weight: 600;
   margin-bottom: 8px;
 }
 
@@ -50,30 +65,30 @@ body {
 }
 
 .hk-btn {
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: transparent;
-  color: var(--hk-text);
-  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--ink-soft);
+  border-radius: var(--radius-md);
   padding: 8px 12px;
   cursor: pointer;
 }
 
 .hk-btn-primary {
-  background: var(--hk-accent);
-  color: #111;
-  border-color: transparent;
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
   font-weight: 600;
 }
 
 .hk-btn-danger {
-  border-color: rgba(255, 107, 107, 0.45);
-  color: #ff9b9b;
+  border-color: var(--accent-soft);
+  color: var(--accent-ink);
 }
 
 .hk-btn-ghost {
-  background: transparent;
-  border-color: rgba(255, 255, 255, 0.12);
-  color: var(--hk-muted);
+  background: #fff;
+  border-color: var(--border);
+  color: var(--ink-muted);
 }
 
 .hk-btn-block {
@@ -85,10 +100,10 @@ body {
 
 .hk-field {
   width: 100%;
-  background: #0f1620;
-  color: var(--hk-text);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   padding: 10px;
 }
 
@@ -96,10 +111,10 @@ body {
 .hk-select,
 .hk-textarea {
   width: 100%;
-  background: #0f1620;
-  color: var(--hk-text);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 10px;
+  background: #fff;
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   padding: 10px 12px;
   font: inherit;
 }
@@ -108,7 +123,7 @@ body {
 .hk-select:focus,
 .hk-textarea:focus {
   outline: none;
-  border-color: var(--hk-accent);
+  border-color: var(--border-strong);
 }
 
 .hk-stack {
@@ -128,12 +143,12 @@ body {
   border-radius: 999px;
   padding: 3px 9px;
   font-size: 11px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  color: var(--hk-muted);
+  border: 1px solid var(--border);
+  color: var(--ink-soft);
 }
 
 .hk-text-muted {
-  color: var(--hk-muted);
+  color: var(--ink-muted);
 }
 
 /* Catalog V1 (planner modal + book.html) — searchable dropdown */

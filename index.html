@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Planner">
 <link rel="manifest" href="/manifest.webmanifest">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='42' fill='%231a1512'/></svg>">
 <title>Hetekraan — Planning</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="/styles/global.css">
@@ -31,7 +31,7 @@
 <script src="/app/planner-scheduling.js"></script>
 <script src="/app/planner-admin.js"></script>
 <script src="/app/planner-proposals.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Karla:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     /* Match hetekraan.nl (Impreza): Karla body, Poppins headings */
@@ -4339,6 +4339,261 @@
     }
   }
 
+  /* Warm Minimal theme override */
+  :root {
+    --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-display: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --bg: #faf8f4;
+    --surface: #ffffff;
+    --surface2: #ffffff;
+    --surface3: #f5f1ea;
+    --border: #eae5dc;
+    --accent: #dc4a1a;
+    --accent2: #0f7a4b;
+    --blue: #645c52;
+    --text: #1a1512;
+    --muted: #8e867c;
+    --yellow: #a66a00;
+    --reparatie: #a02f08;
+    --onderhoud: #0f7a4b;
+    --installatie: #a66a00;
+    --klaar-bg: #e5f4ec;
+    --klaar-border: #cde8d8;
+    --appt-action-icon-bg: #ffffff;
+    --appt-action-icon-bg-hover: #f8f4ed;
+    --appt-action-icon-bg-active: #f0ebe2;
+    --appt-action-icon-border: #eae5dc;
+    --appt-action-icon-border-hover: #d9d2c5;
+    --appt-action-icon-fg: #645c52;
+    --appt-action-icon-fg-hover: #1a1512;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+  header {
+    background: #ffffff;
+    border-bottom: 1px solid var(--border);
+  }
+  .layout {
+    background: transparent;
+  }
+  .appointments {
+    background: transparent;
+    padding: 28px;
+    border-bottom: none;
+  }
+  #apptList {
+    display: block;
+    min-height: 24px;
+    visibility: visible;
+    opacity: 1;
+  }
+  .planning-section {
+    display: block;
+    margin-bottom: 24px;
+  }
+  .planning-section-title {
+    color: #645c52;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .route-panel {
+    background: #ffffff;
+    border-left: 1px solid var(--border);
+  }
+  .section-title,
+  .stat-label,
+  .route-status-kicker {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .route-status-title {
+    font-size: 21px;
+    letter-spacing: -0.02em;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .date-label {
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .date-nav,
+  .planner-week-nav {
+    background: #ffffff;
+    border: 1px solid var(--border);
+  }
+  .date-nav button,
+  .planner-week-edge,
+  .planner-week-icon-btn {
+    color: var(--ink-soft, #645c52);
+  }
+  .date-nav button:hover,
+  .planner-week-edge:hover,
+  .planner-week-icon-btn:hover {
+    color: var(--text);
+  }
+  .stat {
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 12px;
+    min-width: 86px;
+  }
+  .stat-val {
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .stat-val.green,
+  .stat-val.orange {
+    color: var(--text);
+  }
+  .btn-logout,
+  .icon-btn,
+  .btn-prijs,
+  .btn-done,
+  .btn-cancel,
+  .planner-app-icon-btn,
+  .btn-dagopgave {
+    background: #ffffff;
+    border: 1px solid var(--border);
+    color: #645c52;
+    box-shadow: none;
+  }
+  .btn-add,
+  .btn-confirm,
+  .btn-save,
+  .btn-confirm-route {
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    color: #fff;
+    box-shadow: none;
+  }
+  .btn-add:hover,
+  .btn-confirm:hover,
+  .btn-save:hover,
+  .btn-confirm-route:hover {
+    opacity: 0.92;
+  }
+  .appointments-header-actions .btn-add .btn-add-accent {
+    color: #fff;
+  }
+  .appt-card {
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
+    padding: 0;
+    display: block;
+    position: relative;
+    overflow: hidden;
+    visibility: visible;
+    opacity: 1;
+  }
+  .appt-card:hover {
+    border-color: #d9d2c5;
+    transform: none;
+  }
+  .appt-inner {
+    display: block;
+    padding: 16px 16px 16px 36px;
+  }
+  .appt-top,
+  .appt-body,
+  .appt-meta,
+  .appt-notes,
+  .appt-footer,
+  .appt-footer-left,
+  .appt-footer-right,
+  .appt-tags {
+    opacity: 1;
+    visibility: visible;
+  }
+  .appt-number {
+    color: #8e867c;
+  }
+  .appt-address,
+  .appt-name,
+  .appt-desc,
+  .appt-time,
+  .appt-price,
+  .appt-phone {
+    color: var(--text);
+  }
+  .appt-desc,
+  .ghl-cal-time-hint,
+  .meta-label,
+  .meta-value,
+  .empty-hint,
+  .slot-daypart-hint {
+    color: #645c52;
+  }
+  .appt-actions .icon-btn.appt-action-icon,
+  .appt-actions a.icon-btn.appt-action-icon,
+  .btn-prijs,
+  .btn-done {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .appt-price {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .tag.reparatie {
+    background: #fbe9dd;
+    color: #a02f08;
+    border: 1px solid #f3d7c4;
+  }
+  .tag.onderhoud {
+    background: #e5f4ec;
+    color: #0f7a4b;
+    border: 1px solid #cde8d8;
+  }
+  .tag.installatie {
+    background: #fbf0d4;
+    color: #a66a00;
+    border: 1px solid #f0dfb1;
+  }
+  .planner-week-day {
+    background: #ffffff;
+    border: 1px solid var(--border);
+    color: #645c52;
+  }
+  .planner-week-day.is-active {
+    background: #1a1512;
+    border-color: #1a1512;
+    color: #ffffff;
+  }
+  .planner-week-day.is-active .planner-week-day-num {
+    color: #ffffff;
+  }
+  .mobile-tab.active {
+    background: #fbe9dd;
+    color: #a02f08;
+    border-color: #f3d7c4;
+    font-weight: 600;
+  }
+  .route-status-card,
+  .route-toolbar--card,
+  .route-panel-footer,
+  .total-bar {
+    background: #ffffff;
+    border: 1px solid var(--border);
+    box-shadow: none;
+  }
 </style>
 </head>
 <body>
@@ -4351,7 +4606,7 @@
     </div>
   </div>
   <div class="planner-app-tools" aria-label="Zoeken en menu">
-    <button type="button" class="planner-app-icon-btn" id="btnGlobalSearch" onclick="focusGlobalSearch()" title="Zoeken" aria-label="Zoek afspraken">🔎</button>
+    <button type="button" class="planner-app-icon-btn" id="btnGlobalSearch" onclick="focusGlobalSearch()" title="Zoeken" aria-label="Zoek afspraken">●</button>
     <button type="button" class="planner-app-icon-btn" onclick="toggleMobileMenu(true)" title="Menu">☰</button>
   </div>
   <div class="date-nav-wrap">
@@ -4384,7 +4639,7 @@
           <button type="button" class="planner-week-edge" onclick="shiftPlannerWeek(1)" title="Volgende week">›</button>
         </div>
       </div>
-      <button type="button" class="planner-week-icon-btn planner-week-calendar-btn" onclick="openPlannerDatePicker()" title="Kalender — datum kiezen" aria-label="Kalender">📅</button>
+      <button type="button" class="planner-week-icon-btn planner-week-calendar-btn" onclick="openPlannerDatePicker()" title="Kalender — datum kiezen" aria-label="Kalender">●</button>
     </div>
   </div>
 </header>
@@ -4392,16 +4647,16 @@
 
 <!-- PWA mobile bottom nav -->
 <div class="mobile-tabs mobile-bottom-nav" id="mobileTabs">
-  <button class="mobile-tab active" id="tabAfspraken" onclick="switchMobileTab('afspraken')">⬛ Afspraken</button>
-  <button class="mobile-tab" id="tabRoute" onclick="switchMobileTab('route')">⚡ Route</button>
-  <button class="mobile-tab" id="tabZoeken" onclick="focusGlobalSearch()">🔎 Zoeken</button>
+  <button class="mobile-tab active" id="tabAfspraken" onclick="switchMobileTab('afspraken')">● Afspraken</button>
+  <button class="mobile-tab" id="tabRoute" onclick="switchMobileTab('route')">● Route</button>
+  <button class="mobile-tab" id="tabZoeken" onclick="focusGlobalSearch()">● Zoeken</button>
   <button class="mobile-tab" id="tabMenu" onclick="toggleMobileMenu(true)">☰ Menu</button>
 </div>
 <div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="if(event.target===this)toggleMobileMenu(false)">
   <div class="mobile-menu-panel">
     <div class="section-title" style="margin-bottom:4px">Menu</div>
     <button class="btn-add" type="button" onclick="toggleMobileMenu(false);openModal()">+ Afspraak</button>
-    <button class="btn-dagopgave" type="button" onclick="toggleMobileMenu(false);openDagopgave()">📋 Dagopgave</button>
+    <button class="btn-dagopgave" type="button" onclick="toggleMobileMenu(false);openDagopgave()">● Dagopgave</button>
     <button type="button" class="planner-app-icon-btn btn-day-block btn-day-block--menu" id="btnBlockDayGhlMobile" onclick="toggleMobileMenu(false);onBlockDayButtonClick()" aria-label="Blokkeer dag">
       <span class="btn-day-block-ic" aria-hidden="true">■</span>
     </button>
@@ -4428,7 +4683,7 @@
       <div class="section-title">Afspraken van de dag</div>
       <div class="appointments-header-actions">
         <div class="appointments-header-util">
-          <button class="btn-dagopgave" onclick="openDagopgave()" title="Dagopgave voor Tellow">📋</button>
+          <button class="btn-dagopgave" onclick="openDagopgave()" title="Dagopgave voor Tellow">●</button>
           <button type="button" class="planner-app-icon-btn btn-day-block" id="btnBlockDayGhl" onclick="onBlockDayButtonClick()" aria-label="Blokkeer dag" title="Blokkeer of deblokkeer deze dag in GHL">
             <span class="btn-day-block-ic" aria-hidden="true">■</span>
           </button>
@@ -4469,8 +4724,8 @@
     </div>
     <div class="route-panel-footer">
       <div class="route-summary" id="routeSummary" aria-live="polite"></div>
-      <a class="btn-maps" href="#" onclick="openMaps(event)">🗺 Open volledige route in Maps</a>
-      <button type="button" class="btn-morning" onclick="sendMorningMessages()">☀️ Stuur ochtendmeldingen</button>
+      <a class="btn-maps" href="#" onclick="openMaps(event)">Open volledige route in Maps</a>
+      <button type="button" class="btn-morning" onclick="sendMorningMessages()">Stuur ochtendmeldingen</button>
     </div>
   </div>
 </div>
@@ -4497,7 +4752,7 @@
     <div class="modal-title" id="onderwegTitle">Onderweg?</div>
     <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5" id="onderwegText"></div>
     <div class="modal-actions" style="flex-direction:column;gap:8px">
-      <button class="btn-save" style="width:100%;padding:10px" onclick="onderwegJaStuur()">📱 Ja, stuur WhatsApp met ETA</button>
+      <button class="btn-save" style="width:100%;padding:10px" onclick="onderwegJaStuur()">Ja, stuur WhatsApp met ETA</button>
       <button class="btn-cancel" style="width:100%;padding:10px;text-align:center" onclick="onderwegJeenBericht()">Alleen status veranderen</button>
       <button class="btn-cancel" style="width:100%;padding:10px;text-align:center;color:#ff6060" onclick="closeOnderwegModal()">Annuleren</button>
     </div>
@@ -4879,7 +5134,7 @@
     </details>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal()">Annuleren</button>
-      <button class="btn-send-link" onclick="sendBookingLink()" title="Stuur de klant een boekingslink via WhatsApp">📲 Stuur boekingslink</button>
+      <button class="btn-send-link" onclick="sendBookingLink()" title="Stuur de klant een boekingslink via WhatsApp">Stuur boekingslink</button>
       <button class="btn-save" id="btnModalAddAppt" onclick="saveModal()">Toevoegen</button>
     </div>
   </div>
@@ -7110,7 +7365,7 @@ function renderApptCard(a, i) {
           const desc = String(a.jobDescription || '').trim();
           if (!note) return '';
           if (note.toLowerCase() === desc.toLowerCase()) return '';
-          return `<div class="appt-notes">💬 ${note}</div>`;
+          return `<div class="appt-notes">● ${note}</div>`;
         })()}
         <div class="appt-footer">
           <div class="appt-footer-left">
@@ -7414,7 +7669,7 @@ function renderDepotRow(kind, planMeta) {
   return `
     <div class="route-item route-item--depot ${isEnd ? 'route-item--depot-end' : 'route-item--depot-start'}">
       <div class="route-drag-handle route-drag-handle--ghost" aria-hidden="true">&#8801;</div>
-      <div class="route-num depot">${isEnd ? '🏁' : '🏠'}</div>
+      <div class="route-num depot">${isEnd ? '●' : '●'}</div>
       <div class="route-item-main">
         <div class="route-name-row">
           <span class="route-name">${title}</span>
@@ -7436,7 +7691,7 @@ function renderRouteItemHtml(a) {
     : `<span class="route-eta route-eta--muted">—</span>`;
   const jobLbl = formatJobTypeLabelShort(a.jobType);
   const dayChip = (a.dayPart ?? 1) === 0 ? '09–13' : '13–17';
-  const viol = a.violation ? '<span class="route-violation" title="Tijdsvenster lastig haalbaar">⚠</span>' : '';
+  const viol = a.violation ? '<span class="route-violation" title="Tijdsvenster lastig haalbaar">!</span>' : '';
   const pinH = a.internalFixedStartTime ? normalizeTimeStr(String(a.internalFixedStartTime)) : '';
   const pinHtml = pinH
     ? `<span class="route-pin-pill" title="Interne vaste route-start (operationeel)">Vast ${pinH}</span>`
