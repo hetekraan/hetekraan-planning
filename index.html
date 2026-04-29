@@ -2622,12 +2622,9 @@
       display: none;
     }
 
-    .appointments.tab-hidden {
-      display: block !important;
-    }
+    .appointments.tab-hidden,
     .route-panel.tab-hidden {
-      display: flex !important;
-      flex-direction: column;
+      display: none !important;
     }
 
     .layout {
@@ -5406,6 +5403,18 @@
     color: var(--ink);
     font-variant-numeric: tabular-nums;
   }
+  .routes-actions-stack {
+    padding: 14px 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .routes-actions-stack .btn-maps,
+  .routes-actions-stack .btn-morning,
+  .routes-actions-stack .route-reset-link {
+    width: 100%;
+  }
   .route-panel {
     padding: 16px 14px;
   }
@@ -5466,7 +5475,7 @@
     }
     .layout {
       display: grid;
-      grid-template-columns: 240px minmax(0, 1fr) 360px;
+      grid-template-columns: 240px minmax(0, 1fr);
       min-height: calc(100dvh - 74px);
     }
     .planner-sidebar {
@@ -5482,7 +5491,7 @@
     }
     .appointments {
       padding: 24px;
-      border-right: 1px solid var(--border);
+      border-right: none;
     }
     .route-panel {
       display: flex !important;
@@ -5598,7 +5607,7 @@
         <span class="planner-sidebar-count" id="sidebarCountToday">0</span>
       </a>
       <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Agenda</span></span></a>
-      <a href="#panelRoutesPlaceholder" class="planner-sidebar-item" data-sidebar-view="routes" onclick="return switchSidebarView('routes', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Routes</span></span></a>
+      <a href="#panelRoutes" class="planner-sidebar-item" data-sidebar-view="routes" onclick="return switchSidebarView('routes', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Routes</span></span></a>
       <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Klanten</span></span></a>
       <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Facturen</span></span><span class="planner-sidebar-count">3</span></a>
       <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Prijzen</span></span></a>
@@ -5661,44 +5670,18 @@
     </div>
   </div>
 
-  <div class="route-panel tab-hidden" id="panelRoute">
-    <div class="route-panel-status">
-      <div class="route-status-card">
-        <div class="route-status-card__top">
-          <div class="route-status-card__titles">
-            <div class="route-status-kicker">Dagroute</div>
-            <h2 class="route-status-title" id="routePanelDateTitle">Route</h2>
-            <p class="route-status-text" id="routePanelStatusText"></p>
-          </div>
-          <span class="route-status-badge" id="routePanelStatusBadge" hidden></span>
-        </div>
-        <div id="routeLocalHint" class="route-local-hint" style="display:none"></div>
-        <button type="button" class="route-reset-link" onclick="resetLocalRouteTimes()" id="btnResetLocalRoute" style="display:none">↺ Reset naar GHL-agenda (wis lokale tijden)</button>
-      </div>
-    </div>
-    <div class="route-flow-scroll">
-      <div class="route-list" id="routeList"></div>
-    </div>
-    <div class="route-toolbar route-toolbar--card">
-      <button type="button" class="btn-optimize" id="btnOptimize" onclick="optimizeRoute()">Optimaliseer</button>
-      <button type="button" class="btn-unlock-route" id="btnUnlock" style="display:none" onclick="unlockRoute()" title="Ontgrendel route (centraal) of handmatige volgorde">Ontgrendel</button>
-      <button type="button" class="btn-confirm-route" id="btnConfirmRoute" onclick="confirmRoute()" title="Sla geplande tijden op in GHL zodat ochtendmeldingen de juiste aankomsttijd sturen">Bevestig route</button>
-    </div>
-    <div class="route-panel-footer">
-      <div class="route-summary" id="routeSummary" aria-live="polite"></div>
-      <a class="btn-maps" href="#" onclick="openMaps(event)">Open volledige route in Maps</a>
-      <button type="button" class="btn-morning" onclick="sendMorningMessages()">Stuur ochtendmeldingen</button>
-    </div>
-  </div>
-  <div class="route-panel route-demo-panel tab-hidden" id="panelRoutesPlaceholder">
+  <div class="route-panel route-demo-panel tab-hidden" id="panelRoutes">
     <div class="today-page-header">
       <div class="today-page-heading">
         <h1>Routes</h1>
-        <p id="routesDateSubtitle">Donderdag 30 april</p>
+        <p><span id="routePanelDateTitle">Route</span> · <span id="routesDateSubtitle">Donderdag 30 april</span></p>
+        <p id="routePanelStatusText"></p>
       </div>
       <div class="appointments-header-actions">
-        <button type="button" class="today-btn today-btn--ghost" onclick="optimizeRouteDemo()">Optimaliseer route</button>
-        <button type="button" class="today-btn today-btn--primary" onclick="saveRouteDemo()">Opslaan</button>
+        <span class="route-status-badge" id="routePanelStatusBadge" hidden></span>
+        <button type="button" class="today-btn today-btn--ghost btn-optimize" id="btnOptimize" onclick="optimizeRoute()">Optimaliseer</button>
+        <button type="button" class="today-btn today-btn--ghost btn-unlock-route" id="btnUnlock" style="display:none" onclick="unlockRoute()" title="Ontgrendel route (centraal) of handmatige volgorde">Ontgrendel</button>
+        <button type="button" class="today-btn today-btn--primary btn-confirm-route" id="btnConfirmRoute" onclick="confirmRoute()" title="Sla geplande tijden op in GHL zodat ochtendmeldingen de juiste aankomsttijd sturen">Bevestig route</button>
       </div>
     </div>
     <div class="today-week-strip-wrap" aria-label="Week navigatie routes">
@@ -5713,23 +5696,21 @@
           <div class="routes-stops-sub">Sleep om te herordenen</div>
         </div>
         <div class="routes-stops-body">
-          <div class="routes-sticky-row">● Depot / start — Cornelis Drebbelstraat, Amsterdam</div>
-          <div id="routesStopsList"></div>
-          <div class="routes-sticky-row">● Depot / einde — Cornelis Drebbelstraat, Amsterdam</div>
+          <div class="route-list" id="routeList"></div>
         </div>
       </div>
       <div class="routes-map-card">
         <div class="routes-map-head">Routekaart</div>
         <div class="routes-map-placeholder">Kaart komt later</div>
-        <div class="routes-summary">
-          <div class="routes-summary-title">Samenvatting</div>
-          <div class="routes-summary-row"><span>Totale afstand</span><strong>42,8 km</strong></div>
-          <div class="routes-summary-row"><span>Rijtijd</span><strong>1u 24m</strong></div>
-          <div class="routes-summary-row"><span>Eerste stop</span><strong id="routesSummaryFirst">10:00 · Aalsmeer</strong></div>
-          <div class="routes-summary-row"><span>Laatste stop</span><strong id="routesSummaryLast">16:30 · Zaandam</strong></div>
+        <div class="routes-summary" id="routeSummary" aria-live="polite"></div>
+        <div class="routes-actions-stack">
+          <a class="btn-maps" href="#" onclick="openMaps(event)">Open volledige route in Maps</a>
+          <button type="button" class="btn-morning" onclick="sendMorningMessages()">Stuur ochtendmeldingen</button>
+          <button type="button" class="route-reset-link" onclick="resetLocalRouteTimes()" id="btnResetLocalRoute" style="display:none">↺ Reset naar GHL-agenda (wis lokale tijden)</button>
         </div>
       </div>
     </div>
+    <div id="routeLocalHint" class="route-local-hint" style="display:none"></div>
   </div>
 </div>
 
@@ -6241,16 +6222,6 @@ let plannerCustomerDayFullStoreConfigured = false;
 let globalSearchTimer = null;
 let globalSearchResultsCache = [];
 let plannerSidebarView = 'today';
-let routesDemoStops = [];
-
-const ROUTES_DEMO_FALLBACK = [
-  { id: 'r1', time: '10:00', dayPart: 'morning', city: 'Aalsmeer', name: 'Familie Jansen', address: 'Stationsweg 12, Aalsmeer', type: 'reparatie' },
-  { id: 'r2', time: '10:45', dayPart: 'morning', city: 'Amstelveen', name: 'Mevrouw Bakker', address: 'Laan van Meerdervoort 8, Amstelveen', type: 'onderhoud' },
-  { id: 'r3', time: '11:30', dayPart: 'morning', city: 'Amsterdam', name: 'De Vries BV', address: 'Houthavenskade 33, Amsterdam', type: 'installatie' },
-  { id: 'r4', time: '13:30', dayPart: 'afternoon', city: 'Haarlem', name: 'Klant Haarlem', address: 'Spaarne 91, Haarlem', type: 'reparatie' },
-  { id: 'r5', time: '14:30', dayPart: 'afternoon', city: 'Purmerend', name: 'Familie Smit', address: 'Kanaaldijk 52, Purmerend', type: 'onderhoud' },
-  { id: 'r6', time: '15:30', dayPart: 'afternoon', city: 'Zaandam', name: 'Installatie Noord', address: 'Peperstraat 101, Zaandam', type: 'installatie' },
-];
 
 function syncModalInternalFixedControls() {
   const typeEl = document.getElementById(
@@ -7351,7 +7322,7 @@ function setPlannerUiScale(mode) {
 
 function switchMobileTab(tab) {
   const afspraken = document.getElementById('panelAfspraken');
-  const route     = document.getElementById('panelRoute');
+  const route     = document.getElementById('panelRoutes');
   const tabA      = document.getElementById('tabAfspraken');
   const tabR      = document.getElementById('tabRoute');
   const tabZ      = document.getElementById('tabZoeken');
@@ -7412,7 +7383,7 @@ function toggleMobileMenu(open) {
     if (tabZ) tabZ.classList.remove('active');
   } else {
     const panelA = document.getElementById('panelAfspraken');
-    const panelR = document.getElementById('panelRoute');
+    const panelR = document.getElementById('panelRoutes');
     if (panelR && !panelR.classList.contains('tab-hidden')) {
       if (tabR) tabR.classList.add('active');
     } else if (panelA && !panelA.classList.contains('tab-hidden')) {
@@ -7800,125 +7771,6 @@ function renderRoutesWeekStrip() {
   });
 }
 
-function buildRoutesDemoStops() {
-  const clients = appointments.filter((a) => !a.isCalBlock).slice(0, 7);
-  if (!clients.length) return ROUTES_DEMO_FALLBACK.map((x) => ({ ...x }));
-  return clients.map((a, idx) => {
-    const part = (a.dayPart ?? 1) === 0 ? 'morning' : 'afternoon';
-    const addr = String(a.fullAddressLine || a.address || '').trim();
-    const city = addr.split(',').map((s) => s.trim()).filter(Boolean).pop() || 'Amsterdam';
-    return {
-      id: `a-${a.id}`,
-      appointmentId: a.id,
-      time: String(a.timeSlot || (part === 'morning' ? `1${idx}:00` : `1${idx}:30`)).replace(/^~/, ''),
-      dayPart: part,
-      city,
-      name: String(a.name || `Stop ${idx + 1}`),
-      address: addr || `Adres ${idx + 1}, ${city}`,
-      type: String(a.jobType || 'reparatie').toLowerCase(),
-    };
-  });
-}
-
-function normalizeRouteType(type) {
-  const t = String(type || '').toLowerCase();
-  if (t === 'onderhoud' || t === 'installatie' || t === 'reparatie') return t;
-  return 'reparatie';
-}
-
-function renderRoutesDemo() {
-  const listEl = document.getElementById('routesStopsList');
-  if (!listEl) return;
-  if (!routesDemoStops.length) routesDemoStops = buildRoutesDemoStops();
-  const dateLabel = new Intl.DateTimeFormat('nl-NL', {
-    day: 'numeric', month: 'long', timeZone: 'Europe/Amsterdam',
-  }).format(currentDate);
-  const titleEl = document.getElementById('routesStopsTitle');
-  if (titleEl) titleEl.textContent = `Route ${dateLabel} — ${routesDemoStops.length} stops`;
-  const subtitleEl = document.getElementById('routesDateSubtitle');
-  if (subtitleEl) subtitleEl.textContent = formatDate(currentDate);
-  const rows = [];
-  routesDemoStops.forEach((stop, idx) => {
-    if (idx > 0 && routesDemoStops[idx - 1].dayPart === 'morning' && stop.dayPart === 'afternoon') {
-      rows.push('<div class="routes-daypart-divider">Overgang ochtend → middag</div>');
-    }
-    rows.push(
-      `<div class="routes-stop-row" draggable="true" data-route-index="${idx}" onclick="openRouteStopDetails(${idx})">` +
-      `<span class="routes-stop-handle" title="Sleep">⋮⋮</span>` +
-      `<span class="routes-stop-order">${idx + 1}</span>` +
-      `<span class="routes-stop-time">${escapeHtml(stop.time)}</span>` +
-      `<div class="routes-stop-main"><div class="routes-stop-name">${escapeHtml(stop.name)}</div><div class="routes-stop-address">${escapeHtml(stop.address)}</div></div>` +
-      `<span class="tag ${normalizeRouteType(stop.type)}">${escapeHtml(normalizeRouteType(stop.type))}</span>` +
-      `<span class="routes-stop-chevron">›</span>` +
-      `</div>`
-    );
-  });
-  listEl.innerHTML = rows.join('');
-  const first = routesDemoStops[0];
-  const last = routesDemoStops[routesDemoStops.length - 1];
-  const firstEl = document.getElementById('routesSummaryFirst');
-  const lastEl = document.getElementById('routesSummaryLast');
-  if (firstEl && first) firstEl.textContent = `${first.time} · ${first.city}`;
-  if (lastEl && last) lastEl.textContent = `${last.time} · ${last.city}`;
-  wireRoutesDragAndDrop();
-  renderRoutesWeekStrip();
-}
-
-function wireRoutesDragAndDrop() {
-  const listEl = document.getElementById('routesStopsList');
-  if (!listEl) return;
-  let dragIndex = -1;
-  listEl.querySelectorAll('.routes-stop-row').forEach((row) => {
-    row.addEventListener('dragstart', () => {
-      dragIndex = Number(row.getAttribute('data-route-index'));
-      row.classList.add('is-dragging');
-    });
-    row.addEventListener('dragend', () => {
-      row.classList.remove('is-dragging');
-    });
-    row.addEventListener('dragover', (ev) => ev.preventDefault());
-    row.addEventListener('drop', (ev) => {
-      ev.preventDefault();
-      const targetIndex = Number(row.getAttribute('data-route-index'));
-      if (!Number.isInteger(dragIndex) || dragIndex < 0 || targetIndex < 0 || dragIndex === targetIndex) return;
-      const next = [...routesDemoStops];
-      const [moved] = next.splice(dragIndex, 1);
-      next.splice(targetIndex, 0, moved);
-      routesDemoStops = next;
-      renderRoutesDemo();
-    });
-  });
-}
-
-function optimizeRouteDemo() {
-  if (!routesDemoStops.length) routesDemoStops = buildRoutesDemoStops();
-  const shuffled = [...routesDemoStops];
-  for (let i = shuffled.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  routesDemoStops = shuffled;
-  renderRoutesDemo();
-  showToast('Route visueel geoptimaliseerd', 'success');
-}
-
-function saveRouteDemo() {
-  const order = routesDemoStops.map((x, idx) => ({ index: idx + 1, name: x.name, time: x.time }));
-  console.log('[routes-demo] save_order', order);
-  showToast('Route opgeslagen', 'success');
-}
-
-function openRouteStopDetails(index) {
-  const stop = routesDemoStops[index];
-  if (!stop) return;
-  if (stop.appointmentId != null) {
-    openAppointmentDetailsModal(stop.appointmentId);
-    return;
-  }
-  const fallback = appointments.find((a) => !a.isCalBlock);
-  if (fallback) openAppointmentDetailsModal(fallback.id);
-}
-
 function switchSidebarView(view, event) {
   if (event?.preventDefault) event.preventDefault();
   plannerSidebarView = view === 'routes' ? 'routes' : 'today';
@@ -7926,18 +7778,14 @@ function switchSidebarView(view, event) {
     el.classList.toggle('is-active', el.getAttribute('data-sidebar-view') === plannerSidebarView);
   });
   const panelToday = document.getElementById('panelAfspraken');
-  const panelRoutes = document.getElementById('panelRoutesPlaceholder');
-  const panelRouteLegacy = document.getElementById('panelRoute');
+  const panelRoutes = document.getElementById('panelRoutes');
   if (window.matchMedia('(min-width: 1180px)').matches) {
     if (plannerSidebarView === 'routes') {
       panelToday?.classList.add('tab-hidden');
       panelRoutes?.classList.remove('tab-hidden');
-      panelRouteLegacy?.classList.add('tab-hidden');
-      renderRoutesDemo();
     } else {
       panelToday?.classList.remove('tab-hidden');
       panelRoutes?.classList.add('tab-hidden');
-      panelRouteLegacy?.classList.add('tab-hidden');
     }
   }
   return false;
@@ -7950,14 +7798,13 @@ function wireDesktopWideLayout() {
     if (wide.matches) {
       if (plannerSidebarView === 'routes') {
         document.getElementById('panelAfspraken')?.classList.add('tab-hidden');
-        document.getElementById('panelRoutesPlaceholder')?.classList.remove('tab-hidden');
+        document.getElementById('panelRoutes')?.classList.remove('tab-hidden');
       } else {
         document.getElementById('panelAfspraken')?.classList.remove('tab-hidden');
-        document.getElementById('panelRoutesPlaceholder')?.classList.add('tab-hidden');
+        document.getElementById('panelRoutes')?.classList.add('tab-hidden');
       }
-      document.getElementById('panelRoute')?.classList.add('tab-hidden');
     } else {
-      document.getElementById('panelRoutesPlaceholder')?.classList.add('tab-hidden');
+      document.getElementById('panelRoutes')?.classList.add('tab-hidden');
     }
   };
   if (wide.addEventListener) wide.addEventListener('change', apply);
@@ -8750,9 +8597,7 @@ function render() {
   updateRouteLocalUi();
   updateRoutePanelChrome(routeStops);
   renderPlannerWeekStrip();
-  if (!routesDemoStops.length) routesDemoStops = buildRoutesDemoStops();
   renderRoutesWeekStrip();
-  if (plannerSidebarView === 'routes') renderRoutesDemo();
 }
 
 function formatRoutePanelTitle(d) {
@@ -8886,7 +8731,11 @@ function updateRoutePanelChrome(routeStops) {
   }
 
   const sumEl = document.getElementById('routeSummary');
-  if (sumEl) sumEl.innerHTML = buildRouteSummaryHtml(routeStops || [], dateStr);
+  if (sumEl) {
+    sumEl.innerHTML = `<div class="routes-summary-title">Samenvatting</div>${buildRouteSummaryHtml(routeStops || [], dateStr)}`;
+  }
+  const routesDateSubEl = document.getElementById('routesDateSubtitle');
+  if (routesDateSubEl) routesDateSubEl.textContent = formatDate(currentDate);
 }
 
 function renderDepotRow(kind, planMeta) {
@@ -8961,6 +8810,11 @@ function renderRoute(routeStops) {
   const list = document.getElementById('routeList');
   if (!list) return;
   const dateStr = getDateStr(currentDate);
+  const routesStopsTitleEl = document.getElementById('routesStopsTitle');
+  if (routesStopsTitleEl) {
+    const dm = new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'long', timeZone: 'Europe/Amsterdam' }).format(currentDate);
+    routesStopsTitleEl.textContent = `Route ${dm} — ${routeStops.length} stops`;
+  }
   const { morning, afternoon } = splitSidebarByDayPart(routeStops);
   const plan = getLastPartitionedRoutePlan(dateStr);
   const planMatch = routePlanMatchesStops(plan, routeStops);
