@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 :root {
   --bg-page: #faf8f4;
   --bg-card: #ffffff;
@@ -17,6 +19,8 @@
   --radius-md: 8px;
   --radius-lg: 12px;
   --shadow-sm: 0 1px 0 rgba(0,0,0,0.02);
+  /* backwards-compatible aliases for existing classes */
+  --hk-muted: var(--ink-muted);
 }
 
 * {
@@ -185,7 +189,7 @@ body {
   background: rgba(255, 255, 255, 0.06);
 }
 .catalog-v1-empty {
-  color: var(--hk-muted);
+  color: var(--ink-muted);
   font-size: 12px;
   padding: 8px 10px;
 }
@@ -201,7 +205,7 @@ body {
 .catalog-v1-line button {
   border: none;
   background: transparent;
-  color: var(--hk-muted);
+  color: var(--ink-muted);
   cursor: pointer;
   font-size: 12px;
 }
