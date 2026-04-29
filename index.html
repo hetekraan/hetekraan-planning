@@ -4339,6 +4339,352 @@
     }
   }
 
+  /* Warm Minimal polish pass (visual only, no logic changes) */
+  :root {
+    --wm-gap-1: 8px;
+    --wm-gap-2: 12px;
+    --wm-gap-3: 16px;
+    --wm-gap-4: 20px;
+    --wm-gap-5: 28px;
+    --wm-radius-sm: 8px;
+    --wm-radius-md: 10px;
+    --wm-radius-lg: 12px;
+    --wm-radius-xl: 14px;
+  }
+
+  header {
+    min-height: 58px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .planner-header-brand-row {
+    gap: var(--wm-gap-2);
+  }
+  .planner-brand-logo {
+    height: 32px;
+    max-width: min(210px, 48vw);
+  }
+  .date-nav-wrap {
+    gap: var(--wm-gap-2);
+  }
+  .date-nav {
+    border-radius: var(--wm-radius-md);
+    overflow: visible;
+  }
+  .date-nav button {
+    min-width: 40px;
+    min-height: 40px;
+    padding: 8px 10px;
+    font-size: 16px;
+  }
+  .date-label {
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    font-size: 13px;
+    letter-spacing: -0.01em;
+  }
+  .header-stats {
+    gap: var(--wm-gap-1);
+  }
+  .stat {
+    border-radius: var(--wm-radius-lg);
+    padding: 9px 11px;
+  }
+  .stat-val {
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+  .stat-label {
+    margin-top: 3px;
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+  }
+
+  .layout {
+    gap: 0;
+  }
+  .appointments {
+    padding: var(--wm-gap-5);
+  }
+  .appointments-header {
+    margin-bottom: var(--wm-gap-4);
+    gap: var(--wm-gap-2);
+  }
+  .appointments-header-actions {
+    gap: var(--wm-gap-2);
+  }
+  .appointments-header-util {
+    gap: 8px;
+  }
+  .appointments-header-util .btn-dagopgave,
+  .appointments-header-util .planner-app-icon-btn.btn-day-block {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: var(--wm-radius-md);
+  }
+  .appointments-header-actions .btn-add {
+    height: 44px;
+    min-height: 44px;
+    border-radius: var(--wm-radius-md);
+    padding: 0 14px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .planning-section {
+    margin-bottom: 22px;
+  }
+  .planning-section-title {
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+  }
+  #apptList .empty-hint {
+    border: 1px solid var(--border);
+    border-radius: var(--wm-radius-lg);
+    background: #fff;
+    color: #645c52;
+    padding: 14px 16px;
+  }
+
+  .appt-card {
+    border-radius: var(--wm-radius-xl);
+    margin-bottom: var(--wm-gap-3);
+  }
+  .appt-inner {
+    padding: 16px 16px 14px 38px;
+    gap: var(--wm-gap-2);
+  }
+  .appt-number {
+    top: 10px;
+    left: 10px;
+    font-size: 13px;
+    letter-spacing: 0;
+    font-weight: 600;
+  }
+  .appt-top {
+    margin-bottom: 2px;
+    gap: var(--wm-gap-2);
+  }
+  .appt-time {
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .slot-daypart-hint,
+  .ghl-cal-time-hint {
+    font-size: 12px;
+    font-weight: 500;
+    color: #8e867c;
+  }
+  .appt-body {
+    margin: 4px 0 10px;
+    gap: 8px;
+  }
+  .appt-address {
+    font-size: 15px;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+    font-weight: 600;
+  }
+  .appt-name {
+    font-size: 13px;
+    line-height: 1.4;
+    color: #645c52;
+  }
+  .appt-desc {
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: #8e867c;
+  }
+  .appt-meta {
+    margin: 8px 0 0;
+    gap: 8px;
+  }
+  .meta-item {
+    border-radius: var(--wm-radius-sm);
+    border: 1px solid var(--border);
+    background: #fdfbf8;
+  }
+  .appt-notes {
+    margin-top: 8px;
+    border-radius: var(--wm-radius-sm);
+    background: #f9f5ee;
+    color: #645c52;
+  }
+  .appt-footer {
+    margin-top: 10px;
+    gap: var(--wm-gap-2);
+  }
+  .appt-tags {
+    gap: 8px;
+  }
+  .tag {
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .appt-price {
+    font-size: 17px;
+    line-height: 1.2;
+  }
+  .appt-footer-cta-row {
+    gap: 8px;
+  }
+  .appt-footer-cta-row .btn-prijs,
+  .appt-footer-cta-row .btn-done {
+    min-height: 34px;
+    border-radius: var(--wm-radius-sm);
+    font-size: 11.5px;
+    padding: 6px 9px;
+  }
+  .complete-bar {
+    border-top: 1px solid var(--border);
+    background: #fcfaf6;
+    padding: 14px 16px 16px;
+  }
+
+  .planner-week-nav {
+    border-radius: var(--wm-radius-lg);
+    margin-top: 6px;
+  }
+  .planner-week-nav-row {
+    gap: 8px;
+  }
+  .planner-week-strip {
+    padding: 6px;
+    gap: 6px;
+  }
+  .planner-week-day {
+    border-radius: var(--wm-radius-md);
+    min-width: 54px;
+    padding: 9px 8px 10px;
+    font-size: 11px;
+  }
+  .planner-week-day .planner-week-day-num {
+    font-size: 13px;
+    margin-top: 2px;
+  }
+  .planner-week-day.is-active {
+    box-shadow: none;
+  }
+  .planner-week-edge,
+  .planner-week-icon-btn {
+    border-radius: var(--wm-radius-md);
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+  }
+
+  .route-panel {
+    padding: var(--wm-gap-4);
+  }
+  .route-status-card,
+  .route-toolbar--card,
+  .route-panel-footer {
+    border-radius: var(--wm-radius-lg);
+  }
+  .route-status-card {
+    padding: 14px 14px 12px;
+  }
+  .route-status-kicker {
+    color: #8e867c;
+  }
+  .route-status-text {
+    color: #645c52;
+  }
+  .route-list {
+    gap: 10px;
+  }
+  .route-item {
+    border-radius: var(--wm-radius-md);
+    border: 1px solid var(--border);
+    background: #fff;
+  }
+
+  .mobile-menu-panel {
+    border-radius: 12px 12px 0 0;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    padding: 16px;
+    box-shadow: none;
+  }
+  .mobile-tab {
+    border-radius: var(--wm-radius-md);
+  }
+
+  @media (max-width: 1179px) {
+    .appointments {
+      padding: 18px 14px 20px;
+    }
+    .appt-inner {
+      padding: 14px 12px 12px 34px;
+    }
+    .route-panel {
+      padding: 14px 12px 18px;
+    }
+  }
+
+  @media (max-width: 639px) {
+    header {
+      min-height: 52px;
+      padding-top: 6px;
+      padding-bottom: 6px;
+    }
+    .planner-brand-logo {
+      height: 28px;
+      max-width: 46vw;
+    }
+    .header-stats {
+      gap: 6px;
+    }
+    .stat {
+      min-width: 72px;
+      padding: 7px 8px;
+    }
+    .stat-val {
+      font-size: 13px;
+    }
+    .stat-label {
+      font-size: 9px;
+    }
+    .appointments {
+      padding: 14px 10px 16px;
+    }
+    .appointments-header {
+      margin-bottom: 12px;
+    }
+    .appointments-header-actions .btn-add {
+      height: 40px;
+      min-height: 40px;
+      font-size: 12px;
+    }
+    .appt-card {
+      margin-bottom: 12px;
+      border-radius: 12px;
+    }
+    .appt-inner {
+      padding: 12px 10px 10px 30px;
+    }
+    .appt-address {
+      font-size: 14px;
+    }
+    .appt-desc {
+      font-size: 12px;
+    }
+    .planner-week-day {
+      min-width: 50px;
+      padding: 8px 6px 9px;
+    }
+  }
+
   /* Warm Minimal theme override */
   :root {
     --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
