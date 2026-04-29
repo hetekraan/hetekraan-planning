@@ -5,6 +5,7 @@
   let directionsRenderer = null;
   let depotMarkers = [];
   let stopMarkers = [];
+  let mapLastErrorCode = '';
 
   function openMaps(event, input) {
     if (event?.preventDefault) event.preventDefault();
@@ -37,6 +38,10 @@
     if (mapsLoaderPromise) return mapsLoaderPromise;
     mapsLoaderPromise = new Promise((resolve, reject) => {
       const cbName = `hkMapsInit_${Date.now()}`;
+      window.gm_authFailure = () => {
+        mapLastErrorCode = 'GM_AUTH_FAILURE';
+        reject(new Error('GM_AUTH_FAILURE'));
+      };
       window[cbName] = () => {
         delete window[cbName];
         resolve(window.google.maps);
@@ -45,7 +50,10 @@
       script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&callback=${cbName}`;
       script.async = true;
       script.defer = true;
-      script.onerror = () => reject(new Error('Google Maps script laden mislukt'));
+      script.onerror = () => {
+        mapLastErrorCode = 'SCRIPT_LOAD_FAILED';
+        reject(new Error('SCRIPT_LOAD_FAILED'));
+      };
       document.head.appendChild(script);
     });
     return mapsLoaderPromise;
@@ -63,6 +71,33 @@
     stopMarkers = [];
   }
 
+  function buildMapsDirUrl(depotAddress, stops) {
+    const waypoints = stops
+      .map((a) => String(a?.fullAddressLine || a?.address || '').trim())
+      .filter(Boolean)
+      .map((x) => encodeURIComponent(x))
+      .join('|');
+    return (
+      `https://www.google.com/maps/dir/?api=1` +
+      `&origin=${encodeURIComponent(depotAddress)}` +
+      `&destination=${encodeURIComponent(depotAddress)}` +
+      (waypoints ? `&waypoints=${waypoints}` : '') +
+      `&travelmode=driving`
+    );
+  }
+
+  function renderMapError(container, code, depotAddress, stops) {
+    const safeCode = String(code || 'UNKNOWN_MAP_ERROR');
+    const fallback = buildMapsDirUrl(depotAddress, stops);
+    container.innerHTML =
+      `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;padding:18px;text-align:center">` +
+      `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"></circle><path d="M12 7.5v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path><circle cx="12" cy="16.8" r="1" fill="currentColor"></circle></svg>` +
+      `<div style="font-weight:600;color:var(--ink)">Kaart niet beschikbaar</div>` +
+      `<div style="font-size:12px;color:var(--ink-muted)">${safeCode}</div>` +
+      `<a href="${fallback}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;justify-content:center;padding:8px 12px;border:1px solid var(--border);border-radius:8px;color:var(--ink);text-decoration:none;background:#fff">Open in Google Maps</a>` +
+      `</div>`;
+  }
+
   async function renderRouteMap(input) {
     const container = document.getElementById('routeMap');
     if (!container) return;
@@ -76,6 +111,8 @@
       return;
     }
     if (!apiKey) {
+      mapLastErrorCode = 'MISSING_API_KEY';
+      renderMapError(container, mapLastErrorCode, depotAddress, ordered);
       if (typeof showToast === 'function') showToast('Google Maps key ontbreekt', 'info');
       return;
     }
@@ -116,6 +153,8 @@
         },
         (result, status) => {
           if (status !== 'OK' || !result) {
+            mapLastErrorCode = `DIRECTIONS_${String(status || 'ERROR')}`;
+            renderMapError(container, mapLastErrorCode, depotAddress, ordered);
             if (typeof showToast === 'function') showToast('Routekaart kon niet worden geladen', 'info');
             return;
           }
@@ -175,6 +214,7 @@
         }
       );
     } catch (err) {
+      renderMapError(container, mapLastErrorCode || String(err?.message || 'MAP_LOAD_ERROR'), depotAddress, ordered);
       if (typeof showToast === 'function') showToast(String(err?.message || err || 'Maps fout'), 'info');
     }
   }

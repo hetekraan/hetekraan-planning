@@ -5072,6 +5072,11 @@
     color: var(--bg-card);
     border-color: var(--ink);
   }
+  .today-btn--dark {
+    background: var(--ink);
+    color: var(--bg-card);
+    border-color: var(--ink);
+  }
   .today-week-strip-wrap {
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
@@ -5232,24 +5237,31 @@
     font-size: 12.5px;
     color: var(--ink-muted);
   }
-  .appt-status-badge {
-    font-size: 10.5px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 2px 8px;
-    border-radius: 4px;
+  .appt-actions {
+    gap: 6px;
   }
-  .appt-status-badge.is-klaar {
-    background: var(--green-soft);
-    color: var(--green);
+  .appt-actions .icon-btn.appt-action-icon {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-card);
+    color: var(--ink-soft);
+    padding: 0;
   }
-  .appt-status-badge.is-onderhoud {
+  .appt-actions .icon-btn.appt-action-icon .appt-action-svg {
+    width: 16px;
+    height: 16px;
+  }
+  .appt-actions .icon-btn.appt-action-icon .appt-action-svg path,
+  .appt-actions .icon-btn.appt-action-icon .appt-action-svg circle {
+    stroke-width: 1.6;
+  }
+  .appt-actions .icon-btn.appt-action-icon:hover {
     background: var(--accent-soft);
-    color: var(--accent-ink);
-  }
-  .appt-status-badge.is-reparatie {
-    background: var(--accent-soft);
+    border-color: var(--accent);
     color: var(--accent-ink);
   }
   .tag {
@@ -5440,16 +5452,45 @@
     font-variant-numeric: tabular-nums;
   }
   .routes-actions-stack {
-    padding: 14px 16px;
+    padding: 16px;
     border-top: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
+  }
+  .routes-actions-stack .today-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 12px;
+    border-radius: 9px;
+    font-weight: 600;
+  }
+  .routes-actions-stack .today-btn--ghost {
+    background: var(--bg-card);
+    color: var(--ink);
+    border: 1px solid var(--border);
+    font-weight: 500;
+    padding: 11px;
+  }
+  .routes-actions-stack .today-btn--dark {
+    background: var(--ink);
+    color: var(--bg-card);
+    border-color: var(--ink);
+  }
+  .routes-actions-stack .today-btn--primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
   }
   .routes-actions-stack .btn-maps,
   .routes-actions-stack .btn-morning,
   .routes-actions-stack .route-reset-link {
     width: 100%;
+    border-radius: 9px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--ink);
+    padding: 11px;
   }
   .route-panel {
     padding: 16px 14px;
@@ -5714,9 +5755,6 @@
       </div>
       <div class="appointments-header-actions">
         <span class="route-status-badge" id="routePanelStatusBadge" hidden></span>
-        <button type="button" class="today-btn today-btn--ghost btn-optimize" id="btnOptimize" onclick="optimizeRoute()">Optimaliseer</button>
-        <button type="button" class="today-btn today-btn--ghost btn-unlock-route" id="btnUnlock" style="display:none" onclick="unlockRoute()" title="Ontgrendel route (centraal) of handmatige volgorde">Ontgrendel</button>
-        <button type="button" class="today-btn today-btn--primary btn-confirm-route" id="btnConfirmRoute" onclick="confirmRoute()" title="Sla geplande tijden op in GHL zodat ochtendmeldingen de juiste aankomsttijd sturen">Bevestig route</button>
       </div>
     </div>
     <div class="today-week-strip-wrap" aria-label="Week navigatie routes">
@@ -5739,6 +5777,9 @@
         <div id="routeMap" aria-label="Routekaart"></div>
         <div class="routes-summary" id="routeSummary" aria-live="polite"></div>
         <div class="routes-actions-stack">
+          <button type="button" class="today-btn today-btn--primary btn-confirm-route" id="btnConfirmRoute" onclick="confirmRoute()" title="Sla geplande tijden op in GHL zodat ochtendmeldingen de juiste aankomsttijd sturen">Bevestig route</button>
+          <button type="button" class="today-btn today-btn--dark btn-optimize" id="btnOptimize" onclick="optimizeRoute()">Optimaliseer route</button>
+          <button type="button" class="today-btn today-btn--ghost btn-unlock-route" id="btnUnlock" style="display:none" onclick="unlockRoute()" title="Ontgrendel route (centraal) of handmatige volgorde">Ontgrendel</button>
           <a class="btn-maps" href="#" onclick="openMaps(event)">Open volledige route in Maps</a>
           <button type="button" class="btn-morning" onclick="sendMorningMessages()">Stuur ochtendmeldingen</button>
           <button type="button" class="route-reset-link" onclick="resetLocalRouteTimes()" id="btnResetLocalRoute" style="display:none">↺ Reset naar GHL-agenda (wis lokale tijden)</button>
@@ -8432,10 +8473,6 @@ function renderApptCard(a, i) {
       `<button type="button" role="menuitem" class="appt-actions__menu-item" onclick="closeMobileApptActionMenus();openAppointmentEditModal(${idQ})">Bewerken</button>`,
       `<button type="button" role="menuitem" class="appt-actions__menu-item appt-actions__menu-item--danger" onclick="closeMobileApptActionMenus();deleteAppt(${idQ})">Verwijderen</button>`
     );
-    const statusKey = isDone
-      ? 'klaar'
-      : (String(a.jobType || '').toLowerCase() === 'onderhoud' ? 'onderhoud' : 'reparatie');
-    const statusLabel = statusKey === 'klaar' ? 'Klaar' : (statusKey === 'onderhoud' ? 'Onderhoud' : 'Reparatie');
     return `
     <div class="appt-card ${isDone?'done':''} ${isOnderweg?'onderweg':''} ${isViolation?'violation':''}" id="card-${domId}">
       <div class="appt-inner">
@@ -8444,12 +8481,11 @@ function renderApptCard(a, i) {
           <div class="appt-time">
             ${a.fullAddressLine ? `<span class="appt-address">${a.fullAddressLine}</span>` : ''}
           </div>
-          <span class="appt-status-badge is-${statusKey}">${statusLabel}</span>
           <div class="appt-actions">
             <div class="appt-actions__icons">
-            ${a.phone ? `<a class="icon-btn appt-action-icon appt-action-text-btn" href="tel:${a.phone}" title="Bellen">Bel</a>` : ''}
-            ${a.mapsLink ? `<a class="icon-btn appt-action-icon appt-action-text-btn" href="${a.mapsLink}" target="_blank" rel="noopener noreferrer" title="Maps">Route</a>` : ''}
-            <button type="button" class="icon-btn appt-action-icon appt-action-text-btn" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">Bewerk</button>
+            ${a.phone ? `<a class="icon-btn appt-action-icon" href="tel:${a.phone}" title="Bellen">${APPT_ACTION_SVG.phone}</a>` : ''}
+            ${a.mapsLink ? `<a class="icon-btn appt-action-icon" href="${a.mapsLink}" target="_blank" rel="noopener noreferrer" title="Maps">${APPT_ACTION_SVG.map}</a>` : ''}
+            <button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">${APPT_ACTION_SVG.pencil}</button>
             ${a.ghlUrl ? `<a class="icon-btn appt-action-icon" href="${a.ghlUrl}"${a.ghlAppUrl ? ` data-ghl-app="${escapeHtml(a.ghlAppUrl)}" onclick="return hkOpenGhlContact(event,this)"` : ''} target="_blank" rel="noopener noreferrer" title="Open in GHL">${APPT_ACTION_SVG.link}</a>` : ''}
             ${isDone ? `<button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentDetailsModal(${idQ})' title="Bekijk details">${APPT_ACTION_SVG.eye}</button>` : ''}
             <button type="button" class="icon-btn appt-action-icon" onclick='deleteAppt(${idQ})' title="Verwijderen">${APPT_ACTION_SVG.close}</button>
@@ -8501,6 +8537,9 @@ function renderApptCard(a, i) {
             <div class="appt-footer-actions-touch">
               <div class="appt-footer-cta-row">
                 <button type="button" class="btn-prijs ${(barVisible&&!isOnderweg)||touchOverlayForCard?'active':''}" onclick='togglePrijs(event, ${idQ})' title="Prijsoverzicht bekijken" style="touch-action:manipulation">Prijs</button>
+                ${!isDone ? `
+                <button type="button" class="btn-done ${isOnderweg?'active':''}" onclick='${isOnderweg ? (useTouchPriceOverlay ? `togglePrijs(event, ${idQ})` : `scrollToPrijs(${idQ})`) : `askOnderweg(${idQ})`}' title="${isOnderweg ? 'Naar prijs en afronden' : 'Markeer onderweg'}">Onderweg</button>
+                ` : ''}
               </div>
             </div>
           </div>
