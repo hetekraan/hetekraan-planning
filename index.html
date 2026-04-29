@@ -5250,6 +5250,162 @@
   .total-bar {
     display: none;
   }
+  .route-demo-panel {
+    padding: 0;
+    background: var(--bg-page);
+    gap: 0;
+  }
+  .routes-content-grid {
+    padding: 18px 28px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: 16px;
+  }
+  .routes-stops-card,
+  .routes-map-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-card);
+  }
+  .routes-stops-head {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .routes-stops-title {
+    font-size: 14.5px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .routes-stops-sub {
+    margin-top: 2px;
+    font-size: 11.5px;
+    color: var(--ink-muted);
+  }
+  .routes-sticky-row {
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent-ink);
+    background: var(--accent-soft);
+  }
+  .routes-stop-row {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+  }
+  .routes-stop-row:hover {
+    background: var(--bg-page);
+  }
+  .routes-stop-row.is-dragging {
+    opacity: 0.7;
+  }
+  .routes-stop-handle {
+    color: var(--ink-muted);
+    font-size: 14px;
+    cursor: grab;
+    user-select: none;
+  }
+  .routes-stop-order {
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    background: var(--bg-page);
+    color: var(--ink);
+    font-size: 11.5px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .routes-stop-time {
+    width: 50px;
+    font-size: 11.5px;
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+  .routes-stop-main {
+    min-width: 0;
+    flex: 1;
+  }
+  .routes-stop-name {
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .routes-stop-address {
+    font-size: 12px;
+    color: var(--ink-soft);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .routes-stop-chevron {
+    font-size: 14px;
+    color: var(--ink-muted);
+    flex-shrink: 0;
+  }
+  .routes-daypart-divider {
+    padding: 8px 16px;
+    font-size: 11.5px;
+    color: var(--ink-muted);
+    font-style: italic;
+  }
+  .routes-map-card {
+    overflow: hidden;
+  }
+  .routes-map-head {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13.5px;
+    font-weight: 700;
+  }
+  .routes-map-placeholder {
+    aspect-ratio: 4 / 3;
+    background: var(--bg-page);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-muted);
+    font-size: 13px;
+  }
+  .routes-summary {
+    padding: 14px 16px;
+    border-top: 1px solid var(--border);
+  }
+  .routes-summary-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 6px;
+  }
+  .routes-summary-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .routes-summary-row:last-child {
+    border-bottom: none;
+  }
+  .routes-summary-row span {
+    font-size: 12.5px;
+    color: var(--ink-soft);
+  }
+  .routes-summary-row strong {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
   .route-panel {
     padding: 16px 14px;
   }
@@ -5335,6 +5491,10 @@
       border-left: none;
       padding: 16px 14px;
     }
+    .route-demo-panel {
+      padding: 0 !important;
+      gap: 0;
+    }
   }
 
   @media (max-width: 1179px) {
@@ -5360,6 +5520,10 @@
     }
     .today-kpi-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .routes-content-grid {
+      grid-template-columns: 1fr;
+      padding: 14px;
     }
     .appt-actions .icon-btn.appt-action-icon::after {
       display: none;
@@ -5429,12 +5593,12 @@
       <span class="planner-sidebar-caption">Planning</span>
     </div>
     <nav class="planner-sidebar-nav">
-      <a href="#" class="planner-sidebar-item is-active">
+      <a href="#" class="planner-sidebar-item is-active" data-sidebar-view="today" onclick="return switchSidebarView('today', event)">
         <span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Vandaag</span></span>
         <span class="planner-sidebar-count" id="sidebarCountToday">0</span>
       </a>
       <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Agenda</span></span></a>
-      <a href="#panelRoutesPlaceholder" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Routes</span></span></a>
+      <a href="#panelRoutesPlaceholder" class="planner-sidebar-item" data-sidebar-view="routes" onclick="return switchSidebarView('routes', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Routes</span></span></a>
       <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Klanten</span></span></a>
       <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Facturen</span></span><span class="planner-sidebar-count">3</span></a>
       <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Prijzen</span></span></a>
@@ -5526,11 +5690,45 @@
       <button type="button" class="btn-morning" onclick="sendMorningMessages()">Stuur ochtendmeldingen</button>
     </div>
   </div>
-  <div class="route-panel tab-hidden" id="panelRoutesPlaceholder">
-    <div class="route-status-card">
-      <div class="route-status-kicker">Routes</div>
-      <h2 class="route-status-title">Routes</h2>
-      <p class="route-status-text">Routes — komt in Fase D</p>
+  <div class="route-panel route-demo-panel tab-hidden" id="panelRoutesPlaceholder">
+    <div class="today-page-header">
+      <div class="today-page-heading">
+        <h1>Routes</h1>
+        <p id="routesDateSubtitle">Donderdag 30 april</p>
+      </div>
+      <div class="appointments-header-actions">
+        <button type="button" class="today-btn today-btn--ghost" onclick="optimizeRouteDemo()">Optimaliseer route</button>
+        <button type="button" class="today-btn today-btn--primary" onclick="saveRouteDemo()">Opslaan</button>
+      </div>
+    </div>
+    <div class="today-week-strip-wrap" aria-label="Week navigatie routes">
+      <button type="button" class="planner-week-edge" onclick="shiftPlannerWeek(-1)" title="Vorige week">‹</button>
+      <div class="planner-week-strip" id="routesWeekStrip" role="tablist" aria-label="Dagen in deze week"></div>
+      <button type="button" class="planner-week-edge" onclick="shiftPlannerWeek(1)" title="Volgende week">›</button>
+    </div>
+    <div class="routes-content-grid">
+      <div class="routes-stops-card">
+        <div class="routes-stops-head">
+          <div class="routes-stops-title" id="routesStopsTitle">Route 30 april — 0 stops</div>
+          <div class="routes-stops-sub">Sleep om te herordenen</div>
+        </div>
+        <div class="routes-stops-body">
+          <div class="routes-sticky-row">● Depot / start — Cornelis Drebbelstraat, Amsterdam</div>
+          <div id="routesStopsList"></div>
+          <div class="routes-sticky-row">● Depot / einde — Cornelis Drebbelstraat, Amsterdam</div>
+        </div>
+      </div>
+      <div class="routes-map-card">
+        <div class="routes-map-head">Routekaart</div>
+        <div class="routes-map-placeholder">Kaart komt later</div>
+        <div class="routes-summary">
+          <div class="routes-summary-title">Samenvatting</div>
+          <div class="routes-summary-row"><span>Totale afstand</span><strong>42,8 km</strong></div>
+          <div class="routes-summary-row"><span>Rijtijd</span><strong>1u 24m</strong></div>
+          <div class="routes-summary-row"><span>Eerste stop</span><strong id="routesSummaryFirst">10:00 · Aalsmeer</strong></div>
+          <div class="routes-summary-row"><span>Laatste stop</span><strong id="routesSummaryLast">16:30 · Zaandam</strong></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -6042,6 +6240,17 @@ let plannerCustomerDayFull = false;
 let plannerCustomerDayFullStoreConfigured = false;
 let globalSearchTimer = null;
 let globalSearchResultsCache = [];
+let plannerSidebarView = 'today';
+let routesDemoStops = [];
+
+const ROUTES_DEMO_FALLBACK = [
+  { id: 'r1', time: '10:00', dayPart: 'morning', city: 'Aalsmeer', name: 'Familie Jansen', address: 'Stationsweg 12, Aalsmeer', type: 'reparatie' },
+  { id: 'r2', time: '10:45', dayPart: 'morning', city: 'Amstelveen', name: 'Mevrouw Bakker', address: 'Laan van Meerdervoort 8, Amstelveen', type: 'onderhoud' },
+  { id: 'r3', time: '11:30', dayPart: 'morning', city: 'Amsterdam', name: 'De Vries BV', address: 'Houthavenskade 33, Amsterdam', type: 'installatie' },
+  { id: 'r4', time: '13:30', dayPart: 'afternoon', city: 'Haarlem', name: 'Klant Haarlem', address: 'Spaarne 91, Haarlem', type: 'reparatie' },
+  { id: 'r5', time: '14:30', dayPart: 'afternoon', city: 'Purmerend', name: 'Familie Smit', address: 'Kanaaldijk 52, Purmerend', type: 'onderhoud' },
+  { id: 'r6', time: '15:30', dayPart: 'afternoon', city: 'Zaandam', name: 'Installatie Noord', address: 'Peperstraat 101, Zaandam', type: 'installatie' },
+];
 
 function syncModalInternalFixedControls() {
   const typeEl = document.getElementById(
@@ -7559,13 +7768,196 @@ function renderPlannerWeekStrip() {
   });
 }
 
+function renderRoutesWeekStrip() {
+  const el = document.getElementById('routesWeekStrip');
+  if (!el) return;
+  const curStr = getDateStr(currentDate);
+  const partsYmd = curStr.split('-').map((x) => parseInt(x, 10));
+  if (partsYmd.length !== 3 || partsYmd.some((n) => Number.isNaN(n))) return;
+  const [Y, M, D] = partsYmd;
+  const start = new Date(Date.UTC(Y, M - 1, D, 12, 0, 0));
+  const wdShort = (dt) =>
+    new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'Europe/Amsterdam' }).format(dt);
+  let g = 0;
+  while (wdShort(start) !== 'Mon' && g++ < 14) start.setUTCDate(start.getUTCDate() - 1);
+  const fmtWd = new Intl.DateTimeFormat('nl-NL', { weekday: 'short', timeZone: 'Europe/Amsterdam' });
+  const nums = [];
+  for (let i = 0; i < 7; i++) {
+    const day = new Date(start.getTime());
+    day.setUTCDate(start.getUTCDate() + i);
+    const ds = getDateStr(day);
+    const wd = fmtWd.format(day).replace(/\.$/, '');
+    const dayNum = new Intl.DateTimeFormat('nl-NL', { day: 'numeric', timeZone: 'Europe/Amsterdam' }).format(day);
+    const active = ds === curStr;
+    nums.push(
+      `<button type="button" class="planner-week-day${active ? ' is-active' : ''}" data-routes-ymd="${ds}" role="tab" aria-selected="${active ? 'true' : 'false'}">` +
+      `<span>${wd}</span><span class="planner-week-day-num">${dayNum}</span></button>`
+    );
+  }
+  el.innerHTML = nums.join('');
+  el.querySelectorAll('[data-routes-ymd]').forEach((btn) => {
+    btn.onclick = () => goToDateStr(btn.getAttribute('data-routes-ymd'));
+  });
+}
+
+function buildRoutesDemoStops() {
+  const clients = appointments.filter((a) => !a.isCalBlock).slice(0, 7);
+  if (!clients.length) return ROUTES_DEMO_FALLBACK.map((x) => ({ ...x }));
+  return clients.map((a, idx) => {
+    const part = (a.dayPart ?? 1) === 0 ? 'morning' : 'afternoon';
+    const addr = String(a.fullAddressLine || a.address || '').trim();
+    const city = addr.split(',').map((s) => s.trim()).filter(Boolean).pop() || 'Amsterdam';
+    return {
+      id: `a-${a.id}`,
+      appointmentId: a.id,
+      time: String(a.timeSlot || (part === 'morning' ? `1${idx}:00` : `1${idx}:30`)).replace(/^~/, ''),
+      dayPart: part,
+      city,
+      name: String(a.name || `Stop ${idx + 1}`),
+      address: addr || `Adres ${idx + 1}, ${city}`,
+      type: String(a.jobType || 'reparatie').toLowerCase(),
+    };
+  });
+}
+
+function normalizeRouteType(type) {
+  const t = String(type || '').toLowerCase();
+  if (t === 'onderhoud' || t === 'installatie' || t === 'reparatie') return t;
+  return 'reparatie';
+}
+
+function renderRoutesDemo() {
+  const listEl = document.getElementById('routesStopsList');
+  if (!listEl) return;
+  if (!routesDemoStops.length) routesDemoStops = buildRoutesDemoStops();
+  const dateLabel = new Intl.DateTimeFormat('nl-NL', {
+    day: 'numeric', month: 'long', timeZone: 'Europe/Amsterdam',
+  }).format(currentDate);
+  const titleEl = document.getElementById('routesStopsTitle');
+  if (titleEl) titleEl.textContent = `Route ${dateLabel} — ${routesDemoStops.length} stops`;
+  const subtitleEl = document.getElementById('routesDateSubtitle');
+  if (subtitleEl) subtitleEl.textContent = formatDate(currentDate);
+  const rows = [];
+  routesDemoStops.forEach((stop, idx) => {
+    if (idx > 0 && routesDemoStops[idx - 1].dayPart === 'morning' && stop.dayPart === 'afternoon') {
+      rows.push('<div class="routes-daypart-divider">Overgang ochtend → middag</div>');
+    }
+    rows.push(
+      `<div class="routes-stop-row" draggable="true" data-route-index="${idx}" onclick="openRouteStopDetails(${idx})">` +
+      `<span class="routes-stop-handle" title="Sleep">⋮⋮</span>` +
+      `<span class="routes-stop-order">${idx + 1}</span>` +
+      `<span class="routes-stop-time">${escapeHtml(stop.time)}</span>` +
+      `<div class="routes-stop-main"><div class="routes-stop-name">${escapeHtml(stop.name)}</div><div class="routes-stop-address">${escapeHtml(stop.address)}</div></div>` +
+      `<span class="tag ${normalizeRouteType(stop.type)}">${escapeHtml(normalizeRouteType(stop.type))}</span>` +
+      `<span class="routes-stop-chevron">›</span>` +
+      `</div>`
+    );
+  });
+  listEl.innerHTML = rows.join('');
+  const first = routesDemoStops[0];
+  const last = routesDemoStops[routesDemoStops.length - 1];
+  const firstEl = document.getElementById('routesSummaryFirst');
+  const lastEl = document.getElementById('routesSummaryLast');
+  if (firstEl && first) firstEl.textContent = `${first.time} · ${first.city}`;
+  if (lastEl && last) lastEl.textContent = `${last.time} · ${last.city}`;
+  wireRoutesDragAndDrop();
+  renderRoutesWeekStrip();
+}
+
+function wireRoutesDragAndDrop() {
+  const listEl = document.getElementById('routesStopsList');
+  if (!listEl) return;
+  let dragIndex = -1;
+  listEl.querySelectorAll('.routes-stop-row').forEach((row) => {
+    row.addEventListener('dragstart', () => {
+      dragIndex = Number(row.getAttribute('data-route-index'));
+      row.classList.add('is-dragging');
+    });
+    row.addEventListener('dragend', () => {
+      row.classList.remove('is-dragging');
+    });
+    row.addEventListener('dragover', (ev) => ev.preventDefault());
+    row.addEventListener('drop', (ev) => {
+      ev.preventDefault();
+      const targetIndex = Number(row.getAttribute('data-route-index'));
+      if (!Number.isInteger(dragIndex) || dragIndex < 0 || targetIndex < 0 || dragIndex === targetIndex) return;
+      const next = [...routesDemoStops];
+      const [moved] = next.splice(dragIndex, 1);
+      next.splice(targetIndex, 0, moved);
+      routesDemoStops = next;
+      renderRoutesDemo();
+    });
+  });
+}
+
+function optimizeRouteDemo() {
+  if (!routesDemoStops.length) routesDemoStops = buildRoutesDemoStops();
+  const shuffled = [...routesDemoStops];
+  for (let i = shuffled.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  routesDemoStops = shuffled;
+  renderRoutesDemo();
+  showToast('Route visueel geoptimaliseerd', 'success');
+}
+
+function saveRouteDemo() {
+  const order = routesDemoStops.map((x, idx) => ({ index: idx + 1, name: x.name, time: x.time }));
+  console.log('[routes-demo] save_order', order);
+  showToast('Route opgeslagen', 'success');
+}
+
+function openRouteStopDetails(index) {
+  const stop = routesDemoStops[index];
+  if (!stop) return;
+  if (stop.appointmentId != null) {
+    openAppointmentDetailsModal(stop.appointmentId);
+    return;
+  }
+  const fallback = appointments.find((a) => !a.isCalBlock);
+  if (fallback) openAppointmentDetailsModal(fallback.id);
+}
+
+function switchSidebarView(view, event) {
+  if (event?.preventDefault) event.preventDefault();
+  plannerSidebarView = view === 'routes' ? 'routes' : 'today';
+  document.querySelectorAll('.planner-sidebar-item[data-sidebar-view]').forEach((el) => {
+    el.classList.toggle('is-active', el.getAttribute('data-sidebar-view') === plannerSidebarView);
+  });
+  const panelToday = document.getElementById('panelAfspraken');
+  const panelRoutes = document.getElementById('panelRoutesPlaceholder');
+  const panelRouteLegacy = document.getElementById('panelRoute');
+  if (window.matchMedia('(min-width: 1180px)').matches) {
+    if (plannerSidebarView === 'routes') {
+      panelToday?.classList.add('tab-hidden');
+      panelRoutes?.classList.remove('tab-hidden');
+      panelRouteLegacy?.classList.add('tab-hidden');
+      renderRoutesDemo();
+    } else {
+      panelToday?.classList.remove('tab-hidden');
+      panelRoutes?.classList.add('tab-hidden');
+      panelRouteLegacy?.classList.add('tab-hidden');
+    }
+  }
+  return false;
+}
+
 /** Bij brede desktop: beide panelen tonen (CSS verbergt route-tab op smal). */
 function wireDesktopWideLayout() {
   const wide = window.matchMedia('(min-width: 1180px)');
   const apply = () => {
     if (wide.matches) {
-      document.getElementById('panelRoute')?.classList.remove('tab-hidden');
-      document.getElementById('panelAfspraken')?.classList.remove('tab-hidden');
+      if (plannerSidebarView === 'routes') {
+        document.getElementById('panelAfspraken')?.classList.add('tab-hidden');
+        document.getElementById('panelRoutesPlaceholder')?.classList.remove('tab-hidden');
+      } else {
+        document.getElementById('panelAfspraken')?.classList.remove('tab-hidden');
+        document.getElementById('panelRoutesPlaceholder')?.classList.add('tab-hidden');
+      }
+      document.getElementById('panelRoute')?.classList.add('tab-hidden');
+    } else {
+      document.getElementById('panelRoutesPlaceholder')?.classList.add('tab-hidden');
     }
   };
   if (wide.addEventListener) wide.addEventListener('change', apply);
@@ -8358,6 +8750,9 @@ function render() {
   updateRouteLocalUi();
   updateRoutePanelChrome(routeStops);
   renderPlannerWeekStrip();
+  if (!routesDemoStops.length) routesDemoStops = buildRoutesDemoStops();
+  renderRoutesWeekStrip();
+  if (plannerSidebarView === 'routes') renderRoutesDemo();
 }
 
 function formatRoutePanelTitle(d) {
