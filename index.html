@@ -4940,6 +4940,235 @@
     border: 1px solid var(--border);
     box-shadow: none;
   }
+  /* Reference-match refinement (foto 1) */
+  .planner-sidebar {
+    display: none;
+  }
+  .planner-sidebar-nav {
+    display: grid;
+    gap: 6px;
+  }
+  .planner-sidebar-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 36px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    color: #645c52;
+    text-decoration: none;
+    border: 1px solid transparent;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .planner-sidebar-item:hover {
+    background: #f8f4ed;
+    border-color: #eae5dc;
+  }
+  .planner-sidebar-item.is-active {
+    background: #fbe9dd;
+    color: #a02f08;
+    border-color: #f3d7c4;
+    font-weight: 600;
+  }
+  .planner-sidebar-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: #dc4a1a;
+    flex-shrink: 0;
+  }
+  .planner-sidebar-count {
+    font-size: 11px;
+    color: #8e867c;
+  }
+  .planner-week-strip {
+    padding: 4px;
+    gap: 4px;
+  }
+  .planner-week-day {
+    min-width: 48px;
+    padding: 7px 6px 8px;
+    border-radius: 8px;
+    font-size: 11px;
+  }
+  .planner-week-day .planner-week-day-num {
+    font-size: 12px;
+  }
+  .appointments-header {
+    margin-bottom: 14px;
+  }
+  .appt-card {
+    border-radius: 12px;
+  }
+  .appt-inner {
+    padding: 14px 14px 12px 34px;
+  }
+  .appt-actions .icon-btn.appt-action-icon {
+    width: auto;
+    min-width: 52px;
+    height: 28px;
+    border-radius: 8px;
+    padding: 0 8px;
+    gap: 6px;
+  }
+  .appt-actions .icon-btn.appt-action-icon .appt-action-svg {
+    width: 13px;
+    height: 13px;
+  }
+  .appt-actions .icon-btn.appt-action-icon::after {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: inherit;
+  }
+  .appt-actions .icon-btn.appt-action-icon[title='Bellen']::after {
+    content: 'Bel';
+  }
+  .appt-actions .icon-btn.appt-action-icon[title='Maps']::after {
+    content: 'Route';
+  }
+  .appt-actions .icon-btn.appt-action-icon[title='Bewerk afspraak']::after {
+    content: 'Bewerk';
+  }
+  .appt-actions .icon-btn.appt-action-icon[title='Open in GHL'],
+  .appt-actions .icon-btn.appt-action-icon[title='Verwijderen'],
+  .appt-actions .icon-btn.appt-action-icon[title='Bekijk details'] {
+    min-width: 32px;
+    padding: 0 6px;
+  }
+  .stat {
+    min-width: 126px;
+    border-radius: 12px;
+    padding: 10px 12px;
+  }
+  .stat-label {
+    font-size: 10px;
+  }
+  .stat-val {
+    font-size: 16px;
+  }
+  .route-panel {
+    padding: 16px 14px;
+  }
+
+  @media (min-width: 1180px) {
+    header {
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr) auto;
+      grid-template-rows: auto auto auto;
+      align-items: center;
+      column-gap: 16px;
+      row-gap: 10px;
+      padding: 10px 24px;
+    }
+    .planner-header-brand-row {
+      grid-column: 1;
+      grid-row: 1;
+      justify-content: flex-start;
+    }
+    .planner-app-tools {
+      grid-column: 3;
+      grid-row: 1;
+      justify-self: end;
+    }
+    .date-nav-wrap {
+      grid-column: 2;
+      grid-row: 1;
+      justify-content: flex-start;
+    }
+    .header-stats {
+      grid-column: 2;
+      grid-row: 2;
+      justify-content: flex-start;
+      width: 100%;
+    }
+    .planner-week-nav {
+      grid-column: 2;
+      grid-row: 3;
+      margin-top: 0;
+    }
+    .date-nav {
+      border: none;
+      background: transparent;
+      padding: 0;
+      gap: 8px;
+      align-items: center;
+    }
+    .date-nav button {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      min-width: 34px;
+      min-height: 34px;
+      padding: 0;
+      color: #645c52;
+      font-size: 18px;
+    }
+    .date-label {
+      border: none;
+      background: transparent;
+      padding: 0;
+      font-size: 21px;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+      color: #1a1512;
+      font-weight: 700;
+      text-align: left;
+      min-width: 260px;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr) 360px;
+      min-height: calc(100dvh - 74px);
+    }
+    .planner-sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      background: #fff;
+      border-right: 1px solid var(--border);
+      padding: 18px 14px;
+    }
+    .appointments {
+      padding: 24px;
+      border-right: 1px solid var(--border);
+    }
+    .route-panel {
+      display: flex !important;
+      flex-direction: column;
+      gap: 12px;
+      border-left: none;
+      padding: 16px 14px;
+    }
+  }
+
+  @media (max-width: 1179px) {
+    .planner-sidebar {
+      display: none !important;
+    }
+    .layout {
+      grid-template-columns: 1fr !important;
+    }
+    .date-label {
+      font-size: 16px;
+      min-width: 0;
+    }
+    .stat {
+      min-width: 92px;
+    }
+    .appt-actions .icon-btn.appt-action-icon::after {
+      display: none;
+    }
+    .appt-actions .icon-btn.appt-action-icon {
+      min-width: 38px;
+      width: 38px;
+      height: 38px;
+      padding: 0;
+    }
+  }
+
 </style>
 </head>
 <body>
@@ -5024,6 +5253,23 @@
 </div>
 
 <div class="layout">
+  <aside class="planner-sidebar" aria-label="Hoofdmenu">
+    <div class="planner-sidebar-brand">
+      <img src="/logo.png" alt="Hetekraan" class="planner-sidebar-logo" width="140" height="38" decoding="async" />
+    </div>
+    <nav class="planner-sidebar-nav">
+      <a href="#" class="planner-sidebar-item is-active">
+        <span class="planner-sidebar-dot"></span>
+        <span>Vandaag</span>
+        <span class="planner-sidebar-count" id="sidebarCountToday">0</span>
+      </a>
+      <a href="#" class="planner-sidebar-item"><span>Agenda</span></a>
+      <a href="#" class="planner-sidebar-item"><span>Klanten</span></a>
+      <a href="#" class="planner-sidebar-item"><span>Facturen</span></a>
+      <a href="#" class="planner-sidebar-item"><span>Prijzen</span></a>
+      <a href="#" class="planner-sidebar-item"><span>Rapportage</span></a>
+    </nav>
+  </aside>
   <div class="appointments" id="panelAfspraken">
     <div class="appointments-header">
       <div class="section-title">Afspraken van de dag</div>
