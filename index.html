@@ -4944,44 +4944,103 @@
   .planner-sidebar {
     display: none;
   }
+  .planner-sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 20px 20px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .planner-sidebar-logo {
+    display: block;
+    height: 28px;
+    width: auto;
+    flex-shrink: 0;
+  }
+  .planner-sidebar-caption {
+    color: var(--ink-muted);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+  }
   .planner-sidebar-nav {
     display: grid;
-    gap: 6px;
+    gap: 2px;
+    padding: 14px 10px;
   }
   .planner-sidebar-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: 10px;
     min-height: 36px;
-    padding: 8px 10px;
-    border-radius: 8px;
-    color: #645c52;
+    padding: 8px 11px;
+    border-radius: 7px;
+    color: var(--ink-soft);
     text-decoration: none;
     border: 1px solid transparent;
     font-size: 13px;
     font-weight: 500;
+    margin-bottom: 2px;
   }
   .planner-sidebar-item:hover {
-    background: #f8f4ed;
-    border-color: #eae5dc;
+    background: var(--bg-page);
+    border-color: var(--border);
   }
   .planner-sidebar-item.is-active {
-    background: #fbe9dd;
-    color: #a02f08;
-    border-color: #f3d7c4;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    border-color: var(--accent-soft);
     font-weight: 600;
   }
+  .planner-sidebar-item-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
   .planner-sidebar-dot {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
     border-radius: 999px;
-    background: #dc4a1a;
+    background: var(--ink-muted);
     flex-shrink: 0;
+  }
+  .planner-sidebar-item.is-active .planner-sidebar-dot {
+    background: var(--accent);
   }
   .planner-sidebar-count {
     font-size: 11px;
-    color: #8e867c;
+    color: var(--ink-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .planner-sidebar-footer {
+    margin-top: auto;
+    border-top: 1px solid var(--border);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .planner-sidebar-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--bg-page);
+    color: var(--ink-soft);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    flex-shrink: 0;
+  }
+  .planner-sidebar-user {
+    color: var(--ink);
+    font-size: 12.5px;
+    font-weight: 500;
   }
   .planner-week-strip {
     padding: 4px;
@@ -5126,10 +5185,13 @@
     .planner-sidebar {
       display: flex;
       flex-direction: column;
-      gap: 16px;
-      background: #fff;
+      width: 240px;
+      min-width: 240px;
+      min-height: calc(100dvh - 74px);
+      background: var(--bg-card);
       border-right: 1px solid var(--border);
-      padding: 18px 14px;
+      padding: 0;
+      gap: 0;
     }
     .appointments {
       padding: 24px;
@@ -5256,19 +5318,24 @@
   <aside class="planner-sidebar" aria-label="Hoofdmenu">
     <div class="planner-sidebar-brand">
       <img src="/logo.png" alt="Hetekraan" class="planner-sidebar-logo" width="140" height="38" decoding="async" />
+      <span class="planner-sidebar-caption">Planning</span>
     </div>
     <nav class="planner-sidebar-nav">
       <a href="#" class="planner-sidebar-item is-active">
-        <span class="planner-sidebar-dot"></span>
-        <span>Vandaag</span>
+        <span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Vandaag</span></span>
         <span class="planner-sidebar-count" id="sidebarCountToday">0</span>
       </a>
-      <a href="#" class="planner-sidebar-item"><span>Agenda</span></a>
-      <a href="#" class="planner-sidebar-item"><span>Klanten</span></a>
-      <a href="#" class="planner-sidebar-item"><span>Facturen</span></a>
-      <a href="#" class="planner-sidebar-item"><span>Prijzen</span></a>
-      <a href="#" class="planner-sidebar-item"><span>Rapportage</span></a>
+      <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Agenda</span></span></a>
+      <a href="#panelRoutesPlaceholder" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Routes</span></span></a>
+      <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Klanten</span></span></a>
+      <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Facturen</span></span><span class="planner-sidebar-count">3</span></a>
+      <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Prijzen</span></span></a>
+      <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Rapportage</span></span></a>
     </nav>
+    <div class="planner-sidebar-footer">
+      <span class="planner-sidebar-avatar">JD</span>
+      <span class="planner-sidebar-user">Jerry de Monteur</span>
+    </div>
   </aside>
   <div class="appointments" id="panelAfspraken">
     <div class="appointments-header">
@@ -5318,6 +5385,13 @@
       <div class="route-summary" id="routeSummary" aria-live="polite"></div>
       <a class="btn-maps" href="#" onclick="openMaps(event)">Open volledige route in Maps</a>
       <button type="button" class="btn-morning" onclick="sendMorningMessages()">Stuur ochtendmeldingen</button>
+    </div>
+  </div>
+  <div class="route-panel tab-hidden" id="panelRoutesPlaceholder">
+    <div class="route-status-card">
+      <div class="route-status-kicker">Routes</div>
+      <h2 class="route-status-title">Routes</h2>
+      <p class="route-status-text">Routes — komt in Fase D</p>
     </div>
   </div>
 </div>
