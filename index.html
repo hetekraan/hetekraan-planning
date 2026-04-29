@@ -5042,71 +5042,213 @@
     font-size: 12.5px;
     font-weight: 500;
   }
+  .appointments {
+    padding: 0;
+    background: var(--bg-page);
+    overflow-y: auto;
+  }
+  .today-page-header {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .today-page-heading h1 {
+    margin: 0;
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .today-page-heading p {
+    margin: 2px 0 0;
+    font-size: 12.5px;
+    color: var(--ink-muted);
+  }
+  .today-btn {
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--ink-soft);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 12.5px;
+    font-weight: 500;
+  }
+  .today-btn--primary {
+    background: var(--ink);
+    color: var(--bg-card);
+    border-color: var(--ink);
+  }
+  .today-week-strip-wrap {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 28px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
   .planner-week-strip {
-    padding: 4px;
+    flex: 1;
+    padding: 0;
     gap: 4px;
+    background: transparent;
+    border: none;
+  }
+  .planner-week-edge {
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    min-height: 30px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--ink-soft);
   }
   .planner-week-day {
-    min-width: 48px;
-    padding: 7px 6px 8px;
+    flex: 1;
+    min-width: 0;
+    padding: 8px 0;
     border-radius: 8px;
-    font-size: 11px;
+    text-align: center;
+    border: 1px solid transparent;
+    color: var(--ink);
+    font-size: 10.5px;
+    cursor: pointer;
   }
   .planner-week-day .planner-week-day-num {
-    font-size: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    margin-top: 2px;
   }
-  .appointments-header {
-    margin-bottom: 14px;
+  .planner-week-day.is-active {
+    background: var(--ink);
+    color: var(--bg-card);
+    box-shadow: none;
+  }
+  .today-kpi-grid {
+    padding: 16px 28px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .today-kpi-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .today-kpi-label {
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink-muted);
+  }
+  .today-kpi-value {
+    margin-top: 4px;
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+  .today-kpi-sub {
+    margin-top: 2px;
+    font-size: 11.5px;
+    color: var(--ink-soft);
+  }
+  #apptList {
+    padding: 6px 28px 28px;
+  }
+  .planning-section-title {
+    margin: 0;
+    padding: 12px 0 8px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+  .planning-section + .planning-section .planning-section-title {
+    padding-top: 18px;
   }
   .appt-card {
     border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 10px;
   }
   .appt-inner {
-    padding: 14px 14px 12px 34px;
+    padding: 14px 16px;
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    column-gap: 16px;
   }
-  .appt-actions .icon-btn.appt-action-icon {
-    width: auto;
-    min-width: 52px;
-    height: 28px;
-    border-radius: 8px;
-    padding: 0 8px;
-    gap: 6px;
-  }
-  .appt-actions .icon-btn.appt-action-icon .appt-action-svg {
-    width: 13px;
-    height: 13px;
-  }
-  .appt-actions .icon-btn.appt-action-icon::after {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    color: inherit;
-  }
-  .appt-actions .icon-btn.appt-action-icon[title='Bellen']::after {
-    content: 'Bel';
-  }
-  .appt-actions .icon-btn.appt-action-icon[title='Maps']::after {
-    content: 'Route';
-  }
-  .appt-actions .icon-btn.appt-action-icon[title='Bewerk afspraak']::after {
-    content: 'Bewerk';
-  }
-  .appt-actions .icon-btn.appt-action-icon[title='Open in GHL'],
-  .appt-actions .icon-btn.appt-action-icon[title='Verwijderen'],
-  .appt-actions .icon-btn.appt-action-icon[title='Bekijk details'] {
-    min-width: 32px;
-    padding: 0 6px;
-  }
-  .stat {
-    min-width: 126px;
-    border-radius: 12px;
-    padding: 10px 12px;
-  }
-  .stat-label {
+  .appt-number {
+    position: static;
     font-size: 10px;
+    color: var(--ink-muted);
+    font-weight: 500;
   }
-  .stat-val {
-    font-size: 16px;
+  .appt-top .appt-time {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+  .slot-daypart-hint,
+  .ghl-cal-time-hint {
+    font-size: 10.5px;
+    color: var(--ink-muted);
+  }
+  .appt-address {
+    font-size: 14.5px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .appt-name, .appt-phone {
+    font-size: 12.5px;
+    color: var(--ink-soft);
+  }
+  .appt-desc, .appt-notes {
+    font-size: 12.5px;
+    color: var(--ink-muted);
+    line-height: 1.5;
+  }
+  .tag {
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-radius: 4px;
+    padding: 2px 8px;
+  }
+  .tag.onderhoud { background: var(--green-soft); color: var(--green); }
+  .tag.reparatie { background: var(--accent-soft); color: var(--accent-ink); }
+  .tag.installatie { background: var(--yellow-soft); color: var(--yellow); }
+  .tag.garantie { background: var(--bg-page); color: var(--ink-soft); }
+  .appt-price {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+  .appt-action-text-btn {
+    min-width: 0;
+    width: auto;
+    height: auto;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--ink-soft);
+    padding: 5px 10px;
+    font-size: 11.5px;
+    font-weight: 500;
+  }
+  .total-bar {
+    display: none;
   }
   .route-panel {
     padding: 16px 14px;
@@ -5116,10 +5258,10 @@
     header {
       display: grid;
       grid-template-columns: 240px minmax(0, 1fr) auto;
-      grid-template-rows: auto auto auto;
+      grid-template-rows: auto;
       align-items: center;
       column-gap: 16px;
-      row-gap: 10px;
+      row-gap: 0;
       padding: 10px 24px;
     }
     .planner-header-brand-row {
@@ -5132,21 +5274,10 @@
       grid-row: 1;
       justify-self: end;
     }
-    .date-nav-wrap {
-      grid-column: 2;
-      grid-row: 1;
-      justify-content: flex-start;
-    }
-    .header-stats {
-      grid-column: 2;
-      grid-row: 2;
-      justify-content: flex-start;
-      width: 100%;
-    }
-    .planner-week-nav {
-      grid-column: 2;
-      grid-row: 3;
-      margin-top: 0;
+    .date-nav-wrap,
+    .header-stats,
+    .planner-week-icon-btn {
+      display: none;
     }
     .date-nav {
       border: none;
@@ -5220,6 +5351,16 @@
     .stat {
       min-width: 92px;
     }
+    .today-page-header,
+    .today-week-strip-wrap,
+    .today-kpi-grid,
+    #apptList {
+      padding-left: 14px;
+      padding-right: 14px;
+    }
+    .today-kpi-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
     .appt-actions .icon-btn.appt-action-icon::after {
       display: none;
     }
@@ -5245,39 +5386,6 @@
   <div class="planner-app-tools" aria-label="Zoeken en menu">
     <button type="button" class="planner-app-icon-btn" id="btnGlobalSearch" onclick="focusGlobalSearch()" title="Zoeken" aria-label="Zoek afspraken">●</button>
     <button type="button" class="planner-app-icon-btn" onclick="toggleMobileMenu(true)" title="Menu">☰</button>
-  </div>
-  <div class="date-nav-wrap">
-    <div class="date-nav">
-      <button onclick="changeDay(-1)">‹</button>
-      <div class="date-label" id="dateLabel"></div>
-      <button onclick="changeDay(1)">›</button>
-    </div>
-  </div>
-  <div class="header-stats">
-    <div class="stat">
-      <div class="stat-val" id="totalAfspraken">0</div>
-      <div class="stat-label">Afspraken</div>
-    </div>
-    <div class="stat">
-      <div class="stat-val green" id="totalKlaar">0</div>
-      <div class="stat-label">Klaar</div>
-    </div>
-    <div class="stat">
-      <div class="stat-val green" id="totalOmzet">€0</div>
-      <div class="stat-label">Omzet dag</div>
-    </div>
-  </div>
-  <div class="planner-week-nav" id="plannerWeekNav" aria-label="Week navigatie">
-    <div class="planner-week-nav-row">
-      <div class="planner-week-nav-center">
-        <div class="planner-week-nav-strip">
-          <button type="button" class="planner-week-edge" onclick="shiftPlannerWeek(-1)" title="Vorige week">‹</button>
-          <div class="planner-week-strip" id="plannerWeekStrip" role="tablist" aria-label="Dagen in deze week"></div>
-          <button type="button" class="planner-week-edge" onclick="shiftPlannerWeek(1)" title="Volgende week">›</button>
-        </div>
-      </div>
-      <button type="button" class="planner-week-icon-btn planner-week-calendar-btn" onclick="openPlannerDatePicker()" title="Kalender — datum kiezen" aria-label="Kalender">●</button>
-    </div>
   </div>
 </header>
 <input type="date" id="plannerDatePicker" class="planner-date-input-hidden" autocomplete="off" title="Datum kiezen" />
@@ -5338,17 +5446,48 @@
     </div>
   </aside>
   <div class="appointments" id="panelAfspraken">
-    <div class="appointments-header">
-      <div class="section-title">Afspraken van de dag</div>
-      <div class="appointments-header-actions">
-        <div class="appointments-header-util">
-          <button class="btn-dagopgave" onclick="openDagopgave()" title="Dagopgave voor Tellow">●</button>
-          <button type="button" class="planner-app-icon-btn btn-day-block" id="btnBlockDayGhl" onclick="onBlockDayButtonClick()" aria-label="Blokkeer dag" title="Blokkeer of deblokkeer deze dag in GHL">
-            <span class="btn-day-block-ic" aria-hidden="true">■</span>
-          </button>
-        </div>
-        <button class="btn-add" onclick="openModal()"><span class="btn-add-accent">+</span> Afspraak</button>
+    <div class="today-page-header">
+      <div class="today-page-heading">
+        <h1 id="dateLabel">Donderdag 30 april</h1>
+        <p id="todayMixMeta">0 afspraken · 0 reparaties · 0 installaties · 0 onderhoud</p>
       </div>
+      <div class="appointments-header-actions">
+        <button type="button" class="today-btn today-btn--ghost" onclick="printDagopgave()">Export</button>
+        <button type="button" class="today-btn today-btn--primary" onclick="openModal()">+ Nieuwe afspraak</button>
+      </div>
+    </div>
+    <div class="today-week-strip-wrap" id="plannerWeekNav" aria-label="Week navigatie">
+      <button type="button" class="planner-week-edge" onclick="shiftPlannerWeek(-1)" title="Vorige week">‹</button>
+      <div class="planner-week-strip" id="plannerWeekStrip" role="tablist" aria-label="Dagen in deze week"></div>
+      <button type="button" class="planner-week-edge" onclick="shiftPlannerWeek(1)" title="Volgende week">›</button>
+    </div>
+    <div class="today-kpi-grid">
+      <div class="today-kpi-card">
+        <div class="today-kpi-label">Afspraken</div>
+        <div class="today-kpi-value" id="totalAfspraken">0</div>
+        <div class="today-kpi-sub">vandaag</div>
+      </div>
+      <div class="today-kpi-card">
+        <div class="today-kpi-label">Omzet vandaag</div>
+        <div class="today-kpi-value" id="totalOmzet">€0</div>
+        <div class="today-kpi-sub" id="totalOpenOmzet">+ €0 open</div>
+      </div>
+      <div class="today-kpi-card">
+        <div class="today-kpi-label">Klaar</div>
+        <div class="today-kpi-value" id="totalKlaarRatio">0 / 0</div>
+        <div class="today-kpi-sub" id="totalKlaarPct">0% voltooid</div>
+      </div>
+      <div class="today-kpi-card">
+        <div class="today-kpi-label">Te factureren</div>
+        <div class="today-kpi-value" id="totalTeFactureren">€0</div>
+        <div class="today-kpi-sub" id="totalTeFacturerenCount">0 afspraken</div>
+      </div>
+    </div>
+    <div class="appointments-header-util" style="display:none">
+      <button class="btn-dagopgave" onclick="openDagopgave()" title="Dagopgave voor Tellow">●</button>
+      <button type="button" class="planner-app-icon-btn btn-day-block" id="btnBlockDayGhl" onclick="onBlockDayButtonClick()" aria-label="Blokkeer dag" title="Blokkeer of deblokkeer deze dag in GHL">
+        <span class="btn-day-block-ic" aria-hidden="true">■</span>
+      </button>
     </div>
     <div id="dayBlockedBanner" class="day-blocked-banner" style="display:none" role="status"></div>
     <div id="apptList"></div>
@@ -7512,10 +7651,39 @@ function calcStats() {
   // Gebruik calcTotalPrice zodat extras (onderdelen) ook worden meegeteld
   const omzetKlaar = clients.reduce((s, a) => s + (a.status === 'klaar' ? calcTotalPrice(a) : 0), 0);
   const total      = clients.reduce((s, a) => s + calcTotalPrice(a), 0);
-  document.getElementById('totalAfspraken').textContent = clients.length;
-  document.getElementById('totalKlaar').textContent     = klaar;
-  document.getElementById('totalOmzet').textContent     = fmtEuro(omzetKlaar);
-  document.getElementById('totalBar').textContent       = fmtEuro(total);
+  const openOmzet = Math.max(0, total - omzetKlaar);
+  const factureerbaar = clients.filter((a) => (Number(calcTotalPrice(a)) || 0) > 0 && a.status !== 'klaar');
+  const reparaties = clients.filter((a) => String(a.jobType || '').toLowerCase() === 'reparatie').length;
+  const installaties = clients.filter((a) => String(a.jobType || '').toLowerCase() === 'installatie').length;
+  const onderhoud = clients.filter((a) => String(a.jobType || '').toLowerCase() === 'onderhoud').length;
+  const pct = clients.length ? Math.round((klaar / clients.length) * 100) : 0;
+  const afsprEl = document.getElementById('totalAfspraken');
+  const omzetEl = document.getElementById('totalOmzet');
+  const klaarRatioEl = document.getElementById('totalKlaarRatio');
+  if (afsprEl) afsprEl.textContent = String(clients.length);
+  if (omzetEl) omzetEl.textContent = fmtEuro(omzetKlaar);
+  if (klaarRatioEl) klaarRatioEl.textContent = `${klaar} / ${clients.length}`;
+  const klaarLegacy = document.getElementById('totalKlaar');
+  if (klaarLegacy) klaarLegacy.textContent = String(klaar);
+  const totalBarEl = document.getElementById('totalBar');
+  if (totalBarEl) totalBarEl.textContent = fmtEuro(total);
+  const openEl = document.getElementById('totalOpenOmzet');
+  if (openEl) openEl.textContent = `+ ${fmtEuro(openOmzet)} open`;
+  const pctEl = document.getElementById('totalKlaarPct');
+  if (pctEl) pctEl.textContent = `${pct}% voltooid`;
+  const factEl = document.getElementById('totalTeFactureren');
+  if (factEl) factEl.textContent = fmtEuro(openOmzet);
+  const factCountEl = document.getElementById('totalTeFacturerenCount');
+  if (factCountEl) {
+    const n = factureerbaar.length;
+    factCountEl.textContent = `${n} afspraak${n === 1 ? '' : 'en'}`;
+  }
+  const mixMetaEl = document.getElementById('todayMixMeta');
+  if (mixMetaEl) {
+    mixMetaEl.textContent = `${clients.length} afspraken · ${reparaties} reparaties · ${installaties} installaties · ${onderhoud} onderhoud`;
+  }
+  const sidebarCountEl = document.getElementById('sidebarCountToday');
+  if (sidebarCountEl) sidebarCountEl.textContent = String(clients.length);
 }
 
 /** Top-right card actions: stroke-SVGs use currentColor (no emoji color bleed). */
@@ -7996,11 +8164,11 @@ function renderApptCard(a, i) {
           </div>
           <div class="appt-actions">
             <div class="appt-actions__icons">
-            ${a.phone ? `<a class="icon-btn appt-action-icon" href="tel:${a.phone}" title="Bellen">${APPT_ACTION_SVG.phone}</a>` : ''}
-            ${a.mapsLink ? `<a class="icon-btn appt-action-icon" href="${a.mapsLink}" target="_blank" rel="noopener noreferrer" title="Maps">${APPT_ACTION_SVG.map}</a>` : ''}
+            ${a.phone ? `<a class="icon-btn appt-action-icon appt-action-text-btn" href="tel:${a.phone}" title="Bellen">Bel</a>` : ''}
+            ${a.mapsLink ? `<a class="icon-btn appt-action-icon appt-action-text-btn" href="${a.mapsLink}" target="_blank" rel="noopener noreferrer" title="Maps">Route</a>` : ''}
+            <button type="button" class="icon-btn appt-action-icon appt-action-text-btn" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">Bewerk</button>
             ${a.ghlUrl ? `<a class="icon-btn appt-action-icon" href="${a.ghlUrl}"${a.ghlAppUrl ? ` data-ghl-app="${escapeHtml(a.ghlAppUrl)}" onclick="return hkOpenGhlContact(event,this)"` : ''} target="_blank" rel="noopener noreferrer" title="Open in GHL">${APPT_ACTION_SVG.link}</a>` : ''}
             ${isDone ? `<button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentDetailsModal(${idQ})' title="Bekijk details">${APPT_ACTION_SVG.eye}</button>` : ''}
-            <button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">${APPT_ACTION_SVG.pencil}</button>
             <button type="button" class="icon-btn appt-action-icon" onclick='deleteAppt(${idQ})' title="Verwijderen">${APPT_ACTION_SVG.close}</button>
             </div>
             <div class="appt-actions__mobile">
@@ -8037,6 +8205,7 @@ function renderApptCard(a, i) {
           <div class="appt-footer-left">
             <div class="appt-tags">
               <span class="tag ${a.jobType}">${a.jobType}</span>
+              ${/(garantie)/i.test(String(a.jobDescription || '') + ' ' + String(a.notes || '')) ? '<span class="tag garantie">garantie</span>' : ''}
               ${a.phone ? `<span class="appt-phone">${a.phone}</span>` : ''}
             </div>
           </div>
@@ -8044,7 +8213,8 @@ function renderApptCard(a, i) {
             ${(() => {
               const total = Math.round(calcTotalPrice(a) * 100) / 100;
               const txt = total > 0 ? `€${euroDisplay(total)}` : String(a.priceLabel || '').trim();
-              return txt ? `<span class="appt-price" id="appt-price-${domId}">${txt}</span>` : '';
+              const zeroAttr = total <= 0 ? ' data-zero="1"' : '';
+              return txt ? `<span class="appt-price" id="appt-price-${domId}"${zeroAttr}>${txt}</span>` : '';
             })()}
             <div class="appt-footer-actions-touch">
               <div class="appt-footer-cta-row">
@@ -8168,12 +8338,12 @@ function render() {
   }
   if (morningApts.length) {
     parts.push(
-      `<div class="planning-section"><div class="planning-section-title">Ochtend 09:00–13:00</div>${morningApts.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
+      `<div class="planning-section"><div class="planning-section-title">OCHTEND · 09:00 – 13:00</div>${morningApts.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
     );
   }
   if (afternoonApts.length) {
     parts.push(
-      `<div class="planning-section"><div class="planning-section-title">Middag 13:00–17:00</div>${afternoonApts.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
+      `<div class="planning-section"><div class="planning-section-title">MIDDAG · 13:00 – 17:00</div>${afternoonApts.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
     );
   }
   let listHtml = parts.join('');
