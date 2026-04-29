@@ -36,12 +36,15 @@ export default async function handler(req, res) {
       process.env.VERCEL_DEPLOYMENT_ID ||
       ''
     ).trim() || null;
+  const googleMapsApiKey = String(process.env.GOOGLE_MAPS_API_KEY || '').trim() || null;
   return res.status(200).json({
     ghlLocationId,
     /** Zonder location-id zijn contactlinks in het dashboard niet te bouwen. */
     ghlLinksOk: Boolean(ghlLocationId),
     /** Leeg tenzij GHL_IOS_CONTACT_APP_URL_TEMPLATE gezet is (mobiele app, zie sanitize-functie). */
     ghlIosContactAppUrlTemplate,
+    /** Publieke browser key voor Google Maps JavaScript API in planner UI. */
+    googleMapsApiKey,
     /** Publieke deployversie voor client-side update checks (homescreen stale-cache guard). */
     appVersion,
   });

@@ -1,5 +1,10 @@
 (function () {
   const DEPOT = 'Cornelis Dopperkade, Amsterdam';
+  let mapsLoaderPromise = null;
+  let map = null;
+  let directionsRenderer = null;
+  let depotMarkers = [];
+  let stopMarkers = [];
 
   function openMaps(event, input) {
     if (event?.preventDefault) event.preventDefault();
@@ -26,7 +31,156 @@
     window.open(url, '_blank');
   }
 
+  function loadGoogleMaps(apiKey) {
+    if (window.google?.maps) return Promise.resolve(window.google.maps);
+    if (!apiKey) return Promise.reject(new Error('Google Maps key ontbreekt'));
+    if (mapsLoaderPromise) return mapsLoaderPromise;
+    mapsLoaderPromise = new Promise((resolve, reject) => {
+      const cbName = `hkMapsInit_${Date.now()}`;
+      window[cbName] = () => {
+        delete window[cbName];
+        resolve(window.google.maps);
+      };
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&callback=${cbName}`;
+      script.async = true;
+      script.defer = true;
+      script.onerror = () => reject(new Error('Google Maps script laden mislukt'));
+      document.head.appendChild(script);
+    });
+    return mapsLoaderPromise;
+  }
+
+  function accentColor() {
+    const v = window.getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+    return v || '#dc4a1a';
+  }
+
+  function clearDepotMarkers() {
+    depotMarkers.forEach((m) => m.setMap(null));
+    depotMarkers = [];
+    stopMarkers.forEach((m) => m.setMap(null));
+    stopMarkers = [];
+  }
+
+  async function renderRouteMap(input) {
+    const container = document.getElementById('routeMap');
+    if (!container) return;
+    const apiKey = String(input?.apiKey || '').trim();
+    const showToast = input?.showToast;
+    const depotAddress = String(input?.depotAddress || DEPOT).trim();
+    const stops = Array.isArray(input?.stops) ? input.stops : [];
+    const ordered = stops.filter((a) => a?.fullAddressLine || a?.address);
+    if (!ordered.length) {
+      container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--ink-muted);font-size:13px">Geen route-adressen</div>';
+      return;
+    }
+    if (!apiKey) {
+      if (typeof showToast === 'function') showToast('Google Maps key ontbreekt', 'info');
+      return;
+    }
+    try {
+      await loadGoogleMaps(apiKey);
+      if (!map) {
+        map = new google.maps.Map(container, {
+          zoom: 11,
+          center: { lat: 52.3676, lng: 4.9041 },
+          mapTypeControl: false,
+          streetViewControl: false,
+        });
+      }
+      if (!directionsRenderer) {
+        directionsRenderer = new google.maps.DirectionsRenderer({
+          suppressMarkers: true,
+          polylineOptions: {
+            strokeColor: accentColor(),
+            strokeWeight: 4,
+            strokeOpacity: 0.8,
+          },
+        });
+        directionsRenderer.setMap(map);
+      }
+      clearDepotMarkers();
+      const service = new google.maps.DirectionsService();
+      const waypoints = ordered.map((a) => ({
+        location: a.fullAddressLine || a.address,
+        stopover: true,
+      }));
+      service.route(
+        {
+          origin: depotAddress,
+          destination: depotAddress,
+          travelMode: google.maps.TravelMode.DRIVING,
+          waypoints,
+          optimizeWaypoints: false,
+        },
+        (result, status) => {
+          if (status !== 'OK' || !result) {
+            if (typeof showToast === 'function') showToast('Routekaart kon niet worden geladen', 'info');
+            return;
+          }
+          directionsRenderer.setDirections(result);
+          const legs = result.routes?.[0]?.legs || [];
+          const orderedStops = result.routes?.[0]?.waypoint_order || ordered.map((_, i) => i);
+          legs.forEach((leg, i) => {
+            const stopIdx = orderedStops[i];
+            if (stopIdx == null) return;
+            stopMarkers.push(new google.maps.Marker({
+              position: leg.end_location,
+              map,
+              label: String(i + 1),
+              icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 10,
+                fillColor: '#111111',
+                fillOpacity: 1,
+                strokeWeight: 1,
+                strokeColor: '#ffffff',
+              },
+            }));
+          });
+          if (legs[0]?.start_location) {
+            depotMarkers.push(new google.maps.Marker({
+              position: legs[0].start_location,
+              map,
+              label: 'S',
+              icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 10,
+                fillColor: accentColor(),
+                fillOpacity: 1,
+                strokeWeight: 1,
+                strokeColor: '#ffffff',
+              },
+            }));
+          }
+          if (legs[legs.length - 1]?.end_location) {
+            depotMarkers.push(new google.maps.Marker({
+              position: legs[legs.length - 1].end_location,
+              map,
+              label: 'E',
+              icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 10,
+                fillColor: accentColor(),
+                fillOpacity: 1,
+                strokeWeight: 1,
+                strokeColor: '#ffffff',
+              },
+            }));
+          }
+          const bounds = new google.maps.LatLngBounds();
+          result.routes[0].overview_path.forEach((p) => bounds.extend(p));
+          map.fitBounds(bounds);
+        }
+      );
+    } catch (err) {
+      if (typeof showToast === 'function') showToast(String(err?.message || err || 'Maps fout'), 'info');
+    }
+  }
+
   window.HKPlannerRouteMaps = {
     openMaps,
+    renderRouteMap,
   };
 })();
