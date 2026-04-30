@@ -115,6 +115,16 @@ function buildRangeFromRequest(query = {}) {
   };
 }
 
+function queryFromReq(req) {
+  const rawUrl = String(req?.url || '/');
+  const parsed = new URL(rawUrl, 'http://localhost');
+  return {
+    period: parsed.searchParams.get('period') || '',
+    startDate: parsed.searchParams.get('startDate') || '',
+    endDate: parsed.searchParams.get('endDate') || '',
+  };
+}
+
 function getField(contact, fieldId, fieldKey = '') {
   const fid = String(fieldId || '').trim();
   if (!contact?.customFields || !Array.isArray(contact.customFields)) return '';
@@ -488,53 +498,65 @@ async function runAnalytics(rangeInput) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-HK-Auth');
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (!ensureAuth(req)) return res.status(401).json({ error: 'Niet geautoriseerd' });
-  if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
-
-  const locConfigured = ghlLocationIdFromEnv();
-  const calConfigured = ghlCalendarIdFromEnv();
-  if (!GHL_API_KEY || !locConfigured || !calConfigured) {
-    return res.status(503).json({ error: GHL_CONFIG_MISSING_MSG });
-  }
-
-  const range = buildRangeFromRequest(req.query || {});
-  const cacheHit = await readResultCache(range.key);
-  if (cacheHit?.period && cacheHit?.kpis) {
-    return res.status(200).json({
-      ok: true,
-      source: 'cache',
-      ...cacheHit,
-      meta: {
-        ...(cacheHit.meta || {}),
-        cacheHit: 'result',
-        period: range.period,
-      },
-    });
-  }
-
   try {
-    const payload = await runAnalytics(range);
-    await writeResultCache(range.key, payload);
-    return res.status(200).json({ ok: true, source: 'live', ...payload });
-  } catch (err) {
-    const fallback = await readResultCache(range.key);
-    if (fallback?.period && fallback?.kpis) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-HK-Auth');
+    if (req.method === 'OPTIONS') return res.status(200).end();
+    if (!ensureAuth(req)) return res.status(401).json({ error: 'Niet geautoriseerd' });
+    if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+
+    const locConfigured = ghlLocationIdFromEnv();
+    const calConfigured = ghlCalendarIdFromEnv();
+    if (!GHL_API_KEY || !locConfigured || !calConfigured) {
+      return res.status(503).json({ error: GHL_CONFIG_MISSING_MSG });
+    }
+
+    const range = buildRangeFromRequest(queryFromReq(req));
+    const cacheHit = await readResultCache(range.key);
+    if (cacheHit?.period && cacheHit?.kpis) {
       return res.status(200).json({
         ok: true,
-        source: 'cache_fallback',
-        warning: String(err?.message || err),
-        ...fallback,
+        source: 'cache',
+        ...cacheHit,
         meta: {
-          ...(fallback.meta || {}),
+          ...(cacheHit.meta || {}),
           cacheHit: 'result',
           period: range.period,
         },
       });
     }
+
+    try {
+      const payload = await runAnalytics(range);
+      await writeResultCache(range.key, payload);
+      return res.status(200).json({ ok: true, source: 'live', ...payload });
+    } catch (err) {
+      const fallback = await readResultCache(range.key);
+      if (fallback?.period && fallback?.kpis) {
+        return res.status(200).json({
+          ok: true,
+          source: 'cache_fallback',
+          warning: String(err?.message || err),
+          ...fallback,
+          meta: {
+            ...(fallback.meta || {}),
+            cacheHit: 'result',
+            period: range.period,
+          },
+        });
+      }
+      return res.status(502).json({
+        ok: false,
+        error: 'Analytics ophalen mislukt',
+        detail: String(err?.message || err),
+      });
+    }
+  } catch (err) {
+    console.error('[api/analytics] unhandled crash', {
+      message: String(err?.message || err),
+      stack: String(err?.stack || ''),
+    });
     return res.status(502).json({
       ok: false,
       error: 'Analytics ophalen mislukt',

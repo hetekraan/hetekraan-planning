@@ -40,6 +40,10 @@
   const charts = {};
   let chartJsPromise = null;
   let bootstrapped = false;
+  let customPickerOverlay = null;
+  let customPickerViewMonth = '';
+  let customDraftStart = '';
+  let customDraftEnd = '';
 
   function fmtEuro(n) {
     return `€ ${Number(n || 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -74,6 +78,75 @@
     const d = new Date(`${ymd}T12:00:00Z`);
     d.setUTCDate(d.getUTCDate() + delta);
     return d.toISOString().slice(0, 10);
+  }
+  function startOfMonthYmd(ymd) {
+    const d = new Date(`${ymd}T12:00:00Z`);
+    d.setUTCDate(1);
+    return d.toISOString().slice(0, 10);
+  }
+  function addMonthsYmd(ymd, deltaMonths) {
+    const d = new Date(`${ymd}T12:00:00Z`);
+    d.setUTCDate(1);
+    d.setUTCMonth(d.getUTCMonth() + deltaMonths);
+    return d.toISOString().slice(0, 10);
+  }
+  function monthLabel(ymd) {
+    const d = new Date(`${ymd}T12:00:00Z`);
+    return d.toLocaleDateString('nl-NL', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  }
+  function daysInMonth(ymd) {
+    const d = new Date(`${ymd}T12:00:00Z`);
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  }
+  function weekdayMonFirstOffset(ymd) {
+    const d = new Date(`${ymd}T12:00:00Z`);
+    d.setUTCDate(1);
+    const wd = d.getUTCDay(); // 0 sun ... 6 sat
+    return wd === 0 ? 6 : wd - 1;
+  }
+  function ymdFromDateParts(year, monthIndex, day) {
+    return new Date(Date.UTC(year, monthIndex, day)).toISOString().slice(0, 10);
+  }
+  function isInDraftRange(ymd) {
+    if (!customDraftStart || !customDraftEnd) return false;
+    return ymd >= customDraftStart && ymd <= customDraftEnd;
+  }
+  function applyPresetRange(presetId) {
+    const today = todayYmd();
+    if (presetId === 'today') {
+      customDraftStart = today;
+      customDraftEnd = today;
+      return;
+    }
+    if (presetId === 'yesterday') {
+      const y = addDaysYmd(today, -1);
+      customDraftStart = y;
+      customDraftEnd = y;
+      return;
+    }
+    if (presetId === 'last7') {
+      customDraftEnd = today;
+      customDraftStart = addDaysYmd(today, -6);
+      return;
+    }
+    if (presetId === 'last30') {
+      customDraftEnd = today;
+      customDraftStart = addDaysYmd(today, -29);
+      return;
+    }
+    if (presetId === 'thisMonth') {
+      customDraftStart = startOfMonthYmd(today);
+      customDraftEnd = today;
+      return;
+    }
+    if (presetId === 'prevMonth') {
+      const thisMonthStart = startOfMonthYmd(today);
+      const prevMonthStart = addMonthsYmd(thisMonthStart, -1);
+      const thisMonthStartDate = new Date(`${thisMonthStart}T12:00:00Z`);
+      const prevMonthEndDate = new Date(thisMonthStartDate.getTime() - 24 * 60 * 60 * 1000);
+      customDraftStart = prevMonthStart;
+      customDraftEnd = prevMonthEndDate.toISOString().slice(0, 10);
+    }
   }
   function buildRangeQuery(inputPeriod, isPrevious = false) {
     if (inputPeriod === 'custom') {
@@ -332,30 +405,160 @@
       ['jaar', 'Jaar'],
       ['custom', 'Aangepast'],
     ];
-    el.innerHTML = opts.map(([id, label]) => `<button type="button" class="chip-btn ${period === id ? 'is-active' : ''}" data-period="${id}">${label}</button>`).join('') +
-      `<input type="date" id="analyticsCustomStart" class="field-input" style="max-width:150px;display:${period === 'custom' ? 'inline-flex' : 'none'}" value="${escHtml(customStart)}">` +
-      `<input type="date" id="analyticsCustomEnd" class="field-input" style="max-width:150px;display:${period === 'custom' ? 'inline-flex' : 'none'}" value="${escHtml(customEnd)}">`;
+    el.innerHTML = opts.map(([id, label]) => `<button type="button" class="chip-btn ${period === id ? 'is-active' : ''}" data-period="${id}">${label}</button>`).join('');
     el.querySelectorAll('[data-period]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        period = btn.getAttribute('data-period') || '30d';
-        if (period === 'custom' && !customStart) {
-          customEnd = todayYmd();
-          customStart = addDaysYmd(customEnd, -29);
+        const next = btn.getAttribute('data-period') || '30d';
+        if (next === 'custom') {
+          openCustomRangePicker();
+          return;
         }
+        period = next;
         renderPeriodFilters();
         void loadAllSections();
       });
     });
-    const start = el.querySelector('#analyticsCustomStart');
-    const end = el.querySelector('#analyticsCustomEnd');
-    start?.addEventListener('change', () => {
-      customStart = start.value || '';
-      if (period === 'custom') void loadAllSections();
+  }
+
+  function selectDraftDate(ymd) {
+    if (!customDraftStart || (customDraftStart && customDraftEnd)) {
+      customDraftStart = ymd;
+      customDraftEnd = '';
+      return;
+    }
+    if (ymd < customDraftStart) {
+      customDraftEnd = customDraftStart;
+      customDraftStart = ymd;
+      return;
+    }
+    customDraftEnd = ymd;
+  }
+  function renderMonthGrid(monthStartYmd) {
+    const d = new Date(`${monthStartYmd}T12:00:00Z`);
+    const year = d.getUTCFullYear();
+    const month = d.getUTCMonth();
+    const total = daysInMonth(monthStartYmd);
+    const offset = weekdayMonFirstOffset(monthStartYmd);
+    const cells = [];
+    for (let i = 0; i < offset; i += 1) cells.push('<div></div>');
+    for (let day = 1; day <= total; day += 1) {
+      const ymd = ymdFromDateParts(year, month, day);
+      const isStart = ymd === customDraftStart;
+      const isEnd = ymd === customDraftEnd;
+      const inRange = isInDraftRange(ymd);
+      const style = [
+        'border:none',
+        'height:32px',
+        'border-radius:8px',
+        'cursor:pointer',
+        'font-size:12px',
+        inRange ? 'background:#dbeafe' : 'background:transparent',
+        (isStart || isEnd) ? 'background:#2563eb;color:#fff;font-weight:600' : '',
+      ].join(';');
+      cells.push(`<button type="button" data-ymd="${ymd}" style="${style}">${day}</button>`);
+    }
+    return `
+      <div style="min-width:240px">
+        <div style="font-weight:600;margin-bottom:8px;text-transform:capitalize">${monthLabel(monthStartYmd)}</div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;font-size:11px;color:var(--ink-muted);margin-bottom:6px">
+          <div>Ma</div><div>Di</div><div>Wo</div><div>Do</div><div>Vr</div><div>Za</div><div>Zo</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">${cells.join('')}</div>
+      </div>
+    `;
+  }
+  function closeCustomRangePicker() {
+    if (customPickerOverlay?.parentNode) customPickerOverlay.parentNode.removeChild(customPickerOverlay);
+    customPickerOverlay = null;
+  }
+  function renderCustomRangePickerBody() {
+    if (!customPickerOverlay) return;
+    const body = customPickerOverlay.querySelector('[data-picker-body]');
+    if (!body) return;
+    const firstMonth = customPickerViewMonth;
+    const secondMonth = addMonthsYmd(firstMonth, 1);
+    const rangeLabel = customDraftStart && customDraftEnd
+      ? `${customDraftStart} t/m ${customDraftEnd}`
+      : (customDraftStart ? `${customDraftStart} gekozen` : 'Kies een start- en einddatum');
+    body.innerHTML = `
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+        <button type="button" class="chip-btn" data-preset="today">Vandaag</button>
+        <button type="button" class="chip-btn" data-preset="yesterday">Gisteren</button>
+        <button type="button" class="chip-btn" data-preset="last7">Laatste 7 dagen</button>
+        <button type="button" class="chip-btn" data-preset="last30">Laatste 30 dagen</button>
+        <button type="button" class="chip-btn" data-preset="thisMonth">Deze maand</button>
+        <button type="button" class="chip-btn" data-preset="prevMonth">Vorige maand</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <button type="button" class="chip-btn" data-nav="-1">←</button>
+        <div class="kpi-sub">${escHtml(rangeLabel)}</div>
+        <button type="button" class="chip-btn" data-nav="1">→</button>
+      </div>
+      <div style="display:flex;gap:16px;align-items:flex-start">${renderMonthGrid(firstMonth)}${renderMonthGrid(secondMonth)}</div>
+    `;
+    body.querySelectorAll('[data-ymd]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        selectDraftDate(btn.getAttribute('data-ymd') || '');
+        renderCustomRangePickerBody();
+      });
     });
-    end?.addEventListener('change', () => {
-      customEnd = end.value || '';
-      if (period === 'custom') void loadAllSections();
+    body.querySelectorAll('[data-preset]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        applyPresetRange(btn.getAttribute('data-preset') || '');
+        if (customDraftStart) customPickerViewMonth = startOfMonthYmd(customDraftStart);
+        renderCustomRangePickerBody();
+      });
     });
+    body.querySelectorAll('[data-nav]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const step = Number(btn.getAttribute('data-nav') || '0');
+        customPickerViewMonth = addMonthsYmd(customPickerViewMonth, step);
+        renderCustomRangePickerBody();
+      });
+    });
+    const apply = customPickerOverlay?.querySelector('[data-apply-picker]');
+    if (apply) apply.disabled = !(customDraftStart && customDraftEnd);
+  }
+  function openCustomRangePicker() {
+    closeCustomRangePicker();
+    if (!customStart || !customEnd) {
+      customEnd = todayYmd();
+      customStart = addDaysYmd(customEnd, -29);
+    }
+    customDraftStart = customStart;
+    customDraftEnd = customEnd;
+    customPickerViewMonth = startOfMonthYmd(customDraftStart || todayYmd());
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay visible';
+    overlay.innerHTML = `
+      <div class="modal" role="dialog" aria-modal="true" style="max-width:860px;width:min(92vw,860px)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="modal-title" style="margin:0">Aangepaste periode</div>
+          <button type="button" class="btn-cancel" data-close-picker>✕</button>
+        </div>
+        <div data-picker-body></div>
+        <div class="modal-actions" style="margin-top:14px">
+          <button type="button" class="btn-cancel" data-close-picker>Annuleren</button>
+          <button type="button" class="btn-save" data-apply-picker ${customDraftStart && customDraftEnd ? '' : 'disabled'}>Toepassen</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    customPickerOverlay = overlay;
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) closeCustomRangePicker();
+    });
+    overlay.querySelectorAll('[data-close-picker]').forEach((btn) => btn.addEventListener('click', closeCustomRangePicker));
+    overlay.querySelector('[data-apply-picker]')?.addEventListener('click', () => {
+      if (!customDraftStart || !customDraftEnd) return;
+      customStart = customDraftStart;
+      customEnd = customDraftEnd;
+      period = 'custom';
+      closeCustomRangePicker();
+      renderPeriodFilters();
+      void loadAllSections();
+    });
+    renderCustomRangePickerBody();
   }
 
   async function fetchAnalyticsByQuery(query) {
