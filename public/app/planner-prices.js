@@ -1,10 +1,11 @@
 (function initPlannerPrices(global) {
   let rows = [];
+  let activeCategory = 'Kranen';
   let createOverlay = null;
   let deleteOverlay = null;
   let createEscHandler = null;
   let deleteEscHandler = null;
-  const CATEGORY_OPTIONS = ['Installatie', 'Reparatie', 'Onderhoud', 'Arbeid & voorrijkosten'];
+  const CATEGORY_OPTIONS = ['Kranen', 'Quookers', 'Serviceproducten'];
 
   function authHeader() {
     if (typeof global.hkAuthHeader === 'function') return global.hkAuthHeader();
@@ -22,11 +23,38 @@
     return String(v ?? '').replace(/"/g, '&quot;');
   }
 
-  function calcInclVat(priceExVat, vatPct) {
-    const ex = Number(priceExVat);
-    const vat = Number(vatPct);
-    if (!Number.isFinite(ex) || !Number.isFinite(vat)) return 0;
-    return Math.round(ex * (1 + vat / 100) * 100) / 100;
+  function euro(value) {
+    return `€ ${Number(value || 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
+  function calculateExclFromIncl(incl, vatPct) {
+    const v = Number(incl);
+    const vat = Number(vatPct || 21);
+    if (!Number.isFinite(v) || !Number.isFinite(vat)) return 0;
+    const factor = 1 + vat / 100;
+    if (factor <= 0) return 0;
+    return Math.round((v / factor) * 100) / 100;
+  }
+
+  function calculateMarge(incl, inkoop) {
+    const v = Number(incl);
+    const i = Number(inkoop);
+    if (!Number.isFinite(v) || !Number.isFinite(i)) return 0;
+    return Math.round((v - i) * 100) / 100;
+  }
+
+  function calculateMargePct(incl, inkoop) {
+    const v = Number(incl);
+    if (!Number.isFinite(v) || v <= 0) return 0;
+    return Math.round((calculateMarge(v, inkoop) / v) * 10000) / 100;
+  }
+
+  function escapeAttr(v) {
+    return String(v ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('"', '&quot;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
   }
 
   function escHtml(v) {
@@ -38,17 +66,24 @@
       .replaceAll("'", '&#39;');
   }
 
+  function rowById(id) {
+    return rows.find((x) => String(x.id) === String(id));
+  }
+
   async function saveInline(id) {
     const rowEl = document.querySelector(`tr[data-price-id="${id}"]`);
     if (!rowEl) return;
-    const description = rowEl.querySelector('[data-f="description"]')?.value || '';
-    const priceExVat = Number(rowEl.querySelector('[data-f="priceExVat"]')?.value || 0);
-    const vatPct = Number(rowEl.querySelector('[data-f="vatPct"]')?.value || 21);
-    const category = rowEl.querySelector('[data-f="category"]')?.value || 'Installatie';
+    const naam = String(rowEl.querySelector('[data-f="naam"]')?.value || '').trim();
+    const inkoopprijs = Number(rowEl.querySelector('[data-f="inkoopprijs"]')?.value || 0);
+    const verkoopprijsInclBtw = Number(rowEl.querySelector('[data-f="verkoopprijsInclBtw"]')?.value || 0);
+    const btwPct = Number(rowEl.getAttribute('data-vat-pct') || 21);
+    const categorie = String(rowEl.getAttribute('data-categorie') || activeCategory);
+    const sku = String(rowEl.getAttribute('data-sku') || '').trim() || null;
+    if (!naam) return;
     await fetch('/api/prices', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'X-HK-Auth': authHeader() },
-      body: JSON.stringify({ id, description, priceExVat, vatPct, category }),
+      body: JSON.stringify({ id, sku, naam, categorie, inkoopprijs, verkoopprijsInclBtw, btwPct }),
     });
     await render();
   }
@@ -57,7 +92,7 @@
     document.querySelectorAll('[data-price-delete]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const id = btn.getAttribute('data-price-delete');
-        const row = rows.find((x) => String(x.id) === String(id));
+        const row = rowById(id);
         if (!id || !row) return;
         openDeleteModal(row);
       });
@@ -73,29 +108,54 @@
       });
     });
     document.querySelectorAll('tr[data-price-id]').forEach((rowEl) => {
-      const exInput = rowEl.querySelector('[data-f="priceExVat"]');
-      const vatInput = rowEl.querySelector('[data-f="vatPct"]');
-      const inclEl = rowEl.querySelector('[data-f="priceInclVat"]');
+      const inkoopInput = rowEl.querySelector('[data-f="inkoopprijs"]');
+      const inclInput = rowEl.querySelector('[data-f="verkoopprijsInclBtw"]');
+      const exclEl = rowEl.querySelector('[data-f="verkoopprijsExclBtw"]');
+      const margeEl = rowEl.querySelector('[data-f="marge"]');
+      const margePctEl = rowEl.querySelector('[data-f="margePct"]');
+      const vatPct = Number(rowEl.getAttribute('data-vat-pct') || 21);
       const recalc = () => {
-        if (!inclEl) return;
-        const incl = calcInclVat(exInput?.value, vatInput?.value);
-        inclEl.value = incl.toFixed(2);
+        const inkoop = Number(inkoopInput?.value || 0);
+        const incl = Number(inclInput?.value || 0);
+        const excl = calculateExclFromIncl(incl, vatPct);
+        const marge = calculateMarge(incl, inkoop);
+        const margePct = calculateMargePct(incl, inkoop);
+        if (exclEl) exclEl.value = excl.toFixed(2);
+        if (margeEl) margeEl.value = marge.toFixed(2);
+        if (margePctEl) margePctEl.value = `${margePct.toFixed(2)}%`;
       };
-      exInput?.addEventListener('input', recalc);
-      vatInput?.addEventListener('input', recalc);
+      inkoopInput?.addEventListener('input', recalc);
+      inclInput?.addEventListener('input', recalc);
       recalc();
     });
     bindDelete();
   }
 
+  function productsForActiveCategory() {
+    return rows.filter((x) => String(x.categorie || x.category || '') === activeCategory);
+  }
+
+  function renderSummary(list) {
+    const el = document.getElementById('pricesSummaryBar');
+    if (!el) return;
+    const count = list.length;
+    const avgMargePct = count
+      ? Math.round((list.reduce((s, x) => s + calculateMargePct(x.verkoopprijsInclBtw, x.inkoopprijs), 0) / count) * 100) / 100
+      : 0;
+    const lowest = [...list].sort((a, b) => calculateMargePct(a.verkoopprijsInclBtw, a.inkoopprijs) - calculateMargePct(b.verkoopprijsInclBtw, b.inkoopprijs))[0];
+    el.innerHTML = `<div class="panel-card" style="padding:10px 12px"><strong>${count}</strong> producten · Gem. marge <strong>${avgMargePct.toFixed(2)}%</strong> · Laagste marge: <strong>${escapeAttr(lowest?.naam || '-')}</strong></div>`;
+  }
+
   function renderTable() {
     const el = document.getElementById('pricesTable');
     if (!el) return;
-    el.innerHTML = `<thead><tr><th>Omschrijving</th><th>Prijs ex BTW</th><th>Prijs incl. BTW</th><th>BTW %</th><th>Categorie</th><th></th><th></th></tr></thead><tbody>${
-      rows
+    const list = productsForActiveCategory();
+    renderSummary(list);
+    el.innerHTML = `<thead><tr><th>SKU</th><th>Naam</th><th>Inkoopprijs</th><th>Verkoopprijs incl. BTW</th><th>Verkoopprijs excl. BTW</th><th>Marge €</th><th>Marge %</th><th></th><th></th></tr></thead><tbody>${
+      list
         .map(
           (r) =>
-            `<tr data-price-id="${r.id}"><td><input class="field-input" data-f="description" value="${toInput(r.description)}"></td><td><input class="field-input" type="number" step="0.01" data-f="priceExVat" value="${toInput(r.priceExVat)}"></td><td><input class="field-input" data-f="priceInclVat" value="${toInput(calcInclVat(r.priceExVat, r.vatPct).toFixed(2))}" readonly tabindex="-1"></td><td><input class="field-input" type="number" step="1" data-f="vatPct" value="${toInput(r.vatPct)}"></td><td>${CATEGORY_OPTIONS.includes(String(r.category || '')) ? `<select class="field-input" data-f="category">${CATEGORY_OPTIONS.map((opt) => `<option value="${opt}" ${opt === r.category ? 'selected' : ''}>${opt}</option>`).join('')}</select>` : `<input class="field-input" data-f="category" value="${toInput(r.category)}">`}</td><td><button class="today-btn today-btn--ghost" data-price-save="${r.id}">Opslaan</button></td><td><button class="today-btn today-btn--ghost" data-price-delete="${r.id}">Verwijderen</button></td></tr>`
+            `<tr data-price-id="${r.id}" data-sku="${escapeAttr(r.sku || '')}" data-categorie="${escapeAttr(r.categorie || '')}" data-vat-pct="${Number(r.btwPct || 21)}"><td><span style="font-size:12px;color:#7f8792;white-space:nowrap">${escapeAttr(r.sku || '-')}</span></td><td><input class="field-input" data-f="naam" value="${escapeAttr(r.naam || r.description || '')}"></td><td><div style="display:flex;align-items:center;gap:6px"><span style="color:#7f8792">€</span><input class="field-input" style="max-width:130px" type="number" step="0.01" min="0" data-f="inkoopprijs" value="${toInput(Number(r.inkoopprijs || 0).toFixed(2))}"></div></td><td><div style="display:flex;align-items:center;gap:6px"><span style="color:#7f8792">€</span><input class="field-input" style="max-width:130px" type="number" step="0.01" min="0" data-f="verkoopprijsInclBtw" value="${toInput(Number(r.verkoopprijsInclBtw || r.price || 0).toFixed(2))}"></div></td><td><input class="field-input" style="max-width:130px" data-f="verkoopprijsExclBtw" value="${toInput(Number(r.verkoopprijsExclBtw || 0).toFixed(2))}" readonly tabindex="-1"></td><td><input class="field-input" style="max-width:120px" data-f="marge" value="${toInput(Number(r.marge || 0).toFixed(2))}" readonly tabindex="-1"></td><td><input class="field-input" style="max-width:100px" data-f="margePct" value="${toInput(`${calculateMargePct(r.verkoopprijsInclBtw, r.inkoopprijs).toFixed(2)}%`)}" readonly tabindex="-1"></td><td><button class="today-btn today-btn--ghost" data-price-save="${r.id}">Opslaan</button></td><td><button class="today-btn today-btn--ghost" data-price-delete="${r.id}">Verwijderen</button></td></tr>`
         )
         .join('')
     }</tbody>`;
@@ -117,15 +177,15 @@
   }
 
   function validateCreateForm(fields, errEl, saveBtn) {
-    const description = String(fields.description.value || '').trim();
+    const naam = String(fields.naam.value || '').trim();
     const category = String(fields.category.value || '').trim();
-    const priceExVat = Number(fields.priceExVat.value);
-    const vatPct = Number(fields.vatPct.value);
+    const inkoopprijs = Number(fields.inkoopprijs.value);
+    const verkoopprijsInclBtw = Number(fields.verkoopprijsInclBtw.value);
     const errs = [];
-    if (!description) errs.push('Omschrijving is verplicht.');
+    if (!naam) errs.push('Naam is verplicht.');
     if (!category) errs.push('Categorie is verplicht.');
-    if (!Number.isFinite(priceExVat) || priceExVat < 0) errs.push('Prijs ex BTW moet een geldig getal zijn.');
-    if (!Number.isFinite(vatPct) || vatPct < 0) errs.push('BTW % moet een geldig getal zijn.');
+    if (!Number.isFinite(inkoopprijs) || inkoopprijs < 0) errs.push('Inkoopprijs moet een geldig getal zijn.');
+    if (!Number.isFinite(verkoopprijsInclBtw) || verkoopprijsInclBtw < 0) errs.push('Verkoopprijs incl. BTW moet een geldig getal zijn.');
     errEl.textContent = errs[0] || '';
     saveBtn.disabled = errs.length > 0;
     saveBtn.style.opacity = saveBtn.disabled ? '0.55' : '1';
@@ -139,12 +199,12 @@
     overlay.innerHTML = `
       <div class="modal" style="max-width:560px" role="dialog" aria-modal="true" aria-labelledby="pricesCreateTitle">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-          <div class="modal-title" id="pricesCreateTitle" style="margin:0">Nieuwe prijs toevoegen</div>
+          <div class="modal-title" id="pricesCreateTitle" style="margin:0">Nieuw product toevoegen</div>
           <button type="button" class="btn-cancel" data-close-create-modal>✕</button>
         </div>
         <div class="form-row">
-          <label class="form-label">Omschrijving</label>
-          <input class="form-input" type="text" id="pricesCreateDescription">
+          <label class="form-label">Naam</label>
+          <input class="form-input" type="text" id="pricesCreateNaam">
         </div>
         <div class="form-row">
           <label class="form-label">SKU (optioneel)</label>
@@ -152,16 +212,16 @@
         </div>
         <div class="form-row">
           <label class="form-label">Categorie</label>
-          <select class="form-select" id="pricesCreateCategory">${CATEGORY_OPTIONS.map((x) => `<option value="${x}">${x}</option>`).join('')}</select>
+          <select class="form-select" id="pricesCreateCategory">${CATEGORY_OPTIONS.map((x) => `<option value="${x}" ${x === activeCategory ? 'selected' : ''}>${x}</option>`).join('')}</select>
         </div>
         <div class="form-row-2">
           <div>
-            <label class="form-label">Prijs ex BTW</label>
-            <input class="form-input" type="number" step="0.01" min="0" id="pricesCreatePriceExVat">
+            <label class="form-label">Inkoopprijs</label>
+            <input class="form-input" type="number" step="0.01" min="0" id="pricesCreateInkoopprijs">
           </div>
           <div>
-            <label class="form-label">BTW %</label>
-            <input class="form-input" type="number" step="1" min="0" id="pricesCreateVatPct" value="21">
+            <label class="form-label">Verkoopprijs incl. BTW</label>
+            <input class="form-input" type="number" step="0.01" min="0" id="pricesCreateVerkoopprijsInclBtw">
           </div>
         </div>
         <div class="form-hint-subtle is-error" id="pricesCreateError"></div>
@@ -174,11 +234,11 @@
     document.body.appendChild(overlay);
     createOverlay = overlay;
     const fields = {
-      description: overlay.querySelector('#pricesCreateDescription'),
+      naam: overlay.querySelector('#pricesCreateNaam'),
       sku: overlay.querySelector('#pricesCreateSku'),
       category: overlay.querySelector('#pricesCreateCategory'),
-      priceExVat: overlay.querySelector('#pricesCreatePriceExVat'),
-      vatPct: overlay.querySelector('#pricesCreateVatPct'),
+      inkoopprijs: overlay.querySelector('#pricesCreateInkoopprijs'),
+      verkoopprijsInclBtw: overlay.querySelector('#pricesCreateVerkoopprijsInclBtw'),
     };
     const errEl = overlay.querySelector('#pricesCreateError');
     const saveBtn = overlay.querySelector('#pricesCreateSaveBtn');
@@ -199,18 +259,19 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-HK-Auth': authHeader() },
         body: JSON.stringify({
-          description: String(fields.description.value || '').trim(),
+          naam: String(fields.naam.value || '').trim(),
           sku: String(fields.sku.value || '').trim() || null,
-          category: String(fields.category.value || '').trim(),
-          priceExVat: Number(fields.priceExVat.value),
-          vatPct: Number(fields.vatPct.value),
+          categorie: String(fields.category.value || '').trim(),
+          inkoopprijs: Number(fields.inkoopprijs.value),
+          verkoopprijsInclBtw: Number(fields.verkoopprijsInclBtw.value),
+          btwPct: 21,
         }),
       });
       close();
       await render();
     });
     validateCreateForm(fields, errEl, saveBtn);
-    fields.description?.focus();
+    fields.naam?.focus();
   }
 
   function openDeleteModal(row) {
@@ -220,11 +281,11 @@
     overlay.innerHTML = `
       <div class="modal" style="max-width:460px" role="dialog" aria-modal="true" aria-labelledby="pricesDeleteTitle">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-          <div class="modal-title" id="pricesDeleteTitle" style="margin:0">Prijs verwijderen</div>
+          <div class="modal-title" id="pricesDeleteTitle" style="margin:0">Product verwijderen</div>
           <button type="button" class="btn-cancel" data-close-delete-modal>✕</button>
         </div>
         <div class="form-row">
-          <div class="form-label" style="text-transform:none;font-size:14px;font-weight:500">Weet je zeker dat je <strong>${escHtml(row.description)}</strong> wilt verwijderen?</div>
+          <div class="form-label" style="text-transform:none;font-size:14px;font-weight:500">Weet je zeker dat je <strong>${escHtml(row.naam || row.description)}</strong> wilt verwijderen?</div>
         </div>
         <div class="modal-actions">
           <button type="button" class="btn-cancel" data-close-delete-modal>Annuleren</button>
@@ -257,6 +318,7 @@
   async function render() {
     try {
       await load();
+      if (!CATEGORY_OPTIONS.includes(activeCategory)) activeCategory = 'Kranen';
       renderTable();
     } catch (err) {
       const el = document.getElementById('pricesTable');
@@ -264,5 +326,12 @@
     }
   }
 
-  global.HKPlannerPrices = { render, openCreateModal };
+  function setCategory(nextCategory) {
+    const next = String(nextCategory || '').trim();
+    if (!CATEGORY_OPTIONS.includes(next)) return;
+    activeCategory = next;
+    render();
+  }
+
+  global.HKPlannerPrices = { render, openCreateModal, setCategory };
 })(window);

@@ -5747,7 +5747,10 @@
       <a href="#panelRoutes" class="planner-sidebar-item" data-sidebar-view="routes" onclick="return switchSidebarView('routes', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Routes</span></span></a>
       <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Klanten</span></span></a>
       <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Facturen</span></span><span class="planner-sidebar-count">3</span></a>
-      <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" onclick="return switchSidebarView('prices', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Prijzen</span></span></a>
+      <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-root="1" onclick="return switchProductsCategory('Kranen', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Producten</span></span></a>
+      <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-category="Kranen" onclick="return switchProductsCategory('Kranen', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span style="padding-left:18px">Kranen</span></span></a>
+      <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-category="Quookers" onclick="return switchProductsCategory('Quookers', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span style="padding-left:18px">Quookers</span></span></a>
+      <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-category="Serviceproducten" onclick="return switchProductsCategory('Serviceproducten', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span style="padding-left:18px">Serviceproducten</span></span></a>
       <a href="#panelAnalytics" class="planner-sidebar-item" data-sidebar-view="analytics" onclick="return switchSidebarView('analytics', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Analytics</span></span></a>
       <a href="#panelInventory" class="planner-sidebar-item" data-sidebar-view="inventory" onclick="return switchSidebarView('inventory', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Voorraad</span></span></a>
       <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Rapportage</span></span></a>
@@ -5882,12 +5885,13 @@
   <div class="appointments panel-page tab-hidden" id="panelPrices">
     <div class="today-page-header">
       <div class="today-page-heading">
-        <h1>Prijzen</h1>
-        <p>Tarieven per categorie</p>
+        <h1>Producten</h1>
+        <p id="productsCategoryLabel">Kranen</p>
       </div>
-      <button type="button" class="today-btn today-btn--primary" onclick="window.HKPlannerPrices?.openCreateModal?.()">+ Nieuwe prijs toevoegen</button>
+      <button type="button" class="today-btn today-btn--primary" onclick="window.HKPlannerPrices?.openCreateModal?.()">+ Nieuw product</button>
     </div>
     <div class="panel-page-content">
+      <div id="pricesSummaryBar"></div>
       <div class="panel-card">
         <table class="table-clean" id="pricesTable"></table>
       </div>
@@ -5899,7 +5903,7 @@
         <h1>Voorraad</h1>
         <p>Artikelbeheer en voorraadstatus</p>
       </div>
-      <button type="button" class="today-btn today-btn--primary" onclick="window.HKPlannerInventory?.openCreateModal?.()">+ Artikel toevoegen</button>
+      <span></span>
     </div>
     <div class="panel-page-content">
       <div class="toolbar-row">
@@ -6426,6 +6430,7 @@ let plannerCustomerDayFullStoreConfigured = false;
 let globalSearchTimer = null;
 let globalSearchResultsCache = [];
 let plannerSidebarView = 'today';
+let plannerProductsSubView = 'Kranen';
 
 function syncModalInternalFixedControls() {
   const typeEl = document.getElementById(
@@ -7980,7 +7985,17 @@ function switchSidebarView(view, event) {
   const allowed = new Set(['today', 'routes', 'analytics', 'prices', 'inventory']);
   plannerSidebarView = allowed.has(view) ? view : 'today';
   document.querySelectorAll('.planner-sidebar-item[data-sidebar-view]').forEach((el) => {
-    el.classList.toggle('is-active', el.getAttribute('data-sidebar-view') === plannerSidebarView);
+    const v = el.getAttribute('data-sidebar-view');
+    if (v !== plannerSidebarView) {
+      el.classList.remove('is-active');
+      return;
+    }
+    const cat = el.getAttribute('data-products-category');
+    if (plannerSidebarView === 'prices' && cat) {
+      el.classList.toggle('is-active', cat === plannerProductsSubView);
+      return;
+    }
+    el.classList.add('is-active');
   });
   const panelMap = {
     today: document.getElementById('panelAfspraken'),
@@ -7992,10 +8007,20 @@ function switchSidebarView(view, event) {
   if (window.matchMedia('(min-width: 1180px)').matches) {
     Object.entries(panelMap).forEach(([k, el]) => el?.classList.toggle('tab-hidden', k !== plannerSidebarView));
     if (plannerSidebarView === 'analytics') window.HKPlannerAnalytics?.render?.();
-    if (plannerSidebarView === 'prices') window.HKPlannerPrices?.render?.();
+    if (plannerSidebarView === 'prices') {
+      const label = document.getElementById('productsCategoryLabel');
+      if (label) label.textContent = plannerProductsSubView;
+      window.HKPlannerPrices?.setCategory?.(plannerProductsSubView);
+      window.HKPlannerPrices?.render?.();
+    }
     if (plannerSidebarView === 'inventory') window.HKPlannerInventory?.render?.();
   }
   return false;
+}
+
+function switchProductsCategory(category, event) {
+  plannerProductsSubView = String(category || 'Kranen').trim() || 'Kranen';
+  return switchSidebarView('prices', event);
 }
 
 /** Bij brede desktop: beide panelen tonen (CSS verbergt route-tab op smal). */

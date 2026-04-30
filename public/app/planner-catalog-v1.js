@@ -48,9 +48,9 @@
 
   function normalizeCatalogItem(row = {}) {
     const id = String(row.id || '').trim();
-    const name = String(row.name || row.description || row.desc || '').trim();
-    const category = String(row.category || 'overig').trim().toLowerCase();
-    const priceRaw = Number(row.price ?? row.priceExVat ?? row.price_ex_vat ?? row.amount);
+    const name = String(row.naam || row.name || row.description || row.desc || '').trim();
+    const category = String(row.categorie || row.category || 'overig').trim().toLowerCase();
+    const priceRaw = Number(row.verkoopprijsInclBtw ?? row.price ?? row.priceExVat ?? row.price_ex_vat ?? row.amount);
     const price = Number.isFinite(priceRaw) ? Math.round(priceRaw * 100) / 100 : NaN;
     if (!id || !name || !Number.isFinite(price)) return null;
     const searchText = normalizeQuery(
