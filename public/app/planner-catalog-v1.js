@@ -2,6 +2,7 @@
   let catalogItems = [];
   let loaded = false;
   let loadingPromise = null;
+  let catalogLoadedAtMs = 0;
   const modalLines = [];
   let modalDropdownOpen = false;
   let modalListenersBound = false;
@@ -31,16 +32,110 @@
     return String(q || '').trim().toLowerCase();
   }
 
+  function authHeader() {
+    try {
+      if (typeof global.hkAuthHeader === 'function') return global.hkAuthHeader() || '';
+      return (
+        global.HKPlannerAuthSession?.hkAuthHeader?.({
+          localStorageImpl: global.localStorage,
+          documentRef: document,
+        }) || ''
+      );
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function normalizeCatalogItem(row = {}) {
+    const id = String(row.id || '').trim();
+    const name = String(row.name || row.description || row.desc || '').trim();
+    const category = String(row.category || 'overig').trim().toLowerCase();
+    const priceRaw = Number(row.price ?? row.priceExVat ?? row.price_ex_vat ?? row.amount);
+    const price = Number.isFinite(priceRaw) ? Math.round(priceRaw * 100) / 100 : NaN;
+    if (!id || !name || !Number.isFinite(price)) return null;
+    const searchText = normalizeQuery(
+      row.searchText || row.search_text || `${name} ${category} ${String(row.sku || '').trim()}`
+    );
+    return {
+      id,
+      name,
+      desc: name,
+      category,
+      price,
+      sku: String(row.sku || '').trim() || null,
+      searchText,
+      active: row.active !== false,
+    };
+  }
+
+  async function loadCatalogFromApi() {
+    const headers = {};
+    const token = authHeader();
+    if (token) headers['X-HK-Auth'] = token;
+    const res = await fetch('/api/prices', {
+      cache: 'no-store',
+      headers,
+    });
+    if (!res.ok) throw new Error(`prices_api_${res.status}`);
+    const data = await res.json().catch(() => ({}));
+    const items = Array.isArray(data?.items) ? data.items : [];
+    return items.map((x) => normalizeCatalogItem(x)).filter(Boolean);
+  }
+
+  async function fetchCatalogLastUpdatedMs() {
+    const headers = {};
+    const token = authHeader();
+    if (token) headers['X-HK-Auth'] = token;
+    const res = await fetch('/api/prices?meta=1', {
+      cache: 'no-store',
+      headers,
+    });
+    if (!res.ok) throw new Error(`prices_meta_${res.status}`);
+    const data = await res.json().catch(() => ({}));
+    const ms = Number(data?.lastUpdated);
+    return Number.isFinite(ms) && ms > 0 ? ms : 0;
+  }
+
+  async function loadCatalogFromJsonFallback() {
+    const res = await fetch('/data/catalog-v1.json', { cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    const items = Array.isArray(data?.items) ? data.items : [];
+    return items.map((x) => normalizeCatalogItem(x)).filter(Boolean);
+  }
+
   async function ensureLoaded() {
-    if (loaded) return catalogItems;
     if (loadingPromise) return loadingPromise;
+    if (loaded) {
+      loadingPromise = (async () => {
+        try {
+          const remoteUpdatedAt = await fetchCatalogLastUpdatedMs();
+          if (remoteUpdatedAt > catalogLoadedAtMs) {
+            const fresh = await loadCatalogFromApi();
+            catalogItems = fresh.filter((x) => x && x.active !== false && x.name && Number.isFinite(Number(x.price)));
+            catalogLoadedAtMs = Date.now();
+          }
+          return catalogItems;
+        } catch (_) {
+          return catalogItems;
+        } finally {
+          loadingPromise = null;
+        }
+      })();
+      return loadingPromise;
+    }
     loadingPromise = (async () => {
-      const res = await fetch('/data/catalog-v1.json', { cache: 'no-store' });
-      const data = await res.json().catch(() => ({}));
-      const items = Array.isArray(data?.items) ? data.items : [];
+      let items = [];
+      try {
+        items = await loadCatalogFromApi();
+      } catch (_) {
+        items = await loadCatalogFromJsonFallback();
+      }
       catalogItems = items.filter((x) => x && x.active !== false && x.name && Number.isFinite(Number(x.price)));
       loaded = true;
+      catalogLoadedAtMs = Date.now();
       return catalogItems;
+    })().finally(() => {
+      loadingPromise = null;
     })();
     return loadingPromise;
   }
