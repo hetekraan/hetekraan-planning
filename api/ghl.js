@@ -1225,6 +1225,23 @@ export default async function handler(req, res) {
         const { startMs, endMs } = bounds;
         const locId = locConfigured;
         const calId = calConfigured;
+        console.info(
+          '[getAppointments][debug_request_window]',
+          JSON.stringify({
+            date,
+            startTime: startMs,
+            endTime: endMs,
+            startIso: new Date(startMs).toISOString(),
+            endIso: new Date(endMs).toISOString(),
+            locationId: locId,
+            calendarId: calId,
+            env: {
+              VERCEL_ENV: process.env.VERCEL_ENV || null,
+              has_GHL_LOCATION_ID: Boolean(process.env.GHL_LOCATION_ID),
+              has_GHL_CALENDAR_ID: Boolean(process.env.GHL_CALENDAR_ID),
+            },
+          })
+        );
         const blockSlotUserId = await resolveBlockSlotAssignedUserId(
           GHL_BASE,
           GHL_API_KEY,
@@ -1237,11 +1254,33 @@ export default async function handler(req, res) {
         let events = amsterdamDayReadCacheGet(calKey);
         if (events !== undefined) {
           gaPerf.ghl_calendar_events_ms = Date.now() - tCalEv;
+          console.info(
+            '[getAppointments][debug_cache_hit]',
+            JSON.stringify({
+              calKey,
+              eventsCount: Array.isArray(events) ? events.length : 0,
+            })
+          );
         } else {
+          console.info('[getAppointments][debug_ghl_request_url]', url);
           const response = await fetchWithRetry(url, {
             headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' },
           });
-          const data = await response.json();
+          const rawText = await response.text().catch(() => '');
+          console.info(
+            '[getAppointments][debug_ghl_response_raw]',
+            JSON.stringify({
+              status: response.status,
+              ok: response.ok,
+              bodyFirst500: String(rawText || '').slice(0, 500),
+            })
+          );
+          let data = {};
+          try {
+            data = rawText ? JSON.parse(rawText) : {};
+          } catch {
+            data = {};
+          }
           gaPerf.ghl_calendar_events_ms = Date.now() - tCalEv;
           events = data?.events || [];
           if (response.ok) amsterdamDayReadCacheSet(calKey, events);
