@@ -32,6 +32,7 @@
 <script src="/app/planner-admin.js"></script>
 <script src="/app/planner-proposals.js"></script>
 <script src="/app/planner-analytics.js"></script>
+<script src="/app/planner-customers.js"></script>
 <script src="/app/planner-prices.js"></script>
 <script src="/app/planner-inventory.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -5740,20 +5741,17 @@
     </div>
     <nav class="planner-sidebar-nav">
       <a href="#" class="planner-sidebar-item is-active" data-sidebar-view="today" onclick="return switchSidebarView('today', event)">
-        <span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Vandaag</span></span>
+        <span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Planning</span></span>
         <span class="planner-sidebar-count" id="sidebarCountToday">0</span>
       </a>
-      <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Agenda</span></span></a>
       <a href="#panelRoutes" class="planner-sidebar-item" data-sidebar-view="routes" onclick="return switchSidebarView('routes', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Routes</span></span></a>
-      <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Klanten</span></span></a>
-      <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Facturen</span></span><span class="planner-sidebar-count">3</span></a>
+      <a href="#panelCustomers" class="planner-sidebar-item" data-sidebar-view="customers" onclick="return switchSidebarView('customers', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Klanten</span></span></a>
       <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-root="1" onclick="return switchProductsCategory('Kranen', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Producten</span></span></a>
       <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-category="Kranen" onclick="return switchProductsCategory('Kranen', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span style="padding-left:18px">Kranen</span></span></a>
       <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-category="Quookers" onclick="return switchProductsCategory('Quookers', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span style="padding-left:18px">Quookers</span></span></a>
       <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-category="Serviceproducten" onclick="return switchProductsCategory('Serviceproducten', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span style="padding-left:18px">Serviceproducten</span></span></a>
       <a href="#panelAnalytics" class="planner-sidebar-item" data-sidebar-view="analytics" onclick="return switchSidebarView('analytics', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Analytics</span></span></a>
       <a href="#panelInventory" class="planner-sidebar-item" data-sidebar-view="inventory" onclick="return switchSidebarView('inventory', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Voorraad</span></span></a>
-      <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Rapportage</span></span></a>
     </nav>
     <div class="planner-sidebar-footer">
       <span class="planner-sidebar-avatar">JD</span>
@@ -5853,6 +5851,22 @@
       </div>
     </div>
     <div id="routeLocalHint" class="route-local-hint" style="display:none"></div>
+  </div>
+  <div class="appointments panel-page tab-hidden" id="panelCustomers">
+    <div class="today-page-header">
+      <div class="today-page-heading">
+        <h1>Klanten</h1>
+        <p>GHL contacten verrijkt met Moneybird-match</p>
+      </div>
+    </div>
+    <div class="panel-page-content">
+      <div class="toolbar-row">
+        <input id="customersSearch" class="field-input" placeholder="Zoek op naam, adres of e-mail..." style="max-width:420px" />
+      </div>
+      <div class="panel-card">
+        <table class="table-clean" id="customersTable"></table>
+      </div>
+    </div>
   </div>
   <div class="appointments panel-page tab-hidden" id="panelAnalytics">
     <div class="today-page-header">
@@ -7982,7 +7996,7 @@ function renderRoutesWeekStrip() {
 
 function switchSidebarView(view, event) {
   if (event?.preventDefault) event.preventDefault();
-  const allowed = new Set(['today', 'routes', 'analytics', 'prices', 'inventory']);
+  const allowed = new Set(['today', 'routes', 'customers', 'analytics', 'prices', 'inventory']);
   plannerSidebarView = allowed.has(view) ? view : 'today';
   document.querySelectorAll('.planner-sidebar-item[data-sidebar-view]').forEach((el) => {
     const v = el.getAttribute('data-sidebar-view');
@@ -8000,6 +8014,7 @@ function switchSidebarView(view, event) {
   const panelMap = {
     today: document.getElementById('panelAfspraken'),
     routes: document.getElementById('panelRoutes'),
+    customers: document.getElementById('panelCustomers'),
     analytics: document.getElementById('panelAnalytics'),
     prices: document.getElementById('panelPrices'),
     inventory: document.getElementById('panelInventory'),
@@ -8013,6 +8028,7 @@ function switchSidebarView(view, event) {
       window.HKPlannerPrices?.setCategory?.(plannerProductsSubView);
       window.HKPlannerPrices?.render?.();
     }
+    if (plannerSidebarView === 'customers') window.HKPlannerCustomers?.render?.();
     if (plannerSidebarView === 'inventory') window.HKPlannerInventory?.render?.();
   }
   return false;
@@ -8031,6 +8047,7 @@ function wireDesktopWideLayout() {
       switchSidebarView(plannerSidebarView);
     } else {
       document.getElementById('panelRoutes')?.classList.add('tab-hidden');
+      document.getElementById('panelCustomers')?.classList.add('tab-hidden');
       document.getElementById('panelAnalytics')?.classList.add('tab-hidden');
       document.getElementById('panelPrices')?.classList.add('tab-hidden');
       document.getElementById('panelInventory')?.classList.add('tab-hidden');
