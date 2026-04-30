@@ -31,6 +31,9 @@
 <script src="/app/planner-scheduling.js"></script>
 <script src="/app/planner-admin.js"></script>
 <script src="/app/planner-proposals.js"></script>
+<script src="/app/planner-analytics.js"></script>
+<script src="/app/planner-prices.js"></script>
+<script src="/app/planner-inventory.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -2074,6 +2077,7 @@
   .form-row { margin-bottom: 8px; }
   .form-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; display: block; }
   .form-hint-subtle { font-size: 11px; color: var(--muted); margin-top: 4px; min-height: 14px; }
+  .form-hint-subtle.is-error { color: var(--reparatie); }
   .form-input, .form-select {
     width: 100%;
     background: var(--surface2);
@@ -5492,6 +5496,63 @@
     color: var(--ink);
     padding: 11px;
   }
+  .panel-page {
+    background: var(--bg-page);
+    min-height: 100%;
+  }
+  .panel-page .today-page-header {
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-page-content {
+    padding: 16px 28px 28px;
+    display: grid;
+    gap: 14px;
+  }
+  .panel-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-card);
+    padding: 14px 16px;
+  }
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .kpi-title { font-size: 11px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: .04em; }
+  .kpi-value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+  .kpi-sub { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+  .toolbar-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .chip-btn {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-card);
+    color: var(--ink-soft);
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+  .chip-btn.is-active { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .table-clean { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .table-clean th, .table-clean td { border-bottom: 1px solid var(--border); padding: 8px 6px; text-align: left; }
+  .table-clean th { color: var(--ink-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .table-clean tr:last-child td { border-bottom: none; }
+  .bar-chart { display: grid; gap: 8px; }
+  .bar-row { display: grid; grid-template-columns: 80px 1fr auto; gap: 8px; align-items: center; }
+  .bar-track { height: 10px; border-radius: 999px; background: var(--bg-page); overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--accent); border-radius: 999px; }
+  .field-input {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-card);
+    color: var(--ink);
+    padding: 8px 10px;
+    font-size: 13px;
+    width: 100%;
+  }
+  .status-pill { font-size: 11px; border-radius: 999px; padding: 2px 8px; border: 1px solid var(--border); }
+  .status-pill.ok { background: var(--green-soft); color: var(--green); border-color: transparent; }
+  .status-pill.low { background: var(--accent-soft); color: var(--accent-ink); border-color: transparent; }
+  .status-pill.out { background: #f9e4df; color: #a02f08; border-color: transparent; }
   .route-panel {
     padding: 16px 14px;
   }
@@ -5686,7 +5747,9 @@
       <a href="#panelRoutes" class="planner-sidebar-item" data-sidebar-view="routes" onclick="return switchSidebarView('routes', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Routes</span></span></a>
       <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Klanten</span></span></a>
       <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Facturen</span></span><span class="planner-sidebar-count">3</span></a>
-      <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Prijzen</span></span></a>
+      <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" onclick="return switchSidebarView('prices', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Prijzen</span></span></a>
+      <a href="#panelAnalytics" class="planner-sidebar-item" data-sidebar-view="analytics" onclick="return switchSidebarView('analytics', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Analytics</span></span></a>
+      <a href="#panelInventory" class="planner-sidebar-item" data-sidebar-view="inventory" onclick="return switchSidebarView('inventory', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Voorraad</span></span></a>
       <a href="#" class="planner-sidebar-item"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Rapportage</span></span></a>
     </nav>
     <div class="planner-sidebar-footer">
@@ -5787,6 +5850,66 @@
       </div>
     </div>
     <div id="routeLocalHint" class="route-local-hint" style="display:none"></div>
+  </div>
+  <div class="appointments panel-page tab-hidden" id="panelAnalytics">
+    <div class="today-page-header">
+      <div class="today-page-heading">
+        <h1>Analytics</h1>
+        <p>Overzicht prestaties en cashflow</p>
+      </div>
+      <div class="toolbar-row" id="analyticsPeriodFilters"></div>
+    </div>
+    <div class="panel-page-content">
+      <div class="kpi-grid" id="analyticsKpis"></div>
+      <div class="panel-card">
+        <div class="routes-map-head">Omzet per week per werksoort</div>
+        <div class="bar-chart" id="analyticsRevenueChart"></div>
+      </div>
+      <div class="panel-card">
+        <div class="routes-map-head">Prestaties per monteur</div>
+        <table class="table-clean" id="analyticsTechTable"></table>
+      </div>
+      <div class="panel-card">
+        <div class="routes-map-head">Website bezoekers vs online boekingen</div>
+        <div class="bar-chart" id="analyticsWpChart"></div>
+      </div>
+      <div class="panel-card">
+        <div class="routes-map-head">Cashflow: inkomsten vs kosten</div>
+        <div class="bar-chart" id="analyticsCashflowChart"></div>
+      </div>
+    </div>
+  </div>
+  <div class="appointments panel-page tab-hidden" id="panelPrices">
+    <div class="today-page-header">
+      <div class="today-page-heading">
+        <h1>Prijzen</h1>
+        <p>Tarieven per categorie</p>
+      </div>
+      <button type="button" class="today-btn today-btn--primary" onclick="window.HKPlannerPrices?.openCreateModal?.()">+ Nieuwe prijs toevoegen</button>
+    </div>
+    <div class="panel-page-content">
+      <div class="panel-card">
+        <table class="table-clean" id="pricesTable"></table>
+      </div>
+    </div>
+  </div>
+  <div class="appointments panel-page tab-hidden" id="panelInventory">
+    <div class="today-page-header">
+      <div class="today-page-heading">
+        <h1>Voorraad</h1>
+        <p>Artikelbeheer en voorraadstatus</p>
+      </div>
+      <button type="button" class="today-btn today-btn--primary" onclick="window.HKPlannerInventory?.openCreateModal?.()">+ Artikel toevoegen</button>
+    </div>
+    <div class="panel-page-content">
+      <div class="toolbar-row">
+        <input id="inventorySearch" class="field-input" placeholder="Zoek op artikelnaam..." style="max-width:320px" />
+        <select id="inventoryCategoryFilter" class="field-input" style="max-width:220px"></select>
+      </div>
+      <div class="panel-card">
+        <table class="table-clean" id="inventoryTable"></table>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -7854,20 +7977,23 @@ function renderRoutesWeekStrip() {
 
 function switchSidebarView(view, event) {
   if (event?.preventDefault) event.preventDefault();
-  plannerSidebarView = view === 'routes' ? 'routes' : 'today';
+  const allowed = new Set(['today', 'routes', 'analytics', 'prices', 'inventory']);
+  plannerSidebarView = allowed.has(view) ? view : 'today';
   document.querySelectorAll('.planner-sidebar-item[data-sidebar-view]').forEach((el) => {
     el.classList.toggle('is-active', el.getAttribute('data-sidebar-view') === plannerSidebarView);
   });
-  const panelToday = document.getElementById('panelAfspraken');
-  const panelRoutes = document.getElementById('panelRoutes');
+  const panelMap = {
+    today: document.getElementById('panelAfspraken'),
+    routes: document.getElementById('panelRoutes'),
+    analytics: document.getElementById('panelAnalytics'),
+    prices: document.getElementById('panelPrices'),
+    inventory: document.getElementById('panelInventory'),
+  };
   if (window.matchMedia('(min-width: 1180px)').matches) {
-    if (plannerSidebarView === 'routes') {
-      panelToday?.classList.add('tab-hidden');
-      panelRoutes?.classList.remove('tab-hidden');
-    } else {
-      panelToday?.classList.remove('tab-hidden');
-      panelRoutes?.classList.add('tab-hidden');
-    }
+    Object.entries(panelMap).forEach(([k, el]) => el?.classList.toggle('tab-hidden', k !== plannerSidebarView));
+    if (plannerSidebarView === 'analytics') window.HKPlannerAnalytics?.render?.();
+    if (plannerSidebarView === 'prices') window.HKPlannerPrices?.render?.();
+    if (plannerSidebarView === 'inventory') window.HKPlannerInventory?.render?.();
   }
   return false;
 }
@@ -7877,15 +8003,12 @@ function wireDesktopWideLayout() {
   const wide = window.matchMedia('(min-width: 1180px)');
   const apply = () => {
     if (wide.matches) {
-      if (plannerSidebarView === 'routes') {
-        document.getElementById('panelAfspraken')?.classList.add('tab-hidden');
-        document.getElementById('panelRoutes')?.classList.remove('tab-hidden');
-      } else {
-        document.getElementById('panelAfspraken')?.classList.remove('tab-hidden');
-        document.getElementById('panelRoutes')?.classList.add('tab-hidden');
-      }
+      switchSidebarView(plannerSidebarView);
     } else {
       document.getElementById('panelRoutes')?.classList.add('tab-hidden');
+      document.getElementById('panelAnalytics')?.classList.add('tab-hidden');
+      document.getElementById('panelPrices')?.classList.add('tab-hidden');
+      document.getElementById('panelInventory')?.classList.add('tab-hidden');
     }
   };
   if (wide.addEventListener) wide.addEventListener('change', apply);
