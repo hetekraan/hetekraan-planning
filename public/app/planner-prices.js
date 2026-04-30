@@ -22,6 +22,13 @@
     return String(v ?? '').replace(/"/g, '&quot;');
   }
 
+  function calcInclVat(priceExVat, vatPct) {
+    const ex = Number(priceExVat);
+    const vat = Number(vatPct);
+    if (!Number.isFinite(ex) || !Number.isFinite(vat)) return 0;
+    return Math.round(ex * (1 + vat / 100) * 100) / 100;
+  }
+
   function escHtml(v) {
     return String(v ?? '')
       .replaceAll('&', '&amp;')
@@ -65,17 +72,30 @@
         await saveInline(id);
       });
     });
+    document.querySelectorAll('tr[data-price-id]').forEach((rowEl) => {
+      const exInput = rowEl.querySelector('[data-f="priceExVat"]');
+      const vatInput = rowEl.querySelector('[data-f="vatPct"]');
+      const inclEl = rowEl.querySelector('[data-f="priceInclVat"]');
+      const recalc = () => {
+        if (!inclEl) return;
+        const incl = calcInclVat(exInput?.value, vatInput?.value);
+        inclEl.value = incl.toFixed(2);
+      };
+      exInput?.addEventListener('input', recalc);
+      vatInput?.addEventListener('input', recalc);
+      recalc();
+    });
     bindDelete();
   }
 
   function renderTable() {
     const el = document.getElementById('pricesTable');
     if (!el) return;
-    el.innerHTML = `<thead><tr><th>Omschrijving</th><th>Prijs ex BTW</th><th>BTW %</th><th>Categorie</th><th></th><th></th></tr></thead><tbody>${
+    el.innerHTML = `<thead><tr><th>Omschrijving</th><th>Prijs ex BTW</th><th>Prijs incl. BTW</th><th>BTW %</th><th>Categorie</th><th></th><th></th></tr></thead><tbody>${
       rows
         .map(
           (r) =>
-            `<tr data-price-id="${r.id}"><td><input class="field-input" data-f="description" value="${toInput(r.description)}"></td><td><input class="field-input" type="number" step="0.01" data-f="priceExVat" value="${toInput(r.priceExVat)}"></td><td><input class="field-input" type="number" step="1" data-f="vatPct" value="${toInput(r.vatPct)}"></td><td>${CATEGORY_OPTIONS.includes(String(r.category || '')) ? `<select class="field-input" data-f="category">${CATEGORY_OPTIONS.map((opt) => `<option value="${opt}" ${opt === r.category ? 'selected' : ''}>${opt}</option>`).join('')}</select>` : `<input class="field-input" data-f="category" value="${toInput(r.category)}">`}</td><td><button class="today-btn today-btn--ghost" data-price-save="${r.id}">Opslaan</button></td><td><button class="today-btn today-btn--ghost" data-price-delete="${r.id}">Verwijderen</button></td></tr>`
+            `<tr data-price-id="${r.id}"><td><input class="field-input" data-f="description" value="${toInput(r.description)}"></td><td><input class="field-input" type="number" step="0.01" data-f="priceExVat" value="${toInput(r.priceExVat)}"></td><td><input class="field-input" data-f="priceInclVat" value="${toInput(calcInclVat(r.priceExVat, r.vatPct).toFixed(2))}" readonly tabindex="-1"></td><td><input class="field-input" type="number" step="1" data-f="vatPct" value="${toInput(r.vatPct)}"></td><td>${CATEGORY_OPTIONS.includes(String(r.category || '')) ? `<select class="field-input" data-f="category">${CATEGORY_OPTIONS.map((opt) => `<option value="${opt}" ${opt === r.category ? 'selected' : ''}>${opt}</option>`).join('')}</select>` : `<input class="field-input" data-f="category" value="${toInput(r.category)}">`}</td><td><button class="today-btn today-btn--ghost" data-price-save="${r.id}">Opslaan</button></td><td><button class="today-btn today-btn--ghost" data-price-delete="${r.id}">Verwijderen</button></td></tr>`
         )
         .join('')
     }</tbody>`;
