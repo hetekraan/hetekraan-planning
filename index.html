@@ -5005,6 +5005,13 @@
   .planner-sidebar-item.is-active .planner-sidebar-dot {
     background: var(--accent);
   }
+  @media (max-width: 1024px) {
+    .planner-sidebar-item[data-sidebar-view="analytics"],
+    .planner-sidebar-item[data-sidebar-view="prices"],
+    .planner-sidebar-item[data-products-category] {
+      display: none !important;
+    }
+  }
   .planner-sidebar-count {
     font-size: 11px;
     color: var(--ink-muted);
@@ -5746,10 +5753,10 @@
       </a>
       <a href="#panelRoutes" class="planner-sidebar-item" data-sidebar-view="routes" onclick="return switchSidebarView('routes', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Routes</span></span></a>
       <a href="#panelCustomers" class="planner-sidebar-item" data-sidebar-view="customers" onclick="return switchSidebarView('customers', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Klanten</span></span></a>
-      <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-root="1" onclick="return switchProductsCategory('Kranen', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Producten</span></span></a>
-      <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-category="Kranen" onclick="return switchProductsCategory('Kranen', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span style="padding-left:18px">Kranen</span></span></a>
-      <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-category="Quookers" onclick="return switchProductsCategory('Quookers', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span style="padding-left:18px">Quookers</span></span></a>
-      <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-category="Serviceproducten" onclick="return switchProductsCategory('Serviceproducten', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span style="padding-left:18px">Serviceproducten</span></span></a>
+      <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-root="1" onclick="return toggleProductsCategoryMenu(event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Producten</span></span></a>
+      <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-category="Kranen" onclick="return switchProductsCategory('Kranen', event)" hidden><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span style="padding-left:18px">Kranen</span></span></a>
+      <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-category="Quookers" onclick="return switchProductsCategory('Quookers', event)" hidden><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span style="padding-left:18px">Quookers</span></span></a>
+      <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-category="Serviceproducten" onclick="return switchProductsCategory('Serviceproducten', event)" hidden><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span style="padding-left:18px">Serviceproducten</span></span></a>
       <a href="#panelAnalytics" class="planner-sidebar-item" data-sidebar-view="analytics" onclick="return switchSidebarView('analytics', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Analytics</span></span></a>
       <a href="#panelInventory" class="planner-sidebar-item" data-sidebar-view="inventory" onclick="return switchSidebarView('inventory', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Voorraad</span></span></a>
     </nav>
@@ -5879,20 +5886,55 @@
     <div class="panel-page-content">
       <div class="kpi-grid" id="analyticsKpis"></div>
       <div class="panel-card">
-        <div class="routes-map-head">Omzet per week per werksoort</div>
-        <div class="bar-chart" id="analyticsRevenueChart"></div>
+        <div class="routes-map-head">Omzet & marge over tijd</div>
+        <canvas id="analyticsRevenueMarginChart" height="110"></canvas>
       </div>
       <div class="panel-card">
-        <div class="routes-map-head">Prestaties per monteur</div>
-        <table class="table-clean" id="analyticsTechTable"></table>
+        <div class="routes-map-head">Ad spend vs omzet</div>
+        <canvas id="analyticsAdSpendChart" height="110"></canvas>
+        <div class="kpi-sub" id="analyticsRoasMeta" style="margin-top:10px"></div>
       </div>
       <div class="panel-card">
-        <div class="routes-map-head">Website bezoekers vs online boekingen</div>
-        <div class="bar-chart" id="analyticsWpChart"></div>
+        <div class="routes-map-head">Website verkeer & conversie funnel</div>
+        <canvas id="analyticsTrafficChart" height="100"></canvas>
+        <div id="analyticsFunnel" style="margin-top:12px"></div>
       </div>
       <div class="panel-card">
         <div class="routes-map-head">Cashflow: inkomsten vs kosten</div>
-        <div class="bar-chart" id="analyticsCashflowChart"></div>
+        <canvas id="analyticsCashflowChart" height="100"></canvas>
+        <table class="table-clean" id="analyticsOpenInvoicesTable" style="margin-top:12px"></table>
+      </div>
+      <div class="panel-card">
+        <div class="routes-map-head">Voorraadstatus (laag / uitverkocht)</div>
+        <table class="table-clean" id="analyticsInventoryTable"></table>
+        <div style="margin-top:10px">
+          <button type="button" class="chip-btn" onclick="switchSidebarView('inventory')">Bekijk volledige voorraad</button>
+        </div>
+      </div>
+      <div class="panel-card">
+        <div class="routes-map-head">Recente afspraken</div>
+        <table class="table-clean" id="analyticsRecentAppointmentsTable"></table>
+      </div>
+      <div class="panel-card">
+        <div class="routes-map-head">Operationele KPIs</div>
+        <div class="kpi-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:12px">
+          <div>
+            <div class="kpi-sub" style="margin-bottom:6px">Bezettingsgraad monteurs</div>
+            <canvas id="analyticsOccupancyChart" height="110"></canvas>
+          </div>
+          <div>
+            <div class="kpi-sub" style="margin-bottom:6px">Omzet per monteur</div>
+            <canvas id="analyticsRevenueByTechChart" height="110"></canvas>
+          </div>
+          <div>
+            <div class="kpi-sub" style="margin-bottom:6px">Populairste werksoorten</div>
+            <canvas id="analyticsJobTypeDonutChart" height="140"></canvas>
+          </div>
+          <div>
+            <div class="kpi-sub" style="margin-bottom:6px">Herhalingsklanten</div>
+            <div id="analyticsRepeatCustomersKpi" class="kpi-value">-</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -6445,6 +6487,7 @@ let globalSearchTimer = null;
 let globalSearchResultsCache = [];
 let plannerSidebarView = 'today';
 let plannerProductsSubView = 'Kranen';
+let plannerProductsMenuExpanded = false;
 
 function syncModalInternalFixedControls() {
   const typeEl = document.getElementById(
@@ -7997,7 +8040,17 @@ function renderRoutesWeekStrip() {
 function switchSidebarView(view, event) {
   if (event?.preventDefault) event.preventDefault();
   const allowed = new Set(['today', 'routes', 'customers', 'analytics', 'prices', 'inventory']);
-  plannerSidebarView = allowed.has(view) ? view : 'today';
+  const requested = allowed.has(view) ? view : 'today';
+  const compact = window.matchMedia('(max-width: 1024px)').matches;
+  const blockedOnCompact = requested === 'analytics' || requested === 'prices';
+  plannerSidebarView = compact && blockedOnCompact ? 'today' : requested;
+  if (compact && blockedOnCompact) {
+    if (window.location.hash === '#panelAnalytics' || window.location.hash === '#panelPrices') {
+      try {
+        history.replaceState(null, '', '#');
+      } catch (_) {}
+    }
+  }
   document.querySelectorAll('.planner-sidebar-item[data-sidebar-view]').forEach((el) => {
     const v = el.getAttribute('data-sidebar-view');
     if (v !== plannerSidebarView) {
@@ -8034,7 +8087,26 @@ function switchSidebarView(view, event) {
   return false;
 }
 
+function applyProductsMenuExpandedState() {
+  document.querySelectorAll('.planner-sidebar-item[data-products-category]').forEach((el) => {
+    el.hidden = !plannerProductsMenuExpanded;
+  });
+}
+
+function toggleProductsCategoryMenu(event) {
+  plannerProductsMenuExpanded = !plannerProductsMenuExpanded;
+  applyProductsMenuExpandedState();
+  if (plannerProductsMenuExpanded) {
+    plannerProductsSubView = String(plannerProductsSubView || 'Kranen').trim() || 'Kranen';
+    return switchSidebarView('prices', event);
+  }
+  if (event?.preventDefault) event.preventDefault();
+  return false;
+}
+
 function switchProductsCategory(category, event) {
+  plannerProductsMenuExpanded = true;
+  applyProductsMenuExpandedState();
   plannerProductsSubView = String(category || 'Kranen').trim() || 'Kranen';
   return switchSidebarView('prices', event);
 }
@@ -8056,6 +8128,18 @@ function wireDesktopWideLayout() {
   if (wide.addEventListener) wide.addEventListener('change', apply);
   else if (wide.addListener) wide.addListener(apply);
   apply();
+}
+
+function normalizeInitialSidebarViewForViewport() {
+  const compact = window.matchMedia('(max-width: 1024px)').matches;
+  if (!compact) return;
+  const hash = String(window.location.hash || '').trim().toLowerCase();
+  if (hash === '#panelanalytics' || hash === '#panelprices') {
+    try {
+      history.replaceState(null, '', '#');
+    } catch (_) {}
+    plannerSidebarView = 'today';
+  }
 }
 
 function fmtEuro(amount) {
@@ -10500,7 +10584,9 @@ function showPaymentLinkFallback(url, invoiceNumber, total) {
 applyUiScalePref();
 document.getElementById('dateLabel').textContent = formatDate(currentDate);
 wirePlannerDatePickerInput();
+normalizeInitialSidebarViewForViewport();
 wireDesktopWideLayout();
+applyProductsMenuExpandedState();
 renderPlannerWeekStrip();
 
 // LOGIN — wachtwoorden staan NIET meer in de browser-code.

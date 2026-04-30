@@ -75,10 +75,44 @@ function ensureAuth(req) {
 
 function periodToDays(period) {
   const p = String(period || '').trim().toLowerCase();
+  if (p === 'vandaag' || p === 'today') return { key: 'today', days: 1 };
   if (p === '7d') return { key: '7d', days: 7 };
   if (p === 'kwartaal') return { key: 'kwartaal', days: 90 };
   if (p === 'jaar') return { key: 'jaar', days: 365 };
   return { key: '30d', days: 30 };
+}
+
+function isValidYmd(v) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '').trim());
+}
+
+function buildRangeFromRequest(query = {}) {
+  const startDateRaw = String(query?.startDate || '').trim();
+  const endDateRaw = String(query?.endDate || '').trim();
+  if (isValidYmd(startDateRaw) && isValidYmd(endDateRaw) && startDateRaw <= endDateRaw) {
+    const startBounds = amsterdamCalendarDayBoundsMs(startDateRaw);
+    const endBounds = amsterdamCalendarDayBoundsMs(endDateRaw);
+    return {
+      mode: 'custom',
+      key: `custom:${startDateRaw}:${endDateRaw}`,
+      period: 'custom',
+      startDate: startDateRaw,
+      endDate: endDateRaw,
+      startMs: startBounds?.startMs,
+      endMs: endBounds?.endMs,
+    };
+  }
+  const { key, days } = periodToDays(query?.period);
+  const periodRange = dateRangeFromPeriod(key, days);
+  return {
+    mode: 'period',
+    key,
+    period: key,
+    startDate: periodRange.startDate,
+    endDate: periodRange.endDate,
+    startMs: periodRange.startMs,
+    endMs: periodRange.endMs,
+  };
 }
 
 function getField(contact, fieldId, fieldKey = '') {
@@ -239,6 +273,50 @@ function buildAnalyticsFromAppointments(appointments = []) {
     byType[t].aantal += 1;
     byType[t].omzet = Math.round((byType[t].omzet + calcTotalPrice(a)) * 100) / 100;
   }
+  const weekMap = {};
+  const recentAppointments = [...clients]
+    .sort((a, b) => Number(b.startMs || 0) - Number(a.startMs || 0))
+    .slice(0, 10)
+    .map((a) => ({
+      id: a.id,
+      datum: eventYmdFromStartMs({ startTime: a.startMs }) || '',
+      klant: a.name || '',
+      adres: a.fullAddressLine || a.address || '',
+      werksoort: a.jobType || 'onbekend',
+      bedrag: calcTotalPrice(a),
+      status: a.status || '',
+      contactId: a.contactId || '',
+    }));
+  const categoryCostFactor = { installatie: 0.58, reparatie: 0.62, onderhoud: 0.55, onbekend: 0.6 };
+  for (const a of clients) {
+    const date = eventYmdFromStartMs({ startTime: a.startMs });
+    if (!date) continue;
+    const d = new Date(`${date}T12:00:00Z`);
+    const day = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() - (day - 1));
+    const wk = `${d.getUTCFullYear()}-W${String(Math.ceil((((d - new Date(Date.UTC(d.getUTCFullYear(), 0, 1))) / 86400000) + 1) / 7)).padStart(2, '0')}`;
+    const jobType = String(a.jobType || 'onbekend').toLowerCase();
+    if (!weekMap[wk]) weekMap[wk] = { week: wk, omzet: 0, marge: 0, installatie: 0, reparatie: 0, onderhoud: 0 };
+    const total = calcTotalPrice(a);
+    const factor = Number(categoryCostFactor[jobType] ?? categoryCostFactor.onbekend);
+    const margin = Math.max(0, total - total * factor);
+    weekMap[wk].omzet = Math.round((weekMap[wk].omzet + total) * 100) / 100;
+    weekMap[wk].marge = Math.round((weekMap[wk].marge + margin) * 100) / 100;
+    if (jobType === 'installatie' || jobType === 'reparatie' || jobType === 'onderhoud') {
+      weekMap[wk][jobType] = Math.round((Number(weekMap[wk][jobType]) + total) * 100) / 100;
+    }
+  }
+  const omzetByWeek = Object.values(weekMap).sort((a, b) => String(a.week).localeCompare(String(b.week)));
+  const uniqueByContact = new Set(clients.map((a) => String(a.contactId || '').trim()).filter(Boolean));
+  const repeatByContact = new Map();
+  clients.forEach((a) => {
+    const cid = String(a.contactId || '').trim();
+    if (!cid) return;
+    repeatByContact.set(cid, (repeatByContact.get(cid) || 0) + 1);
+  });
+  const repeaters = [...repeatByContact.values()].filter((n) => n > 1).length;
+  const repeatPct = uniqueByContact.size ? Math.round((repeaters / uniqueByContact.size) * 1000) / 10 : 0;
+
   return {
     kpis: {
       totaalAfspraken,
@@ -247,6 +325,9 @@ function buildAnalyticsFromAppointments(appointments = []) {
       openstaandTeFactureren,
     },
     jobTypeVerdeling: Object.values(byType).sort((a, b) => b.omzet - a.omzet),
+    omzetByWeek,
+    recentAppointments,
+    repeatCustomersPct: repeatPct,
   };
 }
 
@@ -269,11 +350,10 @@ async function writeResultCache(periodKey, payload) {
   await redis.set(resultCacheKey(periodKey), JSON.stringify(payload), { ex: RESULT_CACHE_TTL_SEC });
 }
 
-async function runAnalytics(periodKey) {
+async function runAnalytics(rangeInput) {
   const locId = ghlLocationIdFromEnv();
   const calId = ghlCalendarIdFromEnv();
-  const { days } = periodToDays(periodKey);
-  const range = dateRangeFromPeriod(periodKey, days);
+  const range = rangeInput;
   const plannerNotitiesFieldId = await resolvePlannerNotitiesFieldId();
   const plannerInternalFixedStartFieldId = await resolvePlannerInternalFixedStartFieldId();
 
@@ -421,8 +501,8 @@ export default async function handler(req, res) {
     return res.status(503).json({ error: GHL_CONFIG_MISSING_MSG });
   }
 
-  const { key: periodKey } = periodToDays(req.query?.period);
-  const cacheHit = await readResultCache(periodKey);
+  const range = buildRangeFromRequest(req.query || {});
+  const cacheHit = await readResultCache(range.key);
   if (cacheHit?.period && cacheHit?.kpis) {
     return res.status(200).json({
       ok: true,
@@ -431,17 +511,17 @@ export default async function handler(req, res) {
       meta: {
         ...(cacheHit.meta || {}),
         cacheHit: 'result',
-        period: periodKey,
+        period: range.period,
       },
     });
   }
 
   try {
-    const payload = await runAnalytics(periodKey);
-    await writeResultCache(periodKey, payload);
+    const payload = await runAnalytics(range);
+    await writeResultCache(range.key, payload);
     return res.status(200).json({ ok: true, source: 'live', ...payload });
   } catch (err) {
-    const fallback = await readResultCache(periodKey);
+    const fallback = await readResultCache(range.key);
     if (fallback?.period && fallback?.kpis) {
       return res.status(200).json({
         ok: true,
@@ -451,7 +531,7 @@ export default async function handler(req, res) {
         meta: {
           ...(fallback.meta || {}),
           cacheHit: 'result',
-          period: periodKey,
+          period: range.period,
         },
       });
     }
