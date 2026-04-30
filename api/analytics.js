@@ -53,6 +53,18 @@ function getRedis() {
   return _redis;
 }
 
+function redisPrefix() {
+  return String(process.env.REDIS_KEY_PREFIX || 'prod:');
+}
+
+function contactCacheKey(contactId) {
+  return `${redisPrefix()}hk:analytics:contact:${String(contactId || '').trim()}`;
+}
+
+function resultCacheKey(periodKey) {
+  return `${redisPrefix()}analytics:${String(periodKey || '').trim()}`;
+}
+
 function ensureAuth(req) {
   const bypass = String(process.env.DEV_LOGIN_BYPASS || '').toLowerCase() === 'true';
   const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').toLowerCase();
@@ -163,7 +175,7 @@ async function fetchCalendarEventsRange({ locationId, calendarId, startMs, endMs
 async function readCachedContact(contactId) {
   const redis = getRedis();
   if (!redis) return null;
-  const raw = await redis.get(`hk:analytics:contact:${contactId}`);
+  const raw = await redis.get(contactCacheKey(contactId));
   if (!raw) return null;
   if (typeof raw === 'object') return raw;
   try {
@@ -176,7 +188,7 @@ async function readCachedContact(contactId) {
 async function writeCachedContact(contactId, contact) {
   const redis = getRedis();
   if (!redis) return;
-  await redis.set(`hk:analytics:contact:${contactId}`, JSON.stringify(contact), { ex: CONTACT_CACHE_TTL_SEC });
+  await redis.set(contactCacheKey(contactId), JSON.stringify(contact), { ex: CONTACT_CACHE_TTL_SEC });
 }
 
 async function fetchContactById(contactId) {
@@ -241,7 +253,7 @@ function buildAnalyticsFromAppointments(appointments = []) {
 async function readResultCache(periodKey) {
   const redis = getRedis();
   if (!redis) return null;
-  const raw = await redis.get(`analytics:${periodKey}`);
+  const raw = await redis.get(resultCacheKey(periodKey));
   if (!raw) return null;
   if (typeof raw === 'object') return raw;
   try {
@@ -254,7 +266,7 @@ async function readResultCache(periodKey) {
 async function writeResultCache(periodKey, payload) {
   const redis = getRedis();
   if (!redis) return;
-  await redis.set(`analytics:${periodKey}`, JSON.stringify(payload), { ex: RESULT_CACHE_TTL_SEC });
+  await redis.set(resultCacheKey(periodKey), JSON.stringify(payload), { ex: RESULT_CACHE_TTL_SEC });
 }
 
 async function runAnalytics(periodKey) {

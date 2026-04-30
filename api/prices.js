@@ -6,6 +6,14 @@ import { Redis } from '@upstash/redis';
 const PRICES_LAST_UPDATED_KEY = 'hk:prices:last_updated';
 let _redis = undefined;
 
+function redisPrefix() {
+  return String(process.env.REDIS_KEY_PREFIX || 'prod:');
+}
+
+function pricesLastUpdatedKey() {
+  return `${redisPrefix()}${PRICES_LAST_UPDATED_KEY}`;
+}
+
 function getRedis() {
   const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
   const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
@@ -17,7 +25,7 @@ function getRedis() {
 async function getPricesLastUpdated() {
   const redis = getRedis();
   if (!redis) return null;
-  const raw = await redis.get(PRICES_LAST_UPDATED_KEY);
+  const raw = await redis.get(pricesLastUpdatedKey());
   const ms = Number(raw);
   return Number.isFinite(ms) && ms > 0 ? ms : null;
 }
@@ -25,7 +33,7 @@ async function getPricesLastUpdated() {
 async function touchPricesLastUpdated() {
   const redis = getRedis();
   if (!redis) return;
-  await redis.set(PRICES_LAST_UPDATED_KEY, String(Date.now()));
+  await redis.set(pricesLastUpdatedKey(), String(Date.now()));
 }
 
 function ensureAuth(req) {

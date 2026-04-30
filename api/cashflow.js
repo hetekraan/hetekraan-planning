@@ -23,10 +23,18 @@ function getRedis() {
   return _redis;
 }
 
+function redisPrefix() {
+  return String(process.env.REDIS_KEY_PREFIX || 'prod:');
+}
+
+function cacheKey() {
+  return `${redisPrefix()}${CACHE_KEY}`;
+}
+
 async function readCache() {
   const redis = getRedis();
   if (!redis) return null;
-  const raw = await redis.get(CACHE_KEY);
+  const raw = await redis.get(cacheKey());
   if (!raw) return null;
   if (typeof raw === 'object' && raw?.items) return raw;
   try {
@@ -39,7 +47,7 @@ async function readCache() {
 async function writeCache(payload) {
   const redis = getRedis();
   if (!redis) return;
-  await redis.set(CACHE_KEY, JSON.stringify(payload), { ex: CACHE_TTL_SECONDS });
+  await redis.set(cacheKey(), JSON.stringify(payload), { ex: CACHE_TTL_SECONDS });
 }
 
 export default async function handler(req, res) {
