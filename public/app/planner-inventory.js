@@ -1,5 +1,6 @@
 (function initPlannerInventory(global) {
   let items = [];
+  let warnings = [];
   let createOverlay = null;
   let deleteOverlay = null;
   let createEscHandler = null;
@@ -21,6 +22,13 @@
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Kon voorraad niet laden');
     items = Array.isArray(data.items) ? data.items : [];
+  }
+
+  async function loadWarnings() {
+    const res = await fetch('/api/inventory?action=warnings', { headers: { 'X-HK-Auth': authHeader() } });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Kon voorraadwaarschuwingen niet laden');
+    warnings = Array.isArray(data.warnings) ? data.warnings : [];
   }
 
   async function adjust(id, delta) {
@@ -51,12 +59,13 @@
       if (cat && String(x.category || '') !== cat) return false;
       return true;
     });
-    table.innerHTML = `<thead><tr><th>Naam</th><th>Categorie</th><th>Voorraad</th><th>Minimum</th><th>Inkoopprijs</th><th>Status</th><th></th></tr></thead><tbody>${
+    table.innerHTML = `<thead><tr><th>Naam</th><th>SKU</th><th>Categorie</th><th>Voorraad</th><th>Minimum</th><th>Inkoopprijs</th><th>Status</th><th></th></tr></thead><tbody>${
       filtered
         .map((x) => {
           const st = statusFor(x);
           const label = st === 'out' ? 'Uitverkocht' : st === 'low' ? 'Laag' : 'OK';
-          return `<tr><td>${x.name}</td><td>${x.category}</td><td>${x.stock}</td><td>${x.minStock}</td><td>€ ${Number(x.costPrice || 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td><span class="status-pill ${st}">${label}</span></td><td><button class="chip-btn" data-adjust="-1" data-id="${x.id}">-</button> <button class="chip-btn" data-adjust="1" data-id="${x.id}">+</button> <button class="chip-btn" data-delete-id="${x.id}">Verwijderen</button></td></tr>`;
+          const sku = String(x.sku || '').trim();
+          return `<tr><td>${x.name}</td><td><span style="font-size:12px;color:#7f8792;white-space:nowrap">${sku || '-'}</span></td><td>${x.category}</td><td>${x.stock}</td><td>${x.minStock}</td><td>€ ${Number(x.costPrice || 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td><span class="status-pill ${st}">${label}</span></td><td><button class="chip-btn" data-adjust="-1" data-id="${x.id}">-</button> <button class="chip-btn" data-adjust="1" data-id="${x.id}">+</button> <button class="chip-btn" data-delete-id="${x.id}">Verwijderen</button></td></tr>`;
         })
         .join('')
     }</tbody>`;
@@ -89,13 +98,49 @@
 
   async function render() {
     try {
-      await load();
+      await Promise.all([load(), loadWarnings()]);
       renderCategoryFilter();
+      renderWarnings();
       renderTable();
     } catch (err) {
       const table = document.getElementById('inventoryTable');
       if (table) table.innerHTML = `<tbody><tr><td>${String(err.message || err)}</td></tr></tbody>`;
     }
+  }
+
+  function ensureWarningsContainer() {
+    const panel = document.getElementById('panelInventory');
+    if (!panel) return null;
+    let el = document.getElementById('inventoryWarnings');
+    if (el) return el;
+    const content = panel.querySelector('.panel-page-content');
+    if (!content) return null;
+    el = document.createElement('div');
+    el.id = 'inventoryWarnings';
+    el.style.display = 'grid';
+    el.style.gap = '8px';
+    el.style.marginBottom = '10px';
+    content.insertBefore(el, content.firstChild || null);
+    return el;
+  }
+
+  function renderWarnings() {
+    const el = ensureWarningsContainer();
+    if (!el) return;
+    if (!warnings.length) {
+      el.innerHTML = '';
+      el.style.display = 'none';
+      return;
+    }
+    el.style.display = 'grid';
+    el.innerHTML = warnings
+      .map((w) => {
+        const name = escHtml(String(w?.itemName || 'Onbekend artikel'));
+        const stock = Number(w?.stock) || 0;
+        const minStock = Number(w?.minStock) || 0;
+        return `<div style="background:#fff7e6;border:1px solid #ffd8a8;color:#8a5a00;border-radius:10px;padding:10px 12px;font-size:13px;line-height:1.35">${name} — nog ${stock} op voorraad (minimum: ${minStock})</div>`;
+      })
+      .join('');
   }
 
   function removeCreateModal() {
@@ -146,6 +191,10 @@
           <input class="form-input" type="text" id="inventoryCreateName">
         </div>
         <div class="form-row">
+          <label class="form-label">SKU (optioneel)</label>
+          <input class="form-input" type="text" id="inventoryCreateSku">
+        </div>
+        <div class="form-row">
           <label class="form-label">Categorie</label>
           <input class="form-input" list="inventoryCreateCategoryList" id="inventoryCreateCategory">
           <datalist id="inventoryCreateCategoryList">${categories.map((c) => `<option value="${c}"></option>`).join('')}</datalist>
@@ -175,6 +224,7 @@
     createOverlay = overlay;
     const fields = {
       name: overlay.querySelector('#inventoryCreateName'),
+      sku: overlay.querySelector('#inventoryCreateSku'),
       category: overlay.querySelector('#inventoryCreateCategory'),
       stock: overlay.querySelector('#inventoryCreateStock'),
       minStock: overlay.querySelector('#inventoryCreateMinStock'),
@@ -200,6 +250,7 @@
         headers: { 'Content-Type': 'application/json', 'X-HK-Auth': authHeader() },
         body: JSON.stringify({
           name: String(fields.name.value || '').trim(),
+          sku: String(fields.sku.value || '').trim() || null,
           category: String(fields.category.value || '').trim(),
           stock: Number(fields.stock.value),
           minStock: Number(fields.minStock.value),

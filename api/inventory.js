@@ -3,8 +3,10 @@ import { ghlLocationIdFromEnv } from '../lib/ghl-env-ids.js';
 import {
   adjustInventoryStock,
   deleteInventoryItem,
+  getInventoryWarnings,
   isInventoryStoreConfigured,
   listInventory,
+  refreshInventoryWarnings,
   upsertInventoryItem,
 } from '../lib/inventory-store.js';
 
@@ -30,6 +32,10 @@ export default async function handler(req, res) {
 
   const loc = locationId();
   if (req.method === 'GET') {
+    if (String(req.query?.action || '').toLowerCase() === 'warnings') {
+      const warnings = await refreshInventoryWarnings(loc).catch(async () => getInventoryWarnings(loc));
+      return res.status(200).json({ ok: true, warnings: Array.isArray(warnings) ? warnings : [] });
+    }
     const items = await listInventory(loc);
     return res.status(200).json({ ok: true, items });
   }
