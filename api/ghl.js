@@ -3918,7 +3918,13 @@ export default async function handler(req, res) {
           trigger: 'createAppointment_model_b1',
         });
 
+        console.log('SUPABASE_DEBUG_BEFORE', {
+          hasUrl: !!process.env.SUPABASE_URL,
+          hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+        });
+
         try {
+          console.log('SUPABASE_DEBUG_ATTEMPT');
           const syncResult = await syncAppointmentToSupabase({
             source: 'planner-create',
             externalBookingId: reservationOut.reservation?.id ? String(reservationOut.reservation.id) : null,
@@ -3954,6 +3960,7 @@ export default async function handler(req, res) {
             date: dateNorm || null,
             message: String(err?.message || err),
           }));
+          console.log('SUPABASE_DEBUG_ERROR', err?.message || err);
         }
 
         return res.status(200).json({
