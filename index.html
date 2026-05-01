@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Planner">
 <link rel="manifest" href="/manifest.webmanifest">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='42' fill='%231a1512'/></svg>">
 <title>Hetekraan — Planning</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="/styles/global.css">
@@ -31,7 +31,11 @@
 <script src="/app/planner-scheduling.js"></script>
 <script src="/app/planner-admin.js"></script>
 <script src="/app/planner-proposals.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Karla:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="/app/planner-analytics.js"></script>
+<script src="/app/planner-customers.js"></script>
+<script src="/app/planner-prices.js"></script>
+<script src="/app/planner-inventory.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     /* Match hetekraan.nl (Impreza): Karla body, Poppins headings */
@@ -2074,6 +2078,7 @@
   .form-row { margin-bottom: 8px; }
   .form-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; display: block; }
   .form-hint-subtle { font-size: 11px; color: var(--muted); margin-top: 4px; min-height: 14px; }
+  .form-hint-subtle.is-error { color: var(--reparatie); }
   .form-input, .form-select {
     width: 100%;
     background: var(--surface2);
@@ -2622,12 +2627,9 @@
       display: none;
     }
 
-    .appointments.tab-hidden {
-      display: block !important;
-    }
+    .appointments.tab-hidden,
     .route-panel.tab-hidden {
-      display: flex !important;
-      flex-direction: column;
+      display: none !important;
     }
 
     .layout {
@@ -4339,6 +4341,1356 @@
     }
   }
 
+  /* Warm Minimal polish pass (visual only, no logic changes) */
+  :root {
+    --wm-gap-1: 8px;
+    --wm-gap-2: 12px;
+    --wm-gap-3: 16px;
+    --wm-gap-4: 20px;
+    --wm-gap-5: 28px;
+    --wm-radius-sm: 8px;
+    --wm-radius-md: 10px;
+    --wm-radius-lg: 12px;
+    --wm-radius-xl: 14px;
+  }
+
+  header {
+    min-height: 58px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+  .planner-header-brand-row {
+    gap: var(--wm-gap-2);
+  }
+  .planner-brand-logo {
+    height: 32px;
+    max-width: min(210px, 48vw);
+  }
+  .date-nav-wrap {
+    gap: var(--wm-gap-2);
+  }
+  .date-nav {
+    border-radius: var(--wm-radius-md);
+    overflow: visible;
+  }
+  .date-nav button {
+    min-width: 40px;
+    min-height: 40px;
+    padding: 8px 10px;
+    font-size: 16px;
+  }
+  .date-label {
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    font-size: 13px;
+    letter-spacing: -0.01em;
+  }
+  .header-stats {
+    gap: var(--wm-gap-1);
+  }
+  .stat {
+    border-radius: var(--wm-radius-lg);
+    padding: 9px 11px;
+  }
+  .stat-val {
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+  .stat-label {
+    margin-top: 3px;
+    font-size: 10.5px;
+    letter-spacing: 0.04em;
+  }
+
+  .layout {
+    gap: 0;
+  }
+  .appointments {
+    padding: var(--wm-gap-5);
+  }
+  .appointments-header {
+    margin-bottom: var(--wm-gap-4);
+    gap: var(--wm-gap-2);
+  }
+  .appointments-header-actions {
+    gap: var(--wm-gap-2);
+  }
+  .appointments-header-util {
+    gap: 8px;
+  }
+  .appointments-header-util .btn-dagopgave,
+  .appointments-header-util .planner-app-icon-btn.btn-day-block {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: var(--wm-radius-md);
+  }
+  .appointments-header-actions .btn-add {
+    height: 44px;
+    min-height: 44px;
+    border-radius: var(--wm-radius-md);
+    padding: 0 14px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .planning-section {
+    margin-bottom: 22px;
+  }
+  .planning-section-title {
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+  }
+  #apptList .empty-hint {
+    border: 1px solid var(--border);
+    border-radius: var(--wm-radius-lg);
+    background: #fff;
+    color: #645c52;
+    padding: 14px 16px;
+  }
+
+  .appt-card {
+    border-radius: var(--wm-radius-xl);
+    margin-bottom: var(--wm-gap-3);
+  }
+  .appt-inner {
+    padding: 16px 16px 14px 38px;
+    gap: var(--wm-gap-2);
+  }
+  .appt-number {
+    top: 10px;
+    left: 10px;
+    font-size: 13px;
+    letter-spacing: 0;
+    font-weight: 600;
+  }
+  .appt-top {
+    margin-bottom: 2px;
+    gap: var(--wm-gap-2);
+  }
+  .appt-time {
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .slot-daypart-hint,
+  .ghl-cal-time-hint {
+    font-size: 12px;
+    font-weight: 500;
+    color: #8e867c;
+  }
+  .appt-body {
+    margin: 4px 0 10px;
+    gap: 8px;
+  }
+  .appt-address {
+    font-size: 15px;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+    font-weight: 600;
+  }
+  .appt-name {
+    font-size: 13px;
+    line-height: 1.4;
+    color: #645c52;
+  }
+  .appt-desc {
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: #8e867c;
+  }
+  .appt-meta {
+    margin: 8px 0 0;
+    gap: 8px;
+  }
+  .meta-item {
+    border-radius: var(--wm-radius-sm);
+    border: 1px solid var(--border);
+    background: #fdfbf8;
+  }
+  .appt-notes {
+    margin-top: 8px;
+    border-radius: var(--wm-radius-sm);
+    background: #f9f5ee;
+    color: #645c52;
+  }
+  .appt-footer {
+    margin-top: 10px;
+    gap: var(--wm-gap-2);
+  }
+  .appt-tags {
+    gap: 8px;
+  }
+  .tag {
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .appt-price {
+    font-size: 17px;
+    line-height: 1.2;
+  }
+  .appt-footer-cta-row {
+    gap: 8px;
+  }
+  .appt-footer-cta-row .btn-prijs,
+  .appt-footer-cta-row .btn-done {
+    min-height: 34px;
+    border-radius: var(--wm-radius-sm);
+    font-size: 11.5px;
+    padding: 6px 9px;
+  }
+  .complete-bar {
+    border-top: 1px solid var(--border);
+    background: #fcfaf6;
+    padding: 14px 16px 16px;
+  }
+
+  .planner-week-nav {
+    border-radius: var(--wm-radius-lg);
+    margin-top: 6px;
+  }
+  .planner-week-nav-row {
+    gap: 8px;
+  }
+  .planner-week-strip {
+    padding: 6px;
+    gap: 6px;
+  }
+  .planner-week-day {
+    border-radius: var(--wm-radius-md);
+    min-width: 54px;
+    padding: 9px 8px 10px;
+    font-size: 11px;
+  }
+  .planner-week-day .planner-week-day-num {
+    font-size: 13px;
+    margin-top: 2px;
+  }
+  .planner-week-day.is-active {
+    box-shadow: none;
+  }
+  .planner-week-edge,
+  .planner-week-icon-btn {
+    border-radius: var(--wm-radius-md);
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+  }
+
+  .route-panel {
+    padding: var(--wm-gap-4);
+  }
+  .route-status-card,
+  .route-toolbar--card,
+  .route-panel-footer {
+    border-radius: var(--wm-radius-lg);
+  }
+  .route-status-card {
+    padding: 14px 14px 12px;
+  }
+  .route-status-kicker {
+    color: #8e867c;
+  }
+  .route-status-text {
+    color: #645c52;
+  }
+  .route-list {
+    gap: 10px;
+  }
+  .route-item {
+    border-radius: var(--wm-radius-md);
+    border: 1px solid var(--border);
+    background: #fff;
+  }
+
+  .mobile-menu-panel {
+    border-radius: 12px 12px 0 0;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    padding: 16px;
+    box-shadow: none;
+  }
+  .mobile-tab {
+    border-radius: var(--wm-radius-md);
+  }
+
+  @media (max-width: 1179px) {
+    .appointments {
+      padding: 18px 14px 20px;
+    }
+    .appt-inner {
+      padding: 14px 12px 12px 34px;
+    }
+    .route-panel {
+      padding: 14px 12px 18px;
+    }
+  }
+
+  @media (max-width: 639px) {
+    header {
+      min-height: 52px;
+      padding-top: 6px;
+      padding-bottom: 6px;
+    }
+    .planner-brand-logo {
+      height: 28px;
+      max-width: 46vw;
+    }
+    .header-stats {
+      gap: 6px;
+    }
+    .stat {
+      min-width: 72px;
+      padding: 7px 8px;
+    }
+    .stat-val {
+      font-size: 13px;
+    }
+    .stat-label {
+      font-size: 9px;
+    }
+    .appointments {
+      padding: 14px 10px 16px;
+    }
+    .appointments-header {
+      margin-bottom: 12px;
+    }
+    .appointments-header-actions .btn-add {
+      height: 40px;
+      min-height: 40px;
+      font-size: 12px;
+    }
+    .appt-card {
+      margin-bottom: 12px;
+      border-radius: 12px;
+    }
+    .appt-inner {
+      padding: 12px 10px 10px 30px;
+    }
+    .appt-address {
+      font-size: 14px;
+    }
+    .appt-desc {
+      font-size: 12px;
+    }
+    .planner-week-day {
+      min-width: 50px;
+      padding: 8px 6px 9px;
+    }
+  }
+
+  /* Warm Minimal theme override */
+  :root {
+    --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-display: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --bg: #faf8f4;
+    --surface: #ffffff;
+    --surface2: #ffffff;
+    --surface3: #f5f1ea;
+    --border: #eae5dc;
+    --accent: #dc4a1a;
+    --accent2: #0f7a4b;
+    --blue: #645c52;
+    --text: #1a1512;
+    --muted: #8e867c;
+    --yellow: #a66a00;
+    --reparatie: #a02f08;
+    --onderhoud: #0f7a4b;
+    --installatie: #a66a00;
+    --klaar-bg: #e5f4ec;
+    --klaar-border: #cde8d8;
+    --appt-action-icon-bg: #ffffff;
+    --appt-action-icon-bg-hover: #f8f4ed;
+    --appt-action-icon-bg-active: #f0ebe2;
+    --appt-action-icon-border: #eae5dc;
+    --appt-action-icon-border-hover: #d9d2c5;
+    --appt-action-icon-fg: #645c52;
+    --appt-action-icon-fg-hover: #1a1512;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+  header {
+    background: #ffffff;
+    border-bottom: 1px solid var(--border);
+  }
+  .layout {
+    background: transparent;
+  }
+  .appointments {
+    background: transparent;
+    padding: 28px;
+    border-bottom: none;
+  }
+  #apptList {
+    display: block;
+    min-height: 24px;
+    visibility: visible;
+    opacity: 1;
+  }
+  .planning-section {
+    display: block;
+    margin-bottom: 24px;
+  }
+  .planning-section-title {
+    color: #645c52;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .route-panel {
+    background: #ffffff;
+    border-left: 1px solid var(--border);
+  }
+  .section-title,
+  .stat-label,
+  .route-status-kicker {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  .route-status-title {
+    font-size: 21px;
+    letter-spacing: -0.02em;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .date-label {
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .date-nav,
+  .planner-week-nav {
+    background: #ffffff;
+    border: 1px solid var(--border);
+  }
+  .date-nav button,
+  .planner-week-edge,
+  .planner-week-icon-btn {
+    color: var(--ink-soft, #645c52);
+  }
+  .date-nav button:hover,
+  .planner-week-edge:hover,
+  .planner-week-icon-btn:hover {
+    color: var(--text);
+  }
+  .stat {
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 12px;
+    min-width: 86px;
+  }
+  .stat-val {
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+  .stat-val.green,
+  .stat-val.orange {
+    color: var(--text);
+  }
+  .btn-logout,
+  .icon-btn,
+  .btn-prijs,
+  .btn-done,
+  .btn-cancel,
+  .planner-app-icon-btn,
+  .btn-dagopgave {
+    background: #ffffff;
+    border: 1px solid var(--border);
+    color: #645c52;
+    box-shadow: none;
+  }
+  .btn-add,
+  .btn-confirm,
+  .btn-save,
+  .btn-confirm-route {
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    color: #fff;
+    box-shadow: none;
+  }
+  .btn-add:hover,
+  .btn-confirm:hover,
+  .btn-save:hover,
+  .btn-confirm-route:hover {
+    opacity: 0.92;
+  }
+  .appointments-header-actions .btn-add .btn-add-accent {
+    color: #fff;
+  }
+  .appt-card {
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
+    padding: 0;
+    display: block;
+    position: relative;
+    overflow: hidden;
+    visibility: visible;
+    opacity: 1;
+  }
+  .appt-card:hover {
+    border-color: #d9d2c5;
+    transform: none;
+  }
+  .appt-inner {
+    display: block;
+    padding: 16px 16px 16px 36px;
+  }
+  .appt-top,
+  .appt-body,
+  .appt-meta,
+  .appt-notes,
+  .appt-footer,
+  .appt-footer-left,
+  .appt-footer-right,
+  .appt-tags {
+    opacity: 1;
+    visibility: visible;
+  }
+  .appt-number {
+    color: #8e867c;
+  }
+  .appt-address,
+  .appt-name,
+  .appt-desc,
+  .appt-time,
+  .appt-price,
+  .appt-phone {
+    color: var(--text);
+  }
+  .appt-desc,
+  .ghl-cal-time-hint,
+  .meta-label,
+  .meta-value,
+  .empty-hint,
+  .slot-daypart-hint {
+    color: #645c52;
+  }
+  .appt-actions .icon-btn.appt-action-icon,
+  .appt-actions a.icon-btn.appt-action-icon,
+  .btn-prijs,
+  .btn-done {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .appt-price {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .tag.reparatie {
+    background: #fbe9dd;
+    color: #a02f08;
+    border: 1px solid #f3d7c4;
+  }
+  .tag.onderhoud {
+    background: #e5f4ec;
+    color: #0f7a4b;
+    border: 1px solid #cde8d8;
+  }
+  .tag.installatie {
+    background: #fbf0d4;
+    color: #a66a00;
+    border: 1px solid #f0dfb1;
+  }
+  .planner-week-day {
+    background: #ffffff;
+    border: 1px solid var(--border);
+    color: #645c52;
+  }
+  .planner-week-day.is-active {
+    background: #1a1512;
+    border-color: #1a1512;
+    color: #ffffff;
+  }
+  .planner-week-day.is-active .planner-week-day-num {
+    color: #ffffff;
+  }
+  .mobile-tab.active {
+    background: #fbe9dd;
+    color: #a02f08;
+    border-color: #f3d7c4;
+    font-weight: 600;
+  }
+  .route-status-card,
+  .route-toolbar--card,
+  .route-panel-footer,
+  .total-bar {
+    background: #ffffff;
+    border: 1px solid var(--border);
+    box-shadow: none;
+  }
+  /* Reference-match refinement (foto 1) */
+  .planner-sidebar {
+    display: none;
+  }
+  .planner-sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 18px 16px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .planner-sidebar-caption {
+    color: var(--ink-muted);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+  }
+  .planner-sidebar-nav {
+    display: grid;
+    gap: 2px;
+    padding: 14px 10px;
+  }
+  .planner-sidebar-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 36px;
+    padding: 8px 11px;
+    border-radius: 7px;
+    color: var(--ink-soft);
+    text-decoration: none;
+    border: 1px solid transparent;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 2px;
+  }
+  .planner-sidebar-item:hover {
+    background: var(--bg-page);
+    border-color: var(--border);
+  }
+  .planner-sidebar-item.is-active {
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    border-color: var(--accent-soft);
+    font-weight: 600;
+  }
+  .planner-sidebar-item-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .planner-sidebar-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--ink-muted);
+    flex-shrink: 0;
+  }
+  .planner-sidebar-item.is-active .planner-sidebar-dot {
+    background: var(--accent);
+  }
+  @media (max-width: 1024px) {
+    .planner-sidebar-item[data-sidebar-view="analytics"],
+    .planner-sidebar-item[data-sidebar-view="prices"],
+    .planner-sidebar-item[data-products-category] {
+      display: none !important;
+    }
+  }
+  .planner-sidebar-count {
+    font-size: 11px;
+    color: var(--ink-muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .planner-sidebar-footer {
+    margin-top: auto;
+    border-top: 1px solid var(--border);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .planner-sidebar-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--bg-page);
+    color: var(--ink-soft);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    flex-shrink: 0;
+  }
+  .planner-sidebar-user {
+    color: var(--ink);
+    font-size: 12.5px;
+    font-weight: 500;
+  }
+  .appointments {
+    padding: 0;
+    background: var(--bg-page);
+    overflow-y: auto;
+  }
+  .today-page-header {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .today-page-heading h1 {
+    margin: 0;
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .today-page-heading p {
+    margin: 2px 0 0;
+    font-size: 12.5px;
+    color: var(--ink-muted);
+  }
+  .today-btn {
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--ink-soft);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 12.5px;
+    font-weight: 500;
+  }
+  .today-btn--primary {
+    background: var(--ink);
+    color: var(--bg-card);
+    border-color: var(--ink);
+  }
+  .today-btn--dark {
+    background: var(--ink);
+    color: var(--bg-card);
+    border-color: var(--ink);
+  }
+  .today-week-strip-wrap {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 28px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .planner-week-strip {
+    flex: 1;
+    padding: 0;
+    gap: 4px;
+    background: transparent;
+    border: none;
+  }
+  .planner-week-edge {
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+    min-height: 30px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--ink-soft);
+  }
+  .planner-week-day {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 0;
+    border-radius: 8px;
+    text-align: center;
+    border: 1px solid transparent;
+    color: var(--ink);
+    font-size: 10.5px;
+    cursor: pointer;
+  }
+  .planner-week-day .planner-week-day-num {
+    font-size: 14px;
+    font-weight: 600;
+    margin-top: 2px;
+  }
+  .planner-week-day.is-active {
+    background: var(--ink);
+    color: var(--bg-card);
+    box-shadow: none;
+  }
+  .today-kpi-grid {
+    padding: 16px 28px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .today-kpi-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .today-kpi-label {
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink-muted);
+  }
+  .today-kpi-value {
+    margin-top: 4px;
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+  .today-kpi-sub {
+    margin-top: 2px;
+    font-size: 11.5px;
+    color: var(--ink-soft);
+  }
+  #apptList {
+    padding: 6px 28px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .planning-section-title {
+    margin: 0;
+    padding: 12px 0 8px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+  .planning-section + .planning-section .planning-section-title {
+    padding-top: 18px;
+  }
+  .appt-card {
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 0;
+  }
+  .appt-inner {
+    padding: 18px 22px;
+    display: block;
+  }
+  .appt-number {
+    position: static;
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .appt-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .appt-top .appt-time {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+  .slot-daypart-hint,
+  .ghl-cal-time-hint {
+    font-size: 10.5px;
+    color: var(--ink-muted);
+  }
+  .appt-address {
+    font-size: 14.5px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .appt-name, .appt-phone {
+    font-size: 13.5px;
+    color: var(--ink-soft);
+  }
+  .appt-desc, .appt-notes {
+    font-size: 13px;
+    color: var(--ink-muted);
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .appt-phone {
+    font-size: 12.5px;
+    color: var(--ink-muted);
+  }
+  .appt-actions {
+    gap: 6px;
+  }
+  .appt-actions .icon-btn.appt-action-icon {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-card);
+    color: var(--ink-soft);
+    padding: 0;
+  }
+  .appt-actions .icon-btn.appt-action-icon .appt-action-svg {
+    width: 16px;
+    height: 16px;
+  }
+  .appt-actions .icon-btn.appt-action-icon .appt-action-svg path,
+  .appt-actions .icon-btn.appt-action-icon .appt-action-svg circle {
+    stroke-width: 1.6;
+  }
+  .appt-actions .icon-btn.appt-action-icon:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+  }
+  .tag {
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-radius: 4px;
+    padding: 2px 8px;
+  }
+  .tag.onderhoud { background: var(--green-soft); color: var(--green); }
+  .tag.reparatie { background: var(--accent-soft); color: var(--accent-ink); }
+  .tag.installatie { background: var(--yellow-soft); color: var(--yellow); }
+  .tag.garantie { background: var(--bg-page); color: var(--ink-soft); }
+  .appt-price {
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+  .appt-action-text-btn {
+    min-width: 0;
+    width: auto;
+    height: auto;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--ink-soft);
+    padding: 5px 10px;
+    font-size: 11.5px;
+    font-weight: 500;
+  }
+  .total-bar {
+    display: none;
+  }
+  .route-demo-panel {
+    padding: 0;
+    background: var(--bg-page);
+    gap: 0;
+  }
+  .routes-content-grid {
+    padding: 18px 28px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: 16px;
+  }
+  .routes-stops-card,
+  .routes-map-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-card);
+  }
+  .routes-stops-head {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .routes-stops-title {
+    font-size: 14.5px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .routes-stops-sub {
+    margin-top: 2px;
+    font-size: 11.5px;
+    color: var(--ink-muted);
+  }
+  .routes-sticky-row {
+    padding: 10px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent-ink);
+    background: var(--accent-soft);
+  }
+  .routes-stop-row {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+  }
+  .routes-stop-row:hover {
+    background: var(--bg-page);
+  }
+  .routes-stop-row.is-dragging {
+    opacity: 0.7;
+  }
+  .routes-stop-handle {
+    color: var(--ink-muted);
+    font-size: 14px;
+    cursor: grab;
+    user-select: none;
+  }
+  .routes-stop-order {
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    background: var(--bg-page);
+    color: var(--ink);
+    font-size: 11.5px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .routes-stop-time {
+    width: 50px;
+    font-size: 11.5px;
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+  .routes-stop-main {
+    min-width: 0;
+    flex: 1;
+  }
+  .routes-stop-name {
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .routes-stop-address {
+    font-size: 12px;
+    color: var(--ink-soft);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .routes-stop-chevron {
+    font-size: 14px;
+    color: var(--ink-muted);
+    flex-shrink: 0;
+  }
+  .routes-daypart-divider {
+    padding: 8px 16px;
+    font-size: 11.5px;
+    color: var(--ink-muted);
+    font-style: italic;
+  }
+  .routes-map-card {
+    overflow: hidden;
+  }
+  .routes-map-head {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13.5px;
+    font-weight: 700;
+  }
+  #routeMap {
+    height: 480px;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    margin: 14px 16px;
+  }
+  .routes-summary {
+    padding: 14px 16px;
+    border-top: 1px solid var(--border);
+  }
+  .routes-summary-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 6px;
+  }
+  .routes-summary-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 5px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .routes-summary-row:last-child {
+    border-bottom: none;
+  }
+  .routes-summary-row span {
+    font-size: 12.5px;
+    color: var(--ink-soft);
+  }
+  .routes-summary-row strong {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .routes-actions-stack {
+    padding: 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .routes-actions-stack .today-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 12px;
+    border-radius: 9px;
+    font-weight: 600;
+  }
+  .routes-actions-stack .today-btn--ghost {
+    background: var(--bg-card);
+    color: var(--ink);
+    border: 1px solid var(--border);
+    font-weight: 500;
+    padding: 11px;
+  }
+  .routes-actions-stack .today-btn--dark {
+    background: var(--ink);
+    color: var(--bg-card);
+    border-color: var(--ink);
+  }
+  .routes-actions-stack .today-btn--primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .routes-actions-stack .btn-maps,
+  .routes-actions-stack .btn-morning,
+  .routes-actions-stack .route-reset-link {
+    width: 100%;
+    border-radius: 9px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--ink);
+    padding: 11px;
+  }
+  .panel-page {
+    background: var(--bg-page);
+    min-height: 100%;
+  }
+  .panel-page .today-page-header {
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-page-content {
+    padding: 16px 28px 28px;
+    display: grid;
+    gap: 14px;
+  }
+  .panel-card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-card);
+    padding: 14px 16px;
+  }
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .kpi-title { font-size: 11px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: .04em; }
+  .kpi-value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+  .kpi-sub { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+  .toolbar-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .chip-btn {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-card);
+    color: var(--ink-soft);
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+  .chip-btn.is-active { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .table-clean { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .table-clean th, .table-clean td { border-bottom: 1px solid var(--border); padding: 8px 6px; text-align: left; }
+  .table-clean th { color: var(--ink-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .table-clean tr:last-child td { border-bottom: none; }
+  .bar-chart { display: grid; gap: 8px; }
+  .bar-row { display: grid; grid-template-columns: 80px 1fr auto; gap: 8px; align-items: center; }
+  .bar-track { height: 10px; border-radius: 999px; background: var(--bg-page); overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--accent); border-radius: 999px; }
+  .field-input {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-card);
+    color: var(--ink);
+    padding: 8px 10px;
+    font-size: 13px;
+    width: 100%;
+  }
+  .status-pill { font-size: 11px; border-radius: 999px; padding: 2px 8px; border: 1px solid var(--border); }
+  .status-pill.ok { background: var(--green-soft); color: var(--green); border-color: transparent; }
+  .status-pill.low { background: var(--accent-soft); color: var(--accent-ink); border-color: transparent; }
+  .status-pill.out { background: #f9e4df; color: #a02f08; border-color: transparent; }
+  .route-panel {
+    padding: 16px 14px;
+  }
+
+  @media (min-width: 1180px) {
+    header {
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr) auto;
+      grid-template-rows: auto;
+      align-items: center;
+      column-gap: 16px;
+      row-gap: 0;
+      padding: 10px 24px;
+    }
+    .planner-header-brand-row {
+      grid-column: 1;
+      grid-row: 1;
+      justify-content: flex-start;
+    }
+    .planner-app-tools {
+      grid-column: 3;
+      grid-row: 1;
+      justify-self: end;
+    }
+    .date-nav-wrap,
+    .header-stats,
+    .planner-week-icon-btn {
+      display: none;
+    }
+    .date-nav {
+      border: none;
+      background: transparent;
+      padding: 0;
+      gap: 8px;
+      align-items: center;
+    }
+    .date-nav button {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      min-width: 34px;
+      min-height: 34px;
+      padding: 0;
+      color: #645c52;
+      font-size: 18px;
+    }
+    .date-label {
+      border: none;
+      background: transparent;
+      padding: 0;
+      font-size: 21px;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+      color: #1a1512;
+      font-weight: 700;
+      text-align: left;
+      min-width: 260px;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr);
+      min-height: calc(100dvh - 74px);
+    }
+    .planner-sidebar {
+      display: flex;
+      flex-direction: column;
+      width: 240px;
+      min-width: 240px;
+      min-height: calc(100dvh - 74px);
+      background: var(--bg-card);
+      border-right: 1px solid var(--border);
+      padding: 0;
+      gap: 0;
+    }
+    .appointments {
+      padding: 24px;
+      border-right: none;
+    }
+    .route-panel {
+      display: flex !important;
+      flex-direction: column;
+      gap: 12px;
+      border-left: none;
+      padding: 16px 14px;
+    }
+    .route-demo-panel {
+      padding: 0 !important;
+      gap: 0;
+    }
+  }
+
+  @media (max-width: 1179px) {
+    .planner-sidebar {
+      display: none !important;
+    }
+    .layout {
+      grid-template-columns: 1fr !important;
+    }
+    .date-label {
+      font-size: 16px;
+      min-width: 0;
+    }
+    .stat {
+      min-width: 92px;
+    }
+    .today-page-header,
+    .today-week-strip-wrap,
+    .today-kpi-grid,
+    #apptList {
+      padding-left: 14px;
+      padding-right: 14px;
+    }
+    .today-kpi-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .routes-content-grid {
+      grid-template-columns: 1fr;
+      padding: 14px;
+    }
+    .appt-actions .icon-btn.appt-action-icon::after {
+      display: none;
+    }
+    .appt-actions .icon-btn.appt-action-icon {
+      min-width: 38px;
+      width: 38px;
+      height: 38px;
+      padding: 0;
+    }
+  }
+
 </style>
 </head>
 <body>
@@ -4351,57 +5703,24 @@
     </div>
   </div>
   <div class="planner-app-tools" aria-label="Zoeken en menu">
-    <button type="button" class="planner-app-icon-btn" id="btnGlobalSearch" onclick="focusGlobalSearch()" title="Zoeken" aria-label="Zoek afspraken">🔎</button>
+    <button type="button" class="planner-app-icon-btn" id="btnGlobalSearch" onclick="focusGlobalSearch()" title="Zoeken" aria-label="Zoek afspraken">●</button>
     <button type="button" class="planner-app-icon-btn" onclick="toggleMobileMenu(true)" title="Menu">☰</button>
-  </div>
-  <div class="date-nav-wrap">
-    <div class="date-nav">
-      <button onclick="changeDay(-1)">‹</button>
-      <div class="date-label" id="dateLabel"></div>
-      <button onclick="changeDay(1)">›</button>
-    </div>
-  </div>
-  <div class="header-stats">
-    <div class="stat">
-      <div class="stat-val" id="totalAfspraken">0</div>
-      <div class="stat-label">Afspraken</div>
-    </div>
-    <div class="stat">
-      <div class="stat-val green" id="totalKlaar">0</div>
-      <div class="stat-label">Klaar</div>
-    </div>
-    <div class="stat">
-      <div class="stat-val green" id="totalOmzet">€0</div>
-      <div class="stat-label">Omzet dag</div>
-    </div>
-  </div>
-  <div class="planner-week-nav" id="plannerWeekNav" aria-label="Week navigatie">
-    <div class="planner-week-nav-row">
-      <div class="planner-week-nav-center">
-        <div class="planner-week-nav-strip">
-          <button type="button" class="planner-week-edge" onclick="shiftPlannerWeek(-1)" title="Vorige week">‹</button>
-          <div class="planner-week-strip" id="plannerWeekStrip" role="tablist" aria-label="Dagen in deze week"></div>
-          <button type="button" class="planner-week-edge" onclick="shiftPlannerWeek(1)" title="Volgende week">›</button>
-        </div>
-      </div>
-      <button type="button" class="planner-week-icon-btn planner-week-calendar-btn" onclick="openPlannerDatePicker()" title="Kalender — datum kiezen" aria-label="Kalender">📅</button>
-    </div>
   </div>
 </header>
 <input type="date" id="plannerDatePicker" class="planner-date-input-hidden" autocomplete="off" title="Datum kiezen" />
 
 <!-- PWA mobile bottom nav -->
 <div class="mobile-tabs mobile-bottom-nav" id="mobileTabs">
-  <button class="mobile-tab active" id="tabAfspraken" onclick="switchMobileTab('afspraken')">⬛ Afspraken</button>
-  <button class="mobile-tab" id="tabRoute" onclick="switchMobileTab('route')">⚡ Route</button>
-  <button class="mobile-tab" id="tabZoeken" onclick="focusGlobalSearch()">🔎 Zoeken</button>
+  <button class="mobile-tab active" id="tabAfspraken" onclick="switchMobileTab('afspraken')">● Afspraken</button>
+  <button class="mobile-tab" id="tabRoute" onclick="switchMobileTab('route')">● Route</button>
+  <button class="mobile-tab" id="tabZoeken" onclick="focusGlobalSearch()">● Zoeken</button>
   <button class="mobile-tab" id="tabMenu" onclick="toggleMobileMenu(true)">☰ Menu</button>
 </div>
 <div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="if(event.target===this)toggleMobileMenu(false)">
   <div class="mobile-menu-panel">
     <div class="section-title" style="margin-bottom:4px">Menu</div>
     <button class="btn-add" type="button" onclick="toggleMobileMenu(false);openModal()">+ Afspraak</button>
-    <button class="btn-dagopgave" type="button" onclick="toggleMobileMenu(false);openDagopgave()">📋 Dagopgave</button>
+    <button class="btn-dagopgave" type="button" onclick="toggleMobileMenu(false);openDagopgave()">● Dagopgave</button>
     <button type="button" class="planner-app-icon-btn btn-day-block btn-day-block--menu" id="btnBlockDayGhlMobile" onclick="toggleMobileMenu(false);onBlockDayButtonClick()" aria-label="Blokkeer dag">
       <span class="btn-day-block-ic" aria-hidden="true">■</span>
     </button>
@@ -4423,18 +5742,72 @@
 </div>
 
 <div class="layout">
+  <aside class="planner-sidebar" aria-label="Hoofdmenu">
+    <div class="planner-sidebar-brand">
+      <span class="planner-sidebar-caption">Planning</span>
+    </div>
+    <nav class="planner-sidebar-nav">
+      <a href="#" class="planner-sidebar-item is-active" data-sidebar-view="today" onclick="return switchSidebarView('today', event)">
+        <span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Planning</span></span>
+        <span class="planner-sidebar-count" id="sidebarCountToday">0</span>
+      </a>
+      <a href="#panelRoutes" class="planner-sidebar-item" data-sidebar-view="routes" onclick="return switchSidebarView('routes', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Routes</span></span></a>
+      <a href="#panelCustomers" class="planner-sidebar-item" data-sidebar-view="customers" onclick="return switchSidebarView('customers', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Klanten</span></span></a>
+      <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-root="1" onclick="return toggleProductsCategoryMenu(event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Producten</span></span></a>
+      <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-category="Kranen" onclick="return switchProductsCategory('Kranen', event)" hidden><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span style="padding-left:18px">Kranen</span></span></a>
+      <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-category="Quookers" onclick="return switchProductsCategory('Quookers', event)" hidden><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span style="padding-left:18px">Quookers</span></span></a>
+      <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-category="Serviceproducten" onclick="return switchProductsCategory('Serviceproducten', event)" hidden><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span style="padding-left:18px">Serviceproducten</span></span></a>
+      <a href="#panelAnalytics" class="planner-sidebar-item" data-sidebar-view="analytics" onclick="return switchSidebarView('analytics', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Analytics</span></span></a>
+      <a href="#panelInventory" class="planner-sidebar-item" data-sidebar-view="inventory" onclick="return switchSidebarView('inventory', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Voorraad</span></span></a>
+    </nav>
+    <div class="planner-sidebar-footer">
+      <span class="planner-sidebar-avatar">JD</span>
+      <span class="planner-sidebar-user">Jerry de Monteur</span>
+    </div>
+  </aside>
   <div class="appointments" id="panelAfspraken">
-    <div class="appointments-header">
-      <div class="section-title">Afspraken van de dag</div>
-      <div class="appointments-header-actions">
-        <div class="appointments-header-util">
-          <button class="btn-dagopgave" onclick="openDagopgave()" title="Dagopgave voor Tellow">📋</button>
-          <button type="button" class="planner-app-icon-btn btn-day-block" id="btnBlockDayGhl" onclick="onBlockDayButtonClick()" aria-label="Blokkeer dag" title="Blokkeer of deblokkeer deze dag in GHL">
-            <span class="btn-day-block-ic" aria-hidden="true">■</span>
-          </button>
-        </div>
-        <button class="btn-add" onclick="openModal()"><span class="btn-add-accent">+</span> Afspraak</button>
+    <div class="today-page-header">
+      <div class="today-page-heading">
+        <h1 id="dateLabel">Donderdag 30 april</h1>
+        <p id="todayMixMeta">0 afspraken · 0 reparaties · 0 installaties · 0 onderhoud</p>
       </div>
+      <div class="appointments-header-actions">
+        <button type="button" class="today-btn today-btn--ghost" onclick="printDagopgave()">Export</button>
+        <button type="button" class="today-btn today-btn--primary" onclick="openModal()">+ Nieuwe afspraak</button>
+      </div>
+    </div>
+    <div class="today-week-strip-wrap" id="plannerWeekNav" aria-label="Week navigatie">
+      <button type="button" class="planner-week-edge" onclick="shiftPlannerWeek(-1)" title="Vorige week">‹</button>
+      <div class="planner-week-strip" id="plannerWeekStrip" role="tablist" aria-label="Dagen in deze week"></div>
+      <button type="button" class="planner-week-edge" onclick="shiftPlannerWeek(1)" title="Volgende week">›</button>
+    </div>
+    <div class="today-kpi-grid">
+      <div class="today-kpi-card">
+        <div class="today-kpi-label">Afspraken</div>
+        <div class="today-kpi-value" id="totalAfspraken">0</div>
+        <div class="today-kpi-sub">vandaag</div>
+      </div>
+      <div class="today-kpi-card">
+        <div class="today-kpi-label">Omzet vandaag</div>
+        <div class="today-kpi-value" id="totalOmzet">€0</div>
+        <div class="today-kpi-sub" id="totalOpenOmzet">+ €0 open</div>
+      </div>
+      <div class="today-kpi-card">
+        <div class="today-kpi-label">Klaar</div>
+        <div class="today-kpi-value" id="totalKlaarRatio">0 / 0</div>
+        <div class="today-kpi-sub" id="totalKlaarPct">0% voltooid</div>
+      </div>
+      <div class="today-kpi-card">
+        <div class="today-kpi-label">Te factureren</div>
+        <div class="today-kpi-value" id="totalTeFactureren">€0</div>
+        <div class="today-kpi-sub" id="totalTeFacturerenCount">0 afspraken</div>
+      </div>
+    </div>
+    <div class="appointments-header-util" style="display:none">
+      <button class="btn-dagopgave" onclick="openDagopgave()" title="Dagopgave voor Tellow">●</button>
+      <button type="button" class="planner-app-icon-btn btn-day-block" id="btnBlockDayGhl" onclick="onBlockDayButtonClick()" aria-label="Blokkeer dag" title="Blokkeer of deblokkeer deze dag in GHL">
+        <span class="btn-day-block-ic" aria-hidden="true">■</span>
+      </button>
     </div>
     <div id="dayBlockedBanner" class="day-blocked-banner" style="display:none" role="status"></div>
     <div id="apptList"></div>
@@ -4444,33 +5817,158 @@
     </div>
   </div>
 
-  <div class="route-panel tab-hidden" id="panelRoute">
-    <div class="route-panel-status">
-      <div class="route-status-card">
-        <div class="route-status-card__top">
-          <div class="route-status-card__titles">
-            <div class="route-status-kicker">Dagroute</div>
-            <h2 class="route-status-title" id="routePanelDateTitle">Route</h2>
-            <p class="route-status-text" id="routePanelStatusText"></p>
-          </div>
-          <span class="route-status-badge" id="routePanelStatusBadge" hidden></span>
-        </div>
-        <div id="routeLocalHint" class="route-local-hint" style="display:none"></div>
-        <button type="button" class="route-reset-link" onclick="resetLocalRouteTimes()" id="btnResetLocalRoute" style="display:none">↺ Reset naar GHL-agenda (wis lokale tijden)</button>
+  <div class="route-panel route-demo-panel tab-hidden" id="panelRoutes">
+    <div class="today-page-header">
+      <div class="today-page-heading">
+        <h1>Routes</h1>
+        <p><span id="routePanelDateTitle">Route</span> · <span id="routesDateSubtitle">Donderdag 30 april</span></p>
+        <p id="routePanelStatusText"></p>
+      </div>
+      <div class="appointments-header-actions">
+        <span class="route-status-badge" id="routePanelStatusBadge" hidden></span>
       </div>
     </div>
-    <div class="route-flow-scroll">
-      <div class="route-list" id="routeList"></div>
+    <div class="today-week-strip-wrap" aria-label="Week navigatie routes">
+      <button type="button" class="planner-week-edge" onclick="shiftPlannerWeek(-1)" title="Vorige week">‹</button>
+      <div class="planner-week-strip" id="routesWeekStrip" role="tablist" aria-label="Dagen in deze week"></div>
+      <button type="button" class="planner-week-edge" onclick="shiftPlannerWeek(1)" title="Volgende week">›</button>
     </div>
-    <div class="route-toolbar route-toolbar--card">
-      <button type="button" class="btn-optimize" id="btnOptimize" onclick="optimizeRoute()">Optimaliseer</button>
-      <button type="button" class="btn-unlock-route" id="btnUnlock" style="display:none" onclick="unlockRoute()" title="Ontgrendel route (centraal) of handmatige volgorde">Ontgrendel</button>
-      <button type="button" class="btn-confirm-route" id="btnConfirmRoute" onclick="confirmRoute()" title="Sla geplande tijden op in GHL zodat ochtendmeldingen de juiste aankomsttijd sturen">Bevestig route</button>
+    <div class="routes-content-grid">
+      <div class="routes-stops-card">
+        <div class="routes-stops-head">
+          <div class="routes-stops-title" id="routesStopsTitle">Route 30 april — 0 stops</div>
+          <div class="routes-stops-sub">Sleep om te herordenen</div>
+        </div>
+        <div class="routes-stops-body">
+          <div class="route-list" id="routeList"></div>
+        </div>
+      </div>
+      <div class="routes-map-card">
+        <div class="routes-map-head">Routekaart</div>
+        <div id="routeMap" aria-label="Routekaart"></div>
+        <div class="routes-summary" id="routeSummary" aria-live="polite"></div>
+        <div class="routes-actions-stack">
+          <button type="button" class="today-btn today-btn--primary btn-confirm-route" id="btnConfirmRoute" onclick="confirmRoute()" title="Sla geplande tijden op in GHL zodat ochtendmeldingen de juiste aankomsttijd sturen">Bevestig route</button>
+          <button type="button" class="today-btn today-btn--dark btn-optimize" id="btnOptimize" onclick="optimizeRoute()">Optimaliseer route</button>
+          <button type="button" class="today-btn today-btn--ghost btn-unlock-route" id="btnUnlock" style="display:none" onclick="unlockRoute()" title="Ontgrendel route (centraal) of handmatige volgorde">Ontgrendel</button>
+          <a class="btn-maps" href="#" onclick="openMaps(event)">Open volledige route in Maps</a>
+          <button type="button" class="btn-morning" onclick="sendMorningMessages()">Stuur ochtendmeldingen</button>
+          <button type="button" class="route-reset-link" onclick="resetLocalRouteTimes()" id="btnResetLocalRoute" style="display:none">↺ Reset naar GHL-agenda (wis lokale tijden)</button>
+        </div>
+      </div>
     </div>
-    <div class="route-panel-footer">
-      <div class="route-summary" id="routeSummary" aria-live="polite"></div>
-      <a class="btn-maps" href="#" onclick="openMaps(event)">🗺 Open volledige route in Maps</a>
-      <button type="button" class="btn-morning" onclick="sendMorningMessages()">☀️ Stuur ochtendmeldingen</button>
+    <div id="routeLocalHint" class="route-local-hint" style="display:none"></div>
+  </div>
+  <div class="appointments panel-page tab-hidden" id="panelCustomers">
+    <div class="today-page-header">
+      <div class="today-page-heading">
+        <h1>Klanten</h1>
+        <p>GHL contacten verrijkt met Moneybird-match</p>
+      </div>
+    </div>
+    <div class="panel-page-content">
+      <div class="toolbar-row">
+        <input id="customersSearch" class="field-input" placeholder="Zoek op naam, adres of e-mail..." style="max-width:420px" />
+      </div>
+      <div class="panel-card">
+        <table class="table-clean" id="customersTable"></table>
+      </div>
+    </div>
+  </div>
+  <div class="appointments panel-page tab-hidden" id="panelAnalytics">
+    <div class="today-page-header">
+      <div class="today-page-heading">
+        <h1>Analytics</h1>
+        <p>Overzicht prestaties en cashflow</p>
+      </div>
+      <div class="toolbar-row" id="analyticsPeriodFilters"></div>
+    </div>
+    <div class="panel-page-content">
+      <div class="kpi-grid" id="analyticsKpis"></div>
+      <div class="panel-card">
+        <div class="routes-map-head">Omzet & marge over tijd</div>
+        <canvas id="analyticsRevenueMarginChart" height="110"></canvas>
+      </div>
+      <div class="panel-card">
+        <div class="routes-map-head">Ad spend vs omzet</div>
+        <canvas id="analyticsAdSpendChart" height="110"></canvas>
+        <div class="kpi-sub" id="analyticsRoasMeta" style="margin-top:10px"></div>
+      </div>
+      <div class="panel-card">
+        <div class="routes-map-head">Website verkeer & conversie funnel</div>
+        <canvas id="analyticsTrafficChart" height="100"></canvas>
+        <div id="analyticsFunnel" style="margin-top:12px"></div>
+      </div>
+      <div class="panel-card">
+        <div class="routes-map-head">Cashflow: inkomsten vs kosten</div>
+        <canvas id="analyticsCashflowChart" height="100"></canvas>
+        <table class="table-clean" id="analyticsOpenInvoicesTable" style="margin-top:12px"></table>
+      </div>
+      <div class="panel-card">
+        <div class="routes-map-head">Voorraadstatus (laag / uitverkocht)</div>
+        <table class="table-clean" id="analyticsInventoryTable"></table>
+        <div style="margin-top:10px">
+          <button type="button" class="chip-btn" onclick="switchSidebarView('inventory')">Bekijk volledige voorraad</button>
+        </div>
+      </div>
+      <div class="panel-card">
+        <div class="routes-map-head">Recente afspraken</div>
+        <table class="table-clean" id="analyticsRecentAppointmentsTable"></table>
+      </div>
+      <div class="panel-card">
+        <div class="routes-map-head">Operationele KPIs</div>
+        <div class="kpi-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:12px">
+          <div>
+            <div class="kpi-sub" style="margin-bottom:6px">Bezettingsgraad monteurs</div>
+            <canvas id="analyticsOccupancyChart" height="110"></canvas>
+          </div>
+          <div>
+            <div class="kpi-sub" style="margin-bottom:6px">Omzet per monteur</div>
+            <canvas id="analyticsRevenueByTechChart" height="110"></canvas>
+          </div>
+          <div>
+            <div class="kpi-sub" style="margin-bottom:6px">Populairste werksoorten</div>
+            <canvas id="analyticsJobTypeDonutChart" height="140"></canvas>
+          </div>
+          <div>
+            <div class="kpi-sub" style="margin-bottom:6px">Herhalingsklanten</div>
+            <div id="analyticsRepeatCustomersKpi" class="kpi-value">-</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="appointments panel-page tab-hidden" id="panelPrices">
+    <div class="today-page-header">
+      <div class="today-page-heading">
+        <h1>Producten</h1>
+        <p id="productsCategoryLabel">Kranen</p>
+      </div>
+      <button type="button" class="today-btn today-btn--primary" onclick="window.HKPlannerPrices?.openCreateModal?.()">+ Nieuw product</button>
+    </div>
+    <div class="panel-page-content">
+      <div id="pricesSummaryBar"></div>
+      <div class="panel-card">
+        <table class="table-clean" id="pricesTable"></table>
+      </div>
+    </div>
+  </div>
+  <div class="appointments panel-page tab-hidden" id="panelInventory">
+    <div class="today-page-header">
+      <div class="today-page-heading">
+        <h1>Voorraad</h1>
+        <p>Artikelbeheer en voorraadstatus</p>
+      </div>
+      <span></span>
+    </div>
+    <div class="panel-page-content">
+      <div class="toolbar-row">
+        <input id="inventorySearch" class="field-input" placeholder="Zoek op artikelnaam..." style="max-width:320px" />
+        <select id="inventoryCategoryFilter" class="field-input" style="max-width:220px"></select>
+      </div>
+      <div class="panel-card">
+        <table class="table-clean" id="inventoryTable"></table>
+      </div>
     </div>
   </div>
 </div>
@@ -4497,7 +5995,7 @@
     <div class="modal-title" id="onderwegTitle">Onderweg?</div>
     <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5" id="onderwegText"></div>
     <div class="modal-actions" style="flex-direction:column;gap:8px">
-      <button class="btn-save" style="width:100%;padding:10px" onclick="onderwegJaStuur()">📱 Ja, stuur WhatsApp met ETA</button>
+      <button class="btn-save" style="width:100%;padding:10px" onclick="onderwegJaStuur()">Ja, stuur WhatsApp met ETA</button>
       <button class="btn-cancel" style="width:100%;padding:10px;text-align:center" onclick="onderwegJeenBericht()">Alleen status veranderen</button>
       <button class="btn-cancel" style="width:100%;padding:10px;text-align:center;color:#ff6060" onclick="closeOnderwegModal()">Annuleren</button>
     </div>
@@ -4879,7 +6377,7 @@
     </details>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal()">Annuleren</button>
-      <button class="btn-send-link" onclick="sendBookingLink()" title="Stuur de klant een boekingslink via WhatsApp">📲 Stuur boekingslink</button>
+      <button class="btn-send-link" onclick="sendBookingLink()" title="Stuur de klant een boekingslink via WhatsApp">Stuur boekingslink</button>
       <button class="btn-save" id="btnModalAddAppt" onclick="saveModal()">Toevoegen</button>
     </div>
   </div>
@@ -4903,6 +6401,8 @@
 let GHL_BASE_URL = '';
 /** Optioneel: template voor mobiele app-link (env GHL_IOS_CONTACT_APP_URL_TEMPLATE). */
 let GHL_IOS_CONTACT_APP_URL_TEMPLATE = '';
+/** Publieke maps key voor Google Maps JavaScript API (uit planning-config). */
+let HK_GOOGLE_MAPS_API_KEY = '';
 /** Build versie uit HTML (geinjecteerd tijdens build). */
 const HK_APP_BUILD_VERSION =
   document.querySelector('meta[name="hk-app-version"]')?.getAttribute('content') || '';
@@ -4960,6 +6460,9 @@ async function fetchPlanningRuntimeConfig(opts = {}) {
     if (d.ghlIosContactAppUrlTemplate != null) {
       GHL_IOS_CONTACT_APP_URL_TEMPLATE = String(d.ghlIosContactAppUrlTemplate || '').trim();
     }
+    if (d.googleMapsApiKey != null) {
+      HK_GOOGLE_MAPS_API_KEY = String(d.googleMapsApiKey || '').trim();
+    }
     HK_REMOTE_APP_VERSION = String(d.appVersion || '').trim();
     if (allowReload) maybeReloadOnVersionMismatch(HK_REMOTE_APP_VERSION);
   } catch (_) {}
@@ -4982,6 +6485,9 @@ let plannerCustomerDayFull = false;
 let plannerCustomerDayFullStoreConfigured = false;
 let globalSearchTimer = null;
 let globalSearchResultsCache = [];
+let plannerSidebarView = 'today';
+let plannerProductsSubView = 'Kranen';
+let plannerProductsMenuExpanded = false;
 
 function syncModalInternalFixedControls() {
   const typeEl = document.getElementById(
@@ -5477,6 +6983,13 @@ function guardRouteMutationForDate(dateStr, mutationAction, fallbackReason) {
     sourceOfTruth: locked ? 'confirmed_route_lock' : 'unlocked_route',
   });
   if (!locked) return true;
+  logRouteOrder('route_lock_enforced', {
+    routeDate: ds,
+    mutationAction: mutationAction || 'other',
+    wasRouteLocked: true,
+    sourceOfTruth: 'confirmed_route_lock',
+    userName: currentPlannerIdentity(),
+  });
   logRouteOrder('route_order_mutation_blocked', {
     routeDate: ds,
     mutationAction: mutationAction || 'other',
@@ -5488,6 +7001,13 @@ function guardRouteMutationForDate(dateStr, mutationAction, fallbackReason) {
     routeDate: ds,
     mutationAction: mutationAction || 'other',
     wasRouteLocked: true,
+    userName: currentPlannerIdentity(),
+  });
+  logRouteOrder('route_mutation_blocked_due_to_lock', {
+    routeDate: ds,
+    mutationAction: mutationAction || 'other',
+    wasRouteLocked: true,
+    fallbackReason: fallbackReason || 'unlock_required',
     userName: currentPlannerIdentity(),
   });
   return false;
@@ -5827,6 +7347,26 @@ function applyRouteSnapshot(dateStr) {
   const sourceOrder = enforceServerOrder
     ? (Array.isArray(srv?.orderContactIds) ? srv.orderContactIds.map((x) => String(x || '').trim()).filter(Boolean) : [])
     : (Array.isArray(applied.contactIdsOrder) ? applied.contactIdsOrder : []);
+  if (enforceServerOrder) {
+    const localSnapshotOrder = readConfirmedRouteOrder(String(dateStr || ''));
+    if (localSnapshotOrder.length && localSnapshotOrder.join('|') !== sourceOrder.join('|')) {
+      logRouteOrder('route_snapshot_ignored_due_to_lock', {
+        routeDate: String(dateStr || ''),
+        sourceOfTruth: 'server_route_lock',
+        wasRouteLocked: true,
+        confirmedOrderIds: sourceOrder,
+        loadedOrderIds: localSnapshotOrder,
+        fallbackReason: 'redis_lock_overrides_local_snapshot',
+      });
+      saveConfirmedRouteOrder(String(dateStr || ''), sourceOrder);
+    }
+    logRouteOrder('route_lock_enforced', {
+      routeDate: String(dateStr || ''),
+      sourceOfTruth: 'server_route_lock',
+      wasRouteLocked: true,
+      confirmedOrderIds: sourceOrder,
+    });
+  }
   logRouteOrder('route_order_source', {
     routeDate: String(dateStr || ''),
     sourceOfTruth,
@@ -6082,7 +7622,7 @@ function setPlannerUiScale(mode) {
 
 function switchMobileTab(tab) {
   const afspraken = document.getElementById('panelAfspraken');
-  const route     = document.getElementById('panelRoute');
+  const route     = document.getElementById('panelRoutes');
   const tabA      = document.getElementById('tabAfspraken');
   const tabR      = document.getElementById('tabRoute');
   const tabZ      = document.getElementById('tabZoeken');
@@ -6143,7 +7683,7 @@ function toggleMobileMenu(open) {
     if (tabZ) tabZ.classList.remove('active');
   } else {
     const panelA = document.getElementById('panelAfspraken');
-    const panelR = document.getElementById('panelRoute');
+    const panelR = document.getElementById('panelRoutes');
     if (panelR && !panelR.classList.contains('tab-hidden')) {
       if (tabR) tabR.classList.add('active');
     } else if (panelA && !panelA.classList.contains('tab-hidden')) {
@@ -6499,18 +8039,141 @@ function renderPlannerWeekStrip() {
   });
 }
 
+function renderRoutesWeekStrip() {
+  const el = document.getElementById('routesWeekStrip');
+  if (!el) return;
+  const curStr = getDateStr(currentDate);
+  const partsYmd = curStr.split('-').map((x) => parseInt(x, 10));
+  if (partsYmd.length !== 3 || partsYmd.some((n) => Number.isNaN(n))) return;
+  const [Y, M, D] = partsYmd;
+  const start = new Date(Date.UTC(Y, M - 1, D, 12, 0, 0));
+  const wdShort = (dt) =>
+    new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'Europe/Amsterdam' }).format(dt);
+  let g = 0;
+  while (wdShort(start) !== 'Mon' && g++ < 14) start.setUTCDate(start.getUTCDate() - 1);
+  const fmtWd = new Intl.DateTimeFormat('nl-NL', { weekday: 'short', timeZone: 'Europe/Amsterdam' });
+  const nums = [];
+  for (let i = 0; i < 7; i++) {
+    const day = new Date(start.getTime());
+    day.setUTCDate(start.getUTCDate() + i);
+    const ds = getDateStr(day);
+    const wd = fmtWd.format(day).replace(/\.$/, '');
+    const dayNum = new Intl.DateTimeFormat('nl-NL', { day: 'numeric', timeZone: 'Europe/Amsterdam' }).format(day);
+    const active = ds === curStr;
+    nums.push(
+      `<button type="button" class="planner-week-day${active ? ' is-active' : ''}" data-routes-ymd="${ds}" role="tab" aria-selected="${active ? 'true' : 'false'}">` +
+      `<span>${wd}</span><span class="planner-week-day-num">${dayNum}</span></button>`
+    );
+  }
+  el.innerHTML = nums.join('');
+  el.querySelectorAll('[data-routes-ymd]').forEach((btn) => {
+    btn.onclick = () => goToDateStr(btn.getAttribute('data-routes-ymd'));
+  });
+}
+
+function switchSidebarView(view, event) {
+  if (event?.preventDefault) event.preventDefault();
+  const allowed = new Set(['today', 'routes', 'customers', 'analytics', 'prices', 'inventory']);
+  const requested = allowed.has(view) ? view : 'today';
+  const compact = window.matchMedia('(max-width: 1024px)').matches;
+  const blockedOnCompact = requested === 'analytics' || requested === 'prices';
+  plannerSidebarView = compact && blockedOnCompact ? 'today' : requested;
+  if (compact && blockedOnCompact) {
+    if (window.location.hash === '#panelAnalytics' || window.location.hash === '#panelPrices') {
+      try {
+        history.replaceState(null, '', '#');
+      } catch (_) {}
+    }
+  }
+  document.querySelectorAll('.planner-sidebar-item[data-sidebar-view]').forEach((el) => {
+    const v = el.getAttribute('data-sidebar-view');
+    if (v !== plannerSidebarView) {
+      el.classList.remove('is-active');
+      return;
+    }
+    const cat = el.getAttribute('data-products-category');
+    if (plannerSidebarView === 'prices' && cat) {
+      el.classList.toggle('is-active', cat === plannerProductsSubView);
+      return;
+    }
+    el.classList.add('is-active');
+  });
+  const panelMap = {
+    today: document.getElementById('panelAfspraken'),
+    routes: document.getElementById('panelRoutes'),
+    customers: document.getElementById('panelCustomers'),
+    analytics: document.getElementById('panelAnalytics'),
+    prices: document.getElementById('panelPrices'),
+    inventory: document.getElementById('panelInventory'),
+  };
+  if (window.matchMedia('(min-width: 1180px)').matches) {
+    Object.entries(panelMap).forEach(([k, el]) => el?.classList.toggle('tab-hidden', k !== plannerSidebarView));
+    if (plannerSidebarView === 'analytics') window.HKPlannerAnalytics?.render?.();
+    if (plannerSidebarView === 'prices') {
+      const label = document.getElementById('productsCategoryLabel');
+      if (label) label.textContent = plannerProductsSubView;
+      window.HKPlannerPrices?.setCategory?.(plannerProductsSubView);
+      window.HKPlannerPrices?.render?.();
+    }
+    if (plannerSidebarView === 'customers') window.HKPlannerCustomers?.render?.();
+    if (plannerSidebarView === 'inventory') window.HKPlannerInventory?.render?.();
+  }
+  return false;
+}
+
+function applyProductsMenuExpandedState() {
+  document.querySelectorAll('.planner-sidebar-item[data-products-category]').forEach((el) => {
+    el.hidden = !plannerProductsMenuExpanded;
+  });
+}
+
+function toggleProductsCategoryMenu(event) {
+  plannerProductsMenuExpanded = !plannerProductsMenuExpanded;
+  applyProductsMenuExpandedState();
+  if (plannerProductsMenuExpanded) {
+    plannerProductsSubView = String(plannerProductsSubView || 'Kranen').trim() || 'Kranen';
+    return switchSidebarView('prices', event);
+  }
+  if (event?.preventDefault) event.preventDefault();
+  return false;
+}
+
+function switchProductsCategory(category, event) {
+  plannerProductsMenuExpanded = true;
+  applyProductsMenuExpandedState();
+  plannerProductsSubView = String(category || 'Kranen').trim() || 'Kranen';
+  return switchSidebarView('prices', event);
+}
+
 /** Bij brede desktop: beide panelen tonen (CSS verbergt route-tab op smal). */
 function wireDesktopWideLayout() {
   const wide = window.matchMedia('(min-width: 1180px)');
   const apply = () => {
     if (wide.matches) {
-      document.getElementById('panelRoute')?.classList.remove('tab-hidden');
-      document.getElementById('panelAfspraken')?.classList.remove('tab-hidden');
+      switchSidebarView(plannerSidebarView);
+    } else {
+      document.getElementById('panelRoutes')?.classList.add('tab-hidden');
+      document.getElementById('panelCustomers')?.classList.add('tab-hidden');
+      document.getElementById('panelAnalytics')?.classList.add('tab-hidden');
+      document.getElementById('panelPrices')?.classList.add('tab-hidden');
+      document.getElementById('panelInventory')?.classList.add('tab-hidden');
     }
   };
   if (wide.addEventListener) wide.addEventListener('change', apply);
   else if (wide.addListener) wide.addListener(apply);
   apply();
+}
+
+function normalizeInitialSidebarViewForViewport() {
+  const compact = window.matchMedia('(max-width: 1024px)').matches;
+  if (!compact) return;
+  const hash = String(window.location.hash || '').trim().toLowerCase();
+  if (hash === '#panelanalytics' || hash === '#panelprices') {
+    try {
+      history.replaceState(null, '', '#');
+    } catch (_) {}
+    plannerSidebarView = 'today';
+  }
 }
 
 function fmtEuro(amount) {
@@ -6591,10 +8254,39 @@ function calcStats() {
   // Gebruik calcTotalPrice zodat extras (onderdelen) ook worden meegeteld
   const omzetKlaar = clients.reduce((s, a) => s + (a.status === 'klaar' ? calcTotalPrice(a) : 0), 0);
   const total      = clients.reduce((s, a) => s + calcTotalPrice(a), 0);
-  document.getElementById('totalAfspraken').textContent = clients.length;
-  document.getElementById('totalKlaar').textContent     = klaar;
-  document.getElementById('totalOmzet').textContent     = fmtEuro(omzetKlaar);
-  document.getElementById('totalBar').textContent       = fmtEuro(total);
+  const openOmzet = Math.max(0, total - omzetKlaar);
+  const factureerbaar = clients.filter((a) => (Number(calcTotalPrice(a)) || 0) > 0 && a.status !== 'klaar');
+  const reparaties = clients.filter((a) => String(a.jobType || '').toLowerCase() === 'reparatie').length;
+  const installaties = clients.filter((a) => String(a.jobType || '').toLowerCase() === 'installatie').length;
+  const onderhoud = clients.filter((a) => String(a.jobType || '').toLowerCase() === 'onderhoud').length;
+  const pct = clients.length ? Math.round((klaar / clients.length) * 100) : 0;
+  const afsprEl = document.getElementById('totalAfspraken');
+  const omzetEl = document.getElementById('totalOmzet');
+  const klaarRatioEl = document.getElementById('totalKlaarRatio');
+  if (afsprEl) afsprEl.textContent = String(clients.length);
+  if (omzetEl) omzetEl.textContent = fmtEuro(omzetKlaar);
+  if (klaarRatioEl) klaarRatioEl.textContent = `${klaar} / ${clients.length}`;
+  const klaarLegacy = document.getElementById('totalKlaar');
+  if (klaarLegacy) klaarLegacy.textContent = String(klaar);
+  const totalBarEl = document.getElementById('totalBar');
+  if (totalBarEl) totalBarEl.textContent = fmtEuro(total);
+  const openEl = document.getElementById('totalOpenOmzet');
+  if (openEl) openEl.textContent = `+ ${fmtEuro(openOmzet)} open`;
+  const pctEl = document.getElementById('totalKlaarPct');
+  if (pctEl) pctEl.textContent = `${pct}% voltooid`;
+  const factEl = document.getElementById('totalTeFactureren');
+  if (factEl) factEl.textContent = fmtEuro(openOmzet);
+  const factCountEl = document.getElementById('totalTeFacturerenCount');
+  if (factCountEl) {
+    const n = factureerbaar.length;
+    factCountEl.textContent = `${n} afspraak${n === 1 ? '' : 'en'}`;
+  }
+  const mixMetaEl = document.getElementById('todayMixMeta');
+  if (mixMetaEl) {
+    mixMetaEl.textContent = `${clients.length} afspraken · ${reparaties} reparaties · ${installaties} installaties · ${onderhoud} onderhoud`;
+  }
+  const sidebarCountEl = document.getElementById('sidebarCountToday');
+  if (sidebarCountEl) sidebarCountEl.textContent = String(clients.length);
 }
 
 /** Top-right card actions: stroke-SVGs use currentColor (no emoji color bleed). */
@@ -7066,20 +8758,19 @@ function renderApptCard(a, i) {
     );
     return `
     <div class="appt-card ${isDone?'done':''} ${isOnderweg?'onderweg':''} ${isViolation?'violation':''}" id="card-${domId}">
-      <div class="appt-number">#${a.routeStop != null ? a.routeStop : i + 1}</div>
       <div class="appt-inner">
         <div class="appt-top">
+          <div class="appt-number">${a.routeStop != null ? a.routeStop : i + 1}</div>
           <div class="appt-time">
-            ${a.timeWindow ? `<span class="time-window-badge">${a.timeWindow}</span>` : `<span class="slot-daypart-hint">${slotHint}</span>`}
-            <span class="ghl-cal-time-hint" title="Starttijd in GHL (ter referentie)"> ${a.estimated ? '~' : ''}${a.timeSlot}</span>
+            ${a.fullAddressLine ? `<span class="appt-address">${a.fullAddressLine}</span>` : ''}
           </div>
           <div class="appt-actions">
             <div class="appt-actions__icons">
             ${a.phone ? `<a class="icon-btn appt-action-icon" href="tel:${a.phone}" title="Bellen">${APPT_ACTION_SVG.phone}</a>` : ''}
             ${a.mapsLink ? `<a class="icon-btn appt-action-icon" href="${a.mapsLink}" target="_blank" rel="noopener noreferrer" title="Maps">${APPT_ACTION_SVG.map}</a>` : ''}
+            <button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">${APPT_ACTION_SVG.pencil}</button>
             ${a.ghlUrl ? `<a class="icon-btn appt-action-icon" href="${a.ghlUrl}"${a.ghlAppUrl ? ` data-ghl-app="${escapeHtml(a.ghlAppUrl)}" onclick="return hkOpenGhlContact(event,this)"` : ''} target="_blank" rel="noopener noreferrer" title="Open in GHL">${APPT_ACTION_SVG.link}</a>` : ''}
             ${isDone ? `<button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentDetailsModal(${idQ})' title="Bekijk details">${APPT_ACTION_SVG.eye}</button>` : ''}
-            <button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">${APPT_ACTION_SVG.pencil}</button>
             <button type="button" class="icon-btn appt-action-icon" onclick='deleteAppt(${idQ})' title="Verwijderen">${APPT_ACTION_SVG.close}</button>
             </div>
             <div class="appt-actions__mobile">
@@ -7100,7 +8791,6 @@ function renderApptCard(a, i) {
           return `<span class="route-pin-badge">${pinTypeLabel} ${pin.time}</span>`;
         })()}
         <div class="appt-body">
-          ${a.fullAddressLine ? `<div class="appt-address">${a.fullAddressLine}</div>` : ''}
           <div class="appt-name">${a.name}</div>
           <div class="appt-desc">${a.jobDescription || ''}</div>
         </div>
@@ -7110,12 +8800,13 @@ function renderApptCard(a, i) {
           const desc = String(a.jobDescription || '').trim();
           if (!note) return '';
           if (note.toLowerCase() === desc.toLowerCase()) return '';
-          return `<div class="appt-notes">💬 ${note}</div>`;
+          return `<div class="appt-notes">● ${note}</div>`;
         })()}
         <div class="appt-footer">
           <div class="appt-footer-left">
             <div class="appt-tags">
               <span class="tag ${a.jobType}">${a.jobType}</span>
+              ${/(garantie)/i.test(String(a.jobDescription || '') + ' ' + String(a.notes || '')) ? '<span class="tag garantie">garantie</span>' : ''}
               ${a.phone ? `<span class="appt-phone">${a.phone}</span>` : ''}
             </div>
           </div>
@@ -7123,7 +8814,8 @@ function renderApptCard(a, i) {
             ${(() => {
               const total = Math.round(calcTotalPrice(a) * 100) / 100;
               const txt = total > 0 ? `€${euroDisplay(total)}` : String(a.priceLabel || '').trim();
-              return txt ? `<span class="appt-price" id="appt-price-${domId}">${txt}</span>` : '';
+              const zeroAttr = total <= 0 ? ' data-zero="1"' : '';
+              return txt ? `<span class="appt-price" id="appt-price-${domId}"${zeroAttr}>${txt}</span>` : '';
             })()}
             <div class="appt-footer-actions-touch">
               <div class="appt-footer-cta-row">
@@ -7247,12 +8939,12 @@ function render() {
   }
   if (morningApts.length) {
     parts.push(
-      `<div class="planning-section"><div class="planning-section-title">Ochtend 09:00–13:00</div>${morningApts.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
+      `<div class="planning-section"><div class="planning-section-title">OCHTEND · 09:00 – 13:00</div>${morningApts.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
     );
   }
   if (afternoonApts.length) {
     parts.push(
-      `<div class="planning-section"><div class="planning-section-title">Middag 13:00–17:00</div>${afternoonApts.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
+      `<div class="planning-section"><div class="planning-section-title">MIDDAG · 13:00 – 17:00</div>${afternoonApts.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
     );
   }
   let listHtml = parts.join('');
@@ -7267,6 +8959,7 @@ function render() {
   updateRouteLocalUi();
   updateRoutePanelChrome(routeStops);
   renderPlannerWeekStrip();
+  renderRoutesWeekStrip();
 }
 
 function formatRoutePanelTitle(d) {
@@ -7400,7 +9093,11 @@ function updateRoutePanelChrome(routeStops) {
   }
 
   const sumEl = document.getElementById('routeSummary');
-  if (sumEl) sumEl.innerHTML = buildRouteSummaryHtml(routeStops || [], dateStr);
+  if (sumEl) {
+    sumEl.innerHTML = `<div class="routes-summary-title">Samenvatting</div>${buildRouteSummaryHtml(routeStops || [], dateStr)}`;
+  }
+  const routesDateSubEl = document.getElementById('routesDateSubtitle');
+  if (routesDateSubEl) routesDateSubEl.textContent = formatDate(currentDate);
 }
 
 function renderDepotRow(kind, planMeta) {
@@ -7414,7 +9111,7 @@ function renderDepotRow(kind, planMeta) {
   return `
     <div class="route-item route-item--depot ${isEnd ? 'route-item--depot-end' : 'route-item--depot-start'}">
       <div class="route-drag-handle route-drag-handle--ghost" aria-hidden="true">&#8801;</div>
-      <div class="route-num depot">${isEnd ? '🏁' : '🏠'}</div>
+      <div class="route-num depot">${isEnd ? '●' : '●'}</div>
       <div class="route-item-main">
         <div class="route-name-row">
           <span class="route-name">${title}</span>
@@ -7436,7 +9133,7 @@ function renderRouteItemHtml(a) {
     : `<span class="route-eta route-eta--muted">—</span>`;
   const jobLbl = formatJobTypeLabelShort(a.jobType);
   const dayChip = (a.dayPart ?? 1) === 0 ? '09–13' : '13–17';
-  const viol = a.violation ? '<span class="route-violation" title="Tijdsvenster lastig haalbaar">⚠</span>' : '';
+  const viol = a.violation ? '<span class="route-violation" title="Tijdsvenster lastig haalbaar">!</span>' : '';
   const pinH = a.internalFixedStartTime ? normalizeTimeStr(String(a.internalFixedStartTime)) : '';
   const pinHtml = pinH
     ? `<span class="route-pin-pill" title="Interne vaste route-start (operationeel)">Vast ${pinH}</span>`
@@ -7475,6 +9172,11 @@ function renderRoute(routeStops) {
   const list = document.getElementById('routeList');
   if (!list) return;
   const dateStr = getDateStr(currentDate);
+  const routesStopsTitleEl = document.getElementById('routesStopsTitle');
+  if (routesStopsTitleEl) {
+    const dm = new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'long', timeZone: 'Europe/Amsterdam' }).format(currentDate);
+    routesStopsTitleEl.textContent = `Route ${dm} — ${routeStops.length} stops`;
+  }
   const { morning, afternoon } = splitSidebarByDayPart(routeStops);
   const plan = getLastPartitionedRoutePlan(dateStr);
   const planMatch = routePlanMatchesStops(plan, routeStops);
@@ -7521,6 +9223,12 @@ function renderRoute(routeStops) {
   list.innerHTML = body;
 
   initRouteDrag(list);
+  window.HKPlannerRouteMaps?.renderRouteMap?.({
+    apiKey: HK_GOOGLE_MAPS_API_KEY,
+    depotAddress: 'Cornelis Drebbelstraat, Amsterdam',
+    stops: routeStops,
+    showToast,
+  });
 }
 
 /** Zelfde volgorde als `active` (array), ETAs via Google Distance Matrix / Directions */
@@ -8910,7 +10618,9 @@ function showPaymentLinkFallback(url, invoiceNumber, total) {
 applyUiScalePref();
 document.getElementById('dateLabel').textContent = formatDate(currentDate);
 wirePlannerDatePickerInput();
+normalizeInitialSidebarViewForViewport();
 wireDesktopWideLayout();
+applyProductsMenuExpandedState();
 renderPlannerWeekStrip();
 
 // LOGIN — wachtwoorden staan NIET meer in de browser-code.

@@ -101,10 +101,46 @@ import {
   readInvoicePartyField,
   resolveInvoicePartyFieldIds,
 } from '../lib/invoice-party-ghl.js';
+import {
+  adjustInventoryStock,
+  isInventoryStoreConfigured,
+  listInventory,
+  setInventoryWarnings,
+} from '../lib/inventory-store.js';
+import { listPrices } from '../lib/prices-store.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
+
+function normalizeSku(v) {
+  return String(v || '').trim().toLowerCase();
+}
+
+function normalizeNameForMatch(v) {
+  return String(v || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function quantityFromLine(row = {}) {
+  const n = Number(row.quantity ?? row.qty ?? row.amount ?? 1);
+  if (!Number.isFinite(n) || n <= 0) return 1;
+  return Math.max(1, Math.round(n));
+}
+
+function resolveLineSku(line, priceById, priceBySku, priceByName) {
+  const lineSku = normalizeSku(line?.sku);
+  if (lineSku && priceBySku.has(lineSku)) return lineSku;
+  const linePriceId = String(line?.priceId || line?.id || '').trim();
+  if (linePriceId && priceById.has(linePriceId)) {
+    return normalizeSku(priceById.get(linePriceId)?.sku);
+  }
+  const byName = priceByName.get(normalizeNameForMatch(line?.desc || line?.label || line?.name || ''));
+  if (byName) return normalizeSku(byName.sku);
+  return '';
+}
 
 /** Alleen diagnostiek: laatste contactId na succesvolle updatePlannerBookingDetails PUT (voor [TRACE][mapped_address_after_edit]). */
 let _traceLastEditedContactId = null;
@@ -1165,6 +1201,32 @@ export default async function handler(req, res) {
     return res.status(503).json({ error: GHL_CONFIG_MISSING_MSG });
   }
 
+  async function routeMutationLockResponse(dateStr, mutationAction) {
+    if (!isRouteLockStoreConfigured()) return null;
+    const ds = normalizeYyyyMmDdInput(String(dateStr || ''));
+    if (!ds) return null;
+    const lock = await getRouteLock(locConfigured, ds);
+    if (!lock || lock.locked !== true) return null;
+    console.info(
+      '[planner] route_mutation_blocked_due_to_lock',
+      JSON.stringify({
+        routeDate: ds,
+        mutationAction: mutationAction || 'other',
+        revision: Number.isFinite(Number(lock.revision)) ? Number(lock.revision) : null,
+        orderLen: Array.isArray(lock.orderContactIds) ? lock.orderContactIds.length : 0,
+      })
+    );
+    return res.status(409).json({
+      error: 'Route is vastgezet. Ontgrendel de route voordat je deze afspraak wijzigt.',
+      code: 'ROUTE_LOCKED',
+      routeDate: ds,
+      routeLock: {
+        locked: true,
+        revision: Number.isFinite(Number(lock.revision)) ? Number(lock.revision) : 0,
+      },
+    });
+  }
+
   try {
     switch (action) {
 
@@ -1205,7 +1267,13 @@ export default async function handler(req, res) {
           const response = await fetchWithRetry(url, {
             headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' },
           });
-          const data = await response.json();
+          const rawText = await response.text().catch(() => '');
+          let data = {};
+          try {
+            data = rawText ? JSON.parse(rawText) : {};
+          } catch {
+            data = {};
+          }
           gaPerf.ghl_calendar_events_ms = Date.now() - tCalEv;
           events = data?.events || [];
           if (response.ok) amsterdamDayReadCacheSet(calKey, events);
@@ -2633,6 +2701,101 @@ export default async function handler(req, res) {
             console.warn('[completeAppointment] opportunity stage update mislukt:', e.message);
           });
         }
+        try {
+          if (isInventoryStoreConfigured()) {
+            const invLoc = ghlLocationIdFromEnv() || process.env.GHL_LOCATION_ID || 'default';
+            const [inventoryRows, priceRows] = await Promise.all([
+              listInventory(invLoc),
+              listPrices(invLoc),
+            ]);
+            const invBySku = new Map(
+              inventoryRows
+                .filter((x) => normalizeSku(x?.sku))
+                .map((x) => [normalizeSku(x.sku), x])
+            );
+            const priceById = new Map(priceRows.map((x) => [String(x?.id || '').trim(), x]));
+            const priceBySku = new Map(
+              priceRows
+                .filter((x) => normalizeSku(x?.sku))
+                .map((x) => [normalizeSku(x.sku), x])
+            );
+            const priceByName = new Map(
+              priceRows.map((x) => [normalizeNameForMatch(x?.description || x?.name || ''), x])
+            );
+            const extrasRowsRaw = Array.isArray(extras) ? extras : [];
+            const warningMap = new Map();
+            for (const line of extrasRowsRaw) {
+              const sku = resolveLineSku(line, priceById, priceBySku, priceByName);
+              if (!sku) {
+                console.info('[inventory_deduct] no_sku_match', {
+                  contactId,
+                  appointmentId: appointmentId != null ? String(appointmentId) : null,
+                  lineDesc: String(line?.desc || line?.label || line?.name || '').trim() || null,
+                });
+                continue;
+              }
+              const invItem = invBySku.get(sku);
+              if (!invItem?.id) {
+                console.info('[inventory_deduct] no_inventory_item_for_sku', {
+                  contactId,
+                  appointmentId: appointmentId != null ? String(appointmentId) : null,
+                  sku,
+                });
+                continue;
+              }
+              const qty = quantityFromLine(line);
+              const deduct = -Math.abs(qty);
+              const out = await adjustInventoryStock(invLoc, invItem.id, deduct);
+              if (!out?.ok || !out?.item) {
+                console.warn('[inventory_deduct] adjust_failed', {
+                  contactId,
+                  appointmentId: appointmentId != null ? String(appointmentId) : null,
+                  itemId: invItem.id,
+                  sku,
+                  qty,
+                  code: out?.code || 'UNKNOWN',
+                });
+                continue;
+              }
+              console.info('[inventory_deduct] adjusted', {
+                contactId,
+                appointmentId: appointmentId != null ? String(appointmentId) : null,
+                itemId: out.item.id,
+                itemName: out.item.name,
+                sku,
+                deducted: qty,
+                stockAfter: out.item.stock,
+                minStock: out.item.minStock,
+              });
+              if (Number(out.item.stock) < Number(out.item.minStock)) {
+                warningMap.set(out.item.id, {
+                  itemId: out.item.id,
+                  itemName: out.item.name,
+                  stock: out.item.stock,
+                  minStock: out.item.minStock,
+                });
+              }
+            }
+            const latestInventory = await listInventory(invLoc);
+            for (const row of latestInventory) {
+              if (Number(row.stock) < Number(row.minStock)) {
+                warningMap.set(row.id, {
+                  itemId: row.id,
+                  itemName: row.name,
+                  stock: row.stock,
+                  minStock: row.minStock,
+                });
+              }
+            }
+            await setInventoryWarnings(invLoc, Array.from(warningMap.values()));
+          }
+        } catch (inventoryErr) {
+          console.warn('[completeAppointment] inventory deduction failed (non-blocking)', {
+            contactId,
+            appointmentId: appointmentId != null ? String(appointmentId) : null,
+            message: inventoryErr?.message || String(inventoryErr),
+          });
+        }
 
         return res.status(200).json({
           success: true,
@@ -3106,6 +3269,8 @@ export default async function handler(req, res) {
         if (!cid) return res.status(400).json({ error: 'contactId vereist' });
         const dateNorm = normalizeYyyyMmDdInput(String(date || ''));
         if (!dateNorm) return res.status(400).json({ error: 'date verplicht (YYYY-MM-DD)' });
+        const lockRes = await routeMutationLockResponse(dateNorm, 'updatePlannerBookingDetails');
+        if (lockRes) return lockRes;
         if (plannerBodyIncludesInvoiceKeys(req.body || {})) {
           const ftInv = normalizePlannerInvoiceTypeFromBody(req.body?.factuurType);
           if (ftInv === 'bedrijf' && !String(req.body?.factuurBedrijfsnaam || '').trim()) {
@@ -3599,6 +3764,8 @@ export default async function handler(req, res) {
         if (!addressNorm) return res.status(400).json({ error: 'address verplicht' });
         if (!dateNorm) return res.status(400).json({ error: 'date verplicht (YYYY-MM-DD)' });
         if (!/^\d{2}:\d{2}$/.test(timeNorm)) return res.status(400).json({ error: 'time verplicht (HH:mm)' });
+        const lockRes = await routeMutationLockResponse(dateNorm, 'createAppointment');
+        if (lockRes) return lockRes;
         if (plannerBodyIncludesInvoiceKeys(req.body || {})) {
           const ftInv = normalizePlannerInvoiceTypeFromBody(req.body?.factuurType);
           if (ftInv === 'bedrijf' && !String(req.body?.factuurBedrijfsnaam || '').trim()) {
@@ -3982,6 +4149,8 @@ export default async function handler(req, res) {
         if (!cid || !dateNorm) {
           return res.status(400).json({ error: 'contactId en geldige routeDate (YYYY-MM-DD) vereist' });
         }
+        const lockRes = await routeMutationLockResponse(dateNorm, 'deletePlannerBooking');
+        if (lockRes) return lockRes;
 
         const rid = String(rowId ?? '').trim();
         const hkRow = /^hk-b1:([^:]+):(\d{4}-\d{2}-\d{2})$/i.exec(rid);
@@ -4072,6 +4241,12 @@ export default async function handler(req, res) {
         const newDateNorm = normalizeYyyyMmDdInput(String(newDate || ''));
         if (!cid || !newDateNorm || !prevDateNorm) {
           return res.status(400).json({ error: 'contactId, prevDate en newDate vereist (YYYY-MM-DD)' });
+        }
+        const lockResPrev = await routeMutationLockResponse(prevDateNorm, 'rescheduleAppointment');
+        if (lockResPrev) return lockResPrev;
+        if (newDateNorm !== prevDateNorm) {
+          const lockResNew = await routeMutationLockResponse(newDateNorm, 'rescheduleAppointment');
+          if (lockResNew) return lockResNew;
         }
         const slotPart =
           slotKey === 'afternoon' || slotKey === 'morning'
