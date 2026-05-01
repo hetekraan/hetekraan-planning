@@ -74,6 +74,7 @@ import {
   normalizePriceLineItems,
   toPriceNumber,
 } from '../lib/booking-canon-fields.js';
+import { syncAppointmentToSupabase } from '../lib/planner-supabase-sync.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -1078,6 +1079,46 @@ export default async function handler(req, res) {
     console.log('[confirm-booking DEBUG] v2 before_success_response');
     perf.map_response_ms = Date.now() - tMapB10;
     perf.branch = 'v2_B1';
+    try {
+      const syncResult = await syncAppointmentToSupabase({
+        source: 'confirm-booking',
+        externalBookingId: resv?.reservation?.id ? String(resv.reservation.id) : null,
+        reservationId: resv?.reservation?.id ? String(resv.reservation.id) : null,
+        ghlContactId: contactId,
+        customerName: name || null,
+        phone: phoneForPut || phone || null,
+        email,
+        address,
+        date,
+        dayPart: block,
+        timeWindow: chosenSlot?.label || chosenSlot?.time || null,
+        status: 'confirmed',
+        problemDescription: desc || null,
+        priceLines: Array.isArray(priceLines) ? priceLines : [],
+        totalAmount: totalPrice ?? null,
+        rawPayload: {
+          bookingModel: 'B',
+          tokenSchemaVersion: 2,
+          response: outB1,
+        },
+      });
+      console.info('[supabase_dual_write_ok]', JSON.stringify({
+        source: 'confirm-booking',
+        bookingModel: 'B',
+        appointmentId: syncResult?.appointmentId || null,
+        customerId: syncResult?.customerId || null,
+        priceLineCount: syncResult?.priceLineCount || 0,
+        skipped: syncResult?.skipped === true,
+      }));
+    } catch (err) {
+      console.error('[supabase_dual_write_failed]', JSON.stringify({
+        source: 'confirm-booking',
+        bookingModel: 'B',
+        contactId: contactId || null,
+        date: date || null,
+        message: String(err?.message || err),
+      }));
+    }
     return res.status(200).json(outB1);
   }
 
@@ -1544,6 +1585,47 @@ export default async function handler(req, res) {
   }
 
   perf.map_response_ms = Date.now() - tOutV10;
+  try {
+    const syncResult = await syncAppointmentToSupabase({
+      source: 'confirm-booking',
+      externalBookingId: appointmentId ? String(appointmentId) : null,
+      ghlContactId: contactId,
+      customerName: name || null,
+      phone: phoneForPut || phone || null,
+      email,
+      address,
+      date,
+      dayPart: block,
+      timeWindow: chosenSlot?.label || chosenSlot?.time || null,
+      status: 'confirmed',
+      problemDescription: desc || null,
+      priceLines: Array.isArray(priceLines) ? priceLines : [],
+      totalAmount: totalPrice ?? null,
+      rawPayload: {
+        bookingModel: 'legacy_v1_timed_appt',
+        tokenSchemaVersion: bookingData?.tokenSchemaVersion ?? null,
+        ghlAppointmentId: appointmentId || null,
+        response: out,
+      },
+    });
+    console.info('[supabase_dual_write_ok]', JSON.stringify({
+      source: 'confirm-booking',
+      bookingModel: 'legacy_v1_timed_appt',
+      appointmentId: syncResult?.appointmentId || null,
+      customerId: syncResult?.customerId || null,
+      priceLineCount: syncResult?.priceLineCount || 0,
+      skipped: syncResult?.skipped === true,
+    }));
+  } catch (err) {
+    console.error('[supabase_dual_write_failed]', JSON.stringify({
+      source: 'confirm-booking',
+      bookingModel: 'legacy_v1_timed_appt',
+      contactId: contactId || null,
+      date: date || null,
+      ghlAppointmentId: appointmentId || null,
+      message: String(err?.message || err),
+    }));
+  }
   return res.status(200).json(out);
   } finally {
     perf.total_ms = Date.now() - reqT0;
