@@ -5477,6 +5477,13 @@ function guardRouteMutationForDate(dateStr, mutationAction, fallbackReason) {
     sourceOfTruth: locked ? 'confirmed_route_lock' : 'unlocked_route',
   });
   if (!locked) return true;
+  logRouteOrder('route_lock_enforced', {
+    routeDate: ds,
+    mutationAction: mutationAction || 'other',
+    wasRouteLocked: true,
+    sourceOfTruth: 'confirmed_route_lock',
+    userName: currentPlannerIdentity(),
+  });
   logRouteOrder('route_order_mutation_blocked', {
     routeDate: ds,
     mutationAction: mutationAction || 'other',
@@ -5488,6 +5495,13 @@ function guardRouteMutationForDate(dateStr, mutationAction, fallbackReason) {
     routeDate: ds,
     mutationAction: mutationAction || 'other',
     wasRouteLocked: true,
+    userName: currentPlannerIdentity(),
+  });
+  logRouteOrder('route_mutation_blocked_due_to_lock', {
+    routeDate: ds,
+    mutationAction: mutationAction || 'other',
+    wasRouteLocked: true,
+    fallbackReason: fallbackReason || 'unlock_required',
     userName: currentPlannerIdentity(),
   });
   return false;
@@ -5827,6 +5841,26 @@ function applyRouteSnapshot(dateStr) {
   const sourceOrder = enforceServerOrder
     ? (Array.isArray(srv?.orderContactIds) ? srv.orderContactIds.map((x) => String(x || '').trim()).filter(Boolean) : [])
     : (Array.isArray(applied.contactIdsOrder) ? applied.contactIdsOrder : []);
+  if (enforceServerOrder) {
+    const localSnapshotOrder = readConfirmedRouteOrder(String(dateStr || ''));
+    if (localSnapshotOrder.length && localSnapshotOrder.join('|') !== sourceOrder.join('|')) {
+      logRouteOrder('route_snapshot_ignored_due_to_lock', {
+        routeDate: String(dateStr || ''),
+        sourceOfTruth: 'server_route_lock',
+        wasRouteLocked: true,
+        confirmedOrderIds: sourceOrder,
+        loadedOrderIds: localSnapshotOrder,
+        fallbackReason: 'redis_lock_overrides_local_snapshot',
+      });
+      saveConfirmedRouteOrder(String(dateStr || ''), sourceOrder);
+    }
+    logRouteOrder('route_lock_enforced', {
+      routeDate: String(dateStr || ''),
+      sourceOfTruth: 'server_route_lock',
+      wasRouteLocked: true,
+      confirmedOrderIds: sourceOrder,
+    });
+  }
   logRouteOrder('route_order_source', {
     routeDate: String(dateStr || ''),
     sourceOfTruth,

@@ -1165,6 +1165,32 @@ export default async function handler(req, res) {
     return res.status(503).json({ error: GHL_CONFIG_MISSING_MSG });
   }
 
+  async function routeMutationLockResponse(dateStr, mutationAction) {
+    if (!isRouteLockStoreConfigured()) return null;
+    const ds = normalizeYyyyMmDdInput(String(dateStr || ''));
+    if (!ds) return null;
+    const lock = await getRouteLock(locConfigured, ds);
+    if (!lock || lock.locked !== true) return null;
+    console.info(
+      '[planner] route_mutation_blocked_due_to_lock',
+      JSON.stringify({
+        routeDate: ds,
+        mutationAction: mutationAction || 'other',
+        revision: Number.isFinite(Number(lock.revision)) ? Number(lock.revision) : null,
+        orderLen: Array.isArray(lock.orderContactIds) ? lock.orderContactIds.length : 0,
+      })
+    );
+    return res.status(409).json({
+      error: 'Route is vastgezet. Ontgrendel de route voordat je deze afspraak wijzigt.',
+      code: 'ROUTE_LOCKED',
+      routeDate: ds,
+      routeLock: {
+        locked: true,
+        revision: Number.isFinite(Number(lock.revision)) ? Number(lock.revision) : 0,
+      },
+    });
+  }
+
   try {
     switch (action) {
 
@@ -3106,6 +3132,8 @@ export default async function handler(req, res) {
         if (!cid) return res.status(400).json({ error: 'contactId vereist' });
         const dateNorm = normalizeYyyyMmDdInput(String(date || ''));
         if (!dateNorm) return res.status(400).json({ error: 'date verplicht (YYYY-MM-DD)' });
+        const lockRes = await routeMutationLockResponse(dateNorm, 'updatePlannerBookingDetails');
+        if (lockRes) return lockRes;
         if (plannerBodyIncludesInvoiceKeys(req.body || {})) {
           const ftInv = normalizePlannerInvoiceTypeFromBody(req.body?.factuurType);
           if (ftInv === 'bedrijf' && !String(req.body?.factuurBedrijfsnaam || '').trim()) {
@@ -3599,6 +3627,8 @@ export default async function handler(req, res) {
         if (!addressNorm) return res.status(400).json({ error: 'address verplicht' });
         if (!dateNorm) return res.status(400).json({ error: 'date verplicht (YYYY-MM-DD)' });
         if (!/^\d{2}:\d{2}$/.test(timeNorm)) return res.status(400).json({ error: 'time verplicht (HH:mm)' });
+        const lockRes = await routeMutationLockResponse(dateNorm, 'createAppointment');
+        if (lockRes) return lockRes;
         if (plannerBodyIncludesInvoiceKeys(req.body || {})) {
           const ftInv = normalizePlannerInvoiceTypeFromBody(req.body?.factuurType);
           if (ftInv === 'bedrijf' && !String(req.body?.factuurBedrijfsnaam || '').trim()) {
@@ -3982,6 +4012,8 @@ export default async function handler(req, res) {
         if (!cid || !dateNorm) {
           return res.status(400).json({ error: 'contactId en geldige routeDate (YYYY-MM-DD) vereist' });
         }
+        const lockRes = await routeMutationLockResponse(dateNorm, 'deletePlannerBooking');
+        if (lockRes) return lockRes;
 
         const rid = String(rowId ?? '').trim();
         const hkRow = /^hk-b1:([^:]+):(\d{4}-\d{2}-\d{2})$/i.exec(rid);
@@ -4072,6 +4104,12 @@ export default async function handler(req, res) {
         const newDateNorm = normalizeYyyyMmDdInput(String(newDate || ''));
         if (!cid || !newDateNorm || !prevDateNorm) {
           return res.status(400).json({ error: 'contactId, prevDate en newDate vereist (YYYY-MM-DD)' });
+        }
+        const lockResPrev = await routeMutationLockResponse(prevDateNorm, 'rescheduleAppointment');
+        if (lockResPrev) return lockResPrev;
+        if (newDateNorm !== prevDateNorm) {
+          const lockResNew = await routeMutationLockResponse(newDateNorm, 'rescheduleAppointment');
+          if (lockResNew) return lockResNew;
         }
         const slotPart =
           slotKey === 'afternoon' || slotKey === 'morning'
