@@ -101,7 +101,12 @@ import {
   readInvoicePartyField,
   resolveInvoicePartyFieldIds,
 } from '../lib/invoice-party-ghl.js';
-import { syncAppointmentToSupabase } from '../lib/planner-supabase-sync.js';
+import {
+  markAppointmentCancelled,
+  replaceAppointmentPriceLines,
+  syncAppointmentToSupabase,
+  updateAppointmentInSupabase,
+} from '../lib/planner-supabase-sync.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -3402,6 +3407,40 @@ export default async function handler(req, res) {
             slotKey: slotPart,
             warning: 'phone/email omitted in fallback',
           });
+          try {
+            const apptResult = await updateAppointmentInSupabase({
+              source: 'planner-create',
+              ghlContactId: cid,
+              serviceDate: dateNorm,
+              problemDescription: descNorm || null,
+              totalAmount: totalNum,
+              rawPayload: {
+                action: 'updatePlannerBookingDetails',
+                mode: 'fallback_without_phone_email',
+              },
+            });
+            const linesResult = await replaceAppointmentPriceLines({
+              source: 'planner-create',
+              ghlContactId: cid,
+              serviceDate: dateNorm,
+              priceLines: normalizedLines,
+            });
+            console.info('[supabase_dual_write_ok]', JSON.stringify({
+              source: 'planner-update',
+              action: 'updatePlannerBookingDetails',
+              appointmentId: apptResult?.appointmentId || linesResult?.appointmentId || null,
+              priceLineCount: linesResult?.priceLineCount || 0,
+              skipped: apptResult?.skipped === true && linesResult?.skipped === true,
+            }));
+          } catch (err) {
+            console.error('[supabase_dual_write_failed]', JSON.stringify({
+              source: 'planner-update',
+              action: 'updatePlannerBookingDetails',
+              contactId: cid || null,
+              date: dateNorm || null,
+              message: String(err?.message || err),
+            }));
+          }
           return res.status(200).json({
             success: true,
             contactId: cid,
@@ -3430,6 +3469,40 @@ export default async function handler(req, res) {
           date: dateNorm,
           slotKey: slotPart,
         });
+        try {
+          const apptResult = await updateAppointmentInSupabase({
+            source: 'planner-create',
+            ghlContactId: cid,
+            serviceDate: dateNorm,
+            problemDescription: descNorm || null,
+            totalAmount: totalNum,
+            rawPayload: {
+              action: 'updatePlannerBookingDetails',
+              mode: 'primary',
+            },
+          });
+          const linesResult = await replaceAppointmentPriceLines({
+            source: 'planner-create',
+            ghlContactId: cid,
+            serviceDate: dateNorm,
+            priceLines: normalizedLines,
+          });
+          console.info('[supabase_dual_write_ok]', JSON.stringify({
+            source: 'planner-update',
+            action: 'updatePlannerBookingDetails',
+            appointmentId: apptResult?.appointmentId || linesResult?.appointmentId || null,
+            priceLineCount: linesResult?.priceLineCount || 0,
+            skipped: apptResult?.skipped === true && linesResult?.skipped === true,
+          }));
+        } catch (err) {
+          console.error('[supabase_dual_write_failed]', JSON.stringify({
+            source: 'planner-update',
+            action: 'updatePlannerBookingDetails',
+            contactId: cid || null,
+            date: dateNorm || null,
+            message: String(err?.message || err),
+          }));
+        }
         return res.status(200).json({
           success: true,
           contactId: cid,
@@ -4123,6 +4196,32 @@ export default async function handler(req, res) {
           redis: redisOut,
           ghlAppointment: ghlApptResult,
         });
+        try {
+          const cancelResult = await markAppointmentCancelled({
+            source: 'planner-create',
+            ghlContactId: cid,
+            serviceDate: dateNorm,
+            externalBookingId: redisOut?.reservationId ? String(redisOut.reservationId) : null,
+            rawPayload: {
+              action: 'deletePlannerBooking',
+              synthetic,
+            },
+          });
+          console.info('[supabase_dual_write_ok]', JSON.stringify({
+            source: 'planner-delete',
+            action: 'deletePlannerBooking',
+            appointmentId: cancelResult?.appointmentId || null,
+            skipped: cancelResult?.skipped === true,
+          }));
+        } catch (err) {
+          console.error('[supabase_dual_write_failed]', JSON.stringify({
+            source: 'planner-delete',
+            action: 'deletePlannerBooking',
+            contactId: cid || null,
+            date: dateNorm || null,
+            message: String(err?.message || err),
+          }));
+        }
 
         return res.status(200).json({
           success: true,
@@ -4264,6 +4363,39 @@ export default async function handler(req, res) {
           newDate: newDateNorm,
           slotPart,
         });
+        try {
+          const mirrorResult = await updateAppointmentInSupabase({
+            source: 'planner-create',
+            ghlContactId: cid,
+            matchServiceDate: prevDateNorm,
+            serviceDate: newDateNorm,
+            externalBookingId: oldResDelete?.reservationId ? String(oldResDelete.reservationId) : null,
+            nextExternalBookingId: newRes?.reservation?.id ? String(newRes.reservation.id) : null,
+            address: req.body?.address ? String(req.body.address).trim() : undefined,
+            dayPart: slotPart,
+            timeWindow: windowLabel || null,
+            rawPayload: {
+              action: 'rescheduleAppointment',
+              prevDate: prevDateNorm,
+              newDate: newDateNorm,
+            },
+          });
+          console.info('[supabase_dual_write_ok]', JSON.stringify({
+            source: 'planner-update',
+            action: 'rescheduleAppointment',
+            appointmentId: mirrorResult?.appointmentId || null,
+            skipped: mirrorResult?.skipped === true,
+          }));
+        } catch (err) {
+          console.error('[supabase_dual_write_failed]', JSON.stringify({
+            source: 'planner-update',
+            action: 'rescheduleAppointment',
+            contactId: cid || null,
+            prevDate: prevDateNorm || null,
+            newDate: newDateNorm || null,
+            message: String(err?.message || err),
+          }));
+        }
         return res.status(200).json({
           success: true,
           slotLabel: windowLabel || null,
