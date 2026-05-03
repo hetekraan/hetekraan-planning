@@ -10,18 +10,10 @@
     { key: 'gemMarge', title: 'Gem. marge %' },
   ];
 
-  const HARD_AD_SPEND = [
-    { week: 'W14', spend: 1450, omzet: 6120 },
-    { week: 'W15', spend: 1720, omzet: 6840 },
-    { week: 'W16', spend: 1610, omzet: 6520 },
-    { week: 'W17', spend: 1890, omzet: 7310 },
-  ];
-  const HARD_TRAFFIC = [
-    { week: 'W14', organisch: 420, betaald: 250, direct: 130, email: 40 },
-    { week: 'W15', organisch: 450, betaald: 280, direct: 140, email: 55 },
-    { week: 'W16', organisch: 438, betaald: 260, direct: 132, email: 52 },
-    { week: 'W17', organisch: 462, betaald: 295, direct: 150, email: 60 },
-  ];
+  /** KPI’s die uit /api/analytics komen; bij fout alleen deze op “Mislukt” + detail. */
+  const KPI_KEYS_FROM_ANALYTICS_API = ['omzet', 'marge', 'afspraken', 'gemWaarde', 'gemMarge'];
+  /** Geen echte bron in deze versie — altijd “Niet gekoppeld”, ook als analytics faalt. */
+  const KPI_KEYS_NOT_LINKED = ['adSpend', 'sessions', 'conversie'];
 
   let period = '30d';
   let customStart = '';
@@ -36,7 +28,9 @@
     cashflow: { loading: false, error: '' },
     inventory: { loading: false, error: '' },
   };
-  const kpiState = Object.fromEntries(KPI_DEFS.map((x) => [x.key, { loading: true, error: '', value: '-', delta: '-' }]));
+  const kpiState = Object.fromEntries(
+    KPI_DEFS.map((x) => [x.key, { loading: true, error: '', value: '-', delta: '-', notLinked: false }])
+  );
   const charts = {};
   let chartJsPromise = null;
   let bootstrapped = false;
@@ -178,14 +172,48 @@
   function setKpi(key, value, curr, prev, suffix = '') {
     const delta = comparePct(curr, prev);
     const arrow = delta >= 0 ? '↑' : '↓';
-    kpiState[key] = { loading: false, error: '', value, delta: `${arrow} ${fmtPct(Math.abs(delta))}${suffix}` };
+    kpiState[key] = {
+      loading: false,
+      error: '',
+      value,
+      delta: `${arrow} ${fmtPct(Math.abs(delta))}${suffix}`,
+      notLinked: false,
+    };
   }
-  function setKpiError(key, message) {
-    kpiState[key] = { loading: false, error: message || 'Fout', value: 'Fout', delta: '-' };
+  function kpiNotLinkedState(key) {
+    const hints = {
+      adSpend: 'Google Ads-API is nog niet gekoppeld.',
+      sessions: 'GA4 / WordPress-sessiedata nog niet gekoppeld.',
+      conversie: 'Zonder echte sessiedata is conversie niet zinvol.',
+    };
+    return {
+      loading: false,
+      error: '',
+      value: 'Niet gekoppeld',
+      delta: hints[key] || 'Nog niet gekoppeld.',
+      notLinked: true,
+    };
+  }
+  function setAnalyticsApiKpisError(message) {
+    const raw = String(message || 'Onbekende fout').trim();
+    const truncated = raw.length > 520 ? `${raw.slice(0, 520)}…` : raw;
+    KPI_KEYS_FROM_ANALYTICS_API.forEach((key) => {
+      kpiState[key] = {
+        loading: false,
+        error: truncated,
+        value: 'Mislukt',
+        delta: '—',
+        notLinked: false,
+      };
+    });
   }
   function resetKpisLoading() {
     KPI_DEFS.forEach((x) => {
-      kpiState[x.key] = { loading: true, error: '', value: 'Laden...', delta: 'bezig...' };
+      if (KPI_KEYS_NOT_LINKED.includes(x.key)) {
+        kpiState[x.key] = kpiNotLinkedState(x.key);
+      } else {
+        kpiState[x.key] = { loading: true, error: '', value: 'Laden…', delta: 'Bezig…', notLinked: false };
+      }
     });
   }
 
@@ -225,7 +253,35 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = '#8e867c';
     ctx.font = '12px Inter, sans-serif';
-    ctx.fillText(String(message || ''), 12, 22);
+    const text = String(message || '').trim();
+    const maxW = Math.max(80, (canvas.width || 300) - 24);
+    const words = text.split(/\s+/);
+    const lines = [];
+    let line = '';
+    for (const w of words) {
+      const tryLine = line ? `${line} ${w}` : w;
+      if (ctx.measureText(tryLine).width > maxW && line) {
+        lines.push(line);
+        line = w;
+      } else {
+        line = tryLine;
+      }
+    }
+    if (line) lines.push(line);
+    const toDraw = lines.length ? lines.slice(0, 5) : [''];
+    let y = 20;
+    for (const ln of toDraw) {
+      ctx.fillText(ln.slice(0, 120), 12, y);
+      y += 16;
+    }
+  }
+  function destroyChartIf(id) {
+    if (charts[id]) {
+      try {
+        charts[id].destroy();
+      } catch (_) {}
+      delete charts[id];
+    }
   }
   function renderKpis() {
     const el = document.getElementById('analyticsKpis');
@@ -233,8 +289,21 @@
     el.style.gridTemplateColumns = 'repeat(4,minmax(0,1fr))';
     el.innerHTML = KPI_DEFS.map((def) => {
       const st = kpiState[def.key] || {};
-      const sub = st.error ? `<div class="kpi-sub" style="color:var(--reparatie)">${escHtml(st.error)}</div>` : `<div class="kpi-sub">${escHtml(st.delta || '-')}</div>`;
-      return `<div class="panel-card"><div class="kpi-title">${def.title}</div><div class="kpi-value">${escHtml(st.value || '-')}</div>${sub}</div>`;
+      let sub = '';
+      if (st.loading) {
+        sub = `<div class="kpi-sub">${escHtml(st.delta || '')}</div>`;
+      } else if (st.notLinked) {
+        sub = `<div class="kpi-sub" style="color:var(--ink-muted);font-size:11px;line-height:1.4">${escHtml(st.delta || '')}</div>`;
+      } else if (st.error) {
+        sub = `<div class="kpi-sub" style="color:var(--reparatie);font-size:11px;line-height:1.45;word-break:break-word">${escHtml(st.error)}</div>`;
+      } else {
+        sub = `<div class="kpi-sub">${escHtml(st.delta || '—')}</div>`;
+      }
+      const valStyle =
+        st.notLinked || st.error
+          ? 'color:var(--ink-muted);font-size:clamp(15px,2.2vw,18px)'
+          : 'font-size:clamp(16px,2.4vw,20px)';
+      return `<div class="panel-card"><div class="kpi-title">${def.title}</div><div class="kpi-value" style="${valStyle}">${escHtml(st.value || '—')}</div>${sub}</div>`;
     }).join('');
   }
   function renderDebugMeta() {
@@ -267,7 +336,7 @@
       labels: rows.map((x) => x.week),
       datasets: [
         { label: 'Omzet', data: rows.map((x) => Number(x.omzet || 0)), borderColor: '#dc4a1a', backgroundColor: 'rgba(220,74,26,.1)', tension: 0.3 },
-        { label: 'Marge', data: rows.map((x) => Number(x.marge || 0)), borderColor: '#0f7a4b', backgroundColor: 'rgba(15,122,75,.1)', tension: 0.3 },
+        { label: 'Marge (geschat)', data: rows.map((x) => Number(x.marge || 0)), borderColor: '#0f7a4b', backgroundColor: 'rgba(15,122,75,.1)', tension: 0.3 },
         { label: 'Installatie', data: rows.map((x) => Number(x.installatie || 0)), borderColor: '#1f2937', tension: 0.25 },
         { label: 'Reparatie', data: rows.map((x) => Number(x.reparatie || 0)), borderColor: '#a855f7', tension: 0.25 },
         { label: 'Onderhoud', data: rows.map((x) => Number(x.onderhoud || 0)), borderColor: '#0891b2', tension: 0.25 },
@@ -275,38 +344,35 @@
     });
   }
   function renderAdSpendSection() {
-    drawChart('analyticsAdSpendChart', 'bar', {
-      labels: HARD_AD_SPEND.map((x) => x.week),
-      datasets: [
-        { label: 'Ad spend', data: HARD_AD_SPEND.map((x) => x.spend), backgroundColor: 'rgba(17,24,39,.75)' },
-        { label: 'Omzet', data: HARD_AD_SPEND.map((x) => x.omzet), backgroundColor: 'rgba(220,74,26,.75)' },
-      ],
-    });
-    const totalSpend = HARD_AD_SPEND.reduce((s, x) => s + x.spend, 0);
-    const totalRevenue = HARD_AD_SPEND.reduce((s, x) => s + x.omzet, 0);
-    const roas = totalSpend > 0 ? totalRevenue / totalSpend : 0;
+    destroyChartIf('analyticsAdSpendChart');
+    paintCanvasMessage(
+      'analyticsAdSpendChart',
+      'Advertentie-data: niet gekoppeld (geen demo-grafiek). Koppel later Google Ads om spend en ROAS te tonen.'
+    );
     const meta = document.getElementById('analyticsRoasMeta');
-    if (meta) meta.textContent = `ROAS: ${roas.toFixed(2)}x`;
+    if (meta) meta.textContent = 'ROAS: niet van toepassing (geen ad spend-bron)';
+  }
+  function renderTrafficFunnelPlaceholder(errorText) {
+    const funnel = document.getElementById('analyticsFunnel');
+    if (!funnel) return;
+    if (errorText) {
+      funnel.innerHTML = `<div class="panel-card" style="padding:14px;border:1px solid var(--border);border-radius:10px;background:#fff8f5"><strong style="color:var(--text)">Website → afspraken</strong><p style="margin:8px 0 0;font-size:13px;color:var(--reparatie);line-height:1.45;word-break:break-word">${escHtml(errorText)}</p></div>`;
+      return;
+    }
+    funnel.innerHTML = `<div class="panel-card" style="padding:14px;border:1px solid var(--border);border-radius:10px;background:#fdfbf8;font-size:13px;color:var(--ink-soft);line-height:1.5"><strong style="color:var(--text)">Website → afspraken</strong><p style="margin:8px 0 0">GA4 en/of WordPress-analytics zijn <strong>nog niet gekoppeld</strong>. Hier komt straks het funnel-overzicht (sessies → formulier → boeking).</p><p style="margin:10px 0 0;font-size:12px;color:var(--ink-muted)">Het aantal <strong>afspraken</strong> in de KPI-rij komt uit de planning (GHL), niet uit deze funnel.</p></div>`;
   }
   function renderTrafficSection() {
-    drawChart('analyticsTrafficChart', 'line', {
-      labels: HARD_TRAFFIC.map((x) => x.week),
-      datasets: [
-        { label: 'Organisch', data: HARD_TRAFFIC.map((x) => x.organisch), borderColor: '#0f7a4b', tension: 0.25 },
-        { label: 'Betaald', data: HARD_TRAFFIC.map((x) => x.betaald), borderColor: '#dc4a1a', tension: 0.25 },
-        { label: 'Direct', data: HARD_TRAFFIC.map((x) => x.direct), borderColor: '#111827', tension: 0.25 },
-        { label: 'Email', data: HARD_TRAFFIC.map((x) => x.email), borderColor: '#7c3aed', tension: 0.25 },
-      ],
-    });
-    const sessions = HARD_TRAFFIC.reduce((s, x) => s + x.organisch + x.betaald + x.direct + x.email, 0);
-    const forms = Math.round(sessions * 0.092);
-    const bookings = Number(analyticsData?.kpis?.totaalAfspraken || 0);
-    const funnel = document.getElementById('analyticsFunnel');
-    if (funnel) {
-      const max = Math.max(1, sessions, forms, bookings);
-      const row = (label, value, color) => `<div style="display:flex;align-items:center;gap:8px;margin:4px 0"><div style="width:170px;font-size:12px;color:var(--ink-soft)">${label}</div><div style="flex:1;background:#f4efe7;border-radius:6px;height:10px;overflow:hidden"><div style="height:10px;background:${color};width:${Math.max(3, Math.round((value / max) * 100))}%"></div></div><strong style="width:80px;text-align:right;font-size:12px">${value}</strong></div>`;
-      funnel.innerHTML = row('Sessies', sessions, '#111827') + row('Contactformulier', forms, '#dc4a1a') + row('Boeking', bookings, '#0f7a4b');
+    destroyChartIf('analyticsTrafficChart');
+    if (sectionState.analytics.error) {
+      paintCanvasMessage('analyticsTrafficChart', sectionState.analytics.error);
+      renderTrafficFunnelPlaceholder(sectionState.analytics.error);
+      return;
     }
+    paintCanvasMessage(
+      'analyticsTrafficChart',
+      'Geen sessiedata: koppel GA4 of een WordPress/website-bron om verkeer te tonen.'
+    );
+    renderTrafficFunnelPlaceholder('');
   }
   function renderCashflowSection() {
     if (sectionState.cashflow.error) {
@@ -325,12 +391,7 @@
     });
     const openTable = document.getElementById('analyticsOpenInvoicesTable');
     if (!openTable) return;
-    const placeholder = [
-      { naam: 'Van Dijk', bedrag: 420, dagenOpen: 18 },
-      { naam: 'Familie Bos', bedrag: 690, dagenOpen: 11 },
-      { naam: 'Jansen BV', bedrag: 1240, dagenOpen: 27 },
-    ];
-    openTable.innerHTML = `<thead><tr><th>Naam</th><th>Bedrag</th><th>Dagen open</th></tr></thead><tbody>${placeholder.map((r) => `<tr><td>${escHtml(r.naam)}</td><td>${fmtEuro(r.bedrag)}</td><td>${r.dagenOpen}</td></tr>`).join('')}</tbody>`;
+    openTable.innerHTML = `<tbody><tr><td colspan="3" style="padding:14px;font-size:13px;color:var(--ink-soft);line-height:1.45;border:none"><strong style="color:var(--text)">Openstaande facturen (detail)</strong> — nog niet gekoppeld. De cashflow-grafiek hierboven gebruikt wel Moneybird op maandniveau wanneer de API beschikbaar is.</td></tr></tbody>`;
   }
   function renderInventorySection() {
     const el = document.getElementById('analyticsInventoryTable');
@@ -365,31 +426,36 @@
   }
   function renderOperationalSection() {
     if (sectionState.analytics.error) {
+      destroyChartIf('analyticsOccupancyChart');
+      destroyChartIf('analyticsRevenueByTechChart');
+      destroyChartIf('analyticsJobTypeDonutChart');
       paintCanvasMessage('analyticsOccupancyChart', sectionState.analytics.error);
       paintCanvasMessage('analyticsRevenueByTechChart', sectionState.analytics.error);
       paintCanvasMessage('analyticsJobTypeDonutChart', sectionState.analytics.error);
       const repeat = document.getElementById('analyticsRepeatCustomersKpi');
-      if (repeat) repeat.textContent = 'Fout';
+      if (repeat) repeat.textContent = '—';
       return;
     }
-    const totalRevenue = Number(analyticsData?.kpis?.totaleOmzet || 0);
-    const totalAppts = Math.max(1, Number(analyticsData?.kpis?.totaalAfspraken || 0));
-    const techs = ['Jerry', 'Daan', 'Sander'];
-    const revByTech = techs.map((name, i) => ({ name, omzet: Math.round((totalRevenue * [0.38, 0.34, 0.28][i]) * 100) / 100 }));
-    const occByTech = techs.map((name, i) => ({ name, bezetting: Math.min(100, Math.round((totalAppts / 3) * [8.5, 7.9, 7.2][i])) }));
-    drawChart('analyticsOccupancyChart', 'bar', {
-      labels: occByTech.map((x) => x.name),
-      datasets: [{ label: 'Bezetting %', data: occByTech.map((x) => x.bezetting), backgroundColor: 'rgba(17,24,39,.75)' }],
-    }, { scales: { y: { max: 100 } } });
-    drawChart('analyticsRevenueByTechChart', 'bar', {
-      labels: revByTech.map((x) => x.name),
-      datasets: [{ label: 'Omzet', data: revByTech.map((x) => x.omzet), backgroundColor: 'rgba(220,74,26,.75)' }],
-    }, { indexAxis: 'y' });
+    destroyChartIf('analyticsOccupancyChart');
+    destroyChartIf('analyticsRevenueByTechChart');
+    paintCanvasMessage(
+      'analyticsOccupancyChart',
+      'Bezetting per monteur: nog niet gekoppeld (geen uren- of routebron in analytics).'
+    );
+    paintCanvasMessage(
+      'analyticsRevenueByTechChart',
+      'Omzet per monteur: nog niet gekoppeld (geen toewijzing van omzet aan monteur).'
+    );
     const jt = Array.isArray(analyticsData?.jobTypeVerdeling) ? analyticsData.jobTypeVerdeling : [];
-    drawChart('analyticsJobTypeDonutChart', 'doughnut', {
-      labels: jt.map((x) => x.jobType),
-      datasets: [{ data: jt.map((x) => Number(x.aantal || 0)), backgroundColor: ['#111827', '#dc4a1a', '#0f7a4b', '#7c3aed'] }],
-    });
+    if (!jt.length) {
+      destroyChartIf('analyticsJobTypeDonutChart');
+      paintCanvasMessage('analyticsJobTypeDonutChart', 'Geen werksoorten in deze periode.');
+    } else {
+      drawChart('analyticsJobTypeDonutChart', 'doughnut', {
+        labels: jt.map((x) => x.jobType),
+        datasets: [{ data: jt.map((x) => Number(x.aantal || 0)), backgroundColor: ['#111827', '#dc4a1a', '#0f7a4b', '#7c3aed'] }],
+      });
+    }
     const repeat = document.getElementById('analyticsRepeatCustomersKpi');
     if (repeat) repeat.textContent = fmtPct(analyticsData?.repeatCustomersPct || 0);
   }
@@ -563,8 +629,20 @@
 
   async function fetchAnalyticsByQuery(query) {
     const res = await fetch(`/api/analytics?${query}`, { cache: 'no-store', headers: { 'X-HK-Auth': authHeader() } });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.detail || `Analytics fout (${res.status})`);
+    const text = await res.text().catch(() => '');
+    let data = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch (_) {
+      data = {};
+    }
+    if (!res.ok || data?.ok === false) {
+      const errTitle = data?.error || `HTTP ${res.status}`;
+      const detail = data?.detail ? String(data.detail).trim() : '';
+      const tail = !detail && text && text.trim().startsWith('{') === false ? text.trim().slice(0, 200) : '';
+      const full = [errTitle, detail || tail].filter(Boolean).join(' — ');
+      throw new Error(full || `Analytics (${res.status})`);
+    }
     return data;
   }
   async function loadAnalyticsSection() {
@@ -576,15 +654,17 @@
       const curr = await fetchAnalyticsByQuery(buildRangeQuery(period, false));
       const start = String(curr?.startDate || '');
       const end = String(curr?.endDate || '');
-      let prev = null;
+      let prev = { kpis: {}, omzetByWeek: [] };
       if (start && end) {
         const dayMs = 24 * 60 * 60 * 1000;
         const diff = Math.max(1, Math.floor((new Date(`${end}T12:00:00Z`) - new Date(`${start}T12:00:00Z`)) / dayMs) + 1);
         const prevEnd = addDaysYmd(start, -1);
         const prevStart = addDaysYmd(prevEnd, -(diff - 1));
-        prev = await fetchAnalyticsByQuery(`startDate=${encodeURIComponent(prevStart)}&endDate=${encodeURIComponent(prevEnd)}`);
-      } else {
-        prev = { kpis: {}, omzetByWeek: [] };
+        try {
+          prev = await fetchAnalyticsByQuery(`startDate=${encodeURIComponent(prevStart)}&endDate=${encodeURIComponent(prevEnd)}`);
+        } catch (_) {
+          prev = { kpis: {}, omzetByWeek: [] };
+        }
       }
       analyticsData = curr;
       previousData = prev;
@@ -593,26 +673,31 @@
       const p = prev?.kpis || {};
       const totalMargin = (curr?.omzetByWeek || []).reduce((s, x) => s + Number(x.marge || 0), 0);
       const prevMargin = (prev?.omzetByWeek || []).reduce((s, x) => s + Number(x.marge || 0), 0);
-      const adSpend = HARD_AD_SPEND.reduce((s, x) => s + x.spend, 0);
-      const sessions = HARD_TRAFFIC.reduce((s, x) => s + x.organisch + x.betaald + x.direct + x.email, 0);
-      const prevSessions = Math.round(sessions * 0.94);
-      const conv = sessions ? (Number(k.totaalAfspraken || 0) / sessions) * 100 : 0;
-      const prevConv = prevSessions ? (Number(p.totaalAfspraken || 0) / prevSessions) * 100 : 0;
+      const margePct = k.totaleOmzet ? (totalMargin / k.totaleOmzet) * 100 : 0;
       setKpi('omzet', fmtEuro(k.totaleOmzet || 0), k.totaleOmzet || 0, p.totaleOmzet || 0);
-      setKpi('marge', `${fmtEuro(totalMargin)} · ${fmtPct((k.totaleOmzet ? (totalMargin / k.totaleOmzet) * 100 : 0))}`, totalMargin, prevMargin);
-      setKpi('adSpend', fmtEuro(adSpend), adSpend, adSpend * 0.92);
+      setKpi(
+        'marge',
+        `${fmtEuro(totalMargin)} · ${fmtPct(margePct)}`,
+        totalMargin,
+        prevMargin,
+        ' · geschat (model)'
+      );
+      KPI_KEYS_NOT_LINKED.forEach((key) => {
+        kpiState[key] = kpiNotLinkedState(key);
+      });
       setKpi('afspraken', String(k.totaalAfspraken || 0), k.totaalAfspraken || 0, p.totaalAfspraken || 0);
-      setKpi('sessions', String(sessions), sessions, prevSessions);
-      setKpi('conversie', fmtPct(conv), conv, prevConv);
       setKpi('gemWaarde', fmtEuro(k.gemiddeldeWaarde || 0), k.gemiddeldeWaarde || 0, p.gemiddeldeWaarde || 0);
       const gm = k.totaleOmzet ? (totalMargin / k.totaleOmzet) * 100 : 0;
       const pgm = p.totaleOmzet ? (prevMargin / p.totaleOmzet) * 100 : 0;
-      setKpi('gemMarge', fmtPct(gm), gm, pgm);
+      setKpi('gemMarge', fmtPct(gm), gm, pgm, ' · geschat');
       sectionState.analytics = { loading: false, error: '' };
     } catch (err) {
       const msg = String(err?.message || err);
       sectionState.analytics = { loading: false, error: msg };
-      KPI_DEFS.forEach((k) => setKpiError(k.key, msg));
+      setAnalyticsApiKpisError(msg);
+      KPI_KEYS_NOT_LINKED.forEach((key) => {
+        kpiState[key] = kpiNotLinkedState(key);
+      });
     }
     renderKpis();
     renderDebugMeta();

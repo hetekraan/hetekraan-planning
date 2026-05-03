@@ -503,13 +503,23 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-HK-Auth');
     if (req.method === 'OPTIONS') return res.status(200).end();
-    if (!ensureAuth(req)) return res.status(401).json({ error: 'Niet geautoriseerd' });
+    if (!ensureAuth(req)) {
+      return res.status(401).json({
+        ok: false,
+        error: 'Niet geautoriseerd',
+        detail: 'Ongeldige of ontbrekende sessie (header X-HK-Auth).',
+      });
+    }
     if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
     const locConfigured = ghlLocationIdFromEnv();
     const calConfigured = ghlCalendarIdFromEnv();
     if (!GHL_API_KEY || !locConfigured || !calConfigured) {
-      return res.status(503).json({ error: GHL_CONFIG_MISSING_MSG });
+      return res.status(503).json({
+        ok: false,
+        error: GHL_CONFIG_MISSING_MSG,
+        detail: 'Controleer GHL_API_KEY, GHL_LOCATION_ID en GHL_CALENDAR_ID op deze omgeving.',
+      });
     }
 
     const range = buildRangeFromRequest(queryFromReq(req));
