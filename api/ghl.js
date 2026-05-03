@@ -107,6 +107,12 @@ import {
   syncAppointmentToSupabase,
   updateAppointmentInSupabase,
 } from '../lib/planner-supabase-sync.js';
+import {
+  applySupabaseMirrorOverlayToEvent,
+  filterGhlEventsForSupabaseMirror,
+  isSupabasePlannerReadEnabled,
+  readSupabasePlannerMirrorForDate,
+} from '../lib/planner-supabase-read.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -1209,7 +1215,15 @@ export default async function handler(req, res) {
           locationId: ghlLocationIdFromEnv(),
         });
         const gaT0 = Date.now();
-        const gaPerf = { route: 'getAppointments', ghl_calendar_events_ms: 0, blocked_slots_ms: 0, redis_b1_synthetic_ms: 0, contact_fetch_sum_ms: 0, filter_dedupe_map_ms: 0 };
+        const gaPerf = {
+          route: 'getAppointments',
+          ghl_calendar_events_ms: 0,
+          blocked_slots_ms: 0,
+          redis_b1_synthetic_ms: 0,
+          contact_fetch_sum_ms: 0,
+          filter_dedupe_map_ms: 0,
+          supabase_mirror_parallel_ms: 0,
+        };
 
         const dateRaw = req.query.date;
         const date = normalizeYyyyMmDdInput(
@@ -1221,12 +1235,41 @@ export default async function handler(req, res) {
         const { startMs, endMs } = bounds;
         const locId = locConfigured;
         const calId = calConfigured;
-        const blockSlotUserId = await resolveBlockSlotAssignedUserId(
-          GHL_BASE,
-          GHL_API_KEY,
-          locId,
-          calId
-        );
+        const tSbParallel = Date.now();
+        const sbReadEnabled = isSupabasePlannerReadEnabled();
+        const [blockSlotUserId, sbMirror] = await Promise.all([
+          resolveBlockSlotAssignedUserId(GHL_BASE, GHL_API_KEY, locId, calId),
+          sbReadEnabled
+            ? readSupabasePlannerMirrorForDate(date)
+            : Promise.resolve({
+                shouldUse: false,
+                stubs: [],
+                sbGhlEventIds: new Set(),
+                redisContactSkip: new Set(),
+                fallbackReason: 'flag_off',
+              }),
+        ]);
+        gaPerf.supabase_mirror_parallel_ms = Date.now() - tSbParallel;
+        if (sbReadEnabled) {
+          if (sbMirror.shouldUse) {
+            console.info(
+              '[supabase_read_ok]',
+              JSON.stringify({
+                dateStr: date,
+                stubCount: sbMirror.stubs.length,
+                legacyGhlIds: sbMirror.sbGhlEventIds?.size || 0,
+              })
+            );
+          } else {
+            console.info(
+              '[supabase_read_fallback]',
+              JSON.stringify({
+                dateStr: date,
+                reason: sbMirror.fallbackReason || 'unknown',
+              })
+            );
+          }
+        }
         const url = `${GHL_BASE}/calendars/events?locationId=${encodeURIComponent(locId)}&calendarId=${encodeURIComponent(calId)}&startTime=${startMs}&endTime=${endMs}`;
         const calKey = amsterdamDayReadCacheKeyCalendarEvents(locId, calId, date);
         const tCalEv = Date.now();
@@ -1247,6 +1290,10 @@ export default async function handler(req, res) {
           gaPerf.ghl_calendar_events_ms = Date.now() - tCalEv;
           events = data?.events || [];
           if (response.ok) amsterdamDayReadCacheSet(calKey, events);
+        }
+
+        if (sbMirror.shouldUse && sbMirror.sbGhlEventIds.size) {
+          events = filterGhlEventsForSupabaseMirror(events, sbMirror.sbGhlEventIds);
         }
 
         markBlockLikeOnCalendarEvents(events);
@@ -1280,6 +1327,12 @@ export default async function handler(req, res) {
         } catch (err) {
           console.warn('[ghl] getAppointments block reservations:', err?.message || err);
         }
+        if (sbMirror.shouldUse && sbMirror.redisContactSkip.size) {
+          blockBookingSynthetic = blockBookingSynthetic.filter((ev) => {
+            const cid = String(ev.contactId || ev.contact_id || '').trim();
+            return cid && !sbMirror.redisContactSkip.has(cid);
+          });
+        }
         for (const ev of blockBookingSynthetic) {
           const cid = String(ev.contactId || ev.contact_id || '').trim();
           if (!cid) continue;
@@ -1288,6 +1341,11 @@ export default async function handler(req, res) {
             id: `hk-b1:${cid}:${date}`,
             _hkBlockReservationSynthetic: true,
           });
+        }
+        if (sbMirror.shouldUse && sbMirror.stubs.length) {
+          for (const st of sbMirror.stubs) {
+            events.push(st);
+          }
         }
 
         /** Eén overlap-check per event; verrijking gebruikt die niet — alleen events op deze dag hoeven contact. */
@@ -1468,6 +1526,9 @@ export default async function handler(req, res) {
           if (contact) enrichEvent(e, contact);
           return e;
         });
+        for (const e of enriched) {
+          if (e._hkSupabaseOverlay) applySupabaseMirrorOverlayToEvent(e, e._hkSupabaseOverlay);
+        }
         gaPerf.contact_enrich_sync_ms = Date.now() - tEnrich0;
 
         /** Events die deze Amsterdam-dag raken (ook langlopende blokken / vakantie). */
