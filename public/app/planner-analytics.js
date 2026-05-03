@@ -1,14 +1,17 @@
 (function initPlannerAnalytics(global) {
-  const KPI_DEFS = [
-    { key: 'omzet', title: 'Omzet (periode)' },
-    { key: 'marge', title: 'Marge (€ en %)' },
-    { key: 'adSpend', title: 'Ad spend' },
+  const KPI_DEFS_PLANNING = [
+    { key: 'omzet', title: 'Omzet' },
+    { key: 'marge', title: 'Marge (geschat)' },
     { key: 'afspraken', title: 'Afspraken' },
-    { key: 'sessions', title: 'Website sessies' },
-    { key: 'conversie', title: 'Conversie %' },
     { key: 'gemWaarde', title: 'Gem. waarde per afspraak' },
-    { key: 'gemMarge', title: 'Gem. marge %' },
+    { key: 'gemMarge', title: 'Gem. marge % (geschat)' },
   ];
+  const KPI_DEFS_MARKETING = [
+    { key: 'adSpend', title: 'Ad spend' },
+    { key: 'sessions', title: 'Website sessions' },
+    { key: 'conversie', title: 'Conversie %' },
+  ];
+  const KPI_DEFS = [...KPI_DEFS_PLANNING, ...KPI_DEFS_MARKETING];
 
   /** KPI’s die uit /api/analytics komen; bij fout alleen deze op “Mislukt” + detail. */
   const KPI_KEYS_FROM_ANALYTICS_API = ['omzet', 'marge', 'afspraken', 'gemWaarde', 'gemMarge'];
@@ -182,9 +185,9 @@
   }
   function kpiNotLinkedState(key) {
     const hints = {
-      adSpend: 'Google Ads-API is nog niet gekoppeld.',
-      sessions: 'GA4 / WordPress-sessiedata nog niet gekoppeld.',
-      conversie: 'Zonder echte sessiedata is conversie niet zinvol.',
+      adSpend: 'Koppel Google Ads om spend te tonen.',
+      sessions: 'Koppel GA4 om sessies te tonen.',
+      conversie: 'Koppel GA4 — conversie volgt op sessies.',
     };
     return {
       loading: false,
@@ -283,28 +286,33 @@
       delete charts[id];
     }
   }
+  function renderKpiCardsHtml(defs) {
+    return defs
+      .map((def) => {
+        const st = kpiState[def.key] || {};
+        let sub = '';
+        if (st.loading) {
+          sub = `<div class="kpi-sub">${escHtml(st.delta || '')}</div>`;
+        } else if (st.notLinked) {
+          sub = `<div class="kpi-sub" style="color:var(--ink-muted);font-size:11px;line-height:1.4">${escHtml(st.delta || '')}</div>`;
+        } else if (st.error) {
+          sub = `<div class="kpi-sub" style="color:var(--reparatie);font-size:11px;line-height:1.45;word-break:break-word">${escHtml(st.error)}</div>`;
+        } else {
+          sub = `<div class="kpi-sub">${escHtml(st.delta || '—')}</div>`;
+        }
+        const valStyle =
+          st.notLinked || st.error
+            ? 'color:var(--ink-muted);font-size:clamp(15px,2.2vw,18px)'
+            : 'font-size:clamp(16px,2.4vw,20px)';
+        return `<div class="panel-card"><div class="kpi-title">${def.title}</div><div class="kpi-value" style="${valStyle}">${escHtml(st.value || '—')}</div>${sub}</div>`;
+      })
+      .join('');
+  }
   function renderKpis() {
-    const el = document.getElementById('analyticsKpis');
-    if (!el) return;
-    el.style.gridTemplateColumns = 'repeat(4,minmax(0,1fr))';
-    el.innerHTML = KPI_DEFS.map((def) => {
-      const st = kpiState[def.key] || {};
-      let sub = '';
-      if (st.loading) {
-        sub = `<div class="kpi-sub">${escHtml(st.delta || '')}</div>`;
-      } else if (st.notLinked) {
-        sub = `<div class="kpi-sub" style="color:var(--ink-muted);font-size:11px;line-height:1.4">${escHtml(st.delta || '')}</div>`;
-      } else if (st.error) {
-        sub = `<div class="kpi-sub" style="color:var(--reparatie);font-size:11px;line-height:1.45;word-break:break-word">${escHtml(st.error)}</div>`;
-      } else {
-        sub = `<div class="kpi-sub">${escHtml(st.delta || '—')}</div>`;
-      }
-      const valStyle =
-        st.notLinked || st.error
-          ? 'color:var(--ink-muted);font-size:clamp(15px,2.2vw,18px)'
-          : 'font-size:clamp(16px,2.4vw,20px)';
-      return `<div class="panel-card"><div class="kpi-title">${def.title}</div><div class="kpi-value" style="${valStyle}">${escHtml(st.value || '—')}</div>${sub}</div>`;
-    }).join('');
+    const planningEl = document.getElementById('analyticsKpisPlanning');
+    const marketingEl = document.getElementById('analyticsKpisMarketing');
+    if (planningEl) planningEl.innerHTML = renderKpiCardsHtml(KPI_DEFS_PLANNING);
+    if (marketingEl) marketingEl.innerHTML = renderKpiCardsHtml(KPI_DEFS_MARKETING);
   }
   function renderDebugMeta() {
     const panel = document.getElementById('panelAnalytics');
@@ -345,12 +353,9 @@
   }
   function renderAdSpendSection() {
     destroyChartIf('analyticsAdSpendChart');
-    paintCanvasMessage(
-      'analyticsAdSpendChart',
-      'Advertentie-data: niet gekoppeld (geen demo-grafiek). Koppel later Google Ads om spend en ROAS te tonen.'
-    );
+    paintCanvasMessage('analyticsAdSpendChart', 'Niet gekoppeld. Koppel Google Ads om spend te tonen.');
     const meta = document.getElementById('analyticsRoasMeta');
-    if (meta) meta.textContent = 'ROAS: niet van toepassing (geen ad spend-bron)';
+    if (meta) meta.textContent = 'ROAS: niet van toepassing zonder Ads';
   }
   function renderTrafficFunnelPlaceholder(errorText) {
     const funnel = document.getElementById('analyticsFunnel');
@@ -359,7 +364,7 @@
       funnel.innerHTML = `<div class="panel-card" style="padding:14px;border:1px solid var(--border);border-radius:10px;background:#fff8f5"><strong style="color:var(--text)">Website → afspraken</strong><p style="margin:8px 0 0;font-size:13px;color:var(--reparatie);line-height:1.45;word-break:break-word">${escHtml(errorText)}</p></div>`;
       return;
     }
-    funnel.innerHTML = `<div class="panel-card" style="padding:14px;border:1px solid var(--border);border-radius:10px;background:#fdfbf8;font-size:13px;color:var(--ink-soft);line-height:1.5"><strong style="color:var(--text)">Website → afspraken</strong><p style="margin:8px 0 0">GA4 en/of WordPress-analytics zijn <strong>nog niet gekoppeld</strong>. Hier komt straks het funnel-overzicht (sessies → formulier → boeking).</p><p style="margin:10px 0 0;font-size:12px;color:var(--ink-muted)">Het aantal <strong>afspraken</strong> in de KPI-rij komt uit de planning (GHL), niet uit deze funnel.</p></div>`;
+    funnel.innerHTML = `<div class="panel-card" style="padding:14px;border:1px solid var(--border);border-radius:10px;background:#fdfbf8;font-size:13px;color:var(--ink-soft);line-height:1.45"><strong style="color:var(--text)">Website → afspraken</strong><p style="margin:8px 0 0"><strong>Niet gekoppeld.</strong> Koppel GA4 (of WordPress) om het funnel-overzicht te vullen.</p><p style="margin:8px 0 0;font-size:12px;color:var(--ink-muted)">Afspraken hierboven komen uit de planning.</p></div>`;
   }
   function renderTrafficSection() {
     destroyChartIf('analyticsTrafficChart');
@@ -368,10 +373,7 @@
       renderTrafficFunnelPlaceholder(sectionState.analytics.error);
       return;
     }
-    paintCanvasMessage(
-      'analyticsTrafficChart',
-      'Geen sessiedata: koppel GA4 of een WordPress/website-bron om verkeer te tonen.'
-    );
+    paintCanvasMessage('analyticsTrafficChart', 'Niet gekoppeld. Koppel GA4 om sessies te tonen.');
     renderTrafficFunnelPlaceholder('');
   }
   function renderCashflowSection() {
@@ -675,13 +677,7 @@
       const prevMargin = (prev?.omzetByWeek || []).reduce((s, x) => s + Number(x.marge || 0), 0);
       const margePct = k.totaleOmzet ? (totalMargin / k.totaleOmzet) * 100 : 0;
       setKpi('omzet', fmtEuro(k.totaleOmzet || 0), k.totaleOmzet || 0, p.totaleOmzet || 0);
-      setKpi(
-        'marge',
-        `${fmtEuro(totalMargin)} · ${fmtPct(margePct)}`,
-        totalMargin,
-        prevMargin,
-        ' · geschat (model)'
-      );
+      setKpi('marge', `${fmtEuro(totalMargin)} · ${fmtPct(margePct)}`, totalMargin, prevMargin, '');
       KPI_KEYS_NOT_LINKED.forEach((key) => {
         kpiState[key] = kpiNotLinkedState(key);
       });
@@ -689,7 +685,7 @@
       setKpi('gemWaarde', fmtEuro(k.gemiddeldeWaarde || 0), k.gemiddeldeWaarde || 0, p.gemiddeldeWaarde || 0);
       const gm = k.totaleOmzet ? (totalMargin / k.totaleOmzet) * 100 : 0;
       const pgm = p.totaleOmzet ? (prevMargin / p.totaleOmzet) * 100 : 0;
-      setKpi('gemMarge', fmtPct(gm), gm, pgm, ' · geschat');
+      setKpi('gemMarge', fmtPct(gm), gm, pgm, '');
       sectionState.analytics = { loading: false, error: '' };
     } catch (err) {
       const msg = String(err?.message || err);

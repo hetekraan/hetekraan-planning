@@ -5527,6 +5527,43 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 10px;
   }
+  .analytics-kpi-stack {
+    display: grid;
+    gap: 16px;
+  }
+  .analytics-kpi-block {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface, #fff);
+    padding: 14px 16px 16px;
+  }
+  .analytics-kpi-block--marketing {
+    background: var(--surface3, #f5f1ea);
+  }
+  .analytics-section-heading {
+    margin: 0 0 4px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text, #1a1512);
+    letter-spacing: -0.02em;
+  }
+  .analytics-section-lead {
+    margin: 0 0 12px;
+    font-size: 12px;
+    color: var(--ink-muted);
+    line-height: 1.35;
+  }
+  .kpi-grid--planning {
+    grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  }
+  .kpi-grid--marketing {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  @media (max-width: 720px) {
+    .kpi-grid--marketing {
+      grid-template-columns: 1fr;
+    }
+  }
   .kpi-title { font-size: 11px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: .04em; }
   .kpi-value { font-size: 20px; font-weight: 700; margin-top: 4px; }
   .kpi-sub { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
@@ -5884,7 +5921,18 @@
       <div class="toolbar-row" id="analyticsPeriodFilters"></div>
     </div>
     <div class="panel-page-content">
-      <div class="kpi-grid" id="analyticsKpis"></div>
+      <div class="analytics-kpi-stack">
+        <div class="analytics-kpi-block">
+          <h2 class="analytics-section-heading">Planning & omzet</h2>
+          <p class="analytics-section-lead">Uit agenda en contactvelden (GHL).</p>
+          <div class="kpi-grid kpi-grid--planning" id="analyticsKpisPlanning"></div>
+        </div>
+        <div class="analytics-kpi-block analytics-kpi-block--marketing">
+          <h2 class="analytics-section-heading">Marketing koppelingen</h2>
+          <p class="analytics-section-lead">Externe bronnen — nog niet actief.</p>
+          <div class="kpi-grid kpi-grid--marketing" id="analyticsKpisMarketing"></div>
+        </div>
+      </div>
       <div class="panel-card">
         <div class="routes-map-head">Omzet & marge over tijd</div>
         <canvas id="analyticsRevenueMarginChart" height="110"></canvas>
