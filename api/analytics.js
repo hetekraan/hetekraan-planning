@@ -1,7 +1,7 @@
 import { Redis } from '@upstash/redis';
 import { verifySessionToken } from '../lib/session.js';
 import { fetchWithRetry } from '../lib/retry.js';
-import { ghlCalendarIdFromEnv, ghlLocationIdFromEnv, GHL_CONFIG_MISSING_MSG } from '../lib/ghl-env-ids.js';
+import { ghlCalendarIdFromEnv, ghlLocationIdFromEnv } from '../lib/ghl-env-ids.js';
 import {
   fetchBlockedSlotsAsEvents,
   markBlockLikeOnCalendarEvents,
@@ -14,6 +14,7 @@ import { readCanonicalAddressLine, splitAddressLineToStraatHuis } from '../lib/g
 import { resolveContactCustomFieldId } from '../lib/ghl-custom-fields.js';
 import { addAmsterdamCalendarDays, formatYyyyMmDdInAmsterdam, amsterdamCalendarDayBoundsMs } from '../lib/amsterdam-calendar-day.js';
 import { cachedListConfirmedSyntheticEventsForDate } from '../lib/amsterdam-day-read-cache.js';
+import { loadSupabaseAnalyticsAppointments } from '../lib/analytics-supabase-read.js';
 
 const GHL_API_KEY = process.env.GHL_API_KEY;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
@@ -195,25 +196,17 @@ function dateRangeFromPeriod(periodKey, days) {
 }
 
 async function fetchCalendarEventsRange({ locationId, calendarId, startMs, endMs, apiKey }) {
-  let calls = 0;
-  const out = [];
-  for (let page = 1; page <= 20; page += 1) {
-    const url = `${GHL_BASE}/calendars/events?locationId=${encodeURIComponent(locationId)}&calendarId=${encodeURIComponent(calendarId)}&startTime=${startMs}&endTime=${endMs}&page=${page}&limit=100`;
-    calls += 1;
-    const response = await fetchWithRetry(url, {
-      headers: { Authorization: `Bearer ${apiKey}`, Version: '2021-04-15' },
-    });
-    if (!response.ok) {
-      const txt = await response.text().catch(() => '');
-      throw new Error(`GHL calendars/events fout (${response.status}): ${txt.slice(0, 180)}`);
-    }
-    const data = await response.json().catch(() => ({}));
-    const rows = Array.isArray(data?.events) ? data.events : [];
-    if (!rows.length) break;
-    out.push(...rows);
-    if (rows.length < 100) break;
+  const url = `${GHL_BASE}/calendars/events?locationId=${encodeURIComponent(locationId)}&calendarId=${encodeURIComponent(calendarId)}&startTime=${startMs}&endTime=${endMs}`;
+  const response = await fetchWithRetry(url, {
+    headers: { Authorization: `Bearer ${apiKey}`, Version: '2021-04-15' },
+  });
+  if (!response.ok) {
+    const txt = await response.text().catch(() => '');
+    throw new Error(`GHL calendars/events fout (${response.status}): ${txt.slice(0, 180)}`);
   }
-  return { events: out, calls };
+  const data = await response.json().catch(() => ({}));
+  const rows = Array.isArray(data?.events) ? data.events : [];
+  return { events: rows, calls: 1 };
 }
 
 async function readCachedContact(contactId) {
@@ -360,6 +353,38 @@ async function writeResultCache(periodKey, payload) {
   await redis.set(resultCacheKey(periodKey), JSON.stringify(payload), { ex: RESULT_CACHE_TTL_SEC });
 }
 
+async function runAnalyticsFromSupabase(rangeInput) {
+  const range = rangeInput;
+  const url = String(process.env.SUPABASE_URL || '').trim();
+  const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  if (!url || !key) {
+    throw new Error('Supabase analytics: SUPABASE_URL of SUPABASE_SERVICE_ROLE_KEY ontbreekt');
+  }
+  const { appointments, meta: sbFetchMeta } = await loadSupabaseAnalyticsAppointments(
+    url,
+    key,
+    range.startDate,
+    range.endDate
+  );
+  const analytics = buildAnalyticsFromAppointments(appointments);
+  const uniqueContacts = new Set(appointments.map((a) => String(a.contactId || '').trim()).filter(Boolean)).size;
+  return {
+    period: range.period,
+    startDate: range.startDate,
+    endDate: range.endDate,
+    ...analytics,
+    meta: {
+      ghlCalls: 0,
+      uniqueContacts,
+      cacheHit: 'none',
+      period: range.period,
+      generatedAt: new Date().toISOString(),
+      analytics_source: 'supabase',
+      ...sbFetchMeta,
+    },
+  };
+}
+
 async function runAnalytics(rangeInput) {
   const locId = ghlLocationIdFromEnv();
   const calId = ghlCalendarIdFromEnv();
@@ -493,12 +518,17 @@ async function runAnalytics(rangeInput) {
       cacheHit: usedContactCache ? 'contacts' : 'none',
       period: range.period,
       generatedAt: new Date().toISOString(),
+      analytics_source: 'ghl',
     },
   };
 }
 
 export default async function handler(req, res) {
   try {
+    console.log('analytics_handler_start', {
+      hasSupabaseUrl: !!process.env.SUPABASE_URL,
+      hasSupabaseServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+    });
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-HK-Auth');
@@ -514,17 +544,38 @@ export default async function handler(req, res) {
 
     const locConfigured = ghlLocationIdFromEnv();
     const calConfigured = ghlCalendarIdFromEnv();
-    if (!GHL_API_KEY || !locConfigured || !calConfigured) {
+    const hasGhl = Boolean(GHL_API_KEY && locConfigured && calConfigured);
+    const hasSb = Boolean(String(process.env.SUPABASE_URL || '').trim() && String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim());
+    if (!hasGhl && !hasSb) {
       return res.status(503).json({
         ok: false,
-        error: GHL_CONFIG_MISSING_MSG,
-        detail: 'Controleer GHL_API_KEY, GHL_LOCATION_ID en GHL_CALENDAR_ID op deze omgeving.',
+        error: 'Analytics niet beschikbaar',
+        detail:
+          'Zet SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (vooral), of GHL_API_KEY + GHL_LOCATION_ID + GHL_CALENDAR_ID als fallback.',
       });
     }
 
     const range = buildRangeFromRequest(queryFromReq(req));
+
+    console.log(
+      JSON.stringify({
+        analytics_env_check: {
+          hasSupabaseUrl: Boolean(String(process.env.SUPABASE_URL || '').trim()),
+          hasSupabaseServiceRoleKey: Boolean(String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()),
+          enableSupabaseRead: String(process.env.ENABLE_SUPABASE_READ || '').trim() || null,
+          hasGhl,
+          vercelEnv: String(process.env.VERCEL_ENV || '').trim() || null,
+          rangeKey: range.key,
+        },
+      })
+    );
+
     const cacheHit = await readResultCache(range.key);
-    if (cacheHit?.period && cacheHit?.kpis) {
+    /** Oude Redis-cache (vóór Supabase-first) mist analytics_source; niet opnieuw serveren zodat preview niet vast blijft op GHL. */
+    const cacheUsable =
+      Boolean(cacheHit?.period && cacheHit?.kpis) &&
+      (!hasSb || String(cacheHit?.meta?.analytics_source || '').trim() === 'supabase');
+    if (cacheUsable) {
       return res.status(200).json({
         ok: true,
         source: 'cache',
@@ -538,12 +589,47 @@ export default async function handler(req, res) {
     }
 
     try {
+      if (hasSb) {
+        try {
+          console.log('analytics_before_supabase_read');
+          const payload = await runAnalyticsFromSupabase(range);
+          console.log('analytics_after_supabase_read');
+          console.log(
+            JSON.stringify({
+              route: 'api/analytics',
+              analytics_source: 'supabase',
+              period: range.period,
+              cacheKey: range.key,
+            })
+          );
+          await writeResultCache(range.key, payload);
+          return res.status(200).json({ ok: true, source: 'live', ...payload });
+        } catch (sbErr) {
+          console.warn(
+            JSON.stringify({
+              route: 'api/analytics',
+              analytics_source: 'supabase_error',
+              reason: 'supabase_read_failed',
+              message: String(sbErr?.message || sbErr).slice(0, 300),
+            })
+          );
+          return res.status(502).json({
+            ok: false,
+            error: 'Supabase analytics mislukt',
+            detail: String(sbErr?.message || sbErr),
+          });
+        }
+      }
+
       const payload = await runAnalytics(range);
       await writeResultCache(range.key, payload);
       return res.status(200).json({ ok: true, source: 'live', ...payload });
     } catch (err) {
       const fallback = await readResultCache(range.key);
-      if (fallback?.period && fallback?.kpis) {
+      const fallbackUsable =
+        Boolean(fallback?.period && fallback?.kpis) &&
+        (!hasSb || String(fallback?.meta?.analytics_source || '').trim() === 'supabase');
+      if (fallbackUsable) {
         return res.status(200).json({
           ok: true,
           source: 'cache_fallback',
@@ -563,14 +649,14 @@ export default async function handler(req, res) {
       });
     }
   } catch (err) {
-    console.error('[api/analytics] unhandled crash', {
-      message: String(err?.message || err),
-      stack: String(err?.stack || ''),
+    console.error('analytics_fatal_error', {
+      message: err?.message,
+      stack: err?.stack?.slice(0, 500),
     });
-    return res.status(502).json({
+    return res.status(500).json({
       ok: false,
-      error: 'Analytics ophalen mislukt',
-      detail: String(err?.message || err),
+      error: 'analytics_fatal_error',
+      detail: err?.message || 'unknown',
     });
   }
 }
