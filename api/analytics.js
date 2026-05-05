@@ -739,13 +739,24 @@ async function runAnalyticsFromPlannerFeed(rangeInput) {
   const priceRows = await listPrices(locId || 'default').catch(() => []);
   const fullMarginBreakdown = buildAppointmentMarginBreakdown(appointments, Array.isArray(priceRows) ? priceRows : []);
   const marginMeta = summarizeMarginReliability(fullMarginBreakdown);
-  const recentCreatedAppointments = await loadRecentCreatedAppointments({
-    locId,
-    calId,
-    plannerNotitiesFieldId,
-    plannerInternalFixedStartFieldId,
-    invoicePartyFieldIdsForPlanner,
-  });
+  let recentCreatedAppointments = [];
+  let recentCreatedAppointmentsError = '';
+  try {
+    recentCreatedAppointments = await loadRecentCreatedAppointments({
+      locId,
+      calId,
+      plannerNotitiesFieldId,
+      plannerInternalFixedStartFieldId,
+      invoicePartyFieldIdsForPlanner,
+    });
+  } catch (err) {
+    recentCreatedAppointments = [];
+    recentCreatedAppointmentsError = String(err?.message || err || '').slice(0, 220);
+    console.warn('[analytics] recentCreatedAppointments_load_failed', {
+      message: recentCreatedAppointmentsError,
+      range: `${range.startDate}..${range.endDate}`,
+    });
+  }
   const rangeDays = daysInclusive(range.startDate, range.endDate);
   const shouldIncludeMarginBreakdown = rangeDays > 0 && rangeDays <= 5;
   const appointmentMarginBreakdown = shouldIncludeMarginBreakdown ? fullMarginBreakdown : [];
@@ -771,6 +782,7 @@ async function runAnalyticsFromPlannerFeed(rangeInput) {
       marginReliableAppointments: marginMeta.marginReliableAppointments,
       marginUnreliableAppointments: marginMeta.marginUnreliableAppointments,
       marginReliabilityPct: marginMeta.marginReliabilityPct,
+      recentCreatedAppointmentsError,
       recentAppointmentsSort: {
         primary: 'created_at|createdAt|dateAdded|raw_payload.createdAt|raw_payload.dateAdded',
         fallback: 'startMs',
