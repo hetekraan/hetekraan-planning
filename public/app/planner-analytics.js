@@ -181,6 +181,14 @@
     if (!Number.isFinite(c) || !Number.isFinite(p) || p === 0) return 0;
     return ((c - p) / Math.abs(p)) * 100;
   }
+  function rangeDaysFromAnalyticsData(data) {
+    const s = String(data?.startDate || '').trim();
+    const e = String(data?.endDate || '').trim();
+    if (!s || !e) return 0;
+    const diff = new Date(`${e}T12:00:00Z`) - new Date(`${s}T12:00:00Z`);
+    if (!Number.isFinite(diff) || diff < 0) return 0;
+    return Math.floor(diff / (24 * 60 * 60 * 1000)) + 1;
+  }
   function setKpi(key, value, curr, prev, suffix = '') {
     const delta = comparePct(curr, prev);
     const arrow = delta >= 0 ? '↑' : '↓';
@@ -440,6 +448,46 @@
     }
     const rows = Array.isArray(analyticsData?.recentAppointments) ? analyticsData.recentAppointments : [];
     el.innerHTML = `<thead><tr><th>Datum</th><th>Klant</th><th>Adres</th><th>Werksoort</th><th>Bedrag</th><th>Status</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${escHtml(r.datum || '-')}</td><td>${escHtml(r.klant || '-')}</td><td>${escHtml(r.adres || '-')}</td><td>${escHtml(r.werksoort || '-')}</td><td>${fmtEuro(r.bedrag || 0)}</td><td>${escHtml(r.status || '-')}</td></tr>`).join('')}</tbody>`;
+  }
+  function renderMarginBreakdownSection() {
+    const el = document.getElementById('analyticsMarginBreakdown');
+    if (!el) return;
+    if (sectionState.analytics.loading) {
+      el.innerHTML = '<div class="kpi-sub">Margecontrole laden...</div>';
+      return;
+    }
+    if (sectionState.analytics.error) {
+      el.innerHTML = `<div class="kpi-sub" style="color:var(--reparatie)">${escHtml(sectionState.analytics.error)}</div>`;
+      return;
+    }
+    const rangeDays = rangeDaysFromAnalyticsData(analyticsData);
+    if (!rangeDays || rangeDays > 5) {
+      el.innerHTML = '<div class="kpi-sub">Margecontrole beschikbaar bij periodes tot 5 dagen.</div>';
+      return;
+    }
+    const rows = Array.isArray(analyticsData?.appointmentMarginBreakdown) ? analyticsData.appointmentMarginBreakdown : [];
+    if (!rows.length) {
+      el.innerHTML = '<div class="kpi-sub">Geen afspraken in deze periode.</div>';
+      return;
+    }
+    el.innerHTML = rows
+      .map((a) => {
+        const headerRight = `${fmtEuro(a.omzet || 0)} omzet · ${fmtEuro(a.inkoop || 0)} inkoop · ${fmtEuro(a.marge || 0)} marge · ${fmtPct(a.margePct || 0)}`;
+        const lines = Array.isArray(a.prijsregels) ? a.prijsregels : [];
+        const linesHtml = lines.length
+          ? `<table class="table-clean" style="margin-top:10px"><thead><tr><th>Omschrijving</th><th>Verkoop</th><th>Inkoop</th><th>Marge</th><th>Match</th></tr></thead><tbody>${lines
+              .map((ln) => {
+                const noMatch = String(ln?.matchBron || '').toLowerCase() === 'geen match';
+                const matchText = noMatch ? 'Geen inkoopmatch' : String(ln?.matchBron || '-');
+                const matchStyle = noMatch ? 'color:#b45309;font-weight:600' : 'color:var(--ink-soft)';
+                return `<tr><td>${escHtml(ln?.omschrijving || '-')}</td><td>${fmtEuro(ln?.verkoopprijs || 0)}</td><td>${fmtEuro(ln?.inkoopprijs || 0)}</td><td>${fmtEuro(ln?.marge || 0)}</td><td style="${matchStyle}">${escHtml(matchText)}</td></tr>`;
+              })
+              .join('')}</tbody></table>`
+          : '<div class="kpi-sub" style="margin-top:8px">Geen prijsregels beschikbaar.</div>';
+        const datePart = [a?.datum || '', a?.dagdeel || ''].filter(Boolean).join(' · ');
+        return `<div class="panel-card" style="margin-top:10px;padding:12px 14px"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><div style="font-weight:700">${escHtml(a?.klantnaam || '-')}</div><div class="kpi-sub">${escHtml(a?.adres || '-')}</div><div class="kpi-sub">${escHtml(datePart || '-')} · ${escHtml(a?.werksoort || '-')}</div></div><div style="font-size:12px;color:var(--ink-soft);align-self:flex-start">${escHtml(headerRight)}</div></div>${linesHtml}</div>`;
+      })
+      .join('');
   }
   function renderOperationalSection() {
     if (sectionState.analytics.error) {
@@ -731,6 +779,7 @@
     renderKpis();
     renderDebugMeta();
     renderRecentAppointments();
+    renderMarginBreakdownSection();
   }
   async function loadCashflowSection() {
     sectionState.cashflow = { loading: true, error: '' };
@@ -773,6 +822,7 @@
     renderKpis();
     renderInventorySection();
     renderRecentAppointments();
+    renderMarginBreakdownSection();
     if (!bootstrapped) {
       bootstrapped = true;
       void loadAllSections();

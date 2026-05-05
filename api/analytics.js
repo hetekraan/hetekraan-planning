@@ -24,6 +24,7 @@ import { readInvoicePartyField, resolveInvoicePartyFieldIds } from '../lib/invoi
 import { loadPlannerAppointmentsSource } from '../lib/planner-appointments-source.js';
 import { calcAppointmentTotal } from '../lib/planner-appointment-totals.js';
 import { fetchWithRetry } from '../lib/retry.js';
+import { listPrices } from '../lib/prices-store.js';
 
 const GHL_API_KEY = process.env.GHL_API_KEY;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
@@ -259,6 +260,96 @@ function paymentIsPaid(s) {
   return t.includes('betaald') || t.includes('paid') || t.includes('afgerond');
 }
 
+function normalizeSku(v) {
+  return String(v || '').trim().toUpperCase().replace(/\s+/g, '');
+}
+
+function normalizeNameForMatch(v) {
+  return String(v || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[|]/g, ' ')
+    .trim();
+}
+
+function daysInclusive(startDate, endDate) {
+  if (!startDate || !endDate) return 0;
+  const diff = new Date(`${endDate}T12:00:00Z`) - new Date(`${startDate}T12:00:00Z`);
+  if (!Number.isFinite(diff) || diff < 0) return 0;
+  return Math.floor(diff / (24 * 60 * 60 * 1000)) + 1;
+}
+
+function matchPriceForLine(line, maps) {
+  const sku = normalizeSku(line?.sku);
+  if (sku && maps.bySku.has(sku)) return { row: maps.bySku.get(sku), source: 'SKU' };
+  const priceId = String(line?.priceId || line?.price_id || '').trim();
+  if (priceId && maps.byId.has(priceId)) return { row: maps.byId.get(priceId), source: 'priceId' };
+  const nameKey = normalizeNameForMatch(line?.description || line?.desc || line?.label || line?.name || '');
+  if (nameKey && maps.byName.has(nameKey)) return { row: maps.byName.get(nameKey), source: 'naam-match' };
+  return { row: null, source: 'geen match' };
+}
+
+function buildAppointmentMarginBreakdown(appointments, priceRows) {
+  const clients = (Array.isArray(appointments) ? appointments : []).filter((a) => !a.isCalBlock);
+  const maps = {
+    byId: new Map(priceRows.map((p) => [String(p?.id || '').trim(), p])),
+    bySku: new Map(
+      priceRows
+        .filter((p) => normalizeSku(p?.sku))
+        .map((p) => [normalizeSku(p.sku), p])
+    ),
+    byName: new Map(priceRows.map((p) => [normalizeNameForMatch(p?.description || p?.name || ''), p])),
+  };
+  return clients.map((a) => {
+    const lines = [];
+    const base = Number(a?.price || 0);
+    if (base > 0) {
+      lines.push({ description: 'Basisprijs', verkoopprijs: base, sku: null, priceId: null });
+    }
+    const extras = Array.isArray(a?.extras) ? a.extras : [];
+    for (const ex of extras) {
+      lines.push({
+        description: String(ex?.desc || ex?.label || ex?.name || '').trim() || 'Onbekend',
+        verkoopprijs: Number(ex?.price || 0),
+        sku: String(ex?.sku || '').trim() || null,
+        priceId: String(ex?.priceId || ex?.price_id || '').trim() || null,
+      });
+    }
+    const lineBreakdown = lines.map((ln) => {
+      const matched = matchPriceForLine(ln, maps);
+      const inkoop = Number(matched?.row?.inkoopprijs || 0);
+      const verkoop = Number(ln.verkoopprijs || 0);
+      const marge = Math.round((verkoop - inkoop) * 100) / 100;
+      return {
+        omschrijving: ln.description,
+        verkoopprijs: Math.round(verkoop * 100) / 100,
+        inkoopprijs: Math.round(inkoop * 100) / 100,
+        marge,
+        matchBron: matched.source,
+        sku: ln.sku || null,
+        priceId: ln.priceId || null,
+      };
+    });
+    const omzet = calcAppointmentTotal(a);
+    const inkoop = Math.round(lineBreakdown.reduce((s, ln) => s + Number(ln.inkoopprijs || 0), 0) * 100) / 100;
+    const marge = Math.round((omzet - inkoop) * 100) / 100;
+    const margePct = omzet > 0 ? Math.round((marge / omzet) * 1000) / 10 : 0;
+    return {
+      appointmentId: a.id || '',
+      klantnaam: a.name || '',
+      adres: a.fullAddressLine || a.address || '',
+      datum: a.date || eventYmdFromStartMs({ startTime: a.startMs }) || '',
+      dagdeel: a.dayPart || a.timeWindow || '',
+      werksoort: a.jobType || 'onbekend',
+      omzet,
+      inkoop,
+      marge,
+      margePct,
+      prijsregels: lineBreakdown,
+    };
+  });
+}
+
 function buildAnalyticsFromAppointments(appointments = []) {
   const clients = appointments.filter((a) => !a.isCalBlock);
   const totaalAfspraken = clients.length;
@@ -422,11 +513,19 @@ async function runAnalyticsFromPlannerFeed(rangeInput) {
     dayCount += 1;
   }
   const analytics = buildAnalyticsFromAppointments(appointments);
+  const rangeDays = daysInclusive(range.startDate, range.endDate);
+  const shouldIncludeMarginBreakdown = rangeDays > 0 && rangeDays <= 5;
+  let appointmentMarginBreakdown = [];
+  if (shouldIncludeMarginBreakdown) {
+    const priceRows = await listPrices(locId || 'default').catch(() => []);
+    appointmentMarginBreakdown = buildAppointmentMarginBreakdown(appointments, Array.isArray(priceRows) ? priceRows : []);
+  }
   return {
     period: range.period,
     startDate: range.startDate,
     endDate: range.endDate,
     ...analytics,
+    appointmentMarginBreakdown,
     meta: {
       ghlCalls: ghaCalls,
       uniqueContacts,
@@ -436,6 +535,7 @@ async function runAnalyticsFromPlannerFeed(rangeInput) {
       analytics_source: ANALYTICS_SOURCE,
       analytics_version: ANALYTICS_VERSION,
       fetchedDays: dayCount,
+      marginBreakdownEnabled: shouldIncludeMarginBreakdown,
     },
   };
 }
