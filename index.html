@@ -5559,6 +5559,43 @@
   .kpi-grid--marketing {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+  .analytics-charts-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    align-items: stretch;
+  }
+  .analytics-chart-card {
+    min-height: 220px;
+    max-height: 300px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .analytics-chart-head {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .analytics-chart-meta {
+    font-size: 12px;
+    color: var(--ink-soft);
+    line-height: 1.35;
+    min-height: 16px;
+  }
+  .analytics-chart-wrap {
+    position: relative;
+    height: 145px;
+    min-height: 120px;
+    max-height: 160px;
+    width: 100%;
+    margin-top: auto;
+  }
+  .analytics-chart-wrap canvas {
+    width: 100% !important;
+    height: 100% !important;
+    display: block;
+  }
   @media (max-width: 720px) {
     .kpi-grid--planning {
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5566,10 +5603,16 @@
     .kpi-grid--marketing {
       grid-template-columns: 1fr;
     }
+    .analytics-charts-grid {
+      grid-template-columns: 1fr;
+    }
   }
   @media (max-width: 960px) and (min-width: 721px) {
     .kpi-grid--planning {
       grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .analytics-charts-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
   .kpi-title { font-size: 11px; color: var(--ink-muted); text-transform: uppercase; letter-spacing: .04em; }
@@ -5940,25 +5983,62 @@
           <div class="kpi-grid kpi-grid--marketing" id="analyticsKpisMarketing"></div>
         </div>
       </div>
-      <div class="panel-card">
-        <div class="routes-map-head">Omzet & marge over tijd</div>
-        <canvas id="analyticsRevenueMarginChart" height="90"></canvas>
+      <div class="analytics-charts-grid">
+        <div class="panel-card analytics-chart-card">
+          <div class="analytics-chart-head">
+            <div class="routes-map-head">Omzet & marge over tijd</div>
+            <div class="analytics-chart-meta" id="analyticsRevenueMarginMeta"></div>
+          </div>
+          <div class="analytics-chart-wrap">
+            <canvas id="analyticsRevenueMarginChart"></canvas>
+          </div>
+        </div>
+        <div class="panel-card analytics-chart-card">
+          <div class="analytics-chart-head">
+            <div class="routes-map-head">Ad spend vs omzet</div>
+            <div class="analytics-chart-meta" id="analyticsRoasMeta"></div>
+          </div>
+          <div class="analytics-chart-wrap">
+            <canvas id="analyticsAdSpendChart"></canvas>
+          </div>
+        </div>
+        <div class="panel-card analytics-chart-card">
+          <div class="analytics-chart-head">
+            <div class="routes-map-head">Website verkeer & conversie</div>
+            <div class="analytics-chart-meta">Sessies + funnel in compacte weergave</div>
+          </div>
+          <div class="analytics-chart-wrap">
+            <canvas id="analyticsTrafficChart"></canvas>
+          </div>
+        </div>
+        <div class="panel-card analytics-chart-card">
+          <div class="analytics-chart-head">
+            <div class="routes-map-head">Cashflow: inkomsten vs kosten</div>
+            <div class="analytics-chart-meta" id="analyticsCashflowMeta"></div>
+          </div>
+          <div class="analytics-chart-wrap">
+            <canvas id="analyticsCashflowChart"></canvas>
+          </div>
+        </div>
+        <div class="panel-card analytics-chart-card">
+          <div class="analytics-chart-head">
+            <div class="routes-map-head">Populairste werksoorten</div>
+            <div class="analytics-chart-meta" id="analyticsJobTypeMeta"></div>
+          </div>
+          <div class="analytics-chart-wrap">
+            <canvas id="analyticsJobTypeDonutChart"></canvas>
+          </div>
+        </div>
+        <div class="panel-card analytics-chart-card">
+          <div class="analytics-chart-head">
+            <div class="routes-map-head">Herhalingsklanten</div>
+            <div class="analytics-chart-meta">Percentage klanten met meerdere afspraken</div>
+          </div>
+          <div class="kpi-value" id="analyticsRepeatCustomersKpi" style="margin-top:auto">-</div>
+        </div>
       </div>
-      <div class="panel-card">
-        <div class="routes-map-head">Ad spend vs omzet</div>
-        <canvas id="analyticsAdSpendChart" height="84"></canvas>
-        <div class="kpi-sub" id="analyticsRoasMeta" style="margin-top:10px"></div>
-      </div>
-      <div class="panel-card">
-        <div class="routes-map-head">Website verkeer & conversie funnel</div>
-        <canvas id="analyticsTrafficChart" height="84"></canvas>
-        <div id="analyticsFunnel" style="margin-top:10px"></div>
-      </div>
-      <div class="panel-card">
-        <div class="routes-map-head">Cashflow: inkomsten vs kosten</div>
-        <canvas id="analyticsCashflowChart" height="84"></canvas>
-        <table class="table-clean" id="analyticsOpenInvoicesTable" style="margin-top:10px"></table>
-      </div>
+      <div id="analyticsFunnel" style="margin-top:2px"></div>
+      <table class="table-clean" id="analyticsOpenInvoicesTable" style="margin-top:2px"></table>
       <div class="panel-card">
         <div class="routes-map-head">Voorraadstatus (laag / uitverkocht)</div>
         <table class="table-clean" id="analyticsInventoryTable"></table>
@@ -5974,24 +6054,23 @@
         <div class="routes-map-head">Afspraken & margecontrole</div>
         <div id="analyticsMarginBreakdown"></div>
       </div>
-      <div class="panel-card">
-        <div class="routes-map-head">Operationele KPIs</div>
-        <div class="kpi-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:12px">
-          <div>
-            <div class="kpi-sub" style="margin-bottom:6px">Bezettingsgraad monteurs</div>
-            <canvas id="analyticsOccupancyChart" height="90"></canvas>
+      <div class="analytics-charts-grid">
+        <div class="panel-card analytics-chart-card">
+          <div class="analytics-chart-head">
+            <div class="routes-map-head">Bezettingsgraad monteurs</div>
+            <div class="analytics-chart-meta">Operationele placeholder</div>
           </div>
-          <div>
-            <div class="kpi-sub" style="margin-bottom:6px">Omzet per monteur</div>
-            <canvas id="analyticsRevenueByTechChart" height="90"></canvas>
+          <div class="analytics-chart-wrap">
+            <canvas id="analyticsOccupancyChart"></canvas>
           </div>
-          <div>
-            <div class="kpi-sub" style="margin-bottom:6px">Populairste werksoorten</div>
-            <canvas id="analyticsJobTypeDonutChart" height="100"></canvas>
+        </div>
+        <div class="panel-card analytics-chart-card">
+          <div class="analytics-chart-head">
+            <div class="routes-map-head">Omzet per monteur</div>
+            <div class="analytics-chart-meta">Operationele placeholder</div>
           </div>
-          <div>
-            <div class="kpi-sub" style="margin-bottom:6px">Herhalingsklanten</div>
-            <div id="analyticsRepeatCustomersKpi" class="kpi-value">-</div>
+          <div class="analytics-chart-wrap">
+            <canvas id="analyticsRevenueByTechChart"></canvas>
           </div>
         </div>
       </div>

@@ -354,11 +354,17 @@
     el.textContent = `debug · period=${m.period || '-'} · ghlCalls=${m.ghlCalls ?? '-'} · uniqueContacts=${m.uniqueContacts ?? '-'} · cacheHit=${m.cacheHit || '-'} · generatedAt=${m.generatedAt || '-'}`;
   }
   function renderRevenueMarginSection() {
+    const meta = document.getElementById('analyticsRevenueMarginMeta');
     if (sectionState.analytics.error) {
+      if (meta) meta.textContent = 'Kon trenddata niet laden';
       paintCanvasMessage('analyticsRevenueMarginChart', sectionState.analytics.error);
       return;
     }
     const rows = Array.isArray(analyticsData?.omzetByWeek) ? analyticsData.omzetByWeek : [];
+    const omzet = Number(analyticsData?.kpis?.totaleOmzet || 0);
+    const marge = rows.reduce((sum, x) => sum + Number(x?.marge || 0), 0);
+    const margePct = omzet > 0 ? (marge / omzet) * 100 : 0;
+    if (meta) meta.textContent = `${fmtEuro(omzet)} omzet · ${fmtPct(margePct)} marge`;
     drawChart('analyticsRevenueMarginChart', 'line', {
       labels: rows.map((x) => x.week),
       datasets: [
@@ -396,12 +402,16 @@
     renderTrafficFunnelPlaceholder('');
   }
   function renderCashflowSection() {
+    const meta = document.getElementById('analyticsCashflowMeta');
     if (sectionState.cashflow.error) {
+      if (meta) meta.textContent = 'Kon cashflow niet laden';
       paintCanvasMessage('analyticsCashflowChart', sectionState.cashflow.error);
       const openTable = document.getElementById('analyticsOpenInvoicesTable');
       if (openTable) openTable.innerHTML = `<tbody><tr><td style="color:var(--reparatie)">${escHtml(sectionState.cashflow.error)}</td></tr></tbody>`;
       return;
     }
+    const netTotal = cashflowRows.reduce((sum, x) => sum + Number(x?.netto || 0), 0);
+    if (meta) meta.textContent = `Netto trend: ${fmtEuro(netTotal)}`;
     drawChart('analyticsCashflowChart', 'bar', {
       labels: cashflowRows.map((x) => x.maand),
       datasets: [
@@ -486,10 +496,12 @@
       .join('');
   }
   function renderOperationalSection() {
+    const jobMeta = document.getElementById('analyticsJobTypeMeta');
     if (sectionState.analytics.error) {
       destroyChartIf('analyticsOccupancyChart');
       destroyChartIf('analyticsRevenueByTechChart');
       destroyChartIf('analyticsJobTypeDonutChart');
+      if (jobMeta) jobMeta.textContent = 'Geen data beschikbaar';
       paintCanvasMessage('analyticsOccupancyChart', sectionState.analytics.error);
       paintCanvasMessage('analyticsRevenueByTechChart', sectionState.analytics.error);
       paintCanvasMessage('analyticsJobTypeDonutChart', sectionState.analytics.error);
@@ -509,9 +521,13 @@
     );
     const jt = Array.isArray(analyticsData?.jobTypeVerdeling) ? analyticsData.jobTypeVerdeling : [];
     if (!jt.length) {
+      if (jobMeta) jobMeta.textContent = 'Geen werksoorten in deze periode';
       destroyChartIf('analyticsJobTypeDonutChart');
       paintCanvasMessage('analyticsJobTypeDonutChart', 'Geen werksoorten in deze periode.');
     } else {
+      const topType = jt[0]?.jobType || 'onbekend';
+      const topCount = Number(jt[0]?.aantal || 0);
+      if (jobMeta) jobMeta.textContent = `Meest gekozen: ${topType} (${topCount})`;
       drawChart('analyticsJobTypeDonutChart', 'doughnut', {
         labels: jt.map((x) => x.jobType),
         datasets: [{ data: jt.map((x) => Number(x.aantal || 0)), backgroundColor: ['#111827', '#dc4a1a', '#0f7a4b', '#7c3aed'] }],
