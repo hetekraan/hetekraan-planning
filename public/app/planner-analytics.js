@@ -486,8 +486,8 @@
       .map((a) => {
         const reliable = Boolean(a?.marginReliable);
         const headerRight = reliable
-          ? `${fmtEuro(a?.totalRevenue || 0)} omzet · ${fmtEuro(a?.totalKnownCost || 0)} inkoop · ${fmtEuro(a?.totalKnownMargin || 0)} marge · ${fmtMaybePct(a?.totalMarginPctKnownOnly)}`
-          : `${fmtEuro(a?.totalRevenue || 0)} omzet · ${fmtEuro(a?.totalKnownCost || 0)} bekende inkoop · ${fmtEuro(a?.totalKnownMargin || 0)} bekende marge · ${fmtEuro(a?.totalUnknownRevenue || 0)} onbekend`;
+          ? `${fmtEuro(a?.totalRevenue || 0)} omzet (incl) · ${fmtEuro(a?.totalKnownCost || 0)} inkoop (excl) · ${fmtEuro(a?.totalKnownMargin || 0)} marge (excl) · ${fmtMaybePct(a?.totalMarginPctKnownOnly)}`
+          : `${fmtEuro(a?.totalRevenue || 0)} omzet (incl) · ${fmtEuro(a?.totalKnownCost || 0)} bekende inkoop (excl) · ${fmtEuro(a?.totalKnownMargin || 0)} bekende marge (excl) · ${fmtEuro(a?.totalUnknownRevenue || 0)} onbekend`;
         const lines = Array.isArray(a.prijsregels) ? a.prijsregels : [];
         const linesHtml = lines.length
           ? `<table class="table-clean" style="margin-top:10px"><thead><tr><th>Omschrijving</th><th>Verkoop</th><th>Inkoop</th><th>Marge</th><th>Match</th></tr></thead><tbody>${lines

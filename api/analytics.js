@@ -31,7 +31,8 @@ const GHL_BASE = 'https://services.leadconnectorhq.com';
 const RESULT_CACHE_TTL_SEC = 30 * 60;
 const CONTACT_CACHE_TTL_SEC = 24 * 60 * 60;
 const ANALYTICS_SOURCE = 'planner_feed';
-const ANALYTICS_VERSION = 'planner_feed_v2';
+const ANALYTICS_VERSION = 'planner_feed_v3';
+const DEFAULT_VAT_FACTOR = 1.21;
 
 const FIELD_IDS = {
   tijdafspraak: 'RfKARymCOYYkufGY053T',
@@ -284,6 +285,16 @@ function toFiniteNumber(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+function round2(v) {
+  return Math.round(Number(v || 0) * 100) / 100;
+}
+
+function inclToExcl(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return round2(n / DEFAULT_VAT_FACTOR);
+}
+
 function toEpochMsFromAny(raw) {
   if (raw == null || raw === '') return null;
   const num = Number(raw);
@@ -350,13 +361,15 @@ function buildMarginLineItems(appointment, maps) {
   }
   return lines.map((ln) => {
     const matched = matchPriceForLine(ln, maps);
-    const verkoop = Math.round(Number(ln.verkoopprijs || 0) * 100) / 100;
+    const verkoop = round2(Number(ln.verkoopprijs || 0));
+    const verkoopExcl = inclToExcl(verkoop);
     const hasKnownCost = hasExplicitCostValue(matched?.row);
-    const inkoop = hasKnownCost ? Math.round(Number(matched.row.inkoopprijs || 0) * 100) / 100 : null;
-    const marge = hasKnownCost ? Math.round((verkoop - Number(inkoop || 0)) * 100) / 100 : null;
+    const inkoop = hasKnownCost ? round2(Number(matched.row.inkoopprijs || 0)) : null;
+    const marge = hasKnownCost ? round2(verkoopExcl - Number(inkoop || 0)) : null;
     return {
       omschrijving: ln.description,
       verkoopprijs: verkoop,
+      verkoopprijsExcl: verkoopExcl,
       inkoopprijs: inkoop,
       marge,
       costKnown: hasKnownCost,
@@ -369,21 +382,22 @@ function buildMarginLineItems(appointment, maps) {
 
 function summarizeAppointmentMargins(lineBreakdown, appointment) {
   const totalRevenue = calcAppointmentTotal(appointment);
-  const knownRevenue = Math.round(
-    lineBreakdown.reduce((s, ln) => (ln.costKnown ? s + Number(ln.verkoopprijs || 0) : s), 0) * 100
-  ) / 100;
-  const totalKnownCost = Math.round(
-    lineBreakdown.reduce((s, ln) => (ln.costKnown ? s + Number(ln.inkoopprijs || 0) : s), 0) * 100
-  ) / 100;
-  const totalUnknownRevenue = Math.round(
-    lineBreakdown.reduce((s, ln) => (!ln.costKnown ? s + Number(ln.verkoopprijs || 0) : s), 0) * 100
-  ) / 100;
-  const totalKnownMargin = Math.round((knownRevenue - totalKnownCost) * 100) / 100;
-  const totalMarginPctKnownOnly = knownRevenue > 0 ? Math.round((totalKnownMargin / knownRevenue) * 1000) / 10 : null;
+  const knownRevenueExcl = round2(
+    lineBreakdown.reduce((s, ln) => (ln.costKnown ? s + Number(ln.verkoopprijsExcl || 0) : s), 0)
+  );
+  const totalKnownCost = round2(
+    lineBreakdown.reduce((s, ln) => (ln.costKnown ? s + Number(ln.inkoopprijs || 0) : s), 0)
+  );
+  const totalUnknownRevenue = round2(
+    lineBreakdown.reduce((s, ln) => (!ln.costKnown ? s + Number(ln.verkoopprijs || 0) : s), 0)
+  );
+  const totalKnownMargin = round2(knownRevenueExcl - totalKnownCost);
+  const totalMarginPctKnownOnly = knownRevenueExcl > 0 ? Math.round((totalKnownMargin / knownRevenueExcl) * 1000) / 10 : null;
   const hasUnmatchedLines = lineBreakdown.some((ln) => !ln.costKnown);
   const marginReliable = !hasUnmatchedLines;
   return {
     totalRevenue,
+    totalKnownRevenueExcl: knownRevenueExcl,
     totalKnownCost,
     totalUnknownRevenue,
     totalKnownMargin,
@@ -420,6 +434,7 @@ function buildAppointmentMarginBreakdown(appointments, priceRows) {
       marge: summary.totalKnownMargin,
       margePct: summary.totalMarginPctKnownOnly,
       totalRevenue: summary.totalRevenue,
+      totalKnownRevenueExcl: summary.totalKnownRevenueExcl,
       totalKnownCost: summary.totalKnownCost,
       totalUnknownRevenue: summary.totalUnknownRevenue,
       totalKnownMargin: summary.totalKnownMargin,
