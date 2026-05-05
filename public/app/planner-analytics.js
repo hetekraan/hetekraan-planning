@@ -461,6 +461,29 @@
     const rows = Array.isArray(analyticsData?.recentAppointments) ? analyticsData.recentAppointments : [];
     el.innerHTML = `<thead><tr><th>Datum</th><th>Klant</th><th>Adres</th><th>Werksoort</th><th>Bedrag</th><th>Status</th></tr></thead><tbody>${rows.map((r) => `<tr><td>${escHtml(r.datum || '-')}</td><td>${escHtml(r.klant || '-')}</td><td>${escHtml(r.adres || '-')}</td><td>${escHtml(r.werksoort || '-')}</td><td>${fmtEuro(r.bedrag || 0)}</td><td>${escHtml(r.status || '-')}</td></tr>`).join('')}</tbody>`;
   }
+  function renderRecentCreatedAppointments() {
+    const el = document.getElementById('analyticsRecentCreatedAppointmentsTable');
+    if (!el) return;
+    if (sectionState.analytics.loading) {
+      el.innerHTML = '<tbody><tr><td>Afspraken laden...</td></tr></tbody>';
+      return;
+    }
+    if (sectionState.analytics.error) {
+      el.innerHTML = `<tbody><tr><td style="color:var(--reparatie)">${escHtml(sectionState.analytics.error)}</td></tr></tbody>`;
+      return;
+    }
+    const rows = Array.isArray(analyticsData?.recentCreatedAppointments) ? analyticsData.recentCreatedAppointments : [];
+    if (!rows.length) {
+      el.innerHTML = '<tbody><tr><td>Geen recente aangemaakte afspraken.</td></tr></tbody>';
+      return;
+    }
+    el.innerHTML = `<thead><tr><th>Aangemaakt op</th><th>Afspraakdatum</th><th>Klant</th><th>Adres</th><th>Werksoort</th><th>Bedrag</th><th>Bron</th></tr></thead><tbody>${rows
+      .map((r) => {
+        const created = r.aangemaaktOp ? new Date(r.aangemaaktOp).toLocaleString('nl-NL') : 'Onbekend';
+        return `<tr><td>${escHtml(created)}</td><td>${escHtml(r.afspraakdatum || '-')}</td><td>${escHtml(r.klant || '-')}</td><td>${escHtml(r.adres || '-')}</td><td>${escHtml(r.werksoort || '-')}</td><td>${fmtEuro(r.bedrag || 0)}</td><td>${escHtml(r.bron || 'Onbekend')}</td></tr>`;
+      })
+      .join('')}</tbody>`;
+  }
   function renderMarginBreakdownSection() {
     const el = document.getElementById('analyticsMarginBreakdown');
     if (!el) return;
@@ -800,6 +823,7 @@
     renderKpis();
     renderDebugMeta();
     renderRecentAppointments();
+    renderRecentCreatedAppointments();
     renderMarginBreakdownSection();
   }
   async function loadCashflowSection() {
@@ -843,6 +867,7 @@
     renderKpis();
     renderInventorySection();
     renderRecentAppointments();
+    renderRecentCreatedAppointments();
     renderMarginBreakdownSection();
     if (!bootstrapped) {
       bootstrapped = true;

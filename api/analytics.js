@@ -31,7 +31,7 @@ const GHL_BASE = 'https://services.leadconnectorhq.com';
 const RESULT_CACHE_TTL_SEC = 30 * 60;
 const CONTACT_CACHE_TTL_SEC = 24 * 60 * 60;
 const ANALYTICS_SOURCE = 'planner_feed';
-const ANALYTICS_VERSION = 'planner_feed_v3';
+const ANALYTICS_VERSION = 'planner_feed_v4';
 const DEFAULT_VAT_FACTOR = 1.21;
 
 const FIELD_IDS = {
@@ -327,6 +327,31 @@ function appointmentCreatedMs(appointment) {
   return 0;
 }
 
+function appointmentCreatedIso(appointment) {
+  const ms = appointmentCreatedMs(appointment);
+  if (!ms) return '';
+  try {
+    return new Date(ms).toISOString();
+  } catch {
+    return '';
+  }
+}
+
+function detectAppointmentSource(appointment) {
+  const id = String(appointment?.id || '').trim().toLowerCase();
+  const job = String(appointment?.jobDescription || '').toLowerCase();
+  const notes = String(appointment?.notes || '').toLowerCase();
+  if (appointment?.isSyntheticBlockBooking || id.startsWith('hk-b1:')) {
+    if (job.includes('online geboekt') || notes.includes('online')) return 'Online boeking';
+    return 'Online boeking';
+  }
+  if (id.startsWith('manual:') || notes.includes('handmatig') || notes.includes('planner')) {
+    return 'Handmatig ingepland';
+  }
+  if (id) return 'GHL';
+  return 'Onbekend';
+}
+
 function matchPriceForLine(line, maps) {
   const sku = normalizeSku(line?.sku);
   if (sku && maps.bySku.has(sku)) return { row: maps.bySku.get(sku), source: 'SKU' };
@@ -549,6 +574,75 @@ function summarizeMarginReliability(breakdownRows = []) {
   };
 }
 
+async function loadRecentCreatedAppointments({ locId, calId, plannerNotitiesFieldId, plannerInternalFixedStartFieldId, invoicePartyFieldIdsForPlanner }) {
+  const collected = [];
+  const today = formatYyyyMmDdInAmsterdam(new Date());
+  const maxDaysBack = 45;
+  for (let i = 0; i < maxDaysBack; i += 1) {
+    const d = addAmsterdamCalendarDays(today, -i);
+    const dayOut = await loadPlannerAppointmentsSource(
+      {
+        date: d,
+        locId,
+        calId,
+        apiKey: GHL_API_KEY,
+        baseUrl: GHL_BASE,
+        plannerNotitiesFieldId,
+        plannerInternalFixedStartFieldId,
+        invoicePartyFieldIdsForPlanner,
+        traceLastEditedContactId: null,
+      },
+      {
+        amsterdamCalendarDayBoundsMs,
+        eventStartMsGhl,
+        eventEndMsGhl,
+        getEventStartDayAmsterdam,
+        canonicalGhlEventId,
+        resolveBlockSlotAssignedUserId,
+        fetchWithRetry,
+        amsterdamDayReadCacheGet,
+        amsterdamDayReadCacheSet,
+        amsterdamDayReadCacheKeyCalendarEvents,
+        amsterdamDayReadCacheKeyBlockedSlots,
+        fetchBlockedSlotsAsEvents,
+        markBlockLikeOnCalendarEvents,
+        cachedListConfirmedSyntheticEventsForDate,
+        getField,
+        BOOKING_FORM_FIELD_IDS,
+        FIELD_IDS,
+        splitAddressLineToStraatHuis,
+        readCanonicalAddressLine,
+        logCanonicalAddressRead,
+        SLOT_LABEL_MORNING_NL,
+        SLOT_LABEL_AFTERNOON_NL,
+        normalizeInternalFixedPinFromBody,
+        parseStructuredPriceRulesString,
+        readInvoicePartyField,
+        mapEnrichedGhlEventToAppointment,
+      }
+    );
+    const dayAppointments = Array.isArray(dayOut?.appointments) ? dayOut.appointments : [];
+    for (const a of dayAppointments) {
+      if (a?.isCalBlock) continue;
+      collected.push(a);
+    }
+    if (collected.length >= 120) break;
+  }
+  return collected
+    .sort((a, b) => appointmentCreatedMs(b) - appointmentCreatedMs(a))
+    .slice(0, 10)
+    .map((a) => ({
+      id: a.id || '',
+      aangemaaktOp: appointmentCreatedIso(a) || '',
+      afspraakdatum: eventYmdFromStartMs({ startTime: a.startMs }) || '',
+      klant: a.name || '',
+      adres: a.fullAddressLine || a.address || '',
+      werksoort: a.jobType || 'onbekend',
+      bedrag: calcAppointmentTotal(a),
+      bron: detectAppointmentSource(a),
+    }));
+}
+
 async function readResultCache(range) {
   const redis = getRedis();
   if (!redis) return null;
@@ -645,6 +739,13 @@ async function runAnalyticsFromPlannerFeed(rangeInput) {
   const priceRows = await listPrices(locId || 'default').catch(() => []);
   const fullMarginBreakdown = buildAppointmentMarginBreakdown(appointments, Array.isArray(priceRows) ? priceRows : []);
   const marginMeta = summarizeMarginReliability(fullMarginBreakdown);
+  const recentCreatedAppointments = await loadRecentCreatedAppointments({
+    locId,
+    calId,
+    plannerNotitiesFieldId,
+    plannerInternalFixedStartFieldId,
+    invoicePartyFieldIdsForPlanner,
+  });
   const rangeDays = daysInclusive(range.startDate, range.endDate);
   const shouldIncludeMarginBreakdown = rangeDays > 0 && rangeDays <= 5;
   const appointmentMarginBreakdown = shouldIncludeMarginBreakdown ? fullMarginBreakdown : [];
@@ -653,6 +754,7 @@ async function runAnalyticsFromPlannerFeed(rangeInput) {
     startDate: range.startDate,
     endDate: range.endDate,
     ...analyticsPayload,
+    recentCreatedAppointments,
     appointmentMarginBreakdown,
     meta: {
       ghlCalls: ghaCalls,
