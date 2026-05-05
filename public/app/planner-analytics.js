@@ -1,10 +1,10 @@
 (function initPlannerAnalytics(global) {
   const KPI_DEFS_PLANNING = [
     { key: 'omzet', title: 'Omzet' },
-    { key: 'marge', title: 'Marge (geschat)' },
+    { key: 'marge', title: 'MARGE' },
     { key: 'afspraken', title: 'Afspraken' },
     { key: 'gemWaarde', title: 'Gem. waarde per afspraak' },
-    { key: 'gemMarge', title: 'Gem. marge % (geschat)' },
+    { key: 'gemMarge', title: 'Gem. marge %' },
   ];
   const KPI_DEFS_MARKETING = [
     { key: 'adSpend', title: 'Ad spend' },
@@ -103,6 +103,15 @@
   }
   function ymdFromDateParts(year, monthIndex, day) {
     return new Date(Date.UTC(year, monthIndex, day)).toISOString().slice(0, 10);
+  }
+  function formatYmdNl(ymd) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(ymd || '').trim())) return String(ymd || '').trim();
+    return new Date(`${ymd}T12:00:00Z`).toLocaleDateString('nl-NL', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'UTC',
+    });
   }
   function isInDraftRange(ymd) {
     if (!customDraftStart || !customDraftEnd) return false;
@@ -290,6 +299,10 @@
     return defs
       .map((def) => {
         const st = kpiState[def.key] || {};
+        const badgeHtml =
+          def.key === 'marge' && st.badge
+            ? `<span style="font-size:12px;line-height:1;background:#eef6ef;color:#0f7a4b;border:1px solid #cfe6d1;border-radius:999px;padding:4px 8px">${escHtml(st.badge)}</span>`
+            : '';
         let sub = '';
         if (st.loading) {
           sub = `<div class="kpi-sub">${escHtml(st.delta || '')}</div>`;
@@ -304,7 +317,9 @@
           st.notLinked || st.error
             ? 'color:var(--ink-muted);font-size:clamp(15px,2.2vw,18px)'
             : 'font-size:clamp(16px,2.4vw,20px)';
-        return `<div class="panel-card"><div class="kpi-title">${def.title}</div><div class="kpi-value" style="${valStyle}">${escHtml(st.value || '—')}</div>${sub}</div>`;
+        const cardStyle = 'min-height:108px;display:flex;flex-direction:column;justify-content:space-between';
+        const valueStyle = def.key === 'gemMarge' ? `${valStyle};font-size:clamp(14px,2vw,18px)` : valStyle;
+        return `<div class="panel-card" style="${cardStyle}"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="kpi-title">${def.title}</div>${badgeHtml}</div><div class="kpi-value" style="${valueStyle}">${escHtml(st.value || '—')}</div>${sub}</div>`;
       })
       .join('');
   }
@@ -344,7 +359,7 @@
       labels: rows.map((x) => x.week),
       datasets: [
         { label: 'Omzet', data: rows.map((x) => Number(x.omzet || 0)), borderColor: '#dc4a1a', backgroundColor: 'rgba(220,74,26,.1)', tension: 0.3 },
-        { label: 'Marge (geschat)', data: rows.map((x) => Number(x.marge || 0)), borderColor: '#0f7a4b', backgroundColor: 'rgba(15,122,75,.1)', tension: 0.3 },
+        { label: 'Marge', data: rows.map((x) => Number(x.marge || 0)), borderColor: '#0f7a4b', backgroundColor: 'rgba(15,122,75,.1)', tension: 0.3 },
         { label: 'Installatie', data: rows.map((x) => Number(x.installatie || 0)), borderColor: '#1f2937', tension: 0.25 },
         { label: 'Reparatie', data: rows.map((x) => Number(x.reparatie || 0)), borderColor: '#a855f7', tension: 0.25 },
         { label: 'Onderhoud', data: rows.map((x) => Number(x.onderhoud || 0)), borderColor: '#0891b2', tension: 0.25 },
@@ -489,9 +504,24 @@
   }
 
   function selectDraftDate(ymd) {
-    if (!customDraftStart || (customDraftStart && customDraftEnd)) {
+    if (!customDraftStart) {
       customDraftStart = ymd;
-      customDraftEnd = '';
+      customDraftEnd = ymd;
+      return;
+    }
+    if (customDraftStart && customDraftEnd && customDraftStart === customDraftEnd) {
+      if (ymd === customDraftStart) return;
+      if (ymd < customDraftStart) {
+        customDraftEnd = customDraftStart;
+        customDraftStart = ymd;
+      } else {
+        customDraftEnd = ymd;
+      }
+      return;
+    }
+    if (customDraftStart && customDraftEnd) {
+      customDraftStart = ymd;
+      customDraftEnd = ymd;
       return;
     }
     if (ymd < customDraftStart) {
@@ -546,8 +576,10 @@
     const firstMonth = customPickerViewMonth;
     const secondMonth = addMonthsYmd(firstMonth, 1);
     const rangeLabel = customDraftStart && customDraftEnd
-      ? `${customDraftStart} t/m ${customDraftEnd}`
-      : (customDraftStart ? `${customDraftStart} gekozen` : 'Kies een start- en einddatum');
+      ? (customDraftStart === customDraftEnd
+          ? formatYmdNl(customDraftStart)
+          : `${formatYmdNl(customDraftStart)} t/m ${formatYmdNl(customDraftEnd)}`)
+      : (customDraftStart ? `${formatYmdNl(customDraftStart)} gekozen` : 'Kies een start- en einddatum');
     body.innerHTML = `
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
         <button type="button" class="chip-btn" data-preset="today">Vandaag</button>
@@ -585,7 +617,7 @@
       });
     });
     const apply = customPickerOverlay?.querySelector('[data-apply-picker]');
-    if (apply) apply.disabled = !(customDraftStart && customDraftEnd);
+    if (apply) apply.disabled = !customDraftStart;
   }
   function openCustomRangePicker() {
     closeCustomRangePicker();
@@ -607,7 +639,7 @@
         <div data-picker-body></div>
         <div class="modal-actions" style="margin-top:14px">
           <button type="button" class="btn-cancel" data-close-picker>Annuleren</button>
-          <button type="button" class="btn-save" data-apply-picker ${customDraftStart && customDraftEnd ? '' : 'disabled'}>Toepassen</button>
+          <button type="button" class="btn-save" data-apply-picker ${customDraftStart ? '' : 'disabled'}>Toepassen</button>
         </div>
       </div>
     `;
@@ -618,9 +650,9 @@
     });
     overlay.querySelectorAll('[data-close-picker]').forEach((btn) => btn.addEventListener('click', closeCustomRangePicker));
     overlay.querySelector('[data-apply-picker]')?.addEventListener('click', () => {
-      if (!customDraftStart || !customDraftEnd) return;
+      if (!customDraftStart) return;
       customStart = customDraftStart;
-      customEnd = customDraftEnd;
+      customEnd = customDraftEnd || customDraftStart;
       period = 'custom';
       closeCustomRangePicker();
       renderPeriodFilters();
@@ -677,7 +709,8 @@
       const prevMargin = (prev?.omzetByWeek || []).reduce((s, x) => s + Number(x.marge || 0), 0);
       const margePct = k.totaleOmzet ? (totalMargin / k.totaleOmzet) * 100 : 0;
       setKpi('omzet', fmtEuro(k.totaleOmzet || 0), k.totaleOmzet || 0, p.totaleOmzet || 0);
-      setKpi('marge', `${fmtEuro(totalMargin)} · ${fmtPct(margePct)}`, totalMargin, prevMargin, '');
+      setKpi('marge', fmtEuro(totalMargin), totalMargin, prevMargin, '');
+      kpiState.marge.badge = fmtPct(margePct);
       KPI_KEYS_NOT_LINKED.forEach((key) => {
         kpiState[key] = kpiNotLinkedState(key);
       });
