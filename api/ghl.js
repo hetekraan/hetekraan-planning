@@ -108,6 +108,7 @@ import {
   setInventoryWarnings,
 } from '../lib/inventory-store.js';
 import { listPrices } from '../lib/prices-store.js';
+import { loadPlannerAppointmentsSource } from '../lib/planner-appointments-source.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -1212,310 +1213,60 @@ export default async function handler(req, res) {
           apiKey: GHL_API_KEY,
           locationId: ghlLocationIdFromEnv(),
         });
-        const gaT0 = Date.now();
-        const gaPerf = { route: 'getAppointments', ghl_calendar_events_ms: 0, blocked_slots_ms: 0, redis_b1_synthetic_ms: 0, contact_fetch_sum_ms: 0, filter_dedupe_map_ms: 0 };
-
         const dateRaw = req.query.date;
         const date = normalizeYyyyMmDdInput(
           Array.isArray(dateRaw) ? String(dateRaw[0]) : String(dateRaw || '')
         );
         if (!date) return res.status(400).json({ error: 'Ongeldige datum' });
-        const bounds = amsterdamCalendarDayBoundsMs(date);
-        if (!bounds) return res.status(400).json({ error: 'Ongeldige datum' });
-        const { startMs, endMs } = bounds;
         const locId = locConfigured;
         const calId = calConfigured;
-        const blockSlotUserId = await resolveBlockSlotAssignedUserId(
-          GHL_BASE,
-          GHL_API_KEY,
-          locId,
-          calId
-        );
-        const url = `${GHL_BASE}/calendars/events?locationId=${encodeURIComponent(locId)}&calendarId=${encodeURIComponent(calId)}&startTime=${startMs}&endTime=${endMs}`;
-        const calKey = amsterdamDayReadCacheKeyCalendarEvents(locId, calId, date);
-        const tCalEv = Date.now();
-        let events = amsterdamDayReadCacheGet(calKey);
-        if (events !== undefined) {
-          gaPerf.ghl_calendar_events_ms = Date.now() - tCalEv;
-        } else {
-          const response = await fetchWithRetry(url, {
-            headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' },
-          });
-          const rawText = await response.text().catch(() => '');
-          let data = {};
-          try {
-            data = rawText ? JSON.parse(rawText) : {};
-          } catch {
-            data = {};
-          }
-          gaPerf.ghl_calendar_events_ms = Date.now() - tCalEv;
-          events = data?.events || [];
-          if (response.ok) amsterdamDayReadCacheSet(calKey, events);
-        }
-
-        markBlockLikeOnCalendarEvents(events);
-
-        const blkKey = amsterdamDayReadCacheKeyBlockedSlots(locId, calId, startMs, endMs, blockSlotUserId);
-        const tBlk = Date.now();
-        let blockedAsEvents = amsterdamDayReadCacheGet(blkKey);
-        if (blockedAsEvents === undefined) {
-          const fetched = await fetchBlockedSlotsAsEvents(GHL_BASE, {
-            locationId: locId,
-            calendarId: calId,
-            startMs: bounds.startMs,
-            endMs: bounds.endMs,
+        const sourceOut = await loadPlannerAppointmentsSource(
+          {
+            date,
+            locId,
+            calId,
             apiKey: GHL_API_KEY,
-            assignedUserId: blockSlotUserId,
-          });
-          blockedAsEvents = Array.isArray(fetched) ? fetched : [];
-          amsterdamDayReadCacheSet(blkKey, blockedAsEvents);
-        }
-        gaPerf.blocked_slots_ms = Date.now() - tBlk;
-        if (blockedAsEvents.length) {
-          events = [...events, ...blockedAsEvents];
-        }
-
-        /** Model B1: geen GHL timed appointment — tonen als planner-rij via Redis + contact (tijdafspraak). */
-        let blockBookingSynthetic = [];
-        try {
-          const tRedis = Date.now();
-          blockBookingSynthetic = await cachedListConfirmedSyntheticEventsForDate(date);
-          gaPerf.redis_b1_synthetic_ms = Date.now() - tRedis;
-        } catch (err) {
-          console.warn('[ghl] getAppointments block reservations:', err?.message || err);
-        }
-        for (const ev of blockBookingSynthetic) {
-          const cid = String(ev.contactId || ev.contact_id || '').trim();
-          if (!cid) continue;
-          events.push({
-            ...ev,
-            id: `hk-b1:${cid}:${date}`,
-            _hkBlockReservationSynthetic: true,
-          });
-        }
-
-        /** Eén overlap-check per event; verrijking gebruikt die niet — alleen events op deze dag hoeven contact. */
-        const overlapsAmsterdamDay = events.map((e) => eventOverlapsAmsterdamDay(e, date));
-
-        const contactIdKey = (id) => (id == null ? '' : String(id).trim());
-        const uniqueCids = [
-          ...new Set(
-            events
-              .map((e, i) => (overlapsAmsterdamDay[i] ? contactIdKey(e.contactId || e.contact_id) : ''))
-              .filter(Boolean)
-          ),
-        ];
-
-        const contactMap = {};
-        const tContacts0 = Date.now();
-        await Promise.all(
-          uniqueCids.map(async (cidKey) => {
-            try {
-              const cr = await fetchWithRetry(
-                `${GHL_BASE}/contacts/${encodeURIComponent(cidKey)}`,
-                { headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' } }
-              );
-              if (!cr.ok) return;
-              const cd = await cr.json();
-              contactMap[cidKey] = cd?.contact || cd;
-            } catch (_) {}
-          })
+            baseUrl: GHL_BASE,
+            plannerNotitiesFieldId,
+            plannerInternalFixedStartFieldId,
+            invoicePartyFieldIdsForPlanner,
+            traceLastEditedContactId: _traceLastEditedContactId,
+          },
+          {
+            amsterdamCalendarDayBoundsMs,
+            eventStartMsGhl,
+            eventEndMsGhl,
+            getEventStartDayAmsterdam,
+            canonicalGhlEventId,
+            resolveBlockSlotAssignedUserId,
+            fetchWithRetry,
+            amsterdamDayReadCacheGet,
+            amsterdamDayReadCacheSet,
+            amsterdamDayReadCacheKeyCalendarEvents,
+            amsterdamDayReadCacheKeyBlockedSlots,
+            fetchBlockedSlotsAsEvents,
+            markBlockLikeOnCalendarEvents,
+            cachedListConfirmedSyntheticEventsForDate,
+            getField,
+            BOOKING_FORM_FIELD_IDS,
+            FIELD_IDS,
+            splitAddressLineToStraatHuis,
+            readCanonicalAddressLine,
+            logCanonicalAddressRead,
+            SLOT_LABEL_MORNING_NL,
+            SLOT_LABEL_AFTERNOON_NL,
+            normalizeInternalFixedPinFromBody,
+            parseStructuredPriceRulesString,
+            readInvoicePartyField,
+            mapEnrichedGhlEventToAppointment,
+          }
         );
-        gaPerf.contact_fetch_sum_ms = Date.now() - tContacts0;
-
-        function enrichEvent(e, contact) {
-          e.contact = contact;
-          if (contact?.id) e.contactId = contact.id;
-          const canonStreetHouse = getField(contact, BOOKING_FORM_FIELD_IDS.straat_huisnummer);
-          const canonPostcode = getField(contact, BOOKING_FORM_FIELD_IDS.postcode);
-          const canonWoonplaats = getField(contact, BOOKING_FORM_FIELD_IDS.woonplaats);
-          const splitCanon = splitAddressLineToStraatHuis(canonStreetHouse);
-          const straat = splitCanon.straatnaam || '';
-          const huisnr = splitCanon.huisnummer || '';
-          const postcode =
-            canonPostcode ||
-            String(contact.postalCode || '')
-              .replace(/\s+/g, ' ')
-              .trim();
-          const woonplaats = canonWoonplaats || contact.city || '';
-          const fromCf     = [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-          const canonical  = readCanonicalAddressLine(contact);
-          e.parsedAddress = canonical;
-          if (_traceLastEditedContactId && String(contact?.id || '') === String(_traceLastEditedContactId)) {
-            const traceFull = fromCf || canonical || '';
-            console.log('[TRACE][mapped_address_after_edit]', {
-              contactId: contact.id,
-              straat_huisnummer: canonStreetHouse || null,
-              postcode: canonPostcode || null,
-              woonplaats: canonWoonplaats || null,
-              address1: String(contact.address1 || '').trim() || null,
-              fullAddressLine: traceFull || null,
-            });
-          }
-          if (fromCf) {
-            e.parsedStraatnaam = straat;
-            e.parsedHuisnummer = huisnr;
-            e.parsedPostcode   = postcode;
-            e.parsedWoonplaats = woonplaats;
-          } else if (canonical) {
-            // Alleen address1 / losse regel: hele regel in straat voor Maps (zelfde tekst als readCanonicalAddressLine).
-            e.parsedStraatnaam = canonical;
-            e.parsedHuisnummer = '';
-            e.parsedPostcode   = '';
-            e.parsedWoonplaats = '';
-            logCanonicalAddressRead('getAppointments_fallback_address1', {
-              contactId: contact.id,
-              preview: canonical.slice(0, 100),
-            });
-          } else {
-            e.parsedStraatnaam = '';
-            e.parsedHuisnummer = '';
-            e.parsedPostcode   = '';
-            e.parsedWoonplaats = '';
-          }
-          const canonType = getField(contact, BOOKING_FORM_FIELD_IDS.type_onderhoud);
-          const canonWerkzaamheden = getField(contact, BOOKING_FORM_FIELD_IDS.probleemomschrijving);
-          const werkzaamheden = canonWerkzaamheden || getField(contact, FIELD_IDS.probleemomschrijving);
-          e.parsedJobType = canonType || '';
-          if (e._hkBlockReservationSynthetic) {
-            const blk = e._hkSyntheticBlock === 'afternoon' ? 'afternoon' : 'morning';
-            const windowLabel =
-              blk === 'afternoon' ? SLOT_LABEL_AFTERNOON_NL : SLOT_LABEL_MORNING_NL;
-            const titleStr = typeof e.title === 'string' ? e.title : '';
-            const techTitle = titleStr.includes('__hk_block_res__');
-            e.parsedWork =
-              werkzaamheden ||
-              (techTitle
-                ? `Online geboekt — ${blk === 'morning' ? 'ochtend' : 'middag'} (${windowLabel})`
-                : e.title);
-          } else {
-            e.parsedWork = werkzaamheden || e.title;
-          }
-          const canonPriceTotal = getField(contact, BOOKING_FORM_FIELD_IDS.prijs_totaal);
-          e.parsedPrice      = canonPriceTotal || getField(contact, FIELD_IDS.prijs);
-          const plannerNotities = plannerNotitiesFieldId
-            ? getField(contact, plannerNotitiesFieldId)
-            : '';
-          e.parsedNotes      = plannerNotities || getField(contact, FIELD_IDS.opmerkingen);
-          e.parsedTimeWindow =
-            getField(contact, BOOKING_FORM_FIELD_IDS.tijdslot) ||
-            getField(contact, FIELD_IDS.tijdafspraak) ||
-            null;
-          const rawInternalFixed =
-            plannerInternalFixedStartFieldId
-              ? getField(contact, plannerInternalFixedStartFieldId, 'planner_internal_fixed_start')
-              : '';
-          const parsedInternalFixed = normalizeInternalFixedPinFromBody(rawInternalFixed);
-          e.internalFixedPin = parsedInternalFixed;
-          e.internalFixedStartTime = parsedInternalFixed?.time || '';
-          try {
-            console.info(
-              '[planner] fixed_time_loaded',
-              JSON.stringify({
-                contactId: contact?.id ? String(contact.id) : null,
-                appointmentId: e?.id ? String(e.id) : null,
-                fieldId: plannerInternalFixedStartFieldId || null,
-                hasValue: Boolean(parsedInternalFixed),
-                pinType: parsedInternalFixed?.type || null,
-                pinTime: parsedInternalFixed?.time || null,
-              })
-            );
-          } catch (_) {}
-          const confirmedDayPartRaw = String(
-            getField(contact, BOOKING_FORM_FIELD_IDS.boeking_bevestigd_dagdeel) || ''
-          )
-            .trim()
-            .toLowerCase();
-          e.parsedConfirmedDayPart =
-            confirmedDayPartRaw === 'morning' || confirmedDayPartRaw === 'afternoon'
-              ? confirmedDayPartRaw
-              : null;
-          e.parsedConfirmedDate = String(
-            getField(contact, BOOKING_FORM_FIELD_IDS.boeking_bevestigd_datum) || ''
-          ).trim();
-          e.parsedConfirmedStatus = String(
-            getField(contact, BOOKING_FORM_FIELD_IDS.boeking_bevestigd_status) || ''
-          )
-            .trim()
-            .toLowerCase();
-          e.parsedPaymentStatus = getField(contact, BOOKING_FORM_FIELD_IDS.betaal_status) || '';
-          const canonPrijsRegels = getField(contact, BOOKING_FORM_FIELD_IDS.prijs_regels);
-          let parsedPrijsRegels = parseStructuredPriceRulesString(canonPrijsRegels);
-          if (parsedPrijsRegels.length === 0) {
-            const prijsRegelsRaw = getField(contact, FIELD_IDS.prijs_regels);
-            parsedPrijsRegels = parseStructuredPriceRulesString(prijsRegelsRaw);
-          }
-          e.parsedExtras = parsedPrijsRegels;
-          e.invoiceFields = {
-            factuurType: readInvoicePartyField(contact, 'factuur_type', invoicePartyFieldIdsForPlanner),
-            factuurBedrijfsnaam: readInvoicePartyField(contact, 'factuur_bedrijfsnaam', invoicePartyFieldIdsForPlanner),
-            factuurTav: readInvoicePartyField(contact, 'factuur_tav', invoicePartyFieldIdsForPlanner),
-            factuurEmail: readInvoicePartyField(contact, 'factuur_email', invoicePartyFieldIdsForPlanner),
-            factuurKvk: readInvoicePartyField(contact, 'factuur_kvk', invoicePartyFieldIdsForPlanner),
-            factuurBtwNummer: readInvoicePartyField(contact, 'factuur_btw_nummer', invoicePartyFieldIdsForPlanner),
-            factuurAdres: readInvoicePartyField(contact, 'factuur_adres', invoicePartyFieldIdsForPlanner),
-            factuurPostcode: readInvoicePartyField(contact, 'factuur_postcode', invoicePartyFieldIdsForPlanner),
-            factuurPlaats: readInvoicePartyField(contact, 'factuur_plaats', invoicePartyFieldIdsForPlanner),
-            factuurReferentie: readInvoicePartyField(contact, 'factuur_referentie', invoicePartyFieldIdsForPlanner),
-          };
-        }
-
-        const tEnrich0 = Date.now();
-        const enriched = events.map((e, i) => {
-          if (!overlapsAmsterdamDay[i]) return e;
-          const rawCid = e.contactId || e.contact_id;
-          if (!rawCid) return e;
-          const cidKey = contactIdKey(rawCid);
-          if (!cidKey) return e;
-          e.contactId = rawCid;
-          const contact = contactMap[cidKey];
-          if (contact) enrichEvent(e, contact);
-          return e;
-        });
-        gaPerf.contact_enrich_sync_ms = Date.now() - tEnrich0;
-
-        /** Events die deze Amsterdam-dag raken (ook langlopende blokken / vakantie). */
-        const tFilt0 = Date.now();
-        const filtered = enriched.filter((e, i) => overlapsAmsterdamDay[i]);
-        const overlapDropped = enriched.length - filtered.length;
-        if (overlapDropped > 0) {
-          console.log(
-            JSON.stringify({
-              event: 'BOOKING_COMPLETE_FILTER',
-              phase: 'overlap_amsterdam_day',
-              dateStr: date,
-              before: enriched.length,
-              after: filtered.length,
-              dropped: overlapDropped,
-            })
-          );
-        }
-        gaPerf.filter_overlap_ms = Date.now() - tFilt0;
-        const tDedupe0 = Date.now();
-        const unique = dedupeGhlEventsForDashboard(filtered);
-        if (filtered.length !== unique.length) {
-          console.log(
-            JSON.stringify({
-              event: 'BOOKING_COMPLETE_FILTER',
-              phase: 'dedupe',
-              dateStr: date,
-              before: filtered.length,
-              after: unique.length,
-              dropped: filtered.length - unique.length,
-            })
-          );
-        }
-        gaPerf.dedupe_ms = Date.now() - tDedupe0;
-
+        const appointments = sourceOut.appointments;
+        const contactMap = sourceOut.contactMap;
+        const gaPerf = sourceOut.gaPerf;
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('X-HK-GetAppointments-Filter', 'v5-amsterdam-day+id+contact-slot+b1-redis');
-        const tMapAppt0 = Date.now();
-        const appointments = unique.map((ev, i) => mapEnrichedGhlEventToAppointment(ev, i, date));
-        gaPerf.map_appointments_ms = Date.now() - tMapAppt0;
-        gaPerf.total_ms = Date.now() - gaT0;
-        gaPerf.unique_contact_fetches = uniqueCids.length;
-        gaPerf.event_count_before_filter = enriched.length;
         if (process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
           const traceRaw = req.query?.traceContactId;
           const traceCid = String(Array.isArray(traceRaw) ? traceRaw[0] : traceRaw || '').trim();
