@@ -48,6 +48,12 @@
   function fmtPct(n) {
     return `${Number(n || 0).toLocaleString('nl-NL', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
   }
+  function fmtMaybeEuro(n) {
+    return Number.isFinite(Number(n)) ? fmtEuro(Number(n)) : 'Onbekend';
+  }
+  function fmtMaybePct(n) {
+    return Number.isFinite(Number(n)) ? fmtPct(Number(n)) : 'Onbekend';
+  }
   function escHtml(v) {
     return String(v ?? '')
       .replaceAll('&', '&amp;')
@@ -478,7 +484,10 @@
     }
     el.innerHTML = rows
       .map((a) => {
-        const headerRight = `${fmtEuro(a.omzet || 0)} omzet · ${fmtEuro(a.inkoop || 0)} inkoop · ${fmtEuro(a.marge || 0)} marge · ${fmtPct(a.margePct || 0)}`;
+        const reliable = Boolean(a?.marginReliable);
+        const headerRight = reliable
+          ? `${fmtEuro(a?.totalRevenue || 0)} omzet · ${fmtEuro(a?.totalKnownCost || 0)} inkoop · ${fmtEuro(a?.totalKnownMargin || 0)} marge · ${fmtMaybePct(a?.totalMarginPctKnownOnly)}`
+          : `${fmtEuro(a?.totalRevenue || 0)} omzet · ${fmtEuro(a?.totalKnownCost || 0)} bekende inkoop · ${fmtEuro(a?.totalKnownMargin || 0)} bekende marge · ${fmtEuro(a?.totalUnknownRevenue || 0)} onbekend`;
         const lines = Array.isArray(a.prijsregels) ? a.prijsregels : [];
         const linesHtml = lines.length
           ? `<table class="table-clean" style="margin-top:10px"><thead><tr><th>Omschrijving</th><th>Verkoop</th><th>Inkoop</th><th>Marge</th><th>Match</th></tr></thead><tbody>${lines
@@ -486,12 +495,13 @@
                 const noMatch = String(ln?.matchBron || '').toLowerCase() === 'geen match';
                 const matchText = noMatch ? 'Geen inkoopmatch' : String(ln?.matchBron || '-');
                 const matchStyle = noMatch ? 'color:#b45309;font-weight:600' : 'color:var(--ink-soft)';
-                return `<tr><td>${escHtml(ln?.omschrijving || '-')}</td><td>${fmtEuro(ln?.verkoopprijs || 0)}</td><td>${fmtEuro(ln?.inkoopprijs || 0)}</td><td>${fmtEuro(ln?.marge || 0)}</td><td style="${matchStyle}">${escHtml(matchText)}</td></tr>`;
+                return `<tr><td>${escHtml(ln?.omschrijving || '-')}</td><td>${fmtEuro(ln?.verkoopprijs || 0)}</td><td>${fmtMaybeEuro(ln?.inkoopprijs)}</td><td>${fmtMaybeEuro(ln?.marge)}</td><td style="${matchStyle}">${escHtml(matchText)}</td></tr>`;
               })
               .join('')}</tbody></table>`
           : '<div class="kpi-sub" style="margin-top:8px">Geen prijsregels beschikbaar.</div>';
         const datePart = [a?.datum || '', a?.dagdeel || ''].filter(Boolean).join(' · ');
-        return `<div class="panel-card" style="margin-top:10px;padding:12px 14px"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><div style="font-weight:700">${escHtml(a?.klantnaam || '-')}</div><div class="kpi-sub">${escHtml(a?.adres || '-')}</div><div class="kpi-sub">${escHtml(datePart || '-')} · ${escHtml(a?.werksoort || '-')}</div></div><div style="font-size:12px;color:var(--ink-soft);align-self:flex-start">${escHtml(headerRight)}</div></div>${linesHtml}</div>`;
+        const reliabilityLabel = reliable ? '' : '<div class="kpi-sub" style="color:#b45309;margin-top:4px">Marge deels onbekend</div>';
+        return `<div class="panel-card" style="margin-top:10px;padding:12px 14px"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><div style="font-weight:700">${escHtml(a?.klantnaam || '-')}</div><div class="kpi-sub">${escHtml(a?.adres || '-')}</div><div class="kpi-sub">${escHtml(datePart || '-')} · ${escHtml(a?.werksoort || '-')}</div>${reliabilityLabel}</div><div style="font-size:12px;color:var(--ink-soft);align-self:flex-start">${escHtml(headerRight)}</div></div>${linesHtml}</div>`;
       })
       .join('');
   }

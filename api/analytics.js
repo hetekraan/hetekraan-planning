@@ -31,7 +31,7 @@ const GHL_BASE = 'https://services.leadconnectorhq.com';
 const RESULT_CACHE_TTL_SEC = 30 * 60;
 const CONTACT_CACHE_TTL_SEC = 24 * 60 * 60;
 const ANALYTICS_SOURCE = 'planner_feed';
-const ANALYTICS_VERSION = 'planner_feed_v1';
+const ANALYTICS_VERSION = 'planner_feed_v2';
 
 const FIELD_IDS = {
   tijdafspraak: 'RfKARymCOYYkufGY053T',
@@ -279,6 +279,43 @@ function daysInclusive(startDate, endDate) {
   return Math.floor(diff / (24 * 60 * 60 * 1000)) + 1;
 }
 
+function toFiniteNumber(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function toEpochMsFromAny(raw) {
+  if (raw == null || raw === '') return null;
+  const num = Number(raw);
+  if (Number.isFinite(num) && num > 0) return num;
+  const parsed = Date.parse(String(raw));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function appointmentCreatedMs(appointment) {
+  const rawPayload = appointment?.raw_payload && typeof appointment.raw_payload === 'object'
+    ? appointment.raw_payload
+    : appointment?.rawPayload && typeof appointment.rawPayload === 'object'
+      ? appointment.rawPayload
+      : null;
+  const candidates = [
+    appointment?.created_at,
+    appointment?.createdAt,
+    appointment?.dateAdded,
+    rawPayload?.created_at,
+    rawPayload?.createdAt,
+    rawPayload?.dateAdded,
+    rawPayload?.created_on,
+  ];
+  for (const c of candidates) {
+    const ms = toEpochMsFromAny(c);
+    if (ms) return ms;
+  }
+  const fallbackStart = toEpochMsFromAny(appointment?.startMs);
+  if (fallbackStart) return fallbackStart;
+  return 0;
+}
+
 function matchPriceForLine(line, maps) {
   const sku = normalizeSku(line?.sku);
   if (sku && maps.bySku.has(sku)) return { row: maps.bySku.get(sku), source: 'SKU' };
@@ -287,6 +324,74 @@ function matchPriceForLine(line, maps) {
   const nameKey = normalizeNameForMatch(line?.description || line?.desc || line?.label || line?.name || '');
   if (nameKey && maps.byName.has(nameKey)) return { row: maps.byName.get(nameKey), source: 'naam-match' };
   return { row: null, source: 'geen match' };
+}
+
+function hasExplicitCostValue(priceRow) {
+  if (!priceRow || typeof priceRow !== 'object') return false;
+  const raw = priceRow.inkoopprijs;
+  if (raw == null || raw === '') return false;
+  return toFiniteNumber(raw) !== null;
+}
+
+function buildMarginLineItems(appointment, maps) {
+  const lines = [];
+  const base = Number(appointment?.price || 0);
+  if (base > 0) {
+    lines.push({ description: 'Basisprijs', verkoopprijs: base, sku: null, priceId: null });
+  }
+  const extras = Array.isArray(appointment?.extras) ? appointment.extras : [];
+  for (const ex of extras) {
+    lines.push({
+      description: String(ex?.desc || ex?.label || ex?.name || '').trim() || 'Onbekend',
+      verkoopprijs: Number(ex?.price || 0),
+      sku: String(ex?.sku || '').trim() || null,
+      priceId: String(ex?.priceId || ex?.price_id || '').trim() || null,
+    });
+  }
+  return lines.map((ln) => {
+    const matched = matchPriceForLine(ln, maps);
+    const verkoop = Math.round(Number(ln.verkoopprijs || 0) * 100) / 100;
+    const hasKnownCost = hasExplicitCostValue(matched?.row);
+    const inkoop = hasKnownCost ? Math.round(Number(matched.row.inkoopprijs || 0) * 100) / 100 : null;
+    const marge = hasKnownCost ? Math.round((verkoop - Number(inkoop || 0)) * 100) / 100 : null;
+    return {
+      omschrijving: ln.description,
+      verkoopprijs: verkoop,
+      inkoopprijs: inkoop,
+      marge,
+      costKnown: hasKnownCost,
+      matchBron: matched.source,
+      sku: ln.sku || null,
+      priceId: ln.priceId || null,
+    };
+  });
+}
+
+function summarizeAppointmentMargins(lineBreakdown, appointment) {
+  const totalRevenue = calcAppointmentTotal(appointment);
+  const knownRevenue = Math.round(
+    lineBreakdown.reduce((s, ln) => (ln.costKnown ? s + Number(ln.verkoopprijs || 0) : s), 0) * 100
+  ) / 100;
+  const totalKnownCost = Math.round(
+    lineBreakdown.reduce((s, ln) => (ln.costKnown ? s + Number(ln.inkoopprijs || 0) : s), 0) * 100
+  ) / 100;
+  const totalUnknownRevenue = Math.round(
+    lineBreakdown.reduce((s, ln) => (!ln.costKnown ? s + Number(ln.verkoopprijs || 0) : s), 0) * 100
+  ) / 100;
+  const totalKnownMargin = Math.round((knownRevenue - totalKnownCost) * 100) / 100;
+  const totalMarginPctKnownOnly = knownRevenue > 0 ? Math.round((totalKnownMargin / knownRevenue) * 1000) / 10 : null;
+  const hasUnmatchedLines = lineBreakdown.some((ln) => !ln.costKnown);
+  const marginReliable = !hasUnmatchedLines;
+  return {
+    totalRevenue,
+    totalKnownCost,
+    totalUnknownRevenue,
+    totalKnownMargin,
+    totalMarginPctKnownOnly,
+    hasUnmatchedLines,
+    marginReliable,
+    knownRevenue,
+  };
 }
 
 function buildAppointmentMarginBreakdown(appointments, priceRows) {
@@ -301,39 +406,8 @@ function buildAppointmentMarginBreakdown(appointments, priceRows) {
     byName: new Map(priceRows.map((p) => [normalizeNameForMatch(p?.description || p?.name || ''), p])),
   };
   return clients.map((a) => {
-    const lines = [];
-    const base = Number(a?.price || 0);
-    if (base > 0) {
-      lines.push({ description: 'Basisprijs', verkoopprijs: base, sku: null, priceId: null });
-    }
-    const extras = Array.isArray(a?.extras) ? a.extras : [];
-    for (const ex of extras) {
-      lines.push({
-        description: String(ex?.desc || ex?.label || ex?.name || '').trim() || 'Onbekend',
-        verkoopprijs: Number(ex?.price || 0),
-        sku: String(ex?.sku || '').trim() || null,
-        priceId: String(ex?.priceId || ex?.price_id || '').trim() || null,
-      });
-    }
-    const lineBreakdown = lines.map((ln) => {
-      const matched = matchPriceForLine(ln, maps);
-      const inkoop = Number(matched?.row?.inkoopprijs || 0);
-      const verkoop = Number(ln.verkoopprijs || 0);
-      const marge = Math.round((verkoop - inkoop) * 100) / 100;
-      return {
-        omschrijving: ln.description,
-        verkoopprijs: Math.round(verkoop * 100) / 100,
-        inkoopprijs: Math.round(inkoop * 100) / 100,
-        marge,
-        matchBron: matched.source,
-        sku: ln.sku || null,
-        priceId: ln.priceId || null,
-      };
-    });
-    const omzet = calcAppointmentTotal(a);
-    const inkoop = Math.round(lineBreakdown.reduce((s, ln) => s + Number(ln.inkoopprijs || 0), 0) * 100) / 100;
-    const marge = Math.round((omzet - inkoop) * 100) / 100;
-    const margePct = omzet > 0 ? Math.round((marge / omzet) * 1000) / 10 : 0;
+    const lineBreakdown = buildMarginLineItems(a, maps);
+    const summary = summarizeAppointmentMargins(lineBreakdown, a);
     return {
       appointmentId: a.id || '',
       klantnaam: a.name || '',
@@ -341,10 +415,17 @@ function buildAppointmentMarginBreakdown(appointments, priceRows) {
       datum: a.date || eventYmdFromStartMs({ startTime: a.startMs }) || '',
       dagdeel: a.dayPart || a.timeWindow || '',
       werksoort: a.jobType || 'onbekend',
-      omzet,
-      inkoop,
-      marge,
-      margePct,
+      omzet: summary.totalRevenue,
+      inkoop: summary.totalKnownCost,
+      marge: summary.totalKnownMargin,
+      margePct: summary.totalMarginPctKnownOnly,
+      totalRevenue: summary.totalRevenue,
+      totalKnownCost: summary.totalKnownCost,
+      totalUnknownRevenue: summary.totalUnknownRevenue,
+      totalKnownMargin: summary.totalKnownMargin,
+      totalMarginPctKnownOnly: summary.totalMarginPctKnownOnly,
+      hasUnmatchedLines: summary.hasUnmatchedLines,
+      marginReliable: summary.marginReliable,
       prijsregels: lineBreakdown,
     };
   });
@@ -366,19 +447,30 @@ function buildAnalyticsFromAppointments(appointments = []) {
     byType[t].omzet = Math.round((byType[t].omzet + calcAppointmentTotal(a)) * 100) / 100;
   }
   const weekMap = {};
+  const recentSortStats = { createdBased: 0, fallbackStartMs: 0 };
   const recentAppointments = [...clients]
-    .sort((a, b) => Number(b.startMs || 0) - Number(a.startMs || 0))
+    .sort((a, b) => {
+      const aCreated = appointmentCreatedMs(a);
+      const bCreated = appointmentCreatedMs(b);
+      return bCreated - aCreated;
+    })
     .slice(0, 10)
-    .map((a) => ({
-      id: a.id,
-      datum: eventYmdFromStartMs({ startTime: a.startMs }) || '',
-      klant: a.name || '',
-      adres: a.fullAddressLine || a.address || '',
-      werksoort: a.jobType || 'onbekend',
-      bedrag: calcAppointmentTotal(a),
-      status: a.status || '',
-      contactId: a.contactId || '',
-    }));
+    .map((a) => {
+      const createdCandidates = [a?.created_at, a?.createdAt, a?.dateAdded, a?.raw_payload?.createdAt, a?.rawPayload?.createdAt];
+      const hasCreatedSource = createdCandidates.some((v) => toEpochMsFromAny(v));
+      if (hasCreatedSource) recentSortStats.createdBased += 1;
+      else recentSortStats.fallbackStartMs += 1;
+      return {
+        id: a.id,
+        datum: eventYmdFromStartMs({ startTime: a.startMs }) || '',
+        klant: a.name || '',
+        adres: a.fullAddressLine || a.address || '',
+        werksoort: a.jobType || 'onbekend',
+        bedrag: calcAppointmentTotal(a),
+        status: a.status || '',
+        contactId: a.contactId || '',
+      };
+    });
   const categoryCostFactor = { installatie: 0.58, reparatie: 0.62, onderhoud: 0.55, onbekend: 0.6 };
   for (const a of clients) {
     const date = eventYmdFromStartMs({ startTime: a.startMs });
@@ -420,6 +512,26 @@ function buildAnalyticsFromAppointments(appointments = []) {
     omzetByWeek,
     recentAppointments,
     repeatCustomersPct: repeatPct,
+    recentSortStats,
+  };
+}
+
+function summarizeMarginReliability(breakdownRows = []) {
+  const appts = Array.isArray(breakdownRows) ? breakdownRows : [];
+  const unmatchedCostLines = appts.reduce(
+    (s, appt) => s + (Array.isArray(appt?.prijsregels) ? appt.prijsregels.filter((ln) => !ln?.costKnown).length : 0),
+    0
+  );
+  const unmatchedRevenue = Math.round(appts.reduce((s, appt) => s + Number(appt?.totalUnknownRevenue || 0), 0) * 100) / 100;
+  const marginReliableAppointments = appts.filter((appt) => appt?.marginReliable).length;
+  const marginUnreliableAppointments = appts.length - marginReliableAppointments;
+  const marginReliabilityPct = appts.length ? Math.round((marginReliableAppointments / appts.length) * 1000) / 10 : 100;
+  return {
+    unmatchedCostLines,
+    unmatchedRevenue,
+    marginReliableAppointments,
+    marginUnreliableAppointments,
+    marginReliabilityPct,
   };
 }
 
@@ -513,18 +625,20 @@ async function runAnalyticsFromPlannerFeed(rangeInput) {
     dayCount += 1;
   }
   const analytics = buildAnalyticsFromAppointments(appointments);
+  const recentSortStats = analytics?.recentSortStats || {};
+  const analyticsPayload = { ...analytics };
+  delete analyticsPayload.recentSortStats;
+  const priceRows = await listPrices(locId || 'default').catch(() => []);
+  const fullMarginBreakdown = buildAppointmentMarginBreakdown(appointments, Array.isArray(priceRows) ? priceRows : []);
+  const marginMeta = summarizeMarginReliability(fullMarginBreakdown);
   const rangeDays = daysInclusive(range.startDate, range.endDate);
   const shouldIncludeMarginBreakdown = rangeDays > 0 && rangeDays <= 5;
-  let appointmentMarginBreakdown = [];
-  if (shouldIncludeMarginBreakdown) {
-    const priceRows = await listPrices(locId || 'default').catch(() => []);
-    appointmentMarginBreakdown = buildAppointmentMarginBreakdown(appointments, Array.isArray(priceRows) ? priceRows : []);
-  }
+  const appointmentMarginBreakdown = shouldIncludeMarginBreakdown ? fullMarginBreakdown : [];
   return {
     period: range.period,
     startDate: range.startDate,
     endDate: range.endDate,
-    ...analytics,
+    ...analyticsPayload,
     appointmentMarginBreakdown,
     meta: {
       ghlCalls: ghaCalls,
@@ -536,6 +650,17 @@ async function runAnalyticsFromPlannerFeed(rangeInput) {
       analytics_version: ANALYTICS_VERSION,
       fetchedDays: dayCount,
       marginBreakdownEnabled: shouldIncludeMarginBreakdown,
+      unmatchedCostLines: marginMeta.unmatchedCostLines,
+      unmatchedRevenue: marginMeta.unmatchedRevenue,
+      marginReliableAppointments: marginMeta.marginReliableAppointments,
+      marginUnreliableAppointments: marginMeta.marginUnreliableAppointments,
+      marginReliabilityPct: marginMeta.marginReliabilityPct,
+      recentAppointmentsSort: {
+        primary: 'created_at|createdAt|dateAdded|raw_payload.createdAt|raw_payload.dateAdded',
+        fallback: 'startMs',
+        createdBasedCount: Number(recentSortStats?.createdBased || 0),
+        fallbackCount: Number(recentSortStats?.fallbackStartMs || 0),
+      },
     },
   };
 }
