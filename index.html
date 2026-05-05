@@ -5198,6 +5198,9 @@
     border: 1px solid var(--border);
     background: var(--bg-card);
     box-shadow: var(--shadow-sm);
+    margin-bottom: 14px;
+  }
+  .planning-section .appt-card:last-child {
     margin-bottom: 0;
   }
   .appt-inner {
@@ -5910,7 +5913,6 @@
         <p id="todayMixMeta">0 afspraken · 0 reparaties · 0 installaties · 0 onderhoud</p>
       </div>
       <div class="appointments-header-actions">
-        <button type="button" class="today-btn today-btn--ghost" id="plannerHeaderExportBtn" onclick="printDagopgave()">Export</button>
         <button type="button" class="today-btn today-btn--primary" onclick="openModal()">+ Nieuwe afspraak</button>
       </div>
     </div>
@@ -8264,8 +8266,6 @@ function switchSidebarView(view, event) {
     prices: document.getElementById('panelPrices'),
     inventory: document.getElementById('panelInventory'),
   };
-  const exportBtn = document.getElementById('plannerHeaderExportBtn');
-  if (exportBtn) exportBtn.style.display = plannerSidebarView === 'analytics' ? 'none' : '';
   if (window.matchMedia('(min-width: 1180px)').matches) {
     Object.entries(panelMap).forEach(([k, el]) => el?.classList.toggle('tab-hidden', k !== plannerSidebarView));
     if (plannerSidebarView === 'analytics') window.HKPlannerAnalytics?.render?.();
