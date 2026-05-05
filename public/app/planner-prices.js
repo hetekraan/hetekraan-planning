@@ -27,26 +27,52 @@
     return `€ ${Number(value || 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
 
-  function calculateExclFromIncl(incl, vatPct) {
-    const v = Number(incl);
+  function vatFactorFromPct(vatPct) {
     const vat = Number(vatPct || 21);
-    if (!Number.isFinite(v) || !Number.isFinite(vat)) return 0;
-    const factor = 1 + vat / 100;
-    if (factor <= 0) return 0;
-    return Math.round((v / factor) * 100) / 100;
+    if (!Number.isFinite(vat)) return 1.21;
+    return 1 + vat / 100;
   }
 
-  function calculateMarge(incl, inkoop) {
+  function inclToExcl(incl, vatPct) {
     const v = Number(incl);
-    const i = Number(inkoop);
-    if (!Number.isFinite(v) || !Number.isFinite(i)) return 0;
-    return Math.round((v - i) * 100) / 100;
+    const factor = vatFactorFromPct(vatPct);
+    if (!Number.isFinite(v) || factor <= 0) return 0;
+    return v / factor;
   }
 
-  function calculateMargePct(incl, inkoop) {
-    const v = Number(incl);
-    if (!Number.isFinite(v) || v <= 0) return 0;
-    return Math.round((calculateMarge(v, inkoop) / v) * 10000) / 100;
+  function exclToIncl(excl, vatPct) {
+    const v = Number(excl);
+    const factor = vatFactorFromPct(vatPct);
+    if (!Number.isFinite(v) || factor <= 0) return 0;
+    return v * factor;
+  }
+
+  function computeMargins({ verkoopExcl, inkoop }) {
+    const verkoop = Number(verkoopExcl);
+    const cost = Number(inkoop);
+    const safeVerkoop = Number.isFinite(verkoop) ? verkoop : 0;
+    const safeCost = Number.isFinite(cost) ? cost : 0;
+    const margeEuro = safeVerkoop - safeCost;
+    const margePct = safeVerkoop === 0 ? 0 : (margeEuro / safeVerkoop) * 100;
+    return { margeEuro, margePct };
+  }
+
+  function round2(v) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 0;
+    return Math.round(n * 100) / 100;
+  }
+
+  function clamp(value, min, max) {
+    const n = Number(value);
+    const safe = Number.isFinite(n) ? n : 0;
+    return Math.min(Math.max(safe, min), max);
+  }
+
+  function deriveVerkoopExcl(row = {}) {
+    const incl = Number(row.verkoopprijsInclBtw ?? row.price ?? 0);
+    const vatPct = Number(row.btwPct || 21);
+    return inclToExcl(incl, vatPct);
   }
 
   function escapeAttr(v) {
@@ -114,19 +140,45 @@
       const margeEl = rowEl.querySelector('[data-f="marge"]');
       const margePctEl = rowEl.querySelector('[data-f="margePct"]');
       const vatPct = Number(rowEl.getAttribute('data-vat-pct') || 21);
-      const recalc = () => {
+      const recalcFrom = (source) => {
         const inkoop = Number(inkoopInput?.value || 0);
         const incl = Number(inclInput?.value || 0);
-        const excl = calculateExclFromIncl(incl, vatPct);
-        const marge = calculateMarge(incl, inkoop);
-        const margePct = calculateMargePct(incl, inkoop);
-        if (exclEl) exclEl.value = excl.toFixed(2);
-        if (margeEl) margeEl.value = marge.toFixed(2);
-        if (margePctEl) margePctEl.value = `${margePct.toFixed(2)}%`;
+        const excl = Number(exclEl?.value || 0);
+        const margeEuro = Number(margeEl?.value || 0);
+        const rawPct = String(margePctEl?.value || '').replace('%', '').trim();
+        const margePct = Number(rawPct || 0);
+        let nextInkoop = Number.isFinite(inkoop) ? inkoop : 0;
+        let nextIncl = Number.isFinite(incl) ? incl : 0;
+        let nextExcl = Number.isFinite(excl) ? excl : 0;
+
+        // Canonical: all margin calculations use verkoopExcl.
+        if (source === 'incl') {
+          nextExcl = inclToExcl(nextIncl, vatPct);
+        } else if (source === 'excl') {
+          nextIncl = exclToIncl(nextExcl, vatPct);
+        } else if (source === 'margePct') {
+          const margePctClamped = clamp(margePct, 0, 100);
+          const nextMargeEuro = nextExcl * (margePctClamped / 100);
+          nextInkoop = Math.max(0, nextExcl - nextMargeEuro);
+        } else if (source === 'margeEuro') {
+          const margeEuroClamped = clamp(margeEuro, 0, Math.max(0, nextExcl));
+          nextInkoop = Math.max(0, nextExcl - margeEuroClamped);
+        }
+
+        nextInkoop = Math.max(0, nextInkoop);
+        const margins = computeMargins({ verkoopExcl: nextExcl, inkoop: nextInkoop });
+        if (inkoopInput) inkoopInput.value = round2(nextInkoop).toFixed(2);
+        if (inclInput) inclInput.value = round2(nextIncl).toFixed(2);
+        if (exclEl) exclEl.value = round2(nextExcl).toFixed(2);
+        if (margeEl) margeEl.value = round2(clamp(margins.margeEuro, 0, Math.max(0, nextExcl))).toFixed(2);
+        if (margePctEl) margePctEl.value = `${round2(clamp(margins.margePct, 0, 100)).toFixed(2)}%`;
       };
-      inkoopInput?.addEventListener('input', recalc);
-      inclInput?.addEventListener('input', recalc);
-      recalc();
+      inkoopInput?.addEventListener('input', () => recalcFrom('inkoop'));
+      inclInput?.addEventListener('input', () => recalcFrom('incl'));
+      exclEl?.addEventListener('input', () => recalcFrom('excl'));
+      margeEl?.addEventListener('input', () => recalcFrom('margeEuro'));
+      margePctEl?.addEventListener('input', () => recalcFrom('margePct'));
+      recalcFrom('incl');
     });
     bindDelete();
   }
@@ -139,10 +191,14 @@
     const el = document.getElementById('pricesSummaryBar');
     if (!el) return;
     const count = list.length;
+    const pctForRow = (row) => {
+      const margins = computeMargins({ verkoopExcl: deriveVerkoopExcl(row), inkoop: Number(row.inkoopprijs || 0) });
+      return margins.margePct;
+    };
     const avgMargePct = count
-      ? Math.round((list.reduce((s, x) => s + calculateMargePct(x.verkoopprijsInclBtw, x.inkoopprijs), 0) / count) * 100) / 100
+      ? Math.round((list.reduce((s, x) => s + pctForRow(x), 0) / count) * 100) / 100
       : 0;
-    const lowest = [...list].sort((a, b) => calculateMargePct(a.verkoopprijsInclBtw, a.inkoopprijs) - calculateMargePct(b.verkoopprijsInclBtw, b.inkoopprijs))[0];
+    const lowest = [...list].sort((a, b) => pctForRow(a) - pctForRow(b))[0];
     el.innerHTML = `<div class="panel-card" style="padding:10px 12px"><strong>${count}</strong> producten · Gem. marge <strong>${avgMargePct.toFixed(2)}%</strong> · Laagste marge: <strong>${escapeAttr(lowest?.naam || '-')}</strong></div>`;
   }
 
@@ -154,8 +210,12 @@
     el.innerHTML = `<thead><tr><th>SKU</th><th>Naam</th><th>Inkoopprijs</th><th>Verkoopprijs incl. BTW</th><th>Verkoopprijs excl. BTW</th><th>Marge €</th><th>Marge %</th><th></th><th></th></tr></thead><tbody>${
       list
         .map(
-          (r) =>
-            `<tr data-price-id="${r.id}" data-sku="${escapeAttr(r.sku || '')}" data-categorie="${escapeAttr(r.categorie || '')}" data-vat-pct="${Number(r.btwPct || 21)}"><td><span style="font-size:12px;color:#7f8792;white-space:nowrap">${escapeAttr(r.sku || '-')}</span></td><td><input class="field-input" data-f="naam" value="${escapeAttr(r.naam || r.description || '')}"></td><td><div style="display:flex;align-items:center;gap:6px"><span style="color:#7f8792">€</span><input class="field-input" style="max-width:130px" type="number" step="0.01" min="0" data-f="inkoopprijs" value="${toInput(Number(r.inkoopprijs || 0).toFixed(2))}"></div></td><td><div style="display:flex;align-items:center;gap:6px"><span style="color:#7f8792">€</span><input class="field-input" style="max-width:130px" type="number" step="0.01" min="0" data-f="verkoopprijsInclBtw" value="${toInput(Number(r.verkoopprijsInclBtw || r.price || 0).toFixed(2))}"></div></td><td><input class="field-input" style="max-width:130px" data-f="verkoopprijsExclBtw" value="${toInput(Number(r.verkoopprijsExclBtw || 0).toFixed(2))}" readonly tabindex="-1"></td><td><input class="field-input" style="max-width:120px" data-f="marge" value="${toInput(Number(r.marge || 0).toFixed(2))}" readonly tabindex="-1"></td><td><input class="field-input" style="max-width:100px" data-f="margePct" value="${toInput(`${calculateMargePct(r.verkoopprijsInclBtw, r.inkoopprijs).toFixed(2)}%`)}" readonly tabindex="-1"></td><td><button class="today-btn today-btn--ghost" data-price-save="${r.id}">Opslaan</button></td><td><button class="today-btn today-btn--ghost" data-price-delete="${r.id}">Verwijderen</button></td></tr>`
+          (r) => {
+            const incl = Number(r.verkoopprijsInclBtw ?? r.price ?? 0);
+            const excl = deriveVerkoopExcl(r);
+            const margins = computeMargins({ verkoopExcl: excl, inkoop: Number(r.inkoopprijs || 0) });
+            return `<tr data-price-id="${r.id}" data-sku="${escapeAttr(r.sku || '')}" data-categorie="${escapeAttr(r.categorie || '')}" data-vat-pct="${Number(r.btwPct || 21)}"><td><span style="font-size:12px;color:#7f8792;white-space:nowrap">${escapeAttr(r.sku || '-')}</span></td><td><input class="field-input" data-f="naam" value="${escapeAttr(r.naam || r.description || '')}"></td><td><div style="display:flex;align-items:center;gap:6px"><span style="color:#7f8792">€</span><input class="field-input" style="max-width:130px" type="number" step="0.01" min="0" data-f="inkoopprijs" value="${toInput(round2(Number(r.inkoopprijs || 0)).toFixed(2))}"></div></td><td><div style="display:flex;align-items:center;gap:6px"><span style="color:#7f8792">€</span><input class="field-input" style="max-width:130px" type="number" step="0.01" min="0" data-f="verkoopprijsInclBtw" value="${toInput(round2(incl).toFixed(2))}"></div></td><td><input class="field-input" style="max-width:130px" type="number" step="0.01" data-f="verkoopprijsExclBtw" value="${toInput(round2(excl).toFixed(2))}"></td><td><input class="field-input" style="max-width:120px" type="number" step="0.01" data-f="marge" value="${toInput(round2(margins.margeEuro).toFixed(2))}"></td><td><input class="field-input" style="max-width:100px" data-f="margePct" value="${toInput(`${round2(margins.margePct).toFixed(2)}%`)}"></td><td><button class="today-btn today-btn--ghost" data-price-save="${r.id}">Opslaan</button></td><td><button class="today-btn today-btn--ghost" data-price-delete="${r.id}">Verwijderen</button></td></tr>`;
+          }
         )
         .join('')
     }</tbody>`;

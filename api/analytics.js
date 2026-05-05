@@ -1,6 +1,5 @@
 import { Redis } from '@upstash/redis';
 import { verifySessionToken } from '../lib/session.js';
-import { fetchWithRetry } from '../lib/retry.js';
 import { ghlCalendarIdFromEnv, ghlLocationIdFromEnv } from '../lib/ghl-env-ids.js';
 import {
   fetchBlockedSlotsAsEvents,
@@ -8,38 +7,38 @@ import {
   resolveBlockSlotAssignedUserId,
 } from '../lib/ghl-calendar-blocks.js';
 import { mapEnrichedGhlEventToAppointment } from '../lib/planning/appointment.js';
-import { eventStartMsGhl, canonicalGhlEventId } from '../lib/planning/ghl-event-core.js';
-import { parseStructuredPriceRulesString } from '../lib/booking-canon-fields.js';
-import { readCanonicalAddressLine, splitAddressLineToStraatHuis } from '../lib/ghl-contact-canonical.js';
+import { eventStartMsGhl, canonicalGhlEventId, eventEndMsGhl, getEventStartDayAmsterdam } from '../lib/planning/ghl-event-core.js';
+import { BOOKING_FORM_FIELD_IDS, parseStructuredPriceRulesString } from '../lib/booking-canon-fields.js';
+import { logCanonicalAddressRead, readCanonicalAddressLine, splitAddressLineToStraatHuis } from '../lib/ghl-contact-canonical.js';
 import { resolveContactCustomFieldId } from '../lib/ghl-custom-fields.js';
 import { addAmsterdamCalendarDays, formatYyyyMmDdInAmsterdam, amsterdamCalendarDayBoundsMs } from '../lib/amsterdam-calendar-day.js';
-import { cachedListConfirmedSyntheticEventsForDate } from '../lib/amsterdam-day-read-cache.js';
-import { loadSupabaseAnalyticsAppointments } from '../lib/analytics-supabase-read.js';
+import { SLOT_LABEL_AFTERNOON_NL, SLOT_LABEL_MORNING_NL } from '../lib/planning-work-hours.js';
+import {
+  amsterdamDayReadCacheGet,
+  amsterdamDayReadCacheKeyBlockedSlots,
+  amsterdamDayReadCacheKeyCalendarEvents,
+  amsterdamDayReadCacheSet,
+  cachedListConfirmedSyntheticEventsForDate,
+} from '../lib/amsterdam-day-read-cache.js';
+import { readInvoicePartyField, resolveInvoicePartyFieldIds } from '../lib/invoice-party-ghl.js';
+import { loadPlannerAppointmentsSource } from '../lib/planner-appointments-source.js';
+import { calcAppointmentTotal } from '../lib/planner-appointment-totals.js';
+import { fetchWithRetry } from '../lib/retry.js';
 
 const GHL_API_KEY = process.env.GHL_API_KEY;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 const RESULT_CACHE_TTL_SEC = 30 * 60;
 const CONTACT_CACHE_TTL_SEC = 24 * 60 * 60;
+const ANALYTICS_SOURCE = 'planner_feed';
+const ANALYTICS_VERSION = 'planner_feed_v1';
 
 const FIELD_IDS = {
-  tijdafspraak: 'UAE5RYGQAfY8k5w5Yaon',
-  type_onderhoud: 'M7r1T0AjWln7W8L4hNfW',
-  probleemomschrijving: 'R7vU3nS4M6j9K2pQ8xYt',
-  prijs: 'GTM68UTLsdrWHrxOvcxR',
-  prijs_regels: 'mNf4R2tY8wQ6eL1kP9dS',
-  opmerkingen: 'xYv2L8sQ4rN1pT7mW5cH',
-};
-
-const BOOKING_FORM_FIELD_IDS = {
-  straat_huisnummer: 'n4vS2xQ9mW6tL1rP8dYk',
-  postcode: 'c8dY1pL4tQ7mS2rN5xWv',
-  woonplaats: 'w6pN3rT9mQ2xL8dY1sVh',
-  type_onderhoud: 'd9mQ2xL8pR5tN1vS4yWk',
-  probleemomschrijving: 'p2xL8dY1mQ4rT7nS5vWk',
-  prijs_totaal: 'v7nS5xL2dY8mQ1rT4pWk',
-  prijs_regels: 'k5rT1mQ8xL2dY4nS7vWp',
-  tijdslot: 'g8mQ2xL5dY1rT4nS7vWp',
-  betaal_status: 'j4rT8mQ2xL1dY5nS7vWp',
+  tijdafspraak: 'RfKARymCOYYkufGY053T',
+  type_onderhoud: 'EXSQmlt7BqkXJMs8F3Qk',
+  probleemomschrijving: 'BBcbPCNA9Eu0Kyi4U1LN',
+  prijs: 'HGjlT6ofaBiMz3j2HsXL',
+  prijs_regels: 'gPjrUG2eH81PeALh8tVS',
+  opmerkingen: 'LCIFALarX3WZI5jsBbDA',
 };
 
 let _redis = undefined;
@@ -249,12 +248,6 @@ function eventYmdFromStartMs(ev) {
   return formatYyyyMmDdInAmsterdam(new Date(ms)) || '';
 }
 
-function calcTotalPrice(a) {
-  const base = Number(a?.price) || 0;
-  const extra = Array.isArray(a?.extras) ? a.extras.reduce((s, x) => s + (Number(x?.price) || 0), 0) : 0;
-  return Math.round((base + extra) * 100) / 100;
-}
-
 function paymentIsPaid(s) {
   const t = String(s || '').trim().toLowerCase();
   if (!t) return false;
@@ -262,19 +255,19 @@ function paymentIsPaid(s) {
 }
 
 function buildAnalyticsFromAppointments(appointments = []) {
-  const clients = appointments.filter((a) => !a.isCalBlock && !a.isSyntheticBlockBooking);
+  const clients = appointments.filter((a) => !a.isCalBlock);
   const totaalAfspraken = clients.length;
-  const totaleOmzet = Math.round(clients.reduce((s, a) => s + calcTotalPrice(a), 0) * 100) / 100;
+  const totaleOmzet = Math.round(clients.reduce((s, a) => s + calcAppointmentTotal(a), 0) * 100) / 100;
   const gemiddeldeWaarde = totaalAfspraken ? Math.round((totaleOmzet / totaalAfspraken) * 100) / 100 : 0;
   const openstaandTeFactureren = Math.round(
-    clients.reduce((s, a) => (paymentIsPaid(a.paymentStatus) ? s : s + calcTotalPrice(a)), 0) * 100
+    clients.reduce((s, a) => (paymentIsPaid(a.paymentStatus) ? s : s + calcAppointmentTotal(a)), 0) * 100
   ) / 100;
   const byType = {};
   for (const a of clients) {
     const t = String(a.jobType || 'onbekend').toLowerCase();
     if (!byType[t]) byType[t] = { jobType: t, aantal: 0, omzet: 0 };
     byType[t].aantal += 1;
-    byType[t].omzet = Math.round((byType[t].omzet + calcTotalPrice(a)) * 100) / 100;
+    byType[t].omzet = Math.round((byType[t].omzet + calcAppointmentTotal(a)) * 100) / 100;
   }
   const weekMap = {};
   const recentAppointments = [...clients]
@@ -286,7 +279,7 @@ function buildAnalyticsFromAppointments(appointments = []) {
       klant: a.name || '',
       adres: a.fullAddressLine || a.address || '',
       werksoort: a.jobType || 'onbekend',
-      bedrag: calcTotalPrice(a),
+      bedrag: calcAppointmentTotal(a),
       status: a.status || '',
       contactId: a.contactId || '',
     }));
@@ -300,7 +293,7 @@ function buildAnalyticsFromAppointments(appointments = []) {
     const wk = `${d.getUTCFullYear()}-W${String(Math.ceil((((d - new Date(Date.UTC(d.getUTCFullYear(), 0, 1))) / 86400000) + 1) / 7)).padStart(2, '0')}`;
     const jobType = String(a.jobType || 'onbekend').toLowerCase();
     if (!weekMap[wk]) weekMap[wk] = { week: wk, omzet: 0, marge: 0, installatie: 0, reparatie: 0, onderhoud: 0 };
-    const total = calcTotalPrice(a);
+    const total = calcAppointmentTotal(a);
     const factor = Number(categoryCostFactor[jobType] ?? categoryCostFactor.onbekend);
     const margin = Math.max(0, total - total * factor);
     weekMap[wk].omzet = Math.round((weekMap[wk].omzet + total) * 100) / 100;
@@ -353,34 +346,91 @@ async function writeResultCache(periodKey, payload) {
   await redis.set(resultCacheKey(periodKey), JSON.stringify(payload), { ex: RESULT_CACHE_TTL_SEC });
 }
 
-async function runAnalyticsFromSupabase(rangeInput) {
+function isPlannerFeedResultCacheUsable(payload) {
+  if (!payload || typeof payload !== 'object') return false;
+  if (!payload.period || !payload.kpis) return false;
+  const source = String(payload?.meta?.analytics_source || '').trim();
+  const version = String(payload?.meta?.analytics_version || '').trim();
+  return source === ANALYTICS_SOURCE && version === ANALYTICS_VERSION;
+}
+
+async function runAnalyticsFromPlannerFeed(rangeInput) {
   const range = rangeInput;
-  const url = String(process.env.SUPABASE_URL || '').trim();
-  const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-  if (!url || !key) {
-    throw new Error('Supabase analytics: SUPABASE_URL of SUPABASE_SERVICE_ROLE_KEY ontbreekt');
+  const locId = ghlLocationIdFromEnv();
+  const calId = ghlCalendarIdFromEnv();
+  const plannerNotitiesFieldId = await resolvePlannerNotitiesFieldId();
+  const plannerInternalFixedStartFieldId = await resolvePlannerInternalFixedStartFieldId();
+  const invoicePartyFieldIdsForPlanner = await resolveInvoicePartyFieldIds({
+    baseUrl: GHL_BASE,
+    apiKey: GHL_API_KEY,
+    locationId: locId,
+  });
+  const appointments = [];
+  let ghaCalls = 0;
+  let uniqueContacts = 0;
+  let dayCount = 0;
+  for (let d = range.startDate; d && d <= range.endDate; d = addAmsterdamCalendarDays(d, 1)) {
+    const dayOut = await loadPlannerAppointmentsSource(
+      {
+        date: d,
+        locId,
+        calId,
+        apiKey: GHL_API_KEY,
+        baseUrl: GHL_BASE,
+        plannerNotitiesFieldId,
+        plannerInternalFixedStartFieldId,
+        invoicePartyFieldIdsForPlanner,
+        traceLastEditedContactId: null,
+      },
+      {
+        amsterdamCalendarDayBoundsMs,
+        eventStartMsGhl,
+        eventEndMsGhl,
+        getEventStartDayAmsterdam,
+        canonicalGhlEventId,
+        resolveBlockSlotAssignedUserId,
+        fetchWithRetry,
+        amsterdamDayReadCacheGet,
+        amsterdamDayReadCacheSet,
+        amsterdamDayReadCacheKeyCalendarEvents,
+        amsterdamDayReadCacheKeyBlockedSlots,
+        fetchBlockedSlotsAsEvents,
+        markBlockLikeOnCalendarEvents,
+        cachedListConfirmedSyntheticEventsForDate,
+        getField,
+        BOOKING_FORM_FIELD_IDS,
+        FIELD_IDS,
+        splitAddressLineToStraatHuis,
+        readCanonicalAddressLine,
+        logCanonicalAddressRead,
+        SLOT_LABEL_MORNING_NL,
+        SLOT_LABEL_AFTERNOON_NL,
+        normalizeInternalFixedPinFromBody,
+        parseStructuredPriceRulesString,
+        readInvoicePartyField,
+        mapEnrichedGhlEventToAppointment,
+      }
+    );
+    appointments.push(...dayOut.appointments);
+    ghaCalls += Number(dayOut?.gaPerf?.unique_contact_fetches || 0);
+    uniqueContacts += Number(dayOut?.uniqueCids?.length || 0);
+    dayCount += 1;
   }
-  const { appointments, meta: sbFetchMeta } = await loadSupabaseAnalyticsAppointments(
-    url,
-    key,
-    range.startDate,
-    range.endDate
-  );
   const analytics = buildAnalyticsFromAppointments(appointments);
-  const uniqueContacts = new Set(appointments.map((a) => String(a.contactId || '').trim()).filter(Boolean)).size;
   return {
     period: range.period,
     startDate: range.startDate,
     endDate: range.endDate,
     ...analytics,
     meta: {
-      ghlCalls: 0,
+      ghlCalls: ghaCalls,
       uniqueContacts,
       cacheHit: 'none',
       period: range.period,
       generatedAt: new Date().toISOString(),
-      analytics_source: 'supabase',
-      ...sbFetchMeta,
+      analytics_source: ANALYTICS_SOURCE,
+      analytics_version: ANALYTICS_VERSION,
+      fetchedDays: dayCount,
     },
   };
 }
@@ -545,13 +595,11 @@ export default async function handler(req, res) {
     const locConfigured = ghlLocationIdFromEnv();
     const calConfigured = ghlCalendarIdFromEnv();
     const hasGhl = Boolean(GHL_API_KEY && locConfigured && calConfigured);
-    const hasSb = Boolean(String(process.env.SUPABASE_URL || '').trim() && String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim());
-    if (!hasGhl && !hasSb) {
+    if (!hasGhl) {
       return res.status(503).json({
         ok: false,
         error: 'Analytics niet beschikbaar',
-        detail:
-          'Zet SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (vooral), of GHL_API_KEY + GHL_LOCATION_ID + GHL_CALENDAR_ID als fallback.',
+        detail: 'Zet GHL_API_KEY + GHL_LOCATION_ID + GHL_CALENDAR_ID om planner-feed analytics te gebruiken.',
       });
     }
 
@@ -560,9 +608,6 @@ export default async function handler(req, res) {
     console.log(
       JSON.stringify({
         analytics_env_check: {
-          hasSupabaseUrl: Boolean(String(process.env.SUPABASE_URL || '').trim()),
-          hasSupabaseServiceRoleKey: Boolean(String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim()),
-          enableSupabaseRead: String(process.env.ENABLE_SUPABASE_READ || '').trim() || null,
           hasGhl,
           vercelEnv: String(process.env.VERCEL_ENV || '').trim() || null,
           rangeKey: range.key,
@@ -571,10 +616,7 @@ export default async function handler(req, res) {
     );
 
     const cacheHit = await readResultCache(range.key);
-    /** Oude Redis-cache (vóór Supabase-first) mist analytics_source; niet opnieuw serveren zodat preview niet vast blijft op GHL. */
-    const cacheUsable =
-      Boolean(cacheHit?.period && cacheHit?.kpis) &&
-      (!hasSb || String(cacheHit?.meta?.analytics_source || '').trim() === 'supabase');
+    const cacheUsable = isPlannerFeedResultCacheUsable(cacheHit);
     if (cacheUsable) {
       return res.status(200).json({
         ok: true,
@@ -589,46 +631,12 @@ export default async function handler(req, res) {
     }
 
     try {
-      if (hasSb) {
-        try {
-          console.log('analytics_before_supabase_read');
-          const payload = await runAnalyticsFromSupabase(range);
-          console.log('analytics_after_supabase_read');
-          console.log(
-            JSON.stringify({
-              route: 'api/analytics',
-              analytics_source: 'supabase',
-              period: range.period,
-              cacheKey: range.key,
-            })
-          );
-          await writeResultCache(range.key, payload);
-          return res.status(200).json({ ok: true, source: 'live', ...payload });
-        } catch (sbErr) {
-          console.warn(
-            JSON.stringify({
-              route: 'api/analytics',
-              analytics_source: 'supabase_error',
-              reason: 'supabase_read_failed',
-              message: String(sbErr?.message || sbErr).slice(0, 300),
-            })
-          );
-          return res.status(502).json({
-            ok: false,
-            error: 'Supabase analytics mislukt',
-            detail: String(sbErr?.message || sbErr),
-          });
-        }
-      }
-
-      const payload = await runAnalytics(range);
+      const payload = await runAnalyticsFromPlannerFeed(range);
       await writeResultCache(range.key, payload);
       return res.status(200).json({ ok: true, source: 'live', ...payload });
     } catch (err) {
       const fallback = await readResultCache(range.key);
-      const fallbackUsable =
-        Boolean(fallback?.period && fallback?.kpis) &&
-        (!hasSb || String(fallback?.meta?.analytics_source || '').trim() === 'supabase');
+      const fallbackUsable = isPlannerFeedResultCacheUsable(fallback);
       if (fallbackUsable) {
         return res.status(200).json({
           ok: true,
