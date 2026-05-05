@@ -404,7 +404,6 @@ function summarizeAppointmentMargins(lineBreakdown, appointment) {
     totalMarginPctKnownOnly,
     hasUnmatchedLines,
     marginReliable,
-    knownRevenue,
   };
 }
 
