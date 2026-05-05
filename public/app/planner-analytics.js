@@ -508,9 +508,16 @@
     el.innerHTML = rows
       .map((a) => {
         const reliable = Boolean(a?.marginReliable);
-        const headerRight = reliable
-          ? `${fmtEuro(a?.totalRevenue || 0)} omzet (incl) · ${fmtEuro(a?.totalKnownCost || 0)} inkoop (excl) · ${fmtEuro(a?.totalKnownMargin || 0)} marge (excl) · ${fmtMaybePct(a?.totalMarginPctKnownOnly)}`
-          : `${fmtEuro(a?.totalRevenue || 0)} omzet (incl) · ${fmtEuro(a?.totalKnownCost || 0)} bekende inkoop (excl) · ${fmtEuro(a?.totalKnownMargin || 0)} bekende marge (excl) · ${fmtEuro(a?.totalUnknownRevenue || 0)} onbekend`;
+        const omzetText = fmtEuro(a?.totalRevenue || 0);
+        const inkoopText = fmtEuro(a?.totalKnownCost || 0);
+        const margeText = fmtEuro(a?.totalKnownMargin || 0);
+        const pctText = reliable ? fmtMaybePct(a?.totalMarginPctKnownOnly) : 'Onbekend';
+        const summaryHtml = `<div class="appointment-margin-summary">
+          <div class="margin-chip"><span class="margin-chip-label">Omzet incl.</span><strong>${escHtml(omzetText)}</strong></div>
+          <div class="margin-chip"><span class="margin-chip-label">Inkoop excl.</span><strong>${escHtml(inkoopText)}</strong></div>
+          <div class="margin-chip margin-chip-profit"><span class="margin-chip-label">Marge excl.</span><strong>${escHtml(margeText)}</strong></div>
+          <div class="margin-chip margin-chip-percent"><span class="margin-chip-label">Marge</span><strong>${escHtml(pctText)}</strong></div>
+        </div>`;
         const lines = Array.isArray(a.prijsregels) ? a.prijsregels : [];
         const linesHtml = lines.length
           ? `<table class="table-clean" style="margin-top:10px"><thead><tr><th>Omschrijving</th><th>Verkoop</th><th>Inkoop</th><th>Marge</th><th>Match</th></tr></thead><tbody>${lines
@@ -524,7 +531,7 @@
           : '<div class="kpi-sub" style="margin-top:8px">Geen prijsregels beschikbaar.</div>';
         const datePart = [a?.datum || '', a?.dagdeel || ''].filter(Boolean).join(' · ');
         const reliabilityLabel = reliable ? '' : '<div class="kpi-sub" style="color:#b45309;margin-top:4px">Marge deels onbekend</div>';
-        return `<div class="panel-card" style="margin-top:10px;padding:12px 14px"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><div style="font-weight:700">${escHtml(a?.klantnaam || '-')}</div><div class="kpi-sub">${escHtml(a?.adres || '-')}</div><div class="kpi-sub">${escHtml(datePart || '-')} · ${escHtml(a?.werksoort || '-')}</div>${reliabilityLabel}</div><div style="font-size:12px;color:var(--ink-soft);align-self:flex-start">${escHtml(headerRight)}</div></div>${linesHtml}</div>`;
+        return `<div class="panel-card" style="margin-top:10px;padding:12px 14px"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><div><div style="font-weight:700">${escHtml(a?.klantnaam || '-')}</div><div class="kpi-sub">${escHtml(a?.adres || '-')}</div><div class="kpi-sub">${escHtml(datePart || '-')} · ${escHtml(a?.werksoort || '-')}</div>${reliabilityLabel}</div>${summaryHtml}</div>${linesHtml}</div>`;
       })
       .join('');
   }
