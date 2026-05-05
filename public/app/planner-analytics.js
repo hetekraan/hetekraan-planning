@@ -307,10 +307,6 @@
     return defs
       .map((def) => {
         const st = kpiState[def.key] || {};
-        const badgeHtml =
-          def.key === 'marge' && st.badge
-            ? `<span style="font-size:12px;line-height:1;background:#eef6ef;color:#0f7a4b;border:1px solid #cfe6d1;border-radius:999px;padding:4px 8px">${escHtml(st.badge)}</span>`
-            : '';
         let sub = '';
         if (st.loading) {
           sub = `<div class="kpi-sub">${escHtml(st.delta || '')}</div>`;
@@ -327,7 +323,7 @@
             : 'font-size:clamp(16px,2.4vw,20px)';
         const cardStyle = 'min-height:108px;display:flex;flex-direction:column;justify-content:space-between';
         const valueStyle = def.key === 'gemMarge' ? `${valStyle};font-size:clamp(14px,2vw,18px)` : valStyle;
-        return `<div class="panel-card" style="${cardStyle}"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="kpi-title">${def.title}</div>${badgeHtml}</div><div class="kpi-value" style="${valueStyle}">${escHtml(st.value || '—')}</div>${sub}</div>`;
+        return `<div class="panel-card" style="${cardStyle}"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="kpi-title">${def.title}</div></div><div class="kpi-value" style="${valueStyle}">${escHtml(st.value || '—')}</div>${sub}</div>`;
       })
       .join('');
   }
@@ -758,7 +754,6 @@
       const margePct = k.totaleOmzet ? (totalMargin / k.totaleOmzet) * 100 : 0;
       setKpi('omzet', fmtEuro(k.totaleOmzet || 0), k.totaleOmzet || 0, p.totaleOmzet || 0);
       setKpi('marge', fmtEuro(totalMargin), totalMargin, prevMargin, '');
-      kpiState.marge.badge = fmtPct(margePct);
       KPI_KEYS_NOT_LINKED.forEach((key) => {
         kpiState[key] = kpiNotLinkedState(key);
       });
