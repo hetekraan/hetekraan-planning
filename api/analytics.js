@@ -61,8 +61,13 @@ function contactCacheKey(contactId) {
   return `${redisPrefix()}hk:analytics:contact:${String(contactId || '').trim()}`;
 }
 
-function resultCacheKey(periodKey) {
-  return `${redisPrefix()}analytics:${String(periodKey || '').trim()}`;
+function resultCacheKeyFromRange(range) {
+  const start = String(range?.startDate || '').trim();
+  const end = String(range?.endDate || '').trim();
+  if (start && end) {
+    return `${redisPrefix()}analytics:${start}:${end}:${ANALYTICS_VERSION}`;
+  }
+  return `${redisPrefix()}analytics:${String(range?.key || '').trim() || 'unknown'}:${ANALYTICS_VERSION}`;
 }
 
 function ensureAuth(req) {
@@ -327,10 +332,10 @@ function buildAnalyticsFromAppointments(appointments = []) {
   };
 }
 
-async function readResultCache(periodKey) {
+async function readResultCache(range) {
   const redis = getRedis();
   if (!redis) return null;
-  const raw = await redis.get(resultCacheKey(periodKey));
+  const raw = await redis.get(resultCacheKeyFromRange(range));
   if (!raw) return null;
   if (typeof raw === 'object') return raw;
   try {
@@ -340,10 +345,10 @@ async function readResultCache(periodKey) {
   }
 }
 
-async function writeResultCache(periodKey, payload) {
+async function writeResultCache(range, payload) {
   const redis = getRedis();
   if (!redis) return;
-  await redis.set(resultCacheKey(periodKey), JSON.stringify(payload), { ex: RESULT_CACHE_TTL_SEC });
+  await redis.set(resultCacheKeyFromRange(range), JSON.stringify(payload), { ex: RESULT_CACHE_TTL_SEC });
 }
 
 function isPlannerFeedResultCacheUsable(payload) {
@@ -615,7 +620,7 @@ export default async function handler(req, res) {
       })
     );
 
-    const cacheHit = await readResultCache(range.key);
+    const cacheHit = await readResultCache(range);
     const cacheUsable = isPlannerFeedResultCacheUsable(cacheHit);
     if (cacheUsable) {
       return res.status(200).json({
@@ -632,10 +637,10 @@ export default async function handler(req, res) {
 
     try {
       const payload = await runAnalyticsFromPlannerFeed(range);
-      await writeResultCache(range.key, payload);
+      await writeResultCache(range, payload);
       return res.status(200).json({ ok: true, source: 'live', ...payload });
     } catch (err) {
-      const fallback = await readResultCache(range.key);
+      const fallback = await readResultCache(range);
       const fallbackUsable = isPlannerFeedResultCacheUsable(fallback);
       if (fallbackUsable) {
         return res.status(200).json({
