@@ -74,6 +74,7 @@ import {
   normalizePriceLineItems,
   toPriceNumber,
 } from '../lib/booking-canon-fields.js';
+import { syncAppointmentToSupabase } from '../lib/planner-supabase-sync.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -445,6 +446,23 @@ function releaseBookingLock(key) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
+async function syncConfirmedBookingToSupabase(input) {
+  try {
+    const out = await syncAppointmentToSupabase(input);
+    console.log('[confirm-booking] supabase_sync_result', {
+      ok: out?.ok === true,
+      skipped: out?.skipped === true,
+      reason: out?.reason || null,
+      appointmentId: out?.appointmentId || null,
+      priceLineCount: Number(out?.priceLineCount || 0),
+    });
+  } catch (err) {
+    console.warn('[confirm-booking] supabase_sync_failed', {
+      message: String(err?.message || err).slice(0, 240),
+    });
+  }
+}
+
 export default async function handler(req, res) {
   applySecurityHeaders(res);
   const requestId = getOrCreateRequestId(req, res);
@@ -483,6 +501,15 @@ export default async function handler(req, res) {
     priceLines,
     totalPrice,
   } = body || {};
+  const normalizedBookingPriceLines = normalizePriceLineItems(
+    Array.isArray(priceLines) ? priceLines.slice(0, 50) : []
+  );
+  const totalFromLines = normalizedBookingPriceLines.length
+    ? Math.round(
+        normalizedBookingPriceLines.reduce((sum, row) => sum + Number(row.price || 0), 0) * 100
+      ) / 100
+    : null;
+  const resolvedTotalAmount = totalFromLines ?? toPriceNumber(totalPrice);
   // TEMP DIAG: bewijs server-side parse (geen volledige e-mail loggen)
   console.log('[confirm-booking DIAG] req_body_keys', Object.keys(body || {}), {
     hasEmailField: emailRaw != null && String(emailRaw).length > 0,
@@ -910,8 +937,8 @@ export default async function handler(req, res) {
       date,
       block,
       routeStopDay: routeStopDayV2,
-      priceLines,
-      totalPrice,
+      priceLines: normalizedBookingPriceLines,
+      totalPrice: resolvedTotalAmount,
     });
     console.log('[confirm-booking DEBUG] v2 tijdafspraak_field', { value: bevestigingB1 });
 
@@ -987,6 +1014,35 @@ export default async function handler(req, res) {
       responseBodyJson: ghlPutOkBodyB1 ? JSON.stringify(ghlPutOkBodyB1).slice(0, 2500) : null,
     });
     logDiagGhlContactPutResult('v2_B1', contactId, putResB1.status, true, null, cAfter);
+
+    await syncConfirmedBookingToSupabase({
+      source: 'confirm-booking',
+      externalBookingId: String(resv?.reservation?.id || '').trim() || null,
+      reservationId: String(resv?.reservation?.id || '').trim() || null,
+      ghlContactId: contactId,
+      customerName: name,
+      phone: phoneForPut || phone || '',
+      email,
+      address,
+      date,
+      dayPart: block,
+      timeWindow: String(chosenSlot?.time || chosenSlot?.label || '').trim(),
+      status: 'confirmed',
+      problemDescription: desc || '',
+      totalAmount: resolvedTotalAmount,
+      priceLines: normalizedBookingPriceLines,
+      rawPayload: {
+        bookingModel: 'B',
+        tokenSchemaVersion: 2,
+        routeStopDay: routeStopDayV2,
+        slot: chosenSlot,
+        price: {
+          totalAmount: resolvedTotalAmount,
+          totalFromLines,
+          priceLines: normalizedBookingPriceLines,
+        },
+      },
+    });
 
     releaseBookingLock(lockKey);
 
@@ -1218,8 +1274,8 @@ export default async function handler(req, res) {
     date,
     block,
     routeStopDay,
-    priceLines,
-    totalPrice,
+    priceLines: normalizedBookingPriceLines,
+    totalPrice: resolvedTotalAmount,
   });
 
   // Contact-PUT: 2021-07-28 — custom fields + native city/postalCode worden betrouwbaar gemerged (vs 2021-04-15).
@@ -1518,6 +1574,35 @@ export default async function handler(req, res) {
     }
   }
   perf.v1_tag_delay_pulse_ms = Date.now() - tV1Tag0;
+
+  await syncConfirmedBookingToSupabase({
+    source: 'confirm-booking',
+    externalBookingId: String(appointmentId || '').trim() || null,
+    ghlContactId: contactId,
+    customerName: name,
+    phone: phoneForPut || phone || '',
+    email,
+    address,
+    date,
+    dayPart: block,
+    timeWindow: String(chosenSlot?.time || chosenSlot?.label || '').trim(),
+    status: 'confirmed',
+    problemDescription: desc || '',
+    totalAmount: resolvedTotalAmount,
+    priceLines: normalizedBookingPriceLines,
+    rawPayload: {
+      bookingModel: 'A',
+      tokenSchemaVersion: bookingData?.tokenSchemaVersion ?? null,
+      routeStopDay,
+      slot: chosenSlot,
+      appointmentId,
+      price: {
+        totalAmount: resolvedTotalAmount,
+        totalFromLines,
+        priceLines: normalizedBookingPriceLines,
+      },
+    },
+  });
 
   const tOutV10 = Date.now();
   const out = {
