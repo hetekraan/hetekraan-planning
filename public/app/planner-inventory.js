@@ -1,6 +1,8 @@
 (function initPlannerInventory(global) {
   let items = [];
   let warnings = [];
+  let isEditingInventory = false;
+  const draftMinStockById = new Map();
   let deleteOverlay = null;
   let deleteEscHandler = null;
 
@@ -47,6 +49,35 @@
       .replaceAll("'", '&#39;');
   }
 
+  function syncEditButtons() {
+    const toggleBtn = document.getElementById('inventoryEditToggleBtn');
+    const cancelBtn = document.getElementById('inventoryEditCancelBtn');
+    if (toggleBtn) toggleBtn.textContent = isEditingInventory ? 'Opslaan' : 'Bewerk';
+    if (cancelBtn) cancelBtn.style.display = isEditingInventory ? '' : 'none';
+  }
+
+  function initializeDraftMinStocks() {
+    draftMinStockById.clear();
+    for (const item of items) {
+      draftMinStockById.set(String(item.id || ''), Number(item.minStock || 0));
+    }
+  }
+
+  async function saveMinStockEdits() {
+    for (const item of items) {
+      const id = String(item.id || '');
+      if (!id) continue;
+      const nextMin = Math.max(0, Math.floor(Number(draftMinStockById.get(id) ?? item.minStock ?? 0)));
+      const currMin = Math.max(0, Math.floor(Number(item.minStock || 0)));
+      if (nextMin === currMin) continue;
+      await fetch('/api/inventory', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-HK-Auth': authHeader() },
+        body: JSON.stringify({ id, stock: Number(item.stock || 0), minStock: nextMin }),
+      });
+    }
+  }
+
   function renderTable() {
     const table = document.getElementById('inventoryTable');
     const q = String(document.getElementById('inventorySearch')?.value || '').toLowerCase().trim();
@@ -62,16 +93,32 @@
     for (const group of groups) {
       const rowsForGroup = filtered.filter((x) => String(x.category || '') === group);
       if (!rowsForGroup.length) continue;
-      groupedRows.push(`<tr><td colspan="7" style="background:#f8f9fb;font-weight:600;color:#475569">${group}</td></tr>`);
+      groupedRows.push(`<tr><td colspan="${isEditingInventory ? 7 : 6}" style="background:#f8f9fb;font-weight:600;color:#475569">${group}</td></tr>`);
       groupedRows.push(
         ...rowsForGroup.map((x) => {
           const st = statusFor(x);
           const label = st === 'out' ? 'Uitverkocht' : st === 'low' ? 'Laag' : 'OK';
-          return `<tr><td>${x.name}</td><td>${x.category}</td><td>${x.stock}</td><td>${x.minStock}</td><td>€ ${Number(x.inkoopprijs || 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td><span class="status-pill ${st}">${label}</span></td><td><button class="chip-btn" data-adjust="-1" data-id="${x.id}">-</button> <button class="chip-btn" data-adjust="1" data-id="${x.id}">+</button> <button class="chip-btn" data-delete-id="${x.id}">Verwijderen</button></td></tr>`;
+          const draftMin = Number(draftMinStockById.get(String(x.id || '')) ?? x.minStock ?? 0);
+          const minCell = isEditingInventory
+            ? `<input class="field-input" type="number" min="0" step="1" data-minstock-id="${x.id}" value="${Math.max(0, Math.floor(draftMin))}" style="max-width:92px">`
+            : String(x.minStock);
+          const actionsCell = isEditingInventory
+            ? `<button class="chip-btn" data-adjust="-1" data-id="${x.id}">-</button> <button class="chip-btn" data-adjust="1" data-id="${x.id}">+</button> <button class="chip-btn" data-delete-id="${x.id}">Verwijderen</button>`
+            : '';
+          return `<tr><td>${escHtml(x.name)}</td><td>${escHtml(x.category)}</td><td>${x.stock}</td><td>${minCell}</td><td>€ ${Number(x.inkoopprijs || 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td><span class="status-pill ${st}">${label}</span></td>${isEditingInventory ? `<td>${actionsCell}</td>` : ''}</tr>`;
         })
       );
     }
-    table.innerHTML = `<thead><tr><th>Naam</th><th>Categorie</th><th>Voorraad</th><th>Minimum</th><th>Inkoopprijs</th><th>Status</th><th></th></tr></thead><tbody>${groupedRows.join('')}</tbody>`;
+    table.innerHTML = `<thead><tr><th>Naam</th><th>Categorie</th><th>Voorraad</th><th>Minimum</th><th>Inkoopprijs</th><th>Status</th>${isEditingInventory ? '<th></th>' : ''}</tr></thead><tbody>${groupedRows.join('')}</tbody>`;
+    table.querySelectorAll('[data-minstock-id]').forEach((input) => {
+      input.addEventListener('input', () => {
+        const id = String(input.getAttribute('data-minstock-id') || '');
+        if (!id) return;
+        const next = Math.max(0, Math.floor(Number(input.value || 0)));
+        draftMinStockById.set(id, next);
+      });
+    });
+    if (!isEditingInventory) return;
     table.querySelectorAll('[data-adjust]').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const id = btn.getAttribute('data-id');
@@ -102,6 +149,8 @@
   async function render() {
     try {
       await Promise.all([load(), loadWarnings()]);
+      if (isEditingInventory && !draftMinStockById.size) initializeDraftMinStocks();
+      syncEditButtons();
       renderCategoryFilter();
       renderWarnings();
       renderTable();
@@ -200,5 +249,26 @@
   }
 
   bindFilters();
-  global.HKPlannerInventory = { render, openCreateModal: () => {} };
+  function cancelEditMode() {
+    isEditingInventory = false;
+    draftMinStockById.clear();
+    syncEditButtons();
+    renderTable();
+  }
+
+  async function toggleEditMode() {
+    if (!isEditingInventory) {
+      isEditingInventory = true;
+      initializeDraftMinStocks();
+      syncEditButtons();
+      renderTable();
+      return;
+    }
+    await saveMinStockEdits();
+    isEditingInventory = false;
+    draftMinStockById.clear();
+    await render();
+  }
+
+  global.HKPlannerInventory = { render, openCreateModal: () => {}, toggleEditMode, cancelEditMode };
 })(window);

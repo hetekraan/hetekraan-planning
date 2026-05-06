@@ -5698,6 +5698,15 @@
     font-size: 13px;
     width: 100%;
   }
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
   .status-pill { font-size: 11px; border-radius: 999px; padding: 2px 8px; border: 1px solid var(--border); }
   .status-pill.ok { background: var(--green-soft); color: var(--green); border-color: transparent; }
   .status-pill.low { background: var(--accent-soft); color: var(--accent-ink); border-color: transparent; }
@@ -6138,7 +6147,11 @@
         <h1>Producten</h1>
         <p id="productsCategoryLabel">Kranen</p>
       </div>
-      <button type="button" class="today-btn today-btn--primary" onclick="window.HKPlannerPrices?.openCreateModal?.()">+ Nieuw product</button>
+      <div class="appointments-header-actions">
+        <button type="button" class="today-btn today-btn--ghost" id="productsEditCancelBtn" style="display:none" onclick="window.HKPlannerPrices?.cancelEditMode?.()">Annuleren</button>
+        <button type="button" class="today-btn today-btn--ghost" id="productsEditToggleBtn" onclick="window.HKPlannerPrices?.toggleEditMode?.()">Bewerk</button>
+        <button type="button" class="today-btn today-btn--primary" onclick="window.HKPlannerPrices?.openCreateModal?.()">+ Nieuw product</button>
+      </div>
     </div>
     <div class="panel-page-content">
       <div id="pricesSummaryBar"></div>
@@ -6153,7 +6166,10 @@
         <h1>Voorraad</h1>
         <p>Artikelbeheer en voorraadstatus</p>
       </div>
-      <span></span>
+      <div class="appointments-header-actions">
+        <button type="button" class="today-btn today-btn--ghost" id="inventoryEditCancelBtn" style="display:none" onclick="window.HKPlannerInventory?.cancelEditMode?.()">Annuleren</button>
+        <button type="button" class="today-btn today-btn--ghost" id="inventoryEditToggleBtn" onclick="window.HKPlannerInventory?.toggleEditMode?.()">Bewerk</button>
+      </div>
     </div>
     <div class="panel-page-content">
       <div class="toolbar-row">

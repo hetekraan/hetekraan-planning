@@ -1,5 +1,7 @@
 (function initPlannerPrices(global) {
   let rows = [];
+  let draftRows = [];
+  let isEditingProducts = false;
   let activeCategory = 'Kranen';
   let createOverlay = null;
   let deleteOverlay = null;
@@ -93,25 +95,52 @@
   }
 
   function rowById(id) {
-    return rows.find((x) => String(x.id) === String(id));
+    const source = isEditingProducts ? draftRows : rows;
+    return source.find((x) => String(x.id) === String(id));
   }
 
-  async function saveInline(id) {
-    const rowEl = document.querySelector(`tr[data-price-id="${id}"]`);
-    if (!rowEl) return;
-    const naam = String(rowEl.querySelector('[data-f="naam"]')?.value || '').trim();
-    const inkoopprijs = Number(rowEl.querySelector('[data-f="inkoopprijs"]')?.value || 0);
-    const verkoopprijsInclBtw = Number(rowEl.querySelector('[data-f="verkoopprijsInclBtw"]')?.value || 0);
-    const btwPct = Number(rowEl.getAttribute('data-vat-pct') || 21);
-    const categorie = String(rowEl.getAttribute('data-categorie') || activeCategory);
-    const sku = String(rowEl.getAttribute('data-sku') || '').trim() || null;
-    if (!naam) return;
-    await fetch('/api/prices', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': authHeader() },
-      body: JSON.stringify({ id, sku, naam, categorie, inkoopprijs, verkoopprijsInclBtw, btwPct }),
+  function syncEditButtons() {
+    const toggleBtn = document.getElementById('productsEditToggleBtn');
+    const cancelBtn = document.getElementById('productsEditCancelBtn');
+    if (toggleBtn) toggleBtn.textContent = isEditingProducts ? 'Opslaan' : 'Bewerk';
+    if (cancelBtn) cancelBtn.style.display = isEditingProducts ? '' : 'none';
+  }
+
+  function cloneRowsForDraft() {
+    draftRows = rows.map((r) => ({ ...r }));
+  }
+
+  async function saveEditedRows() {
+    const byId = new Map(rows.map((r) => [String(r.id), r]));
+    const changed = draftRows.filter((r) => {
+      const base = byId.get(String(r.id));
+      if (!base) return false;
+      const baseNaam = String(base.naam || base.description || '').trim();
+      const baseInkoop = round2(Number(base.inkoopprijs || 0));
+      const baseIncl = round2(Number(base.verkoopprijsInclBtw ?? base.price ?? 0));
+      const nextNaam = String(r.naam || r.description || '').trim();
+      const nextInkoop = round2(Number(r.inkoopprijs || 0));
+      const nextIncl = round2(Number(r.verkoopprijsInclBtw ?? r.price ?? 0));
+      return baseNaam !== nextNaam || baseInkoop !== nextInkoop || baseIncl !== nextIncl;
     });
-    await render();
+    for (const r of changed) {
+      const id = String(r.id || '');
+      const naam = String(r.naam || r.description || '').trim();
+      if (!id || !naam) continue;
+      await fetch('/api/prices', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-HK-Auth': authHeader() },
+        body: JSON.stringify({
+          id,
+          sku: String(r.sku || '').trim() || null,
+          naam,
+          categorie: String(r.categorie || activeCategory),
+          inkoopprijs: Number(r.inkoopprijs || 0),
+          verkoopprijsInclBtw: Number(r.verkoopprijsInclBtw ?? r.price ?? 0),
+          btwPct: Number(r.btwPct || 21),
+        }),
+      });
+    }
   }
 
   function bindDelete() {
@@ -126,13 +155,7 @@
   }
 
   function bindInline() {
-    document.querySelectorAll('[data-price-save]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const id = btn.getAttribute('data-price-save');
-        if (!id) return;
-        await saveInline(id);
-      });
-    });
+    if (!isEditingProducts) return;
     document.querySelectorAll('tr[data-price-id]').forEach((rowEl) => {
       const inkoopInput = rowEl.querySelector('[data-f="inkoopprijs"]');
       const inclInput = rowEl.querySelector('[data-f="verkoopprijsInclBtw"]');
@@ -172,7 +195,19 @@
         if (exclEl) exclEl.value = round2(nextExcl).toFixed(2);
         if (margeEl) margeEl.value = round2(clamp(margins.margeEuro, 0, Math.max(0, nextExcl))).toFixed(2);
         if (margePctEl) margePctEl.value = `${round2(clamp(margins.margePct, 0, 100)).toFixed(2)}%`;
+        const draft = rowById(rowEl.getAttribute('data-price-id'));
+        if (draft) {
+          const nameInput = rowEl.querySelector('[data-f="naam"]');
+          draft.naam = String(nameInput?.value || draft.naam || '').trim();
+          draft.inkoopprijs = round2(nextInkoop);
+          draft.verkoopprijsInclBtw = round2(nextIncl);
+        }
       };
+      const nameInput = rowEl.querySelector('[data-f="naam"]');
+      nameInput?.addEventListener('input', () => {
+        const draft = rowById(rowEl.getAttribute('data-price-id'));
+        if (draft) draft.naam = String(nameInput.value || '').trim();
+      });
       inkoopInput?.addEventListener('input', () => recalcFrom('inkoop'));
       inclInput?.addEventListener('input', () => recalcFrom('incl'));
       exclEl?.addEventListener('input', () => recalcFrom('excl'));
@@ -184,7 +219,8 @@
   }
 
   function productsForActiveCategory() {
-    return rows.filter((x) => String(x.categorie || x.category || '') === activeCategory);
+    const source = isEditingProducts ? draftRows : rows;
+    return source.filter((x) => String(x.categorie || x.category || '') === activeCategory);
   }
 
   function renderSummary(list) {
@@ -207,14 +243,17 @@
     if (!el) return;
     const list = productsForActiveCategory();
     renderSummary(list);
-    el.innerHTML = `<thead><tr><th>SKU</th><th>Naam</th><th>Inkoopprijs</th><th>Verkoopprijs incl. BTW</th><th>Verkoopprijs excl. BTW</th><th>Marge €</th><th>Marge %</th><th></th><th></th></tr></thead><tbody>${
+    el.innerHTML = `<thead><tr><th>SKU</th><th>Naam</th><th>Inkoopprijs</th><th>Verkoopprijs incl. BTW</th><th>Verkoopprijs excl. BTW</th><th>Marge €</th><th>Marge %</th>${isEditingProducts ? '<th></th>' : ''}</tr></thead><tbody>${
       list
         .map(
           (r) => {
             const incl = Number(r.verkoopprijsInclBtw ?? r.price ?? 0);
             const excl = deriveVerkoopExcl(r);
             const margins = computeMargins({ verkoopExcl: excl, inkoop: Number(r.inkoopprijs || 0) });
-            return `<tr data-price-id="${r.id}" data-sku="${escapeAttr(r.sku || '')}" data-categorie="${escapeAttr(r.categorie || '')}" data-vat-pct="${Number(r.btwPct || 21)}"><td><span style="font-size:12px;color:#7f8792;white-space:nowrap">${escapeAttr(r.sku || '-')}</span></td><td><input class="field-input" data-f="naam" value="${escapeAttr(r.naam || r.description || '')}"></td><td><div style="display:flex;align-items:center;gap:6px"><span style="color:#7f8792">€</span><input class="field-input" style="max-width:130px" type="number" step="0.01" min="0" data-f="inkoopprijs" value="${toInput(round2(Number(r.inkoopprijs || 0)).toFixed(2))}"></div></td><td><div style="display:flex;align-items:center;gap:6px"><span style="color:#7f8792">€</span><input class="field-input" style="max-width:130px" type="number" step="0.01" min="0" data-f="verkoopprijsInclBtw" value="${toInput(round2(incl).toFixed(2))}"></div></td><td><input class="field-input" style="max-width:130px" type="number" step="0.01" data-f="verkoopprijsExclBtw" value="${toInput(round2(excl).toFixed(2))}"></td><td><input class="field-input" style="max-width:120px" type="number" step="0.01" data-f="marge" value="${toInput(round2(margins.margeEuro).toFixed(2))}"></td><td><input class="field-input" style="max-width:100px" data-f="margePct" value="${toInput(`${round2(margins.margePct).toFixed(2)}%`)}"></td><td><button class="today-btn today-btn--ghost" data-price-save="${r.id}">Opslaan</button></td><td><button class="today-btn today-btn--ghost" data-price-delete="${r.id}">Verwijderen</button></td></tr>`;
+            if (!isEditingProducts) {
+              return `<tr><td><span style="font-size:12px;color:#7f8792;white-space:nowrap">${escapeAttr(r.sku || '-')}</span></td><td>${escHtml(r.naam || r.description || '-')}</td><td>${euro(Number(r.inkoopprijs || 0))}</td><td>${euro(incl)}</td><td>${euro(excl)}</td><td>${euro(margins.margeEuro)}</td><td>${round2(margins.margePct).toFixed(2)}%</td></tr>`;
+            }
+            return `<tr data-price-id="${r.id}" data-sku="${escapeAttr(r.sku || '')}" data-categorie="${escapeAttr(r.categorie || '')}" data-vat-pct="${Number(r.btwPct || 21)}"><td><span style="font-size:12px;color:#7f8792;white-space:nowrap">${escapeAttr(r.sku || '-')}</span></td><td><input class="field-input" data-f="naam" value="${escapeAttr(r.naam || r.description || '')}"></td><td><div style="display:flex;align-items:center;gap:6px"><span style="color:#7f8792">€</span><input class="field-input" style="max-width:130px" type="number" step="0.01" min="0" data-f="inkoopprijs" value="${toInput(round2(Number(r.inkoopprijs || 0)).toFixed(2))}"></div></td><td><div style="display:flex;align-items:center;gap:6px"><span style="color:#7f8792">€</span><input class="field-input" style="max-width:130px" type="number" step="0.01" min="0" data-f="verkoopprijsInclBtw" value="${toInput(round2(incl).toFixed(2))}"></div></td><td><input class="field-input" style="max-width:130px" type="number" step="0.01" data-f="verkoopprijsExclBtw" value="${toInput(round2(excl).toFixed(2))}"></td><td><input class="field-input" style="max-width:120px" type="number" step="0.01" data-f="marge" value="${toInput(round2(margins.margeEuro).toFixed(2))}"></td><td><input class="field-input" style="max-width:100px" data-f="margePct" value="${toInput(`${round2(margins.margePct).toFixed(2)}%`)}"></td><td><button class="today-btn today-btn--ghost" data-price-delete="${r.id}">Verwijderen</button></td></tr>`;
           }
         )
         .join('')
@@ -375,10 +414,12 @@
     overlay.querySelector('#pricesDeleteConfirmBtn')?.focus();
   }
 
-  async function render() {
+  async function render(shouldReload = true) {
     try {
-      await load();
+      if (shouldReload) await load();
+      if (isEditingProducts && (!draftRows.length || shouldReload)) cloneRowsForDraft();
       if (!CATEGORY_OPTIONS.includes(activeCategory)) activeCategory = 'Kranen';
+      syncEditButtons();
       renderTable();
     } catch (err) {
       const el = document.getElementById('pricesTable');
@@ -390,8 +431,28 @@
     const next = String(nextCategory || '').trim();
     if (!CATEGORY_OPTIONS.includes(next)) return;
     activeCategory = next;
-    render();
+    render(false);
   }
 
-  global.HKPlannerPrices = { render, openCreateModal, setCategory };
+  function cancelEditMode() {
+    isEditingProducts = false;
+    draftRows = [];
+    void render(true);
+  }
+
+  async function toggleEditMode() {
+    if (!isEditingProducts) {
+      isEditingProducts = true;
+      cloneRowsForDraft();
+      syncEditButtons();
+      renderTable();
+      return;
+    }
+    await saveEditedRows();
+    isEditingProducts = false;
+    draftRows = [];
+    await render(true);
+  }
+
+  global.HKPlannerPrices = { render, openCreateModal, setCategory, toggleEditMode, cancelEditMode };
 })(window);
