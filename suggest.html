@@ -30,26 +30,29 @@
     .header {
       display: flex;
       align-items: center;
-      gap: 10px;
-      margin-bottom: 20px;
+      justify-content: center;
+      margin-bottom: 24px;
       width: 100%;
       max-width: none;
     }
     .logo-icon {
-      width: 140px;
-      height: 36px;
+      width: min(320px, 82%);
+      height: auto;
       display: flex;
       align-items: center;
-      justify-content: flex-start;
+      justify-content: center;
     }
     .logo-icon img {
-      width: auto;
-      height: 100%;
+      width: 100%;
+      height: auto;
       object-fit: contain;
       display: block;
     }
-    .logo-text { font-weight: 700; font-size: 16px; color: #1f1a17; }
-    .logo-sub  { font-size: 11px; color: #6b625a; }
+    @media (max-width: 640px) {
+      .logo-icon {
+        width: min(300px, 80%);
+      }
+    }
 
     .card {
       background: #fff;
@@ -166,15 +169,20 @@
 
     .btn-search {
       width: 100%;
-      background: #ffd000; color: #111;
-      border: none; border-radius: 10px;
-      padding: 13px; font-size: 15px; font-weight: 700;
-      cursor: pointer; transition: opacity 0.15s;
+      background: #dc4a1a;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s;
       margin-top: 4px;
       touch-action: manipulation;
       -webkit-tap-highlight-color: transparent;
     }
-    .btn-search:hover:not(:disabled) { opacity: 0.88; }
+    .btn-search:hover:not(:disabled) { opacity: 0.85; }
     .btn-search:disabled { opacity: 0.35; cursor: not-allowed; }
 
     /* Spinner */
@@ -289,10 +297,6 @@
 <div class="suggest-card">
 <div class="header">
   <div class="logo-icon"><img src="/logo.png" alt="Hetekraan logo"></div>
-  <div>
-    <div class="logo-text">Hetekraan</div>
-    <div class="logo-sub">Tijdsloten sturen</div>
-  </div>
 </div>
 
 <!-- Blijft zichtbaar tijdens preview/WhatsApp: #searchCard wordt verborgen na berekenen. -->
@@ -333,7 +337,6 @@
 <!-- Stap 1: Zoekformulier -->
 <div class="card" id="searchCard">
   <div class="search-title">Stuur tijdsloten naar klant</div>
-  <div class="search-sub">Vul de klantgegevens in. Het systeem berekent tijdsloten en zet ze in GHL; WhatsApp verstuurt je <strong>workflow</strong> (goedgekeurd template).</div>
 
   <div class="field-row">
     <label class="field-label">Naam klant</label>
@@ -366,7 +369,6 @@
       <div class="catalog-v1-results" id="suggestCatalogResults"></div>
     </div>
     <div id="suggestCatalogLines" style="margin-top:8px"></div>
-    <div class="field-help">Geselecteerde regels worden meegestuurd als planner intakedata.</div>
   </div>
   <div class="field-row">
     <label class="field-label">Totaalprijs</label>
