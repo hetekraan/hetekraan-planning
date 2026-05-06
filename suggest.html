@@ -12,8 +12,8 @@
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #111;
-      color: #eee;
+      background: #f7f2ea;
+      color: #2f2923;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
@@ -31,18 +31,24 @@
       max-width: 500px;
     }
     .logo-icon {
-      width: 38px; height: 38px;
-      background: #ffd000;
-      border-radius: 9px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 19px;
+      width: 140px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
     }
-    .logo-text { font-weight: 700; font-size: 16px; color: #fff; }
-    .logo-sub  { font-size: 11px; color: #666; }
+    .logo-icon img {
+      width: auto;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+    .logo-text { font-weight: 700; font-size: 16px; color: #2f2923; }
+    .logo-sub  { font-size: 11px; color: #7a6f63; }
 
     .card {
-      background: #1a1a1a;
-      border: 1px solid #272727;
+      background: #fffdf8;
+      border: 1px solid #e6dac8;
       border-radius: 14px;
       padding: 22px;
       width: 100%;
@@ -51,27 +57,27 @@
     }
 
     /* Search form */
-    .search-title { font-weight: 700; font-size: 17px; color: #fff; margin-bottom: 6px; }
-    .search-sub   { font-size: 13px; color: #666; margin-bottom: 18px; line-height: 1.5; }
+    .search-title { font-weight: 700; font-size: 17px; color: #2f2923; margin-bottom: 6px; }
+    .search-sub   { font-size: 13px; color: #7a6f63; margin-bottom: 18px; line-height: 1.5; }
 
     .field-label {
       font-size: 11px; font-weight: 600; text-transform: uppercase;
-      letter-spacing: 0.07em; color: #555; margin-bottom: 5px; display: block;
+      letter-spacing: 0.07em; color: #7a6f63; margin-bottom: 5px; display: block;
     }
     .field-row { margin-bottom: 12px; }
     .field-input {
       width: 100%; padding: 10px 13px;
-      background: #111; border: 1px solid #333; border-radius: 9px;
-      color: #eee; font-size: 14px; font-family: inherit;
+      background: #fff; border: 1px solid #d8cab7; border-radius: 9px;
+      color: #2f2923; font-size: 14px; font-family: inherit;
       transition: border-color 0.15s;
     }
     .field-input:focus { outline: none; border-color: #ffd000; }
-    .field-input::placeholder { color: #444; }
+    .field-input::placeholder { color: #9a8f82; }
 
     .form-select {
       width: 100%; padding: 10px 13px;
-      background: #111; border: 1px solid #333; border-radius: 9px;
-      color: #eee; font-size: 14px; font-family: inherit;
+      background: #fff; border: 1px solid #d8cab7; border-radius: 9px;
+      color: #2f2923; font-size: 14px; font-family: inherit;
       cursor: pointer;
     }
     .form-select:focus { outline: none; border-color: #ffd000; }
@@ -82,7 +88,7 @@
     }
     .hk-weekday-chips label {
       display: inline-flex; align-items: center; gap: 6px;
-      font-size: 13px; color: #aaa; cursor: pointer; user-select: none;
+      font-size: 13px; color: #6d6358; cursor: pointer; user-select: none;
     }
     .hk-weekday-chips input { accent-color: #ffd000; width: 15px; height: 15px; }
 
@@ -97,19 +103,19 @@
       width: 100%;
       max-height: 240px;
       overflow: auto;
-      border: 1px solid #333;
+      border: 1px solid #d8cab7;
       border-radius: 10px;
       margin-top: 8px;
-      background: #111;
+      background: #fff;
     }
     .catalog-v1-results.is-open { display: block; }
     .catalog-v1-result {
       width: 100%;
       text-align: left;
       border: 0;
-      border-bottom: 1px solid #2a2a2a;
+      border-bottom: 1px solid #eee3d2;
       background: transparent;
-      color: #eee;
+      color: #2f2923;
       padding: 10px 12px;
       display: flex;
       justify-content: space-between;
@@ -118,25 +124,25 @@
       font-size: 13px;
     }
     .catalog-v1-result:last-child { border-bottom: none; }
-    .catalog-v1-result:hover { background: rgba(255,255,255,0.06); }
-    .catalog-v1-empty { color: #666; font-size: 12px; padding: 10px 12px; }
+    .catalog-v1-result:hover { background: #f7efe2; }
+    .catalog-v1-empty { color: #7a6f63; font-size: 12px; padding: 10px 12px; }
     .catalog-v1-line {
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 8px;
       margin-top: 8px;
-      border: 1px solid #333;
+      border: 1px solid #d8cab7;
       border-radius: 9px;
       padding: 10px 12px;
       font-size: 13px;
-      color: #ddd;
-      background: #111;
+      color: #2f2923;
+      background: #fff;
     }
     .catalog-v1-line button {
       border: none;
       background: transparent;
-      color: #999;
+      color: #7a6f63;
       cursor: pointer;
       font-size: 16px;
       line-height: 1;
@@ -144,7 +150,7 @@
     .field-help {
       margin-top: 6px;
       font-size: 11px;
-      color: #666;
+      color: #7a6f63;
       line-height: 1.4;
     }
 
@@ -164,18 +170,18 @@
     /* Spinner */
     .spinner {
       width: 30px; height: 30px;
-      border: 3px solid #333; border-top-color: #ffd000;
+      border: 3px solid #e6dac8; border-top-color: #dc4a1a;
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
       margin: 0 auto 12px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .loading-text { text-align: center; color: #666; font-size: 13px; }
+    .loading-text { text-align: center; color: #7a6f63; font-size: 13px; }
 
     /* Slot preview */
     .section-label {
       font-size: 11px; font-weight: 600; text-transform: uppercase;
-      letter-spacing: 0.08em; color: #555; margin-bottom: 12px;
+      letter-spacing: 0.08em; color: #7a6f63; margin-bottom: 12px;
     }
 
     .contact-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
@@ -185,41 +191,41 @@
       display: flex; align-items: center; justify-content: center;
       font-weight: 700; font-size: 16px; flex-shrink: 0;
     }
-    .contact-name    { font-weight: 700; font-size: 15px; color: #fff; }
-    .contact-address { font-size: 12px; color: #666; font-style: italic; margin-top: 2px; }
+    .contact-name    { font-weight: 700; font-size: 15px; color: #2f2923; }
+    .contact-address { font-size: 12px; color: #7a6f63; font-style: italic; margin-top: 2px; }
 
     .slot-item {
       display: flex; align-items: center; gap: 12px;
       padding: 12px 14px;
-      background: #111; border: 1px solid #272727; border-radius: 10px;
+      background: #fff; border: 1px solid #e6dac8; border-radius: 10px;
       margin-bottom: 8px;
     }
     .slot-icon { font-size: 20px; }
-    .slot-date { font-weight: 600; font-size: 14px; color: #fff; }
-    .slot-time { font-size: 12px; color: #777; margin-top: 2px; }
+    .slot-date { font-weight: 600; font-size: 14px; color: #2f2923; }
+    .slot-time { font-size: 12px; color: #7a6f63; margin-top: 2px; }
     .slot-badge {
       margin-left: auto; flex-shrink: 0;
       font-size: 11px; font-weight: 600;
       padding: 2px 8px; border-radius: 20px;
-      background: #1a3a1a; color: #4caf50;
+      background: #edf7ee; color: #2f8f4a;
     }
 
     /* Preview bericht */
     .preview-label {
       font-size: 11px; font-weight: 600; text-transform: uppercase;
-      letter-spacing: 0.08em; color: #25D366; margin-bottom: 10px;
+      letter-spacing: 0.08em; color: #2f8f4a; margin-bottom: 10px;
     }
     .preview-bubble {
-      background: #0d1a0d; border: 1px solid #1a3a1a;
+      background: #f1faef; border: 1px solid #b8dfb6;
       border-radius: 10px; padding: 14px;
-      font-size: 13px; color: #ccc; line-height: 1.7;
+      font-size: 13px; color: #2f5a36; line-height: 1.7;
       white-space: pre-wrap; margin-bottom: 16px;
     }
 
     .btn-send {
       display: flex; align-items: center; justify-content: center; gap: 8px;
       width: 100%;
-      background: #25D366; color: #fff;
+      background: #2f8f4a; color: #fff;
       border: none; border-radius: 11px;
       padding: 15px; font-size: 15px; font-weight: 700;
       cursor: pointer; transition: opacity 0.15s, transform 0.1s;
@@ -235,9 +241,9 @@
 
     .hk-stale-banner {
       display: none;
-      background: #3a2a00;
-      border: 1px solid rgba(255, 208, 0, 0.35);
-      color: #ffd000;
+      background: #fff8e9;
+      border: 1px solid #f1d188;
+      color: #8a6a25;
       padding: 10px 12px;
       border-radius: 8px;
       font-size: 13px;
@@ -249,21 +255,21 @@
 
     .btn-back {
       display: block; width: 100%; margin-top: 10px;
-      background: none; border: 1px solid #333; border-radius: 10px;
-      padding: 11px; color: #666; font-size: 13px;
+      background: #fff; border: 1px solid #d8cab7; border-radius: 10px;
+      padding: 11px; color: #7a6f63; font-size: 13px;
       cursor: pointer; transition: border-color 0.15s;
     }
-    .btn-back:hover { border-color: #555; color: #aaa; }
+    .btn-back:hover { border-color: #c8b79f; color: #4b433b; }
 
     /* Success */
     .success-icon  { font-size: 50px; text-align: center; margin-bottom: 14px; }
-    .success-title { font-size: 20px; font-weight: 700; color: #fff; text-align: center; margin-bottom: 8px; }
-    .success-sub   { font-size: 14px; color: #777; text-align: center; line-height: 1.6; }
+    .success-title { font-size: 20px; font-weight: 700; color: #2f2923; text-align: center; margin-bottom: 8px; }
+    .success-sub   { font-size: 14px; color: #7a6f63; text-align: center; line-height: 1.6; }
 
     /* Error */
     .error-icon  { font-size: 36px; text-align: center; margin-bottom: 10px; }
     .error-title { font-size: 16px; font-weight: 700; color: #ff6060; text-align: center; margin-bottom: 6px; }
-    .error-msg   { font-size: 13px; color: #666; text-align: center; line-height: 1.5; }
+    .error-msg   { font-size: 13px; color: #7a6f63; text-align: center; line-height: 1.5; }
 
     .hidden { display: none !important; }
   </style>
@@ -271,7 +277,7 @@
 <body>
 
 <div class="header">
-  <div class="logo-icon">🔥</div>
+  <div class="logo-icon"><img src="/hetekraan-logo.svg" alt="Hetekraan logo"></div>
   <div>
     <div class="logo-text">Hetekraan</div>
     <div class="logo-sub">Tijdsloten sturen</div>
