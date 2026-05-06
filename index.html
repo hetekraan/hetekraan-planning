@@ -5124,6 +5124,15 @@
     background: var(--bg-card);
     color: var(--ink-soft);
   }
+  .planner-week-date-btn {
+    width: auto;
+    min-width: 72px;
+    padding: 0 10px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+  }
   .planner-week-day {
     flex: 1;
     min-width: 0;
@@ -5923,7 +5932,7 @@
         <p id="todayMixMeta">0 afspraken · 0 reparaties · 0 installaties · 0 onderhoud</p>
       </div>
       <div class="appointments-header-actions">
-        <button type="button" class="today-btn today-btn--ghost" onclick="onBlockDayButtonClick()">Blokkeer</button>
+        <button type="button" class="today-btn today-btn--ghost" id="plannerBlockToggleBtn" onclick="onBlockDayButtonClick()">Blokkeer</button>
         <button type="button" class="today-btn today-btn--primary" onclick="openModal()">+ Nieuwe afspraak</button>
       </div>
     </div>
@@ -5931,6 +5940,7 @@
       <button type="button" class="planner-week-edge" onclick="shiftPlannerWeek(-1)" title="Vorige week">‹</button>
       <div class="planner-week-strip" id="plannerWeekStrip" role="tablist" aria-label="Dagen in deze week"></div>
       <button type="button" class="planner-week-edge" onclick="shiftPlannerWeek(1)" title="Volgende week">›</button>
+      <button type="button" class="planner-week-edge planner-week-date-btn" onclick="openPlannerDatePicker()" title="Kies datum">📅 Datum</button>
     </div>
     <div class="today-kpi-grid">
       <div class="today-kpi-card">
@@ -9048,6 +9058,20 @@ function render() {
   const afternoonApts = clients.filter((x) => x.dayPart !== 0);
   const dateStrUi = getDateStr(currentDate);
   const dashBlockedPending = isDashBlockedPending(dateStrUi) && blocks.length === 0;
+  const hasMorningBlock = blocks.some((x) => Number(x?.dayPart) === 0);
+  const hasAfternoonBlock = blocks.some((x) => Number(x?.dayPart) === 1);
+  const hasFullDayBlock = blocks.some((x) => String(x?.dayPartKey || '').toLowerCase() === 'full' || Number(x?.dayPart) === 2);
+  let blockStatusText = '';
+  if (blocks.length) {
+    const fullDay = hasFullDayBlock || (hasMorningBlock && hasAfternoonBlock) || blocks.length > 1;
+    blockStatusText = fullDay
+      ? 'DEZE DAG IS GEBLOKKEERD'
+      : hasMorningBlock
+        ? 'OCHTEND GEBLOKKEERD'
+        : hasAfternoonBlock
+          ? 'MIDDAG GEBLOKKEERD'
+          : 'DEZE DAG IS GEBLOKKEERD';
+  }
 
   const bannerEl = document.getElementById('dayBlockedBanner');
   if (bannerEl) {
@@ -9055,16 +9079,16 @@ function render() {
     if (blocks.length) {
       bannerEl.style.display = 'flex';
       bannerEl.innerHTML =
-        '<span aria-hidden="true">🚫</span><span><strong>Deze dag is geblokkeerd in GHL</strong> — er staat officiële bloktijd op de agenda. <strong>Online boeken</strong> sluit deze <strong>kalenderdag volledig</strong> zodra er bloktijd in de planningdag <strong>08:00–18:00</strong> (Amsterdam) valt (ook bij een blokslot dat alleen bijv. de ochtend beslaat). Details staan hieronder.</span>';
+        `<span aria-hidden="true">🚫</span><span><strong>${escapeHtml(blockStatusText)}</strong></span>`;
     } else if (dashBlockedPending) {
       bannerEl.style.display = 'flex';
       bannerEl.innerHTML =
-        '<span aria-hidden="true">🚫</span><span><strong>Deze dag is geblokkeerd</strong> — zojuist via dit dashboard (hele datum in GHL). Online boeken sluit daarna deze <strong>hele datum</strong> uit zolang het blok actief is. GHL toont het blokslot soms pas na een paar seconden; ververs de dag of controleer de GHL-agenda. <button type="button" class="day-blocked-dismiss" onclick="dismissDashBlockedBanner()">Melding verbergen</button></span>';
+        '<span aria-hidden="true">🚫</span><span><strong>DEZE DAG IS GEBLOKKEERD</strong> <button type="button" class="day-blocked-dismiss" onclick="dismissDashBlockedBanner()">Verbergen</button></span>';
     } else if (plannerCustomerDayFull) {
       bannerEl.style.display = 'flex';
       bannerEl.classList.add('day-blocked-banner--customer-full');
       bannerEl.innerHTML =
-        '<span aria-hidden="true">📅</span><span><strong>Dag is vol voor klanten</strong></span>';
+        '<span aria-hidden="true">📅</span><span><strong>DAG IS VOL VOOR KLANTEN</strong></span>';
     } else {
       bannerEl.style.display = 'none';
       bannerEl.innerHTML = '';
@@ -9073,6 +9097,7 @@ function render() {
 
   const blockBtn = document.getElementById('btnBlockDayGhl');
   const blockBtnMobile = document.getElementById('btnBlockDayGhlMobile');
+  const blockToggleBtn = document.getElementById('plannerBlockToggleBtn');
   const dayIsBlocked = blocks.length > 0 || dashBlockedPending;
   const blockLabelText = dayIsBlocked ? 'Deblokkeer dag' : 'Blokkeer dag';
   const blockTitle = dayIsBlocked
@@ -9091,28 +9116,33 @@ function render() {
     blockBtnMobile.setAttribute('aria-label', blockLabelText);
     blockBtnMobile.title = blockTitle;
   }
+  if (blockToggleBtn) {
+    blockToggleBtn.textContent = dayIsBlocked ? 'Deblokkeer' : 'Blokkeer';
+    blockToggleBtn.setAttribute('aria-label', blockLabelText);
+    blockToggleBtn.title = dayIsBlocked ? 'Hef blokkade op voor geselecteerde dag' : 'Blokkeer geselecteerde dag';
+  }
 
   const parts = [];
   if (blocks.length) {
     parts.push(
-      `<div class="planning-section planning-section--blocks"><div class="planning-section-title">🚫 Geblokkeerd in GHL</div>${blocks.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
+      `<div class="planning-section planning-section--blocks"><div class="planning-section-title">🚫 ${escapeHtml(blockStatusText || 'DEZE DAG IS GEBLOKKEERD')}</div>${blocks.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
     );
   } else if (dashBlockedPending) {
     parts.push(
-      `<div class="planning-section planning-section--blocks"><div class="planning-section-title">🚫 Geblokkeerd in GHL</div>
+      `<div class="planning-section planning-section--blocks"><div class="planning-section-title">🚫 DEZE DAG IS GEBLOKKEERD</div>
       <div class="appt-card cal-block">
         <div class="appt-number">—</div>
         <div class="appt-inner">
           <div class="appt-top">
             <div class="appt-time">
-              <span class="time-window-badge" style="background:rgba(255,140,0,0.2);color:#ffb347;border:1px solid rgba(255,140,0,0.35)">Blokslot</span>
+              <span class="time-window-badge" style="background:rgba(255,140,0,0.2);color:#ffb347;border:1px solid rgba(255,140,0,0.35)">Geblokkeerd</span>
               <span class="ghl-cal-time-hint">—</span>
             </div>
             <div class="appt-actions"></div>
           </div>
           <div class="appt-body appt-body--compact">
-            <div class="appt-name">DAG GEBLOKKEERD (DASHBOARD)</div>
-            <div class="appt-desc appt-desc--muted">Het blokslot staat in GHL; deze kaart verschijnt tot de agenda-sync het zichtbaar maakt. <button type="button" class="day-blocked-dismiss" style="margin-top:8px" onclick="dismissDashBlockedBanner()">Melding wissen</button></div>
+            <div class="appt-name">DEZE DAG IS GEBLOKKEERD</div>
+            <div class="appt-desc appt-desc--muted"><button type="button" class="day-blocked-dismiss" style="margin-top:8px" onclick="dismissDashBlockedBanner()">Verbergen</button></div>
           </div>
         </div>
       </div></div>`
