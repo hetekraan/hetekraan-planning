@@ -2335,7 +2335,7 @@
       height: 32px;
     }
   }
-  .login-sub { font-size: 12px; color: var(--muted); margin-bottom: 28px; }
+  .login-box .login-field:first-of-type { margin-top: 10px; }
   .login-field { margin-bottom: 14px; }
   .login-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; display: block; }
   .login-input {
@@ -2371,7 +2371,6 @@
     touch-action: manipulation;
   }
   .btn-login:hover { opacity: 0.85; }
-  .login-hint { font-size: 11px; color: var(--muted); text-align: center; margin-top: 16px; }
 
   /* —— Responsive: mobile-first layout + min-width enhancements —— */
   .mobile-tabs {
@@ -11021,7 +11020,6 @@ document.addEventListener('DOMContentLoaded', () => {
     <div class="login-logo">
       <img src="/logo.png" alt="Hetekraan">
     </div>
-    <div class="login-sub">Monteur planning — log in om verder te gaan</div>
     <div class="login-field">
       <label class="login-label">Gebruikersnaam</label>
       <input class="login-input" type="text" id="loginUser" placeholder="jouw naam" autocomplete="username">
@@ -11032,7 +11030,6 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
     <div class="login-error" id="loginError">Gebruikersnaam of wachtwoord onjuist</div>
     <button class="btn-login" onclick="doLogin()">INLOGGEN</button>
-    <div class="login-hint">Je blijft 24 uur ingelogd in deze browser. Problemen? Neem contact op met Daan.</div>
   </div>
 </div>
 
