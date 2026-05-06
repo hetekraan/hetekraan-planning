@@ -1947,11 +1947,12 @@
   }
   .day-blocked-dismiss:hover { background: rgba(255, 140, 0, 0.22); }
   .day-blocked-banner.day-blocked-banner--customer-full {
-    border-color: rgba(120, 190, 255, 0.4);
-    background: rgba(70, 140, 220, 0.1);
+    border-color: rgba(220, 74, 26, 0.45);
+    background: rgba(220, 74, 26, 0.12);
+    color: #e77d5b;
   }
   .day-blocked-banner.day-blocked-banner--customer-full strong {
-    color: #a8d4ff;
+    color: #dc4a1a;
   }
   .planner-app-icon-btn.btn-day-block.is-day-customer-full:not(.is-day-blocked) {
     border-color: rgba(120, 190, 255, 0.45);
@@ -5922,6 +5923,7 @@
         <p id="todayMixMeta">0 afspraken · 0 reparaties · 0 installaties · 0 onderhoud</p>
       </div>
       <div class="appointments-header-actions">
+        <button type="button" class="today-btn today-btn--ghost" onclick="onBlockDayButtonClick()">Blokkeer</button>
         <button type="button" class="today-btn today-btn--primary" onclick="openModal()">+ Nieuwe afspraak</button>
       </div>
     </div>
@@ -9062,7 +9064,7 @@ function render() {
       bannerEl.style.display = 'flex';
       bannerEl.classList.add('day-blocked-banner--customer-full');
       bannerEl.innerHTML =
-        '<span aria-hidden="true">📅</span><span><strong>Dag is vol voor klanten</strong> — geen nieuwe online boekingen of suggesties voor deze datum. De planner en bestaande afspraken blijven normaal.</span>';
+        '<span aria-hidden="true">📅</span><span><strong>Dag is vol voor klanten</strong></span>';
     } else {
       bannerEl.style.display = 'none';
       bannerEl.innerHTML = '';
