@@ -5124,15 +5124,6 @@
     background: var(--bg-card);
     color: var(--ink-soft);
   }
-  .planner-week-date-btn {
-    width: auto;
-    min-width: 72px;
-    padding: 0 10px;
-    font-size: 12px;
-    font-weight: 500;
-    line-height: 1;
-    white-space: nowrap;
-  }
   .planner-week-day {
     flex: 1;
     min-width: 0;
@@ -5940,7 +5931,6 @@
       <button type="button" class="planner-week-edge" onclick="shiftPlannerWeek(-1)" title="Vorige week">‹</button>
       <div class="planner-week-strip" id="plannerWeekStrip" role="tablist" aria-label="Dagen in deze week"></div>
       <button type="button" class="planner-week-edge" onclick="shiftPlannerWeek(1)" title="Volgende week">›</button>
-      <button type="button" class="planner-week-edge planner-week-date-btn" onclick="openPlannerDatePicker()" title="Kies datum">📅 Datum</button>
     </div>
     <div class="today-kpi-grid">
       <div class="today-kpi-card">
@@ -9123,31 +9113,7 @@ function render() {
   }
 
   const parts = [];
-  if (blocks.length) {
-    parts.push(
-      `<div class="planning-section planning-section--blocks"><div class="planning-section-title">🚫 ${escapeHtml(blockStatusText || 'DEZE DAG IS GEBLOKKEERD')}</div>${blocks.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
-    );
-  } else if (dashBlockedPending) {
-    parts.push(
-      `<div class="planning-section planning-section--blocks"><div class="planning-section-title">🚫 DEZE DAG IS GEBLOKKEERD</div>
-      <div class="appt-card cal-block">
-        <div class="appt-number">—</div>
-        <div class="appt-inner">
-          <div class="appt-top">
-            <div class="appt-time">
-              <span class="time-window-badge" style="background:rgba(255,140,0,0.2);color:#ffb347;border:1px solid rgba(255,140,0,0.35)">Geblokkeerd</span>
-              <span class="ghl-cal-time-hint">—</span>
-            </div>
-            <div class="appt-actions"></div>
-          </div>
-          <div class="appt-body appt-body--compact">
-            <div class="appt-name">DEZE DAG IS GEBLOKKEERD</div>
-            <div class="appt-desc appt-desc--muted"><button type="button" class="day-blocked-dismiss" style="margin-top:8px" onclick="dismissDashBlockedBanner()">Verbergen</button></div>
-          </div>
-        </div>
-      </div></div>`
-    );
-  }
+  // Intentional: keep only compact top banner for blocked states.
   if (morningApts.length) {
     parts.push(
       `<div class="planning-section"><div class="planning-section-title">OCHTEND · 09:00 – 13:00</div>${morningApts.map((x, idx) => renderApptCard(x, idx)).join('')}</div>`
