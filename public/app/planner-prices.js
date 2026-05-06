@@ -220,7 +220,25 @@
 
   function productsForActiveCategory() {
     const source = isEditingProducts ? draftRows : rows;
-    return source.filter((x) => String(x.categorie || x.category || '') === activeCategory);
+    const q = String(document.getElementById('pricesSearch')?.value || '').toLowerCase().trim();
+    return source.filter((x) => {
+      if (String(x.categorie || x.category || '') !== activeCategory) return false;
+      if (!q) return true;
+      const aliases = Array.isArray(x.aliases) ? x.aliases.join(' ') : String(x.aliases || '');
+      const haystack = [
+        x.naam,
+        x.name,
+        x.description,
+        x.sku,
+        x.categorie,
+        x.category,
+        x.searchText,
+        aliases,
+      ]
+        .map((v) => String(v || '').toLowerCase())
+        .join(' ');
+      return haystack.includes(q);
+    });
   }
 
   function renderSummary(list) {
@@ -434,6 +452,10 @@
     render(false);
   }
 
+  function bindSearch() {
+    document.getElementById('pricesSearch')?.addEventListener('input', () => renderTable());
+  }
+
   function cancelEditMode() {
     isEditingProducts = false;
     draftRows = [];
@@ -454,5 +476,6 @@
     await render(true);
   }
 
+  bindSearch();
   global.HKPlannerPrices = { render, openCreateModal, setCategory, toggleEditMode, cancelEditMode };
 })(window);
