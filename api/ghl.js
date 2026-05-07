@@ -109,10 +109,31 @@ import {
 } from '../lib/inventory-store.js';
 import { listPrices } from '../lib/prices-store.js';
 import { loadPlannerAppointmentsSource } from '../lib/planner-appointments-source.js';
+import { cacheAppointmentAnalyticsFromPriceLines } from '../lib/analytics-appointments-write.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
+
+async function cacheSyntheticAppointmentAnalytics({ contactId, date, priceLines }) {
+  const cid = String(contactId || '').trim();
+  const ymd = String(date || '').trim();
+  if (!cid || !ymd) return;
+  const syntheticAppointmentId = `hk-b1:${cid}:${ymd}`;
+  const out = await cacheAppointmentAnalyticsFromPriceLines({
+    appointmentId: syntheticAppointmentId,
+    date: ymd,
+    priceLines: Array.isArray(priceLines) ? priceLines : [],
+    basePrice: 0,
+    locId: GHL_LOCATION_ID || '',
+  }).catch((err) => ({ ok: false, skipped: true, reason: String(err?.message || err) }));
+  console.log('[planner] analytics_appointment_cache_result', {
+    ok: out?.ok === true,
+    skipped: out?.skipped === true,
+    reason: out?.reason || null,
+    appointmentId: syntheticAppointmentId,
+  });
+}
 
 function normalizeSku(v) {
   return String(v || '').trim().toLowerCase();
@@ -3256,6 +3277,15 @@ export default async function handler(req, res) {
             slotKey: slotPart,
             warning: 'phone/email omitted in fallback',
           });
+          await cacheSyntheticAppointmentAnalytics({
+            contactId: cid,
+            date: dateNorm,
+            priceLines: normalizedLines.length
+              ? normalizedLines
+              : totalNum !== null
+                ? [{ desc: descNorm || 'Handmatige afspraak', price: totalNum }]
+                : [],
+          });
           return res.status(200).json({
             success: true,
             contactId: cid,
@@ -3283,6 +3313,15 @@ export default async function handler(req, res) {
           contactId: cid,
           date: dateNorm,
           slotKey: slotPart,
+        });
+        await cacheSyntheticAppointmentAnalytics({
+          contactId: cid,
+          date: dateNorm,
+          priceLines: normalizedLines.length
+            ? normalizedLines
+            : totalNum !== null
+              ? [{ desc: descNorm || 'Handmatige afspraak', price: totalNum }]
+              : [],
         });
         return res.status(200).json({
           success: true,
@@ -3768,6 +3807,15 @@ export default async function handler(req, res) {
           calendarId: effectiveCalendarId(),
           dateStr: dateNorm,
           trigger: 'createAppointment_model_b1',
+        });
+        await cacheSyntheticAppointmentAnalytics({
+          contactId,
+          date: dateNorm,
+          priceLines: normalizedLines.length
+            ? normalizedLines
+            : priceNum !== null
+              ? [{ desc: desc || 'Handmatige afspraak', price: priceNum }]
+              : [],
         });
 
         return res.status(200).json({

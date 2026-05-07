@@ -75,6 +75,7 @@ import {
   toPriceNumber,
 } from '../lib/booking-canon-fields.js';
 import { syncAppointmentToSupabase } from '../lib/planner-supabase-sync.js';
+import { cacheAppointmentAnalyticsFromPriceLines } from '../lib/analytics-appointments-write.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
@@ -455,6 +456,20 @@ async function syncConfirmedBookingToSupabase(input) {
       reason: out?.reason || null,
       appointmentId: out?.appointmentId || null,
       priceLineCount: Number(out?.priceLineCount || 0),
+    });
+    const appointmentIdForAnalytics = `hk-b1:${String(input?.ghlContactId || '').trim()}:${String(input?.date || '').trim()}`;
+    const analyticsOut = await cacheAppointmentAnalyticsFromPriceLines({
+      appointmentId: appointmentIdForAnalytics,
+      date: input?.date,
+      priceLines: input?.priceLines,
+      basePrice: 0,
+      locId: process.env.GHL_LOCATION_ID || '',
+    }).catch((err) => ({ ok: false, skipped: true, reason: String(err?.message || err) }));
+    console.log('[confirm-booking] analytics_appointment_cache_result', {
+      ok: analyticsOut?.ok === true,
+      skipped: analyticsOut?.skipped === true,
+      reason: analyticsOut?.reason || null,
+      appointmentId: appointmentIdForAnalytics,
     });
   } catch (err) {
     console.warn('[confirm-booking] supabase_sync_failed', {
