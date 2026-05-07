@@ -22,9 +22,13 @@ import {
 } from '../lib/amsterdam-day-read-cache.js';
 import { readInvoicePartyField, resolveInvoicePartyFieldIds } from '../lib/invoice-party-ghl.js';
 import { loadPlannerAppointmentsSource } from '../lib/planner-appointments-source.js';
-import { calcAppointmentTotal } from '../lib/planner-appointment-totals.js';
+import { buildPriceMaps, calcAppointmentTotal, computeAppointmentAnalytics } from '../lib/planner-appointment-totals.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { listPrices } from '../lib/prices-store.js';
+import {
+  listAnalyticsAppointmentsByDateRange,
+  upsertAnalyticsAppointmentRecord,
+} from '../lib/analytics-appointments-cache.js';
 
 const GHL_API_KEY = process.env.GHL_API_KEY;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
@@ -736,8 +740,93 @@ async function runAnalyticsFromPlannerFeed(rangeInput) {
   const recentSortStats = analytics?.recentSortStats || {};
   const analyticsPayload = { ...analytics };
   delete analyticsPayload.recentSortStats;
-  const priceRows = await listPrices(locId || 'default').catch(() => []);
-  const fullMarginBreakdown = buildAppointmentMarginBreakdown(appointments, Array.isArray(priceRows) ? priceRows : []);
+  const clients = appointments.filter((a) => !a.isCalBlock);
+  const cachedAppointmentRows = await listAnalyticsAppointmentsByDateRange(range.startDate, range.endDate).catch(() => []);
+  const cachedByAppointmentId = new Map();
+  for (const row of Array.isArray(cachedAppointmentRows) ? cachedAppointmentRows : []) {
+    const key = String(row?.appointmentId || row?.appointment_id || '').trim();
+    if (key) cachedByAppointmentId.set(key, row);
+  }
+  const missingAnalyticsAppointments = [];
+  const fullMarginBreakdown = [];
+  if (clients.length && clients.every((a) => cachedByAppointmentId.has(String(a?.id || '').trim()))) {
+    for (const a of clients) {
+      const row = cachedByAppointmentId.get(String(a?.id || '').trim()) || {};
+      const totalRevenueExcl = round2(Number(row?.totalRevenueExcl ?? row?.total_revenue_excl ?? 0));
+      const totalCost = round2(Number(row?.totalCost ?? row?.total_cost ?? 0));
+      const margin = round2(Number(row?.margin ?? 0));
+      const marginPct = Number(row?.marginPct ?? row?.margin_pct);
+      const costKnown = row?.costKnown === true || row?.cost_known === true;
+      fullMarginBreakdown.push({
+        appointmentId: a.id || '',
+        klantnaam: a.name || '',
+        adres: a.fullAddressLine || a.address || '',
+        datum: a.date || eventYmdFromStartMs({ startTime: a.startMs }) || '',
+        dagdeel: a.dayPart || a.timeWindow || '',
+        werksoort: a.jobType || 'onbekend',
+        omzet: calcAppointmentTotal(a),
+        inkoop: totalCost,
+        marge: margin,
+        margePct: Number.isFinite(marginPct) ? marginPct : null,
+        totalRevenue: calcAppointmentTotal(a),
+        totalKnownRevenueExcl: totalRevenueExcl,
+        totalKnownCost: totalCost,
+        totalUnknownRevenue: costKnown ? 0 : calcAppointmentTotal(a),
+        totalKnownMargin: margin,
+        totalMarginPctKnownOnly: Number.isFinite(marginPct) ? marginPct : null,
+        hasUnmatchedLines: !costKnown,
+        marginReliable: costKnown,
+        prijsregels: [],
+      });
+    }
+  } else {
+    const priceRows = await listPrices(locId || 'default').catch(() => []);
+    const maps = buildPriceMaps(Array.isArray(priceRows) ? priceRows : []);
+    for (const a of clients) {
+      const computed = computeAppointmentAnalytics(a, maps);
+      const summaryRevenue = calcAppointmentTotal(a);
+      const lineBreakdown = Array.isArray(computed?.lineBreakdown) ? computed.lineBreakdown : [];
+      const unknownRevenue = round2(
+        lineBreakdown.reduce((s, ln) => (!ln.costKnown ? s + Number(ln.verkoopprijs || 0) : s), 0)
+      );
+      fullMarginBreakdown.push({
+        appointmentId: a.id || '',
+        klantnaam: a.name || '',
+        adres: a.fullAddressLine || a.address || '',
+        datum: a.date || eventYmdFromStartMs({ startTime: a.startMs }) || '',
+        dagdeel: a.dayPart || a.timeWindow || '',
+        werksoort: a.jobType || 'onbekend',
+        omzet: summaryRevenue,
+        inkoop: computed.totalCost,
+        marge: computed.margin,
+        margePct: computed.marginPct,
+        totalRevenue: summaryRevenue,
+        totalKnownRevenueExcl: computed.totalRevenueExcl,
+        totalKnownCost: computed.totalCost,
+        totalUnknownRevenue: unknownRevenue,
+        totalKnownMargin: computed.margin,
+        totalMarginPctKnownOnly: computed.totalRevenueExcl > 0 ? computed.marginPct : null,
+        hasUnmatchedLines: !computed.costKnown,
+        marginReliable: computed.costKnown,
+        prijsregels: lineBreakdown,
+      });
+      const apptDate = a.date || eventYmdFromStartMs({ startTime: a.startMs }) || '';
+      if (a?.id && apptDate) {
+        missingAnalyticsAppointments.push({
+          appointmentId: String(a.id).trim(),
+          date: apptDate,
+          totalRevenueExcl: computed.totalRevenueExcl,
+          totalCost: computed.totalCost,
+          margin: computed.margin,
+          marginPct: computed.marginPct,
+          costKnown: computed.costKnown,
+        });
+      }
+    }
+    if (missingAnalyticsAppointments.length) {
+      await Promise.allSettled(missingAnalyticsAppointments.map((row) => upsertAnalyticsAppointmentRecord(row)));
+    }
+  }
   const marginMeta = summarizeMarginReliability(fullMarginBreakdown);
   let recentCreatedAppointments = [];
   let recentCreatedAppointmentsError = '';
@@ -782,6 +871,8 @@ async function runAnalyticsFromPlannerFeed(rangeInput) {
       marginReliableAppointments: marginMeta.marginReliableAppointments,
       marginUnreliableAppointments: marginMeta.marginUnreliableAppointments,
       marginReliabilityPct: marginMeta.marginReliabilityPct,
+      analyticsAppointmentsCachedCount: cachedByAppointmentId.size,
+      analyticsAppointmentsMissingCount: missingAnalyticsAppointments.length,
       recentCreatedAppointmentsError,
       recentAppointmentsSort: {
         primary: 'created_at|createdAt|dateAdded|raw_payload.createdAt|raw_payload.dateAdded',
