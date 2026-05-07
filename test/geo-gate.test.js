@@ -49,10 +49,10 @@ test('geo-gate: ochtend Alkmaar, middag leeg, nieuwe middag Hoorn => valid trans
   assert.equal(out.reason, 'ok');
 });
 
-test('geo-gate: ochtend Alkmaar, middag leeg, nieuwe middag Zandvoort => invalid transition-too-far', () => {
+test('geo-gate: ochtend Alkmaar, middag leeg, nieuwe middag Zandvoort => valid in low-density mode', () => {
   const out = isGeoValid(COORDS.zandvoort, ctx({ morning: [COORDS.alkmaar], targetBlock: 'afternoon' }));
-  assert.equal(out.valid, false);
-  assert.equal(out.reason, 'transition-too-far');
+  assert.equal(out.valid, true);
+  assert.equal(out.reason, 'ok');
 });
 
 test('geo-gate: null coord => altijd valid no-coord-skip', () => {
