@@ -6,6 +6,7 @@
 node_modules/
 public/
 !public/
+!public/logo.png
 public/*
 !public/manifest.webmanifest
 !public/icons/
@@ -18,3 +19,10 @@ public/*.html
 !public/styles/
 !public/styles/**
 .DS_Store
+.npm-cache/
+.env.audit.*
+.audit*
+.deploy*
+.envfix*
+.safety*
+.*.jsonl

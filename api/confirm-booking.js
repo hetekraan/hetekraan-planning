@@ -81,6 +81,8 @@ const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_BASE        = 'https://services.leadconnectorhq.com';
 
+function releaseDebugNoopConfirm() {}
+
 const FIELD_IDS = {
   type_onderhoud:      'EXSQmlt7BqkXJMs8F3Qk',
   probleemomschrijving:'BBcbPCNA9Eu0Kyi4U1LN',
@@ -119,7 +121,7 @@ function pickBevestigdFromCustomFields(cf) {
 function logDiagGhlContactPut(branch, contactId, putPayload) {
   const cf = putPayload?.customFields;
   const cfStr = JSON.stringify(cf ?? []);
-  console.log('[BOOKING_DIAG_GHL_CONTACT_PUT]', {
+  releaseDebugNoopConfirm('GHL_CONTACT_PUT]', {
     build: CONFIRM_BOOKING_DIAG_BUILD,
     branch,
     contactId,
@@ -130,7 +132,7 @@ function logDiagGhlContactPut(branch, contactId, putPayload) {
 }
 
 function logDiagGhlContactPutResult(branch, contactId, httpStatus, ok, errBodySlice, responseContact) {
-  console.log('[BOOKING_DIAG_GHL_CONTACT_PUT_RESULT]', {
+  releaseDebugNoopConfirm('GHL_CONTACT_PUT_RESULT]', {
     build: CONFIRM_BOOKING_DIAG_BUILD,
     branch,
     contactId,
@@ -290,12 +292,12 @@ function buildConfirmPutPayload({
         postcode: pcc,
         woonplaats: pl,
       }));
-      console.log('[confirm-booking DEBUG] booking_address_submitted', {
+      releaseDebugNoopConfirm(' booking_address_submitted', {
         streetHouse: structuredBookingAddress.streetHouse,
         postcode: structuredBookingAddress.postcode,
         city: structuredBookingAddress.city,
       });
-      console.log('[confirm-booking DEBUG] booking_address_derived_parts', {
+      releaseDebugNoopConfirm(' booking_address_derived_parts', {
         straatnaam: parts.straatnaam,
         huisnummer: parts.huisnummer,
         postcode: parts.postcode,
@@ -314,7 +316,7 @@ function buildConfirmPutPayload({
       { id: FIELD_IDS.type_onderhoud, value: type, field_value: type },
       { id: FIELD_IDS.probleemomschrijving, value: desc || '', field_value: desc || '' },
     ];
-    console.log('[confirm-booking DEBUG] canonical_address_write_whatsapp_shape', {
+    releaseDebugNoopConfirm(' canonical_address_write_whatsapp_shape', {
       structuredFromForm: Boolean(structuredBookingAddress),
       resolvedFullLine: String(address).replace(/\s+/g, ' ').trim(),
       address1JoinStraatHuisPcPlaats: address1,
@@ -410,7 +412,7 @@ function buildConfirmPutPayload({
       cfJsonForLog.length > 16000 ? `${cfJsonForLog.slice(0, 16000)}…[truncated total ${cfJsonForLog.length}]` : cfJsonForLog,
   });
   // Geen locationId op PUT /contacts/:id — GHL 422: "property locationId should not exist"
-  console.log('[confirm-booking DEBUG] ghl_contact_put_payload_json', JSON.stringify(putPayload));
+  releaseDebugNoopConfirm(' ghl_contact_put_payload_json', JSON.stringify(putPayload));
   return { putPayload, bevestigingTemplate1 };
 }
 
@@ -554,7 +556,7 @@ export default async function handler(req, res) {
     slots,
     email: emailInToken,
   } = bookingData;
-  console.log('[BOOKING_DIAG_RUNTIME]', {
+  releaseDebugNoopConfirm('RUNTIME]', {
     build: CONFIRM_BOOKING_DIAG_BUILD,
     contactId,
     slotId,
@@ -697,32 +699,28 @@ export default async function handler(req, res) {
   const phoneForPut = firstValidNlMobile(phoneRaw, phone, contactSnap?.phone);
 
   // TEMP DEBUG — verwijder na productie-verificatie (welke confirm-branch draait er?)
-  console.log('[confirm-booking DEBUG] tokenSchemaVersion=', bookingData.tokenSchemaVersion ?? '(missing)');
-  console.log('[confirm-booking DEBUG] slotId=', slotId);
-  console.log('[confirm-booking DEBUG] chosenSlot=', JSON.stringify(chosenSlot));
-  console.log('[confirm-booking DEBUG] isV2_B1=', isV2);
+  releaseDebugNoopConfirm(' tokenSchemaVersion=', bookingData.tokenSchemaVersion ?? '(missing)');
+  releaseDebugNoopConfirm(' slotId=', slotId);
+  releaseDebugNoopConfirm(' chosenSlot=', JSON.stringify(chosenSlot));
+  releaseDebugNoopConfirm(' isV2_B1=', isV2);
 
   // ─── Model B1 (tokenSchemaVersion 2): block-capacity check + contact only; geen GHL appointment ──
   if (isV2) {
-    console.log('[confirm-booking DEBUG] path=v2_B1_entered');
-    console.log('[confirm-booking DEBUG] v2 date_trace', {
+    releaseDebugNoopConfirm(' path=v2_B1_entered');
+    releaseDebugNoopConfirm(' v2 date_trace', {
       slotId,
       dateFromSlotId: slotIdParsed?.dateStr ?? null,
       chosenSlotDateStr: chosenSlot.dateStr ?? null,
       resolvedDate: date,
     });
-    console.log('[confirm-booking DEBUG] v2 before_duplicate_check_redis', { contactId, date });
+    releaseDebugNoopConfirm(' v2 before_duplicate_check_redis', { contactId, date });
     let alreadyReservedRedis;
     const tRedisDup0 = Date.now();
     try {
       alreadyReservedRedis = await hasConfirmedForContactDate(contactId, date);
     } catch (dupCheckErr) {
       perf.redis_has_confirmed_ms = Date.now() - tRedisDup0;
-      console.error(
-        '[confirm-booking DEBUG] v2 hasConfirmedForContactDate threw:',
-        dupCheckErr?.message || dupCheckErr,
-        dupCheckErr?.stack
-      );
+      console.error('[confirm-booking] hasConfirmedForContactDate failed:', dupCheckErr?.message || dupCheckErr);
       releaseBookingLock(lockKey);
       return res.status(503).json({
         error:
@@ -733,7 +731,7 @@ export default async function handler(req, res) {
     perf.redis_has_confirmed_ms = Date.now() - tRedisDup0;
     if (alreadyReservedRedis) {
       releaseBookingLock(lockKey);
-      console.log('[BOOKING_DIAG_NO_CONTACT_PUT]', {
+      releaseDebugNoopConfirm('NO_CONTACT_PUT]', {
         build: CONFIRM_BOOKING_DIAG_BUILD,
         reason: 'alreadyReservedRedis_B1',
         branch: 'v2_B1',
@@ -751,7 +749,7 @@ export default async function handler(req, res) {
         message: 'Er staat al een afspraak voor je ingepland op deze dag.',
       });
     }
-    console.log('[confirm-booking DEBUG] v2 after_duplicate_check_redis_ok');
+    releaseDebugNoopConfirm(' v2 after_duplicate_check_redis_ok');
 
     const mergeTiming = {};
     const merged = await loadMergedCalendarEventsForConfirmDate(
@@ -785,7 +783,7 @@ export default async function handler(req, res) {
     }
     perf.redis_synthetic_read_ms = Date.now() - tRedisSyn0;
     const eventsForCapacity = merged.concat(Array.isArray(synthetics) ? synthetics : []);
-    console.log('[confirm-booking DEBUG] v2 capacity_events', {
+    releaseDebugNoopConfirm(' v2 capacity_events', {
       mergedLen: merged.length,
       syntheticLen: Array.isArray(synthetics) ? synthetics.length : 0,
       totalLen: eventsForCapacity.length,
@@ -806,7 +804,7 @@ export default async function handler(req, res) {
         contactId,
         '— geen email/adres-PUT'
       );
-      console.log('[BOOKING_DIAG_NO_CONTACT_PUT]', {
+      releaseDebugNoopConfirm('NO_CONTACT_PUT]', {
         build: CONFIRM_BOOKING_DIAG_BUILD,
         reason: 'alreadyBookedV2_calendar',
         branch: 'v2_B1',
@@ -826,7 +824,7 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log('[confirm-booking DEBUG] v2 before_evaluateBlockOffer', { date, block, type });
+    releaseDebugNoopConfirm(' v2 before_evaluateBlockOffer', { date, block, type });
     const tEval0 = Date.now();
     const evaluation = evaluateBlockOffer({
       dateStr: date,
@@ -836,7 +834,7 @@ export default async function handler(req, res) {
       dayBlocked: false,
     });
     perf.evaluate_block_offer_ms = Date.now() - tEval0;
-    console.log('[confirm-booking DEBUG] v2 after_evaluateBlockOffer', {
+    releaseDebugNoopConfirm(' v2 after_evaluateBlockOffer', {
       eligible: evaluation.eligible,
       reason: evaluation.reason,
     });
@@ -875,7 +873,7 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log('[confirm-booking DEBUG] v2 before_reservation_create');
+    releaseDebugNoopConfirm(' v2 before_reservation_create');
     let resv;
     const tResv0 = Date.now();
     try {
@@ -887,7 +885,7 @@ export default async function handler(req, res) {
       });
     } catch (e) {
       perf.redis_reservation_write_ms = Date.now() - tResv0;
-      console.error('[confirm-booking DEBUG] v2 reservation_create threw:', e?.message || e, e?.stack);
+      releaseDebugNoopConfirm(' v2 reservation_create threw:', e?.message || e, e?.stack);
       console.error('[confirm-booking] reservation write:', e?.message || e);
       releaseBookingLock(lockKey);
       return res.status(503).json({
@@ -898,7 +896,7 @@ export default async function handler(req, res) {
     }
     perf.redis_reservation_write_ms = Date.now() - tResv0;
     if (!resv.ok) {
-      console.log('[confirm-booking DEBUG] v2 after_reservation_create_not_ok', resv);
+      releaseDebugNoopConfirm(' v2 after_reservation_create_not_ok', resv);
       if (resv.code === 'DUPLICATE_CONTACT_DATE') {
         releaseBookingLock(lockKey);
         console.warn(
@@ -906,7 +904,7 @@ export default async function handler(req, res) {
           contactId,
           '— geen email/adres-PUT'
         );
-        console.log('[BOOKING_DIAG_NO_CONTACT_PUT]', {
+        releaseDebugNoopConfirm('NO_CONTACT_PUT]', {
           build: CONFIRM_BOOKING_DIAG_BUILD,
           reason: 'DUPLICATE_CONTACT_DATE_B1',
           branch: 'v2_B1',
@@ -935,7 +933,7 @@ export default async function handler(req, res) {
       releaseBookingLock(lockKey);
       return res.status(400).json({ error: 'Ongeldige boekingsgegevens. Vraag een nieuwe link aan.' });
     }
-    console.log('[confirm-booking DEBUG] v2 after_reservation_create_ok', {
+    releaseDebugNoopConfirm(' v2 after_reservation_create_ok', {
       reservationId: resv.reservation?.id,
       reservationDateStr: resv.reservation?.dateStr,
     });
@@ -955,9 +953,9 @@ export default async function handler(req, res) {
       priceLines: normalizedBookingPriceLines,
       totalPrice: resolvedTotalAmount,
     });
-    console.log('[confirm-booking DEBUG] v2 tijdafspraak_field', { value: bevestigingB1 });
+    releaseDebugNoopConfirm(' v2 tijdafspraak_field', { value: bevestigingB1 });
 
-    console.log('[confirm-booking DEBUG] v2 before_ghl_contact_put', {
+    releaseDebugNoopConfirm(' v2 before_ghl_contact_put', {
       contactId,
       putKeys: Object.keys(putPayloadB1),
       customFieldsLen: putPayloadB1.customFields?.length ?? 0,
@@ -987,7 +985,7 @@ export default async function handler(req, res) {
         const row = cf.find((f) => f.id === id);
         return row?.field_value ?? row?.value;
       };
-      console.error('[confirm-booking DEBUG] v2 after_ghl_contact_put_failed', {
+      releaseDebugNoopConfirm(' v2 after_ghl_contact_put_failed', {
         status: putResB1.status,
         body: (errTxt || '').slice(0, 1200),
         attemptedAddress1: putPayloadB1.address1,
@@ -996,10 +994,6 @@ export default async function handler(req, res) {
         attemptedCfPostcode: pickCf(GHL_ADDR_CF_IDS.postcode),
         attemptedCfWoonplaats: pickCf(GHL_ADDR_CF_IDS.woonplaats),
       });
-      console.error(
-        '[confirm-booking DEBUG] ghl_contact_put_failure_response_body',
-        (errTxt || '').slice(0, 8000)
-      );
       console.error('[confirm-booking] contact PUT (B1):', putResB1.status, errTxt);
       logDiagGhlContactPutResult('v2_B1', contactId, putResB1.status, false, errTxt, null);
       try {
@@ -1017,7 +1011,7 @@ export default async function handler(req, res) {
       ghlPutOkBodyB1 = null;
     }
     const cAfter = ghlPutOkBodyB1?.contact || ghlPutOkBodyB1;
-    console.log('[confirm-booking DEBUG] v2 after_ghl_contact_put_ok', {
+    releaseDebugNoopConfirm(' v2 after_ghl_contact_put_ok', {
       status: putResB1.status,
       putTreatedAsSuccess: putResB1.ok,
       responseContactId: cAfter?.id ?? null,
@@ -1087,7 +1081,7 @@ export default async function handler(req, res) {
 
     const delayMsB1 = Math.min(Math.max(parseInt(process.env.BOOKING_CONFIRM_DELAY_MS || '600', 10) || 600, 0), 5000);
     const tTagB10 = Date.now();
-    console.log('[BOOKING_DIAG_TAG_PULSE]', {
+    releaseDebugNoopConfirm('TAG_PULSE]', {
       build: CONFIRM_BOOKING_DIAG_BUILD,
       branch: 'v2_B1',
       contactId,
@@ -1104,7 +1098,7 @@ export default async function handler(req, res) {
     let workflowTriggeredB1 = false;
     if (tagFallbackB1) {
       workflowTriggeredB1 = await pulseContactTag(contactId, confirmTagB1, '[confirm-booking] B1');
-      console.log('[BOOKING_DIAG_TAG_PULSE_RESULT]', {
+      releaseDebugNoopConfirm('TAG_PULSE_RESULT]', {
         build: CONFIRM_BOOKING_DIAG_BUILD,
         branch: 'v2_B1',
         contactId,
@@ -1146,14 +1140,14 @@ export default async function handler(req, res) {
         '” heet. WhatsApp gaat alleen via je workflow op die tag.';
     }
 
-    console.log('[confirm-booking DEBUG] v2 before_success_response');
+    releaseDebugNoopConfirm(' v2 before_success_response');
     perf.map_response_ms = Date.now() - tMapB10;
     perf.branch = 'v2_B1';
     return res.status(200).json(outB1);
   }
 
   // ─── Legacy (v1): zelfde checks op ruwe dag-events + timed GHL appointment ─────────────────────
-  console.log('[confirm-booking DEBUG] path=legacy_v1_timed_appointment_entered');
+  releaseDebugNoopConfirm(' path=legacy_v1_timed_appointment_entered');
   perf.branch = 'v1_timed_appt';
 
   const tV1Cal0 = Date.now();
@@ -1228,7 +1222,7 @@ export default async function handler(req, res) {
       contactId,
       '— geen email/adres-PUT (v1 branch stopt vóór buildConfirmPutPayload)'
     );
-    console.log('[BOOKING_DIAG_NO_CONTACT_PUT]', {
+    releaseDebugNoopConfirm('NO_CONTACT_PUT]', {
       build: CONFIRM_BOOKING_DIAG_BUILD,
       reason: 'alreadyBooked_v1_calendar',
       branch: 'v1_timed_appt',
@@ -1320,7 +1314,7 @@ export default async function handler(req, res) {
       const row = cfV1.find((f) => f.id === id);
       return row?.field_value ?? row?.value;
     };
-    console.error('[confirm-booking DEBUG] v1 contact_put_failed', {
+    releaseDebugNoopConfirm(' v1 contact_put_failed', {
       status: putRes.status,
       body: (errTxt || '').slice(0, 1200),
       attemptedAddress1: putPayload.address1,
@@ -1329,10 +1323,6 @@ export default async function handler(req, res) {
       attemptedCfPostcode: pickCfV1(GHL_ADDR_CF_IDS.postcode),
       attemptedCfWoonplaats: pickCfV1(GHL_ADDR_CF_IDS.woonplaats),
     });
-    console.error(
-      '[confirm-booking DEBUG] ghl_contact_put_failure_response_body',
-      (errTxt || '').slice(0, 8000)
-    );
     logDiagGhlContactPutResult('v1_timed_appt', contactId, putRes.status, false, errTxt, null);
     releaseBookingLock(lockKey);
     return res.status(502).json({ error: 'Kon gegevens niet opslaan in GHL. Probeer het later opnieuw.' });
@@ -1345,7 +1335,7 @@ export default async function handler(req, res) {
     ghlPutOkBodyV1 = null;
   }
   const cAfterV1 = ghlPutOkBodyV1?.contact || ghlPutOkBodyV1;
-  console.log('[confirm-booking DEBUG] v1 after_ghl_contact_put_ok', {
+  releaseDebugNoopConfirm(' v1 after_ghl_contact_put_ok', {
     status: putRes.status,
     putTreatedAsSuccess: putRes.ok,
     responseContactId: cAfterV1?.id ?? null,
@@ -1478,7 +1468,7 @@ export default async function handler(req, res) {
 
   const userPasses = assignedUserId ? [true, false] : [false];
 
-  console.log('[confirm-booking DEBUG] agenda_POST_attempt_begin → POST …/calendars/events/appointments');
+  releaseDebugNoopConfirm(' agenda_POST_attempt_begin → POST …/calendars/events/appointments');
 
   const tV1Appt0 = Date.now();
   outer: for (const includeAssignedUser of userPasses) {
@@ -1558,7 +1548,7 @@ export default async function handler(req, res) {
 
   const tV1Tag0 = Date.now();
   const delayMs = Math.min(Math.max(parseInt(process.env.BOOKING_CONFIRM_DELAY_MS || '600', 10) || 600, 0), 5000);
-  console.log('[BOOKING_DIAG_TAG_PULSE]', {
+  releaseDebugNoopConfirm('TAG_PULSE]', {
     build: CONFIRM_BOOKING_DIAG_BUILD,
     branch: 'v1_timed_appt',
     contactId,
@@ -1575,7 +1565,7 @@ export default async function handler(req, res) {
   let workflowTriggered = false;
   if (tagFallback) {
     workflowTriggered = await pulseContactTag(contactId, confirmTag, '[confirm-booking]');
-    console.log('[BOOKING_DIAG_TAG_PULSE_RESULT]', {
+    releaseDebugNoopConfirm('TAG_PULSE_RESULT]', {
       build: CONFIRM_BOOKING_DIAG_BUILD,
       branch: 'v1_timed_appt',
       contactId,

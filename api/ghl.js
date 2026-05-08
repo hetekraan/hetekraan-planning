@@ -111,6 +111,8 @@ import { listPrices } from '../lib/prices-store.js';
 import { loadPlannerAppointmentsSource } from '../lib/planner-appointments-source.js';
 import { cacheAppointmentAnalyticsFromPriceLines } from '../lib/analytics-appointments-write.js';
 
+function releaseDebugNoopGhl() {}
+
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
@@ -1187,7 +1189,7 @@ export default async function handler(req, res) {
     const body = req.body || {};
     const authTrace = process.env.HK_TRACE_AUTH === '1';
     if (authTrace) {
-      console.log('[AUTH_TRACE][request]', {
+      releaseDebugNoopGhl('[request]', {
         user: String(body.user || '').trim().toLowerCase() || null,
         hasPassword: !!String(body.password || ''),
       });
@@ -1197,20 +1199,20 @@ export default async function handler(req, res) {
     await new Promise((r) => setTimeout(r, 300));
     const users = parseUsers();
     if (authTrace) {
-      console.log('[AUTH_TRACE][env_present]', {
+      releaseDebugNoopGhl('[env_present]', {
         hasSessionSecret: !!process.env.SESSION_SECRET,
         hkUsersLen: String(process.env.HK_USERS || '').length,
         userKeys: Object.keys(users),
       });
     }
     if (!u || !users[u] || users[u] !== p) {
-      if (authTrace) console.log('[AUTH_TRACE][fail]', { reason: 'bad_credentials' });
+      if (authTrace) releaseDebugNoopGhl('[fail]', { reason: 'bad_credentials' });
       return res.status(401).json({ error: 'Gebruikersnaam of wachtwoord onjuist' });
     }
     const token = signSessionToken(u);
     // `day` meesturen voor backward-compat met gecachte clients die nog de dagcheck doen
     const day = formatYyyyMmDdInAmsterdam(new Date()) || '';
-    if (authTrace) console.log('[AUTH_TRACE][success]', { user: u, tokenLen: token?.length || 0 });
+    if (authTrace) releaseDebugNoopGhl('[success]', { user: u, tokenLen: token?.length || 0 });
     return res.status(200).json({ token, user: u, day });
   }
   // ────────────────────────────────────────────────────────────────────────
@@ -1288,7 +1290,7 @@ export default async function handler(req, res) {
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('X-HK-GetAppointments-Filter', 'v5-amsterdam-day+id+contact-slot+b1-redis');
-        if (process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
+        if (false && process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
           const traceRaw = req.query?.traceContactId;
           const traceCid = String(Array.isArray(traceRaw) ? traceRaw[0] : traceRaw || '').trim();
           if (traceCid) {
@@ -1662,7 +1664,7 @@ export default async function handler(req, res) {
           extras,
           lastService,
         });
-        console.log('[BOOKING_PRICE_DEBUG]', {
+        releaseDebugNoopGhl('', {
           contactId,
           extrasCount: extrasNorm.length,
           serializedPrijsRegels: canonicalPrijsRegels,
@@ -2902,7 +2904,7 @@ export default async function handler(req, res) {
           prijs_regels: canonicalPrijsRegels,
           prijs_totaal: totalNum,
         });
-        console.log('[BOOKING_PRICE_DEBUG]', {
+        releaseDebugNoopGhl('', {
           contactId,
           extrasCount: extrasArr.length,
           serializedPrijsRegels: canonicalPrijsRegels,
@@ -2991,8 +2993,8 @@ export default async function handler(req, res) {
           price,
           priceLines,
         } = req.body || {};
-        console.log('[TRACE][request_body]', req.body);
-        if (process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
+        releaseDebugNoopGhl('[request_body]', req.body);
+        if (false && process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
           console.log('[updatePlannerBookingDetails][request_body]', {
             keys: req.body && typeof req.body === 'object' ? Object.keys(req.body) : [],
             contactId: contactId != null ? String(contactId) : null,
@@ -3029,8 +3031,8 @@ export default async function handler(req, res) {
         const phoneNorm = normalizePhoneForGhl(phone);
         const emailNorm = String(email || '').trim().toLowerCase();
         const addressNorm = String(address || '').trim();
-        console.log('[TRACE][normalized_address]', addressNorm);
-        if (process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
+        releaseDebugNoopGhl('[normalized_address]', addressNorm);
+        if (false && process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
           console.log('[updatePlannerBookingDetails][normalized_address]', {
             contactId: cid,
             addressNorm: addressNorm.slice(0, 200),
@@ -3153,7 +3155,7 @@ export default async function handler(req, res) {
         if (emailNorm) payload.email = emailNorm;
         if (address1) payload.address1 = address1;
         if (addressNorm) mergeGhlNativeAddressFromParts(payload, parts);
-        if (process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
+        if (false && process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
           console.log('[updatePlannerBookingDetails][address_write]', {
             contactId: cid,
             addressNorm,
@@ -3175,7 +3177,7 @@ export default async function handler(req, res) {
           contactId: cid,
           address1: address1 || null,
         });
-        console.log('[TRACE][write_payload]', payload);
+        releaseDebugNoopGhl('[write_payload]', payload);
         const logContactAddressReadBack = async (label) => {
           try {
             const rr = await fetchWithRetry(`${GHL_BASE}/contacts/${encodeURIComponent(cid)}`, {
@@ -3209,8 +3211,8 @@ export default async function handler(req, res) {
           _allowPostRetry: false,
         });
         const putText = await putRes.text().catch(() => '');
-        console.log('[TRACE][ghl_put_status]', putRes.status);
-        console.log('[TRACE][ghl_put_response]', putText.slice(0, 500));
+        releaseDebugNoopGhl('[ghl_put_status]', putRes.status);
+        releaseDebugNoopGhl('[ghl_put_response]', putText.slice(0, 500));
         if (!putRes.ok) {
           const detail = putText.slice(0, 400);
           console.error('[updatePlannerBookingDetails][contact_update_fail]', {
@@ -3242,8 +3244,8 @@ export default async function handler(req, res) {
             _allowPostRetry: false,
           });
           const retryText = await retryRes.text().catch(() => '');
-          console.log('[TRACE][ghl_put_status_retry]', retryRes.status);
-          console.log('[TRACE][ghl_put_response_retry]', retryText.slice(0, 500));
+          releaseDebugNoopGhl('[ghl_put_status_retry]', retryRes.status);
+          releaseDebugNoopGhl('[ghl_put_response_retry]', retryText.slice(0, 500));
           if (!retryRes.ok) {
             const retryDetail = retryText.slice(0, 400);
             console.error('[updatePlannerBookingDetails][booking_fields_fail]', {
@@ -3257,9 +3259,7 @@ export default async function handler(req, res) {
             });
           }
           _traceLastEditedContactId = cid;
-          await logContactAddressReadBack('[TRACE][address_after_write_immediate]');
           await new Promise((r) => setTimeout(r, 2000));
-          await logContactAddressReadBack('[TRACE][address_after_write_delayed]');
           console.log('[updatePlannerBookingDetails][contact_update_ok]', {
             contactId: cid,
             mode: 'fallback_without_phone_email',
@@ -3295,9 +3295,7 @@ export default async function handler(req, res) {
           });
         }
         _traceLastEditedContactId = cid;
-        await logContactAddressReadBack('[TRACE][address_after_write_immediate]');
         await new Promise((r) => setTimeout(r, 2000));
-        await logContactAddressReadBack('[TRACE][address_after_write_delayed]');
         console.log('[updatePlannerBookingDetails][contact_update_ok]', {
           contactId: cid,
           mode: 'primary',
