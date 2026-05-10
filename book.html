@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="nl" style="background-color:#111111;">
+<html lang="nl" style="background-color:#f6f2ea;">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="color-scheme" content="dark" />
+  <meta name="color-scheme" content="light" />
   <meta http-equiv="Cache-Control" content="no-store, max-age=0" />
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="/styles/global.css" />
@@ -12,14 +12,14 @@
   <title>Afspraak bevestigen – Hetekraan</title>
   <style>
     /* Geen var(--…) hier: WhatsApp in-app browser negeert :root vaak → witte achtergrond. Alles vast hex/rgba. */
-    html { color-scheme: dark; }
+    html { color-scheme: light; }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #111111;
-      color: #f0f0f0;
+      background: #f6f2ea;
+      color: #1f1a17;
       min-height: 100vh;
       display: flex;
       align-items: flex-start;
@@ -28,61 +28,54 @@
     }
 
     .card {
-      background: #1a1a1a;
-      border: 1px solid #272727;
+      background: #fff;
+      border: 1px solid #e6dccf;
       border-radius: 16px;
-      box-shadow: 0 8px 40px rgba(0,0,0,0.35);
-      padding: 28px 24px;
+      box-shadow: 0 8px 28px rgba(114, 86, 48, 0.08);
+      padding: 32px;
       width: 100%;
-      max-width: 480px;
+      max-width: 520px;
     }
 
     /* Merk: zelfde stijl als suggest — geen externe afbeelding nodig (WhatsApp-browser mist soms /logo). */
     .brand-header {
       display: flex;
       align-items: center;
-      gap: 12px;
-      margin-bottom: 22px;
-      padding-bottom: 18px;
-      border-bottom: 1px solid #333333;
+      justify-content: center;
+      margin-bottom: 24px;
     }
     .brand-mark {
-      width: 44px;
-      height: 44px;
-      background: #ffd000;
-      border-radius: 11px;
+      width: min(320px, 82%);
+      height: auto;
+      background: transparent;
+      border-radius: 0;
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
       line-height: 0;
     }
-    .brand-mark svg { width: 26px; height: 26px; display: block; }
-    .brand-text { min-width: 0; }
-    .brand-title {
-      font-weight: 800;
-      font-size: 18px;
-      color: #fff;
-      letter-spacing: -0.02em;
+    .brand-mark img {
+      width: 100%;
+      height: auto !important;
+      object-fit: contain;
+      display: block;
     }
-    .brand-sub {
-      font-size: 11px;
-      color: #666;
-      margin-top: 3px;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      font-weight: 600;
+    @media (max-width: 640px) {
+      .brand-mark {
+        width: min(300px, 80%);
+      }
     }
 
     h1 {
       font-size: 22px;
       font-weight: 700;
-      color: #fff;
+      color: #2f2923;
       margin-bottom: 6px;
     }
     .subtitle {
       font-size: 15px;
-      color: #9a9a9a;
+      color: #7a6f63;
       margin-bottom: 24px;
       line-height: 1.5;
     }
@@ -93,21 +86,21 @@
       align-items: flex-start;
       margin-bottom: 10px;
       font-size: 15px;
-      color: #f0f0f0;
+      color: #2f2923;
     }
     .info-row .info-label {
       flex-shrink: 0;
       width: 72px;
       font-size: 12px;
       font-weight: 600;
-      color: #666;
+      color: #7a6f63;
       text-transform: uppercase;
       letter-spacing: 0.04em;
       padding-top: 2px;
     }
     .info-divider {
       height: 1px;
-      background: #333333;
+      background: #e6dac8;
       margin: 20px 0;
     }
 
@@ -116,7 +109,7 @@
       font-size: 13px;
       text-transform: uppercase;
       letter-spacing: 0.06em;
-      color: #666;
+      color: #7a6f63;
       margin-bottom: 14px;
     }
 
@@ -125,8 +118,8 @@
       align-items: center;
       gap: 14px;
       width: 100%;
-      background: #111;
-      border: 2px solid #272727;
+      background: #fff;
+      border: 2px solid #e6dac8;
       border-radius: 12px;
       padding: 18px 20px;
       cursor: pointer;
@@ -136,37 +129,37 @@
       color: inherit;
     }
     .slot-btn:hover {
-      border-color: rgba(255, 208, 0, 0.45);
-      background: rgba(255, 208, 0, 0.12);
+      border-color: #dc4a1a;
+      background: #fff7ef;
     }
     .slot-btn.selected {
-      border-color: #ffd000;
-      background: rgba(255, 208, 0, 0.12);
+      border-color: #dc4a1a;
+      background: #fff7ef;
     }
     .slot-info { flex: 1; min-width: 0; }
     .slot-title {
       font-weight: 700;
       font-size: 16px;
-      color: #fff;
+      color: #2f2923;
       margin-bottom: 2px;
     }
     .slot-time {
       font-size: 14px;
-      color: #9a9a9a;
+      color: #7a6f63;
     }
     .slot-check {
       margin-left: auto;
       width: 22px;
       height: 22px;
       border-radius: 50%;
-      border: 2px solid #555;
+      border: 2px solid #b7a995;
       flex-shrink: 0;
       transition: all 0.15s;
       position: relative;
     }
     .slot-btn.selected .slot-check {
-      background: #ffd000;
-      border-color: #ffd000;
+      background: #dc4a1a;
+      border-color: #dc4a1a;
     }
     .slot-btn.selected .slot-check::after {
       content: '';
@@ -175,7 +168,7 @@
       top: 50%;
       width: 6px;
       height: 10px;
-      border: solid #111111;
+      border: solid #ffffff;
       border-width: 0 2px 2px 0;
       transform: translate(-50%, -60%) rotate(45deg);
     }
@@ -183,8 +176,8 @@
     .confirm-btn {
       display: block;
       width: 100%;
-      background: #ffd000;
-      color: #111111;
+      background: #dc4a1a;
+      color: #fff;
       border: none;
       border-radius: 12px;
       padding: 16px;
@@ -192,11 +185,10 @@
       font-weight: 700;
       cursor: pointer;
       margin-top: 20px;
-      transition: background 0.15s, opacity 0.15s, transform 0.1s;
+      transition: opacity 0.15s;
     }
     .confirm-btn:hover:not(:disabled) {
-      background: #e6bc00;
-      transform: translateY(-1px);
+      opacity: 0.85;
     }
     .confirm-btn:disabled {
       opacity: 0.35;
@@ -206,7 +198,7 @@
 
     .note {
       font-size: 13px;
-      color: #666;
+      color: #7a6f63;
       text-align: center;
       margin-top: 14px;
       line-height: 1.5;
@@ -215,13 +207,13 @@
     .email-block {
       margin-top: 18px;
       padding-top: 18px;
-      border-top: 1px solid #333333;
+      border-top: 1px solid #e6dac8;
     }
     .email-block .email-label {
       display: block;
       font-size: 12px;
       font-weight: 600;
-      color: #666;
+      color: #7a6f63;
       text-transform: uppercase;
       letter-spacing: 0.04em;
       margin-bottom: 8px;
@@ -230,20 +222,20 @@
       width: 100%;
       padding: 12px 14px;
       font-size: 16px;
-      background: #111;
-      color: #f0f0f0;
-      border: 2px solid #272727;
+      background: #fff;
+      color: #2f2923;
+      border: 2px solid #e6dac8;
       border-radius: 10px;
       font-family: inherit;
       box-sizing: border-box;
     }
     .email-block .email-input::placeholder {
-      color: #555;
+      color: #9a8f82;
     }
     .email-block .email-input:focus {
       outline: none;
-      border-color: #ffd000;
-      box-shadow: 0 0 0 3px rgba(255, 208, 0, 0.12);
+      border-color: #dc4a1a;
+      box-shadow: 0 0 0 3px rgba(220, 74, 26, 0.12);
     }
     .email-block .email-input.invalid {
       border-color: #e57373;
@@ -265,7 +257,7 @@
       height: 56px;
       margin: 0 auto 20px;
       border-radius: 50%;
-      background: rgba(76, 175, 80, 0.15);
+      background: #edf7ee;
       border: 2px solid #4caf50;
       position: relative;
     }
@@ -283,25 +275,25 @@
     .success-title {
       font-size: 22px;
       font-weight: 700;
-      color: #fff;
+      color: #2f2923;
       margin-bottom: 10px;
     }
     .success-msg {
       font-size: 15px;
-      color: #9a9a9a;
+      color: #7a6f63;
       line-height: 1.6;
     }
     .success-detail {
-      background: #111111;
-      border: 1px solid #272727;
+      background: #fff;
+      border: 1px solid #e6dac8;
       border-radius: 10px;
       padding: 16px;
       margin-top: 20px;
       font-size: 14px;
-      color: #ccc;
+      color: #5e554c;
       text-align: left;
     }
-    .success-detail em { color: #888; }
+    .success-detail em { color: #7a6f63; }
 
     .error-screen {
       display: none;
@@ -316,51 +308,51 @@
       background: rgba(229, 115, 115, 0.12);
       border: 2px solid #e57373;
     }
-    .error-title { font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 8px; }
-    .error-msg { font-size: 15px; color: #9a9a9a; line-height: 1.6; white-space: pre-wrap; }
+    .error-title { font-size: 20px; font-weight: 700; color: #1f1a17; margin-bottom: 8px; }
+    .error-msg { font-size: 15px; color: #6b625a; line-height: 1.6; white-space: pre-wrap; }
 
     .loading {
       display: none;
       text-align: center;
       padding: 40px 0;
-      color: #666;
+      color: #6b625a;
       font-size: 15px;
     }
     .spinner {
       width: 36px; height: 36px;
-      border: 3px solid #272727;
-      border-top-color: #ffd000;
+      border: 3px solid #e6dccf;
+      border-top-color: #dc4a1a;
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
       margin: 0 auto 16px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+    /* Keep slot visuals warm even when JS sets inline fallback styles. */
+    .slot-btn { background: #fff !important; border-color: #e6dccf !important; }
+    .slot-btn.selected { background: #fff7ef !important; border-color: #dc4a1a !important; }
+    .slot-check { border-color: #b7a995 !important; background: transparent !important; }
+    .slot-btn.selected .slot-check { background: #dc4a1a !important; border-color: #dc4a1a !important; }
+    .slot-title { color: #1f1a17 !important; }
+    .slot-time { color: #6b625a !important; }
   </style>
 </head>
-<body style="margin:0;background-color:#111111;color:#f0f0f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;box-sizing:border-box;padding:24px 16px 40px;">
+<body style="margin:0;background-color:#f6f2ea;color:#1f1a17;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;align-items:flex-start;justify-content:center;box-sizing:border-box;padding:24px 16px 40px;">
   <!-- Inline styles op html/body/card: backup als in-app browser <style> niet goed toepast -->
-  <div class="card" style="background-color:#1a1a1a;border:1px solid #272727;border-radius:16px;padding:28px 24px;width:100%;max-width:480px;box-sizing:border-box;box-shadow:0 8px 40px rgba(0,0,0,0.35);">
-    <header class="brand-header" style="display:flex;align-items:center;gap:12px;margin-bottom:22px;padding-bottom:18px;border-bottom:1px solid #333333;">
-      <div class="brand-mark" aria-hidden="true" title="Hetekraan" style="width:44px;height:44px;background-color:#ffd000;border-radius:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-        <!-- Inline SVG: emoji + externe /logo falen vaak in WhatsApp WebView -->
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-          <path fill="#111111" d="M16 5.2c-1.6 2.8-.7 5 1.4 6.9 2.4-2 1.6-4.5 0-6.4 2.2 2.6 5.5 9.2-.2 15.4-1.4 1.8-4 3-7.2 2.8-.3-3.7 3-8 7.4-9.2.4-2.6-.3-6.5 1-9.5Z"/>
-        </svg>
-      </div>
-      <div class="brand-text" style="min-width:0;">
-        <div class="brand-title" style="font-weight:800;font-size:18px;color:#ffffff;letter-spacing:-0.02em;">Hetekraan</div>
-        <div class="brand-sub" style="font-size:11px;color:#666666;margin-top:3px;text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Dé Quooker specialist · Boek je tijdslot</div>
+  <div class="card" style="background-color:#fff;border:1px solid #e6dccf;border-radius:16px;padding:32px;width:100%;max-width:520px;box-sizing:border-box;box-shadow:0 8px 28px rgba(114,86,48,0.08);">
+    <header class="brand-header" style="display:flex;align-items:center;justify-content:center;margin-bottom:24px;">
+      <div class="brand-mark" aria-hidden="true" title="Hetekraan" style="width:min(320px,82%);height:auto;background-color:transparent;border-radius:0;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <img src="/logo.png" alt="Hetekraan logo" style="width:100%;height:auto;display:block;object-fit:contain;">
       </div>
     </header>
 
     <div id="bookingScreen">
-      <h1 style="font-size:22px;font-weight:700;color:#ffffff;margin:0 0 6px 0;">Kies jouw tijdslot</h1>
-      <p class="subtitle" id="subtitleText" style="font-size:15px;color:#9a9a9a;margin:0 0 24px 0;line-height:1.5;">We sturen u op de dag van de afspraak een appje met een geschatte aankomsttijd.</p>
+      <h1 style="font-size:22px;font-weight:700;color:#1f1a17;margin:0 0 6px 0;">Kies jouw tijdslot</h1>
+      <p class="subtitle" id="subtitleText" style="font-size:15px;color:#6b625a;margin:0 0 24px 0;line-height:1.5;">We sturen u op de dag van de afspraak een appje met een geschatte aankomsttijd.</p>
 
       <div id="infoRows"></div>
       <div class="info-divider"></div>
 
-      <div class="slots-label" style="font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:0.06em;color:#666666;margin-bottom:14px;">Beschikbare tijdsloten</div>
+      <div class="slots-label" style="font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:0.06em;color:#6b625a;margin-bottom:14px;">Beschikbare tijdsloten</div>
       <div id="slotButtons"></div>
 
       <div class="email-block" id="phoneBlock" hidden>
@@ -427,10 +419,10 @@
         <p class="email-hint" id="addressHint">Verplicht als we je adres nog niet hebben. We slaan dit op in GHL.</p>
       </div>
 
-      <button type="button" class="confirm-btn" id="confirmBtn" disabled style="display:block;width:100%;background-color:#ffd000;color:#111111;border:none;border-radius:12px;padding:16px;font-size:16px;font-weight:700;margin-top:20px;box-sizing:border-box;">
+      <button type="button" class="confirm-btn" id="confirmBtn" disabled style="display:block;width:100%;background-color:#dc4a1a;color:#fff;border:none;border-radius:10px;padding:12px;font-size:13px;font-weight:700;margin-top:20px;box-sizing:border-box;">
         Bevestig afspraak
       </button>
-      <p class="note" style="font-size:13px;color:#666666;text-align:center;margin-top:14px;line-height:1.5;">Je ontvangt een WhatsApp bevestiging na het kiezen.</p>
+      <p class="note" style="font-size:13px;color:#6b625a;text-align:center;margin-top:14px;line-height:1.5;">Je ontvangt een WhatsApp bevestiging na het kiezen.</p>
     </div>
 
     <div class="loading" id="loadingScreen">

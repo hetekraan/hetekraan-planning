@@ -397,6 +397,7 @@ export default async function handler(req, res) {
     contact_fetch_ms: 0,
     geocode_address_ms: 0,
     map_sort_slice_ms: 0,
+    skipped_day_errors: 0,
   };
 
   try {
@@ -564,6 +565,18 @@ export default async function handler(req, res) {
     }
 
     const blockSlotUserId = await resolveBlockSlotAssignedUserId(GHL_BASE, GHL_API_KEY, locId, calId);
+    logAvailability('suggest_slots_env_ids', {
+      locationId: locId || null,
+      calendarId: calId || null,
+      blockSlotUserId: blockSlotUserId || null,
+      envIds: {
+        GHL_LOCATION_ID: stripGhlEnvId(process.env.GHL_LOCATION_ID) || null,
+        GHL_CALENDAR_ID: stripGhlEnvId(process.env.GHL_CALENDAR_ID) || null,
+        GHL_BLOCK_SLOT_USER_ID: stripGhlEnvId(process.env.GHL_BLOCK_SLOT_USER_ID) || null,
+        GHL_APPOINTMENT_ASSIGNED_USER_ID: stripGhlEnvId(process.env.GHL_APPOINTMENT_ASSIGNED_USER_ID) || null,
+        GHL_FREE_SLOTS_USER_ID: stripGhlEnvId(process.env.GHL_FREE_SLOTS_USER_ID) || null,
+      },
+    });
 
     const availabilityCtx = {
       locationId: locId,
@@ -601,7 +614,17 @@ export default async function handler(req, res) {
           apiKey: GHL_API_KEY,
         });
         perf.ghl_calendar_fetch_sum_ms += Date.now() - tCal;
-        if (calEv === null) return null;
+        if (calEv === null) {
+          console.warn('[suggest-slots] calendar_events_fetch_not_ok', {
+            dateStr,
+            locationId: locId || null,
+            calendarId: calId || null,
+            endpointPath: '/calendars/events',
+            startMs: bounds.startMs,
+            endMs: bounds.endMs,
+          });
+          return null;
+        }
 
         const arr = Array.isArray(calEv) ? calEv : [];
         const [blockedMerged, resvSynthetic] = await Promise.all([
@@ -864,23 +887,10 @@ export default async function handler(req, res) {
       for (let j = 0; j < schedule.dates.length; j++) {
         const cursor = schedule.dates[j];
         const status = await processSuggestDay(cursor, j, spoedMode);
-        if (status === 'availability_error') {
-          return res.status(503).json({
-            success: false,
-            error: 'Agenda-blokkades tijdelijk niet beschikbaar. Probeer het later opnieuw.',
-          });
-        }
-        if (status === 'calendar_error') {
-          return res.status(503).json({
-            success: false,
-            error: 'Kalender-events tijdelijk niet beschikbaar. Probeer het later opnieuw.',
-          });
-        }
-        if (status === 'calendar_null') {
-          return res.status(503).json({
-            success: false,
-            error: 'Kalender-events tijdelijk niet beschikbaar. Probeer het later opnieuw.',
-          });
+        if (status === 'availability_error' || status === 'calendar_error' || status === 'calendar_null') {
+          perf.skipped_day_errors += 1;
+          if (suggestTrace) suggestTrace.days.push({ dateStr: cursor, outcome: 'excluded', why: status });
+          continue;
         }
         if (candidates.length >= scanCandidateTarget) break;
       }
@@ -895,23 +905,11 @@ export default async function handler(req, res) {
           continue;
         }
         const status = await processSuggestDay(cursor, i, spoedMode);
-        if (status === 'availability_error') {
-          return res.status(503).json({
-            success: false,
-            error: 'Agenda-blokkades tijdelijk niet beschikbaar. Probeer het later opnieuw.',
-          });
-        }
-        if (status === 'calendar_error') {
-          return res.status(503).json({
-            success: false,
-            error: 'Kalender-events tijdelijk niet beschikbaar. Probeer het later opnieuw.',
-          });
-        }
-        if (status === 'calendar_null') {
-          return res.status(503).json({
-            success: false,
-            error: 'Kalender-events tijdelijk niet beschikbaar. Probeer het later opnieuw.',
-          });
+        if (status === 'availability_error' || status === 'calendar_error' || status === 'calendar_null') {
+          perf.skipped_day_errors += 1;
+          if (suggestTrace) suggestTrace.days.push({ dateStr: cursor, outcome: 'excluded', why: status });
+          cursor = addAmsterdamCalendarDays(cursor, 1);
+          continue;
         }
         cursor = addAmsterdamCalendarDays(cursor, 1);
         if (candidates.length >= scanCandidateTarget) break;

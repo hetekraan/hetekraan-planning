@@ -102,21 +102,69 @@ import {
   resolveInvoicePartyFieldIds,
 } from '../lib/invoice-party-ghl.js';
 import {
-  markAppointmentCancelled,
-  replaceAppointmentPriceLines,
-  syncAppointmentToSupabase,
-  updateAppointmentInSupabase,
-} from '../lib/planner-supabase-sync.js';
-import {
-  applySupabaseMirrorOverlayToEvent,
-  filterGhlEventsForSupabaseMirror,
-  isSupabasePlannerReadEnabled,
-  readSupabasePlannerMirrorForDate,
-} from '../lib/planner-supabase-read.js';
+  adjustInventoryStock,
+  isInventoryStoreConfigured,
+  listInventory,
+  setInventoryWarnings,
+} from '../lib/inventory-store.js';
+import { listPrices } from '../lib/prices-store.js';
+import { loadPlannerAppointmentsSource } from '../lib/planner-appointments-source.js';
+import { cacheAppointmentAnalyticsFromPriceLines } from '../lib/analytics-appointments-write.js';
+
+function releaseDebugNoopGhl() {}
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
+
+async function cacheSyntheticAppointmentAnalytics({ contactId, date, priceLines }) {
+  const cid = String(contactId || '').trim();
+  const ymd = String(date || '').trim();
+  if (!cid || !ymd) return;
+  const syntheticAppointmentId = `hk-b1:${cid}:${ymd}`;
+  const out = await cacheAppointmentAnalyticsFromPriceLines({
+    appointmentId: syntheticAppointmentId,
+    date: ymd,
+    priceLines: Array.isArray(priceLines) ? priceLines : [],
+    basePrice: 0,
+    locId: GHL_LOCATION_ID || '',
+  }).catch((err) => ({ ok: false, skipped: true, reason: String(err?.message || err) }));
+  console.log('[planner] analytics_appointment_cache_result', {
+    ok: out?.ok === true,
+    skipped: out?.skipped === true,
+    reason: out?.reason || null,
+    appointmentId: syntheticAppointmentId,
+  });
+}
+
+function normalizeSku(v) {
+  return String(v || '').trim().toLowerCase();
+}
+
+function normalizeNameForMatch(v) {
+  return String(v || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function quantityFromLine(row = {}) {
+  const n = Number(row.quantity ?? row.qty ?? row.amount ?? 1);
+  if (!Number.isFinite(n) || n <= 0) return 1;
+  return Math.max(1, Math.round(n));
+}
+
+function resolveLineSku(line, priceById, priceBySku, priceByName) {
+  const lineSku = normalizeSku(line?.sku);
+  if (lineSku && priceBySku.has(lineSku)) return lineSku;
+  const linePriceId = String(line?.priceId || line?.id || '').trim();
+  if (linePriceId && priceById.has(linePriceId)) {
+    return normalizeSku(priceById.get(linePriceId)?.sku);
+  }
+  const byName = priceByName.get(normalizeNameForMatch(line?.desc || line?.label || line?.name || ''));
+  if (byName) return normalizeSku(byName.sku);
+  return '';
+}
 
 /** Alleen diagnostiek: laatste contactId na succesvolle updatePlannerBookingDetails PUT (voor [TRACE][mapped_address_after_edit]). */
 let _traceLastEditedContactId = null;
@@ -1141,7 +1189,7 @@ export default async function handler(req, res) {
     const body = req.body || {};
     const authTrace = process.env.HK_TRACE_AUTH === '1';
     if (authTrace) {
-      console.log('[AUTH_TRACE][request]', {
+      releaseDebugNoopGhl('[request]', {
         user: String(body.user || '').trim().toLowerCase() || null,
         hasPassword: !!String(body.password || ''),
       });
@@ -1151,20 +1199,20 @@ export default async function handler(req, res) {
     await new Promise((r) => setTimeout(r, 300));
     const users = parseUsers();
     if (authTrace) {
-      console.log('[AUTH_TRACE][env_present]', {
+      releaseDebugNoopGhl('[env_present]', {
         hasSessionSecret: !!process.env.SESSION_SECRET,
         hkUsersLen: String(process.env.HK_USERS || '').length,
         userKeys: Object.keys(users),
       });
     }
     if (!u || !users[u] || users[u] !== p) {
-      if (authTrace) console.log('[AUTH_TRACE][fail]', { reason: 'bad_credentials' });
+      if (authTrace) releaseDebugNoopGhl('[fail]', { reason: 'bad_credentials' });
       return res.status(401).json({ error: 'Gebruikersnaam of wachtwoord onjuist' });
     }
     const token = signSessionToken(u);
     // `day` meesturen voor backward-compat met gecachte clients die nog de dagcheck doen
     const day = formatYyyyMmDdInAmsterdam(new Date()) || '';
-    if (authTrace) console.log('[AUTH_TRACE][success]', { user: u, tokenLen: token?.length || 0 });
+    if (authTrace) releaseDebugNoopGhl('[success]', { user: u, tokenLen: token?.length || 0 });
     return res.status(200).json({ token, user: u, day });
   }
   // ────────────────────────────────────────────────────────────────────────
@@ -1175,32 +1223,6 @@ export default async function handler(req, res) {
   const calConfigured = ghlCalendarIdFromEnv();
   if (!GHL_API_KEY || !locConfigured || !calConfigured) {
     return res.status(503).json({ error: GHL_CONFIG_MISSING_MSG });
-  }
-
-  async function routeMutationLockResponse(dateStr, mutationAction) {
-    if (!isRouteLockStoreConfigured()) return null;
-    const ds = normalizeYyyyMmDdInput(String(dateStr || ''));
-    if (!ds) return null;
-    const lock = await getRouteLock(locConfigured, ds);
-    if (!lock || lock.locked !== true) return null;
-    console.info(
-      '[planner] route_mutation_blocked_due_to_lock',
-      JSON.stringify({
-        routeDate: ds,
-        mutationAction: mutationAction || 'other',
-        revision: Number.isFinite(Number(lock.revision)) ? Number(lock.revision) : null,
-        orderLen: Array.isArray(lock.orderContactIds) ? lock.orderContactIds.length : 0,
-      })
-    );
-    return res.status(409).json({
-      error: 'Route is vastgezet. Ontgrendel de route voordat je deze afspraak wijzigt.',
-      code: 'ROUTE_LOCKED',
-      routeDate: ds,
-      routeLock: {
-        locked: true,
-        revision: Number.isFinite(Number(lock.revision)) ? Number(lock.revision) : 0,
-      },
-    });
   }
 
   try {
@@ -1214,366 +1236,61 @@ export default async function handler(req, res) {
           apiKey: GHL_API_KEY,
           locationId: ghlLocationIdFromEnv(),
         });
-        const gaT0 = Date.now();
-        const gaPerf = {
-          route: 'getAppointments',
-          ghl_calendar_events_ms: 0,
-          blocked_slots_ms: 0,
-          redis_b1_synthetic_ms: 0,
-          contact_fetch_sum_ms: 0,
-          filter_dedupe_map_ms: 0,
-          supabase_mirror_parallel_ms: 0,
-        };
-
         const dateRaw = req.query.date;
         const date = normalizeYyyyMmDdInput(
           Array.isArray(dateRaw) ? String(dateRaw[0]) : String(dateRaw || '')
         );
         if (!date) return res.status(400).json({ error: 'Ongeldige datum' });
-        const bounds = amsterdamCalendarDayBoundsMs(date);
-        if (!bounds) return res.status(400).json({ error: 'Ongeldige datum' });
-        const { startMs, endMs } = bounds;
         const locId = locConfigured;
         const calId = calConfigured;
-        const tSbParallel = Date.now();
-        const sbReadEnabled = isSupabasePlannerReadEnabled();
-        const [blockSlotUserId, sbMirror] = await Promise.all([
-          resolveBlockSlotAssignedUserId(GHL_BASE, GHL_API_KEY, locId, calId),
-          sbReadEnabled
-            ? readSupabasePlannerMirrorForDate(date)
-            : Promise.resolve({
-                shouldUse: false,
-                stubs: [],
-                sbGhlEventIds: new Set(),
-                redisContactSkip: new Set(),
-                fallbackReason: 'flag_off',
-              }),
-        ]);
-        gaPerf.supabase_mirror_parallel_ms = Date.now() - tSbParallel;
-        if (sbReadEnabled) {
-          if (sbMirror.shouldUse) {
-            console.info(
-              '[supabase_read_ok]',
-              JSON.stringify({
-                dateStr: date,
-                stubCount: sbMirror.stubs.length,
-                legacyGhlIds: sbMirror.sbGhlEventIds?.size || 0,
-              })
-            );
-          } else {
-            console.info(
-              '[supabase_read_fallback]',
-              JSON.stringify({
-                dateStr: date,
-                reason: sbMirror.fallbackReason || 'unknown',
-              })
-            );
-          }
-        }
-        const url = `${GHL_BASE}/calendars/events?locationId=${encodeURIComponent(locId)}&calendarId=${encodeURIComponent(calId)}&startTime=${startMs}&endTime=${endMs}`;
-        const calKey = amsterdamDayReadCacheKeyCalendarEvents(locId, calId, date);
-        const tCalEv = Date.now();
-        let events = amsterdamDayReadCacheGet(calKey);
-        if (events !== undefined) {
-          gaPerf.ghl_calendar_events_ms = Date.now() - tCalEv;
-        } else {
-          const response = await fetchWithRetry(url, {
-            headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' },
-          });
-          const rawText = await response.text().catch(() => '');
-          let data = {};
-          try {
-            data = rawText ? JSON.parse(rawText) : {};
-          } catch {
-            data = {};
-          }
-          gaPerf.ghl_calendar_events_ms = Date.now() - tCalEv;
-          events = data?.events || [];
-          if (response.ok) amsterdamDayReadCacheSet(calKey, events);
-        }
-
-        if (sbMirror.shouldUse && sbMirror.sbGhlEventIds.size) {
-          events = filterGhlEventsForSupabaseMirror(events, sbMirror.sbGhlEventIds);
-        }
-
-        markBlockLikeOnCalendarEvents(events);
-
-        const blkKey = amsterdamDayReadCacheKeyBlockedSlots(locId, calId, startMs, endMs, blockSlotUserId);
-        const tBlk = Date.now();
-        let blockedAsEvents = amsterdamDayReadCacheGet(blkKey);
-        if (blockedAsEvents === undefined) {
-          const fetched = await fetchBlockedSlotsAsEvents(GHL_BASE, {
-            locationId: locId,
-            calendarId: calId,
-            startMs: bounds.startMs,
-            endMs: bounds.endMs,
+        const sourceOut = await loadPlannerAppointmentsSource(
+          {
+            date,
+            locId,
+            calId,
             apiKey: GHL_API_KEY,
-            assignedUserId: blockSlotUserId,
-          });
-          blockedAsEvents = Array.isArray(fetched) ? fetched : [];
-          amsterdamDayReadCacheSet(blkKey, blockedAsEvents);
-        }
-        gaPerf.blocked_slots_ms = Date.now() - tBlk;
-        if (blockedAsEvents.length) {
-          events = [...events, ...blockedAsEvents];
-        }
-
-        /** Model B1: geen GHL timed appointment — tonen als planner-rij via Redis + contact (tijdafspraak). */
-        let blockBookingSynthetic = [];
-        try {
-          const tRedis = Date.now();
-          blockBookingSynthetic = await cachedListConfirmedSyntheticEventsForDate(date);
-          gaPerf.redis_b1_synthetic_ms = Date.now() - tRedis;
-        } catch (err) {
-          console.warn('[ghl] getAppointments block reservations:', err?.message || err);
-        }
-        if (sbMirror.shouldUse && sbMirror.redisContactSkip.size) {
-          blockBookingSynthetic = blockBookingSynthetic.filter((ev) => {
-            const cid = String(ev.contactId || ev.contact_id || '').trim();
-            return cid && !sbMirror.redisContactSkip.has(cid);
-          });
-        }
-        for (const ev of blockBookingSynthetic) {
-          const cid = String(ev.contactId || ev.contact_id || '').trim();
-          if (!cid) continue;
-          events.push({
-            ...ev,
-            id: `hk-b1:${cid}:${date}`,
-            _hkBlockReservationSynthetic: true,
-          });
-        }
-        if (sbMirror.shouldUse && sbMirror.stubs.length) {
-          for (const st of sbMirror.stubs) {
-            events.push(st);
+            baseUrl: GHL_BASE,
+            plannerNotitiesFieldId,
+            plannerInternalFixedStartFieldId,
+            invoicePartyFieldIdsForPlanner,
+            traceLastEditedContactId: _traceLastEditedContactId,
+          },
+          {
+            amsterdamCalendarDayBoundsMs,
+            eventStartMsGhl,
+            eventEndMsGhl,
+            getEventStartDayAmsterdam,
+            canonicalGhlEventId,
+            resolveBlockSlotAssignedUserId,
+            fetchWithRetry,
+            amsterdamDayReadCacheGet,
+            amsterdamDayReadCacheSet,
+            amsterdamDayReadCacheKeyCalendarEvents,
+            amsterdamDayReadCacheKeyBlockedSlots,
+            fetchBlockedSlotsAsEvents,
+            markBlockLikeOnCalendarEvents,
+            cachedListConfirmedSyntheticEventsForDate,
+            getField,
+            BOOKING_FORM_FIELD_IDS,
+            FIELD_IDS,
+            splitAddressLineToStraatHuis,
+            readCanonicalAddressLine,
+            logCanonicalAddressRead,
+            SLOT_LABEL_MORNING_NL,
+            SLOT_LABEL_AFTERNOON_NL,
+            normalizeInternalFixedPinFromBody,
+            parseStructuredPriceRulesString,
+            readInvoicePartyField,
+            mapEnrichedGhlEventToAppointment,
           }
-        }
-
-        /** Eén overlap-check per event; verrijking gebruikt die niet — alleen events op deze dag hoeven contact. */
-        const overlapsAmsterdamDay = events.map((e) => eventOverlapsAmsterdamDay(e, date));
-
-        const contactIdKey = (id) => (id == null ? '' : String(id).trim());
-        const uniqueCids = [
-          ...new Set(
-            events
-              .map((e, i) => (overlapsAmsterdamDay[i] ? contactIdKey(e.contactId || e.contact_id) : ''))
-              .filter(Boolean)
-          ),
-        ];
-
-        const contactMap = {};
-        const tContacts0 = Date.now();
-        await Promise.all(
-          uniqueCids.map(async (cidKey) => {
-            try {
-              const cr = await fetchWithRetry(
-                `${GHL_BASE}/contacts/${encodeURIComponent(cidKey)}`,
-                { headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' } }
-              );
-              if (!cr.ok) return;
-              const cd = await cr.json();
-              contactMap[cidKey] = cd?.contact || cd;
-            } catch (_) {}
-          })
         );
-        gaPerf.contact_fetch_sum_ms = Date.now() - tContacts0;
-
-        function enrichEvent(e, contact) {
-          e.contact = contact;
-          if (contact?.id) e.contactId = contact.id;
-          const canonStreetHouse = getField(contact, BOOKING_FORM_FIELD_IDS.straat_huisnummer);
-          const canonPostcode = getField(contact, BOOKING_FORM_FIELD_IDS.postcode);
-          const canonWoonplaats = getField(contact, BOOKING_FORM_FIELD_IDS.woonplaats);
-          const splitCanon = splitAddressLineToStraatHuis(canonStreetHouse);
-          const straat = splitCanon.straatnaam || '';
-          const huisnr = splitCanon.huisnummer || '';
-          const postcode =
-            canonPostcode ||
-            String(contact.postalCode || '')
-              .replace(/\s+/g, ' ')
-              .trim();
-          const woonplaats = canonWoonplaats || contact.city || '';
-          const fromCf     = [straat, huisnr, postcode, woonplaats].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-          const canonical  = readCanonicalAddressLine(contact);
-          e.parsedAddress = canonical;
-          if (_traceLastEditedContactId && String(contact?.id || '') === String(_traceLastEditedContactId)) {
-            const traceFull = fromCf || canonical || '';
-            console.log('[TRACE][mapped_address_after_edit]', {
-              contactId: contact.id,
-              straat_huisnummer: canonStreetHouse || null,
-              postcode: canonPostcode || null,
-              woonplaats: canonWoonplaats || null,
-              address1: String(contact.address1 || '').trim() || null,
-              fullAddressLine: traceFull || null,
-            });
-          }
-          if (fromCf) {
-            e.parsedStraatnaam = straat;
-            e.parsedHuisnummer = huisnr;
-            e.parsedPostcode   = postcode;
-            e.parsedWoonplaats = woonplaats;
-          } else if (canonical) {
-            // Alleen address1 / losse regel: hele regel in straat voor Maps (zelfde tekst als readCanonicalAddressLine).
-            e.parsedStraatnaam = canonical;
-            e.parsedHuisnummer = '';
-            e.parsedPostcode   = '';
-            e.parsedWoonplaats = '';
-            logCanonicalAddressRead('getAppointments_fallback_address1', {
-              contactId: contact.id,
-              preview: canonical.slice(0, 100),
-            });
-          } else {
-            e.parsedStraatnaam = '';
-            e.parsedHuisnummer = '';
-            e.parsedPostcode   = '';
-            e.parsedWoonplaats = '';
-          }
-          const canonType = getField(contact, BOOKING_FORM_FIELD_IDS.type_onderhoud);
-          const canonWerkzaamheden = getField(contact, BOOKING_FORM_FIELD_IDS.probleemomschrijving);
-          const werkzaamheden = canonWerkzaamheden || getField(contact, FIELD_IDS.probleemomschrijving);
-          e.parsedJobType = canonType || '';
-          if (e._hkBlockReservationSynthetic) {
-            const blk = e._hkSyntheticBlock === 'afternoon' ? 'afternoon' : 'morning';
-            const windowLabel =
-              blk === 'afternoon' ? SLOT_LABEL_AFTERNOON_NL : SLOT_LABEL_MORNING_NL;
-            const titleStr = typeof e.title === 'string' ? e.title : '';
-            const techTitle = titleStr.includes('__hk_block_res__');
-            e.parsedWork =
-              werkzaamheden ||
-              (techTitle
-                ? `Online geboekt — ${blk === 'morning' ? 'ochtend' : 'middag'} (${windowLabel})`
-                : e.title);
-          } else {
-            e.parsedWork = werkzaamheden || e.title;
-          }
-          const canonPriceTotal = getField(contact, BOOKING_FORM_FIELD_IDS.prijs_totaal);
-          e.parsedPrice      = canonPriceTotal || getField(contact, FIELD_IDS.prijs);
-          const plannerNotities = plannerNotitiesFieldId
-            ? getField(contact, plannerNotitiesFieldId)
-            : '';
-          e.parsedNotes      = plannerNotities || getField(contact, FIELD_IDS.opmerkingen);
-          e.parsedTimeWindow =
-            getField(contact, BOOKING_FORM_FIELD_IDS.tijdslot) ||
-            getField(contact, FIELD_IDS.tijdafspraak) ||
-            null;
-          const rawInternalFixed =
-            plannerInternalFixedStartFieldId
-              ? getField(contact, plannerInternalFixedStartFieldId, 'planner_internal_fixed_start')
-              : '';
-          const parsedInternalFixed = normalizeInternalFixedPinFromBody(rawInternalFixed);
-          e.internalFixedPin = parsedInternalFixed;
-          e.internalFixedStartTime = parsedInternalFixed?.time || '';
-          try {
-            console.info(
-              '[planner] fixed_time_loaded',
-              JSON.stringify({
-                contactId: contact?.id ? String(contact.id) : null,
-                appointmentId: e?.id ? String(e.id) : null,
-                fieldId: plannerInternalFixedStartFieldId || null,
-                hasValue: Boolean(parsedInternalFixed),
-                pinType: parsedInternalFixed?.type || null,
-                pinTime: parsedInternalFixed?.time || null,
-              })
-            );
-          } catch (_) {}
-          const confirmedDayPartRaw = String(
-            getField(contact, BOOKING_FORM_FIELD_IDS.boeking_bevestigd_dagdeel) || ''
-          )
-            .trim()
-            .toLowerCase();
-          e.parsedConfirmedDayPart =
-            confirmedDayPartRaw === 'morning' || confirmedDayPartRaw === 'afternoon'
-              ? confirmedDayPartRaw
-              : null;
-          e.parsedConfirmedDate = String(
-            getField(contact, BOOKING_FORM_FIELD_IDS.boeking_bevestigd_datum) || ''
-          ).trim();
-          e.parsedConfirmedStatus = String(
-            getField(contact, BOOKING_FORM_FIELD_IDS.boeking_bevestigd_status) || ''
-          )
-            .trim()
-            .toLowerCase();
-          e.parsedPaymentStatus = getField(contact, BOOKING_FORM_FIELD_IDS.betaal_status) || '';
-          const canonPrijsRegels = getField(contact, BOOKING_FORM_FIELD_IDS.prijs_regels);
-          let parsedPrijsRegels = parseStructuredPriceRulesString(canonPrijsRegels);
-          if (parsedPrijsRegels.length === 0) {
-            const prijsRegelsRaw = getField(contact, FIELD_IDS.prijs_regels);
-            parsedPrijsRegels = parseStructuredPriceRulesString(prijsRegelsRaw);
-          }
-          e.parsedExtras = parsedPrijsRegels;
-          e.invoiceFields = {
-            factuurType: readInvoicePartyField(contact, 'factuur_type', invoicePartyFieldIdsForPlanner),
-            factuurBedrijfsnaam: readInvoicePartyField(contact, 'factuur_bedrijfsnaam', invoicePartyFieldIdsForPlanner),
-            factuurTav: readInvoicePartyField(contact, 'factuur_tav', invoicePartyFieldIdsForPlanner),
-            factuurEmail: readInvoicePartyField(contact, 'factuur_email', invoicePartyFieldIdsForPlanner),
-            factuurKvk: readInvoicePartyField(contact, 'factuur_kvk', invoicePartyFieldIdsForPlanner),
-            factuurBtwNummer: readInvoicePartyField(contact, 'factuur_btw_nummer', invoicePartyFieldIdsForPlanner),
-            factuurAdres: readInvoicePartyField(contact, 'factuur_adres', invoicePartyFieldIdsForPlanner),
-            factuurPostcode: readInvoicePartyField(contact, 'factuur_postcode', invoicePartyFieldIdsForPlanner),
-            factuurPlaats: readInvoicePartyField(contact, 'factuur_plaats', invoicePartyFieldIdsForPlanner),
-            factuurReferentie: readInvoicePartyField(contact, 'factuur_referentie', invoicePartyFieldIdsForPlanner),
-          };
-        }
-
-        const tEnrich0 = Date.now();
-        const enriched = events.map((e, i) => {
-          if (!overlapsAmsterdamDay[i]) return e;
-          const rawCid = e.contactId || e.contact_id;
-          if (!rawCid) return e;
-          const cidKey = contactIdKey(rawCid);
-          if (!cidKey) return e;
-          e.contactId = rawCid;
-          const contact = contactMap[cidKey];
-          if (contact) enrichEvent(e, contact);
-          return e;
-        });
-        for (const e of enriched) {
-          if (e._hkSupabaseOverlay) applySupabaseMirrorOverlayToEvent(e, e._hkSupabaseOverlay);
-        }
-        gaPerf.contact_enrich_sync_ms = Date.now() - tEnrich0;
-
-        /** Events die deze Amsterdam-dag raken (ook langlopende blokken / vakantie). */
-        const tFilt0 = Date.now();
-        const filtered = enriched.filter((e, i) => overlapsAmsterdamDay[i]);
-        const overlapDropped = enriched.length - filtered.length;
-        if (overlapDropped > 0) {
-          console.log(
-            JSON.stringify({
-              event: 'BOOKING_COMPLETE_FILTER',
-              phase: 'overlap_amsterdam_day',
-              dateStr: date,
-              before: enriched.length,
-              after: filtered.length,
-              dropped: overlapDropped,
-            })
-          );
-        }
-        gaPerf.filter_overlap_ms = Date.now() - tFilt0;
-        const tDedupe0 = Date.now();
-        const unique = dedupeGhlEventsForDashboard(filtered);
-        if (filtered.length !== unique.length) {
-          console.log(
-            JSON.stringify({
-              event: 'BOOKING_COMPLETE_FILTER',
-              phase: 'dedupe',
-              dateStr: date,
-              before: filtered.length,
-              after: unique.length,
-              dropped: filtered.length - unique.length,
-            })
-          );
-        }
-        gaPerf.dedupe_ms = Date.now() - tDedupe0;
-
+        const appointments = sourceOut.appointments;
+        const contactMap = sourceOut.contactMap;
+        const gaPerf = sourceOut.gaPerf;
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         res.setHeader('Pragma', 'no-cache');
         res.setHeader('X-HK-GetAppointments-Filter', 'v5-amsterdam-day+id+contact-slot+b1-redis');
-        const tMapAppt0 = Date.now();
-        const appointments = unique.map((ev, i) => mapEnrichedGhlEventToAppointment(ev, i, date));
-        gaPerf.map_appointments_ms = Date.now() - tMapAppt0;
-        gaPerf.total_ms = Date.now() - gaT0;
-        gaPerf.unique_contact_fetches = uniqueCids.length;
-        gaPerf.event_count_before_filter = enriched.length;
-        if (process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
+        if (false && process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
           const traceRaw = req.query?.traceContactId;
           const traceCid = String(Array.isArray(traceRaw) ? traceRaw[0] : traceRaw || '').trim();
           if (traceCid) {
@@ -1947,7 +1664,7 @@ export default async function handler(req, res) {
           extras,
           lastService,
         });
-        console.log('[BOOKING_PRICE_DEBUG]', {
+        releaseDebugNoopGhl('', {
           contactId,
           extrasCount: extrasNorm.length,
           serializedPrijsRegels: canonicalPrijsRegels,
@@ -2732,6 +2449,102 @@ export default async function handler(req, res) {
             console.warn('[completeAppointment] opportunity stage update mislukt:', e.message);
           });
         }
+        try {
+          if (isInventoryStoreConfigured()) {
+            const invLoc = ghlLocationIdFromEnv() || process.env.GHL_LOCATION_ID || 'default';
+            const [inventoryRows, priceRows] = await Promise.all([
+              listInventory(invLoc),
+              listPrices(invLoc),
+            ]);
+            const invBySku = new Map(
+              inventoryRows
+                .filter((x) => normalizeSku(x?.sku))
+                .map((x) => [normalizeSku(x.sku), x])
+            );
+            const priceById = new Map(priceRows.map((x) => [String(x?.id || '').trim(), x]));
+            const priceBySku = new Map(
+              priceRows
+                .filter((x) => normalizeSku(x?.sku))
+                .map((x) => [normalizeSku(x.sku), x])
+            );
+            const priceByName = new Map(
+              priceRows.map((x) => [normalizeNameForMatch(x?.description || x?.name || ''), x])
+            );
+            const extrasRowsRaw = Array.isArray(extras) ? extras : [];
+            const warningMap = new Map();
+            for (const line of extrasRowsRaw) {
+              const sku = resolveLineSku(line, priceById, priceBySku, priceByName);
+              if (!sku) {
+                console.info('[inventory_deduct] no_sku_match', {
+                  contactId,
+                  appointmentId: appointmentId != null ? String(appointmentId) : null,
+                  lineDesc: String(line?.desc || line?.label || line?.name || '').trim() || null,
+                });
+                continue;
+              }
+              const invItem = invBySku.get(sku);
+              if (!invItem?.id) {
+                console.info('[inventory_deduct] no_inventory_item_for_sku', {
+                  contactId,
+                  appointmentId: appointmentId != null ? String(appointmentId) : null,
+                  sku,
+                });
+                continue;
+              }
+              const qty = quantityFromLine(line);
+              const deduct = -Math.abs(qty);
+              const out = await adjustInventoryStock(invLoc, invItem.id, deduct);
+              if (!out?.ok || !out?.item) {
+                console.warn('[inventory_deduct] adjust_failed', {
+                  contactId,
+                  appointmentId: appointmentId != null ? String(appointmentId) : null,
+                  itemId: invItem.id,
+                  sku,
+                  qty,
+                  code: out?.code || 'UNKNOWN',
+                });
+                continue;
+              }
+              console.info('[inventory_deduct] adjusted', {
+                contactId,
+                appointmentId: appointmentId != null ? String(appointmentId) : null,
+                itemId: out.item.id,
+                itemName: out.item.name,
+                sku,
+                deducted: qty,
+                stockAfter: out.item.stock,
+                minStock: out.item.minStock,
+              });
+              if (Number(out.item.stock) < Number(out.item.minStock)) {
+                warningMap.set(out.item.id, {
+                  itemId: out.item.id,
+                  itemName: out.item.name,
+                  stock: out.item.stock,
+                  minStock: out.item.minStock,
+                });
+              }
+            }
+            const latestInventory = await listInventory(invLoc);
+            for (const row of latestInventory) {
+              if (Number(row.stock) < Number(row.minStock)) {
+                warningMap.set(row.id, {
+                  itemId: row.id,
+                  itemName: row.name,
+                  stock: row.stock,
+                  minStock: row.minStock,
+                });
+              }
+            }
+            await setInventoryWarnings(invLoc, Array.from(warningMap.values()));
+          }
+        } catch (inventoryErr) {
+          console.warn('[completeAppointment] inventory deduction failed (non-blocking)', {
+            contactId,
+            appointmentId: appointmentId != null ? String(appointmentId) : null,
+            message: inventoryErr?.message || String(inventoryErr),
+          });
+        }
+
         return res.status(200).json({
           success: true,
           tagOk: tagOk !== false,
@@ -3091,7 +2904,7 @@ export default async function handler(req, res) {
           prijs_regels: canonicalPrijsRegels,
           prijs_totaal: totalNum,
         });
-        console.log('[BOOKING_PRICE_DEBUG]', {
+        releaseDebugNoopGhl('', {
           contactId,
           extrasCount: extrasArr.length,
           serializedPrijsRegels: canonicalPrijsRegels,
@@ -3180,8 +2993,8 @@ export default async function handler(req, res) {
           price,
           priceLines,
         } = req.body || {};
-        console.log('[TRACE][request_body]', req.body);
-        if (process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
+        releaseDebugNoopGhl('[request_body]', req.body);
+        if (false && process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
           console.log('[updatePlannerBookingDetails][request_body]', {
             keys: req.body && typeof req.body === 'object' ? Object.keys(req.body) : [],
             contactId: contactId != null ? String(contactId) : null,
@@ -3204,8 +3017,6 @@ export default async function handler(req, res) {
         if (!cid) return res.status(400).json({ error: 'contactId vereist' });
         const dateNorm = normalizeYyyyMmDdInput(String(date || ''));
         if (!dateNorm) return res.status(400).json({ error: 'date verplicht (YYYY-MM-DD)' });
-        const lockRes = await routeMutationLockResponse(dateNorm, 'updatePlannerBookingDetails');
-        if (lockRes) return lockRes;
         if (plannerBodyIncludesInvoiceKeys(req.body || {})) {
           const ftInv = normalizePlannerInvoiceTypeFromBody(req.body?.factuurType);
           if (ftInv === 'bedrijf' && !String(req.body?.factuurBedrijfsnaam || '').trim()) {
@@ -3220,8 +3031,8 @@ export default async function handler(req, res) {
         const phoneNorm = normalizePhoneForGhl(phone);
         const emailNorm = String(email || '').trim().toLowerCase();
         const addressNorm = String(address || '').trim();
-        console.log('[TRACE][normalized_address]', addressNorm);
-        if (process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
+        releaseDebugNoopGhl('[normalized_address]', addressNorm);
+        if (false && process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
           console.log('[updatePlannerBookingDetails][normalized_address]', {
             contactId: cid,
             addressNorm: addressNorm.slice(0, 200),
@@ -3344,7 +3155,7 @@ export default async function handler(req, res) {
         if (emailNorm) payload.email = emailNorm;
         if (address1) payload.address1 = address1;
         if (addressNorm) mergeGhlNativeAddressFromParts(payload, parts);
-        if (process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
+        if (false && process.env.HK_DEBUG_PLANNER_ADDRESS === '1') {
           console.log('[updatePlannerBookingDetails][address_write]', {
             contactId: cid,
             addressNorm,
@@ -3366,7 +3177,7 @@ export default async function handler(req, res) {
           contactId: cid,
           address1: address1 || null,
         });
-        console.log('[TRACE][write_payload]', payload);
+        releaseDebugNoopGhl('[write_payload]', payload);
         const logContactAddressReadBack = async (label) => {
           try {
             const rr = await fetchWithRetry(`${GHL_BASE}/contacts/${encodeURIComponent(cid)}`, {
@@ -3400,8 +3211,8 @@ export default async function handler(req, res) {
           _allowPostRetry: false,
         });
         const putText = await putRes.text().catch(() => '');
-        console.log('[TRACE][ghl_put_status]', putRes.status);
-        console.log('[TRACE][ghl_put_response]', putText.slice(0, 500));
+        releaseDebugNoopGhl('[ghl_put_status]', putRes.status);
+        releaseDebugNoopGhl('[ghl_put_response]', putText.slice(0, 500));
         if (!putRes.ok) {
           const detail = putText.slice(0, 400);
           console.error('[updatePlannerBookingDetails][contact_update_fail]', {
@@ -3433,8 +3244,8 @@ export default async function handler(req, res) {
             _allowPostRetry: false,
           });
           const retryText = await retryRes.text().catch(() => '');
-          console.log('[TRACE][ghl_put_status_retry]', retryRes.status);
-          console.log('[TRACE][ghl_put_response_retry]', retryText.slice(0, 500));
+          releaseDebugNoopGhl('[ghl_put_status_retry]', retryRes.status);
+          releaseDebugNoopGhl('[ghl_put_response_retry]', retryText.slice(0, 500));
           if (!retryRes.ok) {
             const retryDetail = retryText.slice(0, 400);
             console.error('[updatePlannerBookingDetails][booking_fields_fail]', {
@@ -3448,9 +3259,7 @@ export default async function handler(req, res) {
             });
           }
           _traceLastEditedContactId = cid;
-          await logContactAddressReadBack('[TRACE][address_after_write_immediate]');
           await new Promise((r) => setTimeout(r, 2000));
-          await logContactAddressReadBack('[TRACE][address_after_write_delayed]');
           console.log('[updatePlannerBookingDetails][contact_update_ok]', {
             contactId: cid,
             mode: 'fallback_without_phone_email',
@@ -3468,40 +3277,15 @@ export default async function handler(req, res) {
             slotKey: slotPart,
             warning: 'phone/email omitted in fallback',
           });
-          try {
-            const apptResult = await updateAppointmentInSupabase({
-              source: 'planner-create',
-              ghlContactId: cid,
-              serviceDate: dateNorm,
-              problemDescription: descNorm || null,
-              totalAmount: totalNum,
-              rawPayload: {
-                action: 'updatePlannerBookingDetails',
-                mode: 'fallback_without_phone_email',
-              },
-            });
-            const linesResult = await replaceAppointmentPriceLines({
-              source: 'planner-create',
-              ghlContactId: cid,
-              serviceDate: dateNorm,
-              priceLines: normalizedLines,
-            });
-            console.info('[supabase_dual_write_ok]', JSON.stringify({
-              source: 'planner-update',
-              action: 'updatePlannerBookingDetails',
-              appointmentId: apptResult?.appointmentId || linesResult?.appointmentId || null,
-              priceLineCount: linesResult?.priceLineCount || 0,
-              skipped: apptResult?.skipped === true && linesResult?.skipped === true,
-            }));
-          } catch (err) {
-            console.error('[supabase_dual_write_failed]', JSON.stringify({
-              source: 'planner-update',
-              action: 'updatePlannerBookingDetails',
-              contactId: cid || null,
-              date: dateNorm || null,
-              message: String(err?.message || err),
-            }));
-          }
+          await cacheSyntheticAppointmentAnalytics({
+            contactId: cid,
+            date: dateNorm,
+            priceLines: normalizedLines.length
+              ? normalizedLines
+              : totalNum !== null
+                ? [{ desc: descNorm || 'Handmatige afspraak', price: totalNum }]
+                : [],
+          });
           return res.status(200).json({
             success: true,
             contactId: cid,
@@ -3511,9 +3295,7 @@ export default async function handler(req, res) {
           });
         }
         _traceLastEditedContactId = cid;
-        await logContactAddressReadBack('[TRACE][address_after_write_immediate]');
         await new Promise((r) => setTimeout(r, 2000));
-        await logContactAddressReadBack('[TRACE][address_after_write_delayed]');
         console.log('[updatePlannerBookingDetails][contact_update_ok]', {
           contactId: cid,
           mode: 'primary',
@@ -3530,40 +3312,15 @@ export default async function handler(req, res) {
           date: dateNorm,
           slotKey: slotPart,
         });
-        try {
-          const apptResult = await updateAppointmentInSupabase({
-            source: 'planner-create',
-            ghlContactId: cid,
-            serviceDate: dateNorm,
-            problemDescription: descNorm || null,
-            totalAmount: totalNum,
-            rawPayload: {
-              action: 'updatePlannerBookingDetails',
-              mode: 'primary',
-            },
-          });
-          const linesResult = await replaceAppointmentPriceLines({
-            source: 'planner-create',
-            ghlContactId: cid,
-            serviceDate: dateNorm,
-            priceLines: normalizedLines,
-          });
-          console.info('[supabase_dual_write_ok]', JSON.stringify({
-            source: 'planner-update',
-            action: 'updatePlannerBookingDetails',
-            appointmentId: apptResult?.appointmentId || linesResult?.appointmentId || null,
-            priceLineCount: linesResult?.priceLineCount || 0,
-            skipped: apptResult?.skipped === true && linesResult?.skipped === true,
-          }));
-        } catch (err) {
-          console.error('[supabase_dual_write_failed]', JSON.stringify({
-            source: 'planner-update',
-            action: 'updatePlannerBookingDetails',
-            contactId: cid || null,
-            date: dateNorm || null,
-            message: String(err?.message || err),
-          }));
-        }
+        await cacheSyntheticAppointmentAnalytics({
+          contactId: cid,
+          date: dateNorm,
+          priceLines: normalizedLines.length
+            ? normalizedLines
+            : totalNum !== null
+              ? [{ desc: descNorm || 'Handmatige afspraak', price: totalNum }]
+              : [],
+        });
         return res.status(200).json({
           success: true,
           contactId: cid,
@@ -3767,8 +3524,6 @@ export default async function handler(req, res) {
         if (!addressNorm) return res.status(400).json({ error: 'address verplicht' });
         if (!dateNorm) return res.status(400).json({ error: 'date verplicht (YYYY-MM-DD)' });
         if (!/^\d{2}:\d{2}$/.test(timeNorm)) return res.status(400).json({ error: 'time verplicht (HH:mm)' });
-        const lockRes = await routeMutationLockResponse(dateNorm, 'createAppointment');
-        if (lockRes) return lockRes;
         if (plannerBodyIncludesInvoiceKeys(req.body || {})) {
           const ftInv = normalizePlannerInvoiceTypeFromBody(req.body?.factuurType);
           if (ftInv === 'bedrijf' && !String(req.body?.factuurBedrijfsnaam || '').trim()) {
@@ -4051,44 +3806,15 @@ export default async function handler(req, res) {
           dateStr: dateNorm,
           trigger: 'createAppointment_model_b1',
         });
-
-        try {
-          const syncResult = await syncAppointmentToSupabase({
-            source: 'planner-create',
-            externalBookingId: reservationOut.reservation?.id ? String(reservationOut.reservation.id) : null,
-            reservationId: reservationOut.reservation?.id ? String(reservationOut.reservation.id) : null,
-            ghlContactId: contactId,
-            customerName: nameNorm,
-            phone: phoneNorm || null,
-            email: emailNorm || null,
-            address: addressNorm,
-            date: dateNorm,
-            dayPart: slotPart,
-            timeWindow: slotLabelNorm || null,
-            status: 'confirmed',
-            problemDescription: desc || null,
-            priceLines: normalizedLines,
-            totalAmount: priceNum,
-            rawPayload: {
-              bookingModel: 'B',
-              syntheticRowId: `hk-b1:${contactId}:${dateNorm}`,
-            },
-          });
-          console.info('[supabase_dual_write_ok]', JSON.stringify({
-            source: 'planner-create',
-            appointmentId: syncResult?.appointmentId || null,
-            customerId: syncResult?.customerId || null,
-            priceLineCount: syncResult?.priceLineCount || 0,
-            skipped: syncResult?.skipped === true,
-          }));
-        } catch (err) {
-          console.error('[supabase_dual_write_failed]', JSON.stringify({
-            source: 'planner-create',
-            contactId: contactId || null,
-            date: dateNorm || null,
-            message: String(err?.message || err),
-          }));
-        }
+        await cacheSyntheticAppointmentAnalytics({
+          contactId,
+          date: dateNorm,
+          priceLines: normalizedLines.length
+            ? normalizedLines
+            : priceNum !== null
+              ? [{ desc: desc || 'Handmatige afspraak', price: priceNum }]
+              : [],
+        });
 
         return res.status(200).json({
           success: true,
@@ -4190,8 +3916,6 @@ export default async function handler(req, res) {
         if (!cid || !dateNorm) {
           return res.status(400).json({ error: 'contactId en geldige routeDate (YYYY-MM-DD) vereist' });
         }
-        const lockRes = await routeMutationLockResponse(dateNorm, 'deletePlannerBooking');
-        if (lockRes) return lockRes;
 
         const rid = String(rowId ?? '').trim();
         const hkRow = /^hk-b1:([^:]+):(\d{4}-\d{2}-\d{2})$/i.exec(rid);
@@ -4257,32 +3981,6 @@ export default async function handler(req, res) {
           redis: redisOut,
           ghlAppointment: ghlApptResult,
         });
-        try {
-          const cancelResult = await markAppointmentCancelled({
-            source: 'planner-create',
-            ghlContactId: cid,
-            serviceDate: dateNorm,
-            externalBookingId: redisOut?.reservationId ? String(redisOut.reservationId) : null,
-            rawPayload: {
-              action: 'deletePlannerBooking',
-              synthetic,
-            },
-          });
-          console.info('[supabase_dual_write_ok]', JSON.stringify({
-            source: 'planner-delete',
-            action: 'deletePlannerBooking',
-            appointmentId: cancelResult?.appointmentId || null,
-            skipped: cancelResult?.skipped === true,
-          }));
-        } catch (err) {
-          console.error('[supabase_dual_write_failed]', JSON.stringify({
-            source: 'planner-delete',
-            action: 'deletePlannerBooking',
-            contactId: cid || null,
-            date: dateNorm || null,
-            message: String(err?.message || err),
-          }));
-        }
 
         return res.status(200).json({
           success: true,
@@ -4308,12 +4006,6 @@ export default async function handler(req, res) {
         const newDateNorm = normalizeYyyyMmDdInput(String(newDate || ''));
         if (!cid || !newDateNorm || !prevDateNorm) {
           return res.status(400).json({ error: 'contactId, prevDate en newDate vereist (YYYY-MM-DD)' });
-        }
-        const lockResPrev = await routeMutationLockResponse(prevDateNorm, 'rescheduleAppointment');
-        if (lockResPrev) return lockResPrev;
-        if (newDateNorm !== prevDateNorm) {
-          const lockResNew = await routeMutationLockResponse(newDateNorm, 'rescheduleAppointment');
-          if (lockResNew) return lockResNew;
         }
         const slotPart =
           slotKey === 'afternoon' || slotKey === 'morning'
@@ -4424,39 +4116,6 @@ export default async function handler(req, res) {
           newDate: newDateNorm,
           slotPart,
         });
-        try {
-          const mirrorResult = await updateAppointmentInSupabase({
-            source: 'planner-create',
-            ghlContactId: cid,
-            matchServiceDate: prevDateNorm,
-            serviceDate: newDateNorm,
-            externalBookingId: oldResDelete?.reservationId ? String(oldResDelete.reservationId) : null,
-            nextExternalBookingId: newRes?.reservation?.id ? String(newRes.reservation.id) : null,
-            address: req.body?.address ? String(req.body.address).trim() : undefined,
-            dayPart: slotPart,
-            timeWindow: windowLabel || null,
-            rawPayload: {
-              action: 'rescheduleAppointment',
-              prevDate: prevDateNorm,
-              newDate: newDateNorm,
-            },
-          });
-          console.info('[supabase_dual_write_ok]', JSON.stringify({
-            source: 'planner-update',
-            action: 'rescheduleAppointment',
-            appointmentId: mirrorResult?.appointmentId || null,
-            skipped: mirrorResult?.skipped === true,
-          }));
-        } catch (err) {
-          console.error('[supabase_dual_write_failed]', JSON.stringify({
-            source: 'planner-update',
-            action: 'rescheduleAppointment',
-            contactId: cid || null,
-            prevDate: prevDateNorm || null,
-            newDate: newDateNorm || null,
-            message: String(err?.message || err),
-          }));
-        }
         return res.status(200).json({
           success: true,
           slotLabel: windowLabel || null,
