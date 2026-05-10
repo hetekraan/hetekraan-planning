@@ -9072,6 +9072,83 @@ function renderApptCard(a, i) {
     </div>`;
 }
 
+/** Alleen voor planner day-blocked banner: Amsterdam-uur uit ms (Europe/Amsterdam). */
+function plannerAmsterdamFractionalHourFromMs(ms) {
+  if (ms == null || !Number.isFinite(ms) || ms === 0) return null;
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Amsterdam',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(ms));
+  const hi = parts.find((p) => p.type === 'hour')?.value;
+  const mi = parts.find((p) => p.type === 'minute')?.value;
+  const hh = parseInt(hi, 10);
+  const mm = parseInt(mi, 10);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+  return hh + mm / 60;
+}
+
+function plannerCalBlockTitleImpliesFullDay(name) {
+  const t = String(name || '').trim().toLowerCase();
+  if (!t) return false;
+  if (/\bochtend\b/.test(t) || /\bmiddag\b/.test(t)) return false;
+  return (
+    /\bdag\s+geblokkeerd\b/.test(t) ||
+    /\bhele\s+dag\b/.test(t) ||
+    /\bvolledige\s+dag\b/.test(t)
+  );
+}
+
+function plannerCalBlockTitleImpliesMorning(name) {
+  if (plannerCalBlockTitleImpliesFullDay(name)) return false;
+  const t = String(name || '').trim().toLowerCase();
+  return (
+    (/\bochtend\b/.test(t) && /\bgeblokkeerd\b/.test(t)) ||
+    /09\s*[.:]\s*00\s*[-–]\s*13\s*[.:]\s*00/.test(t)
+  );
+}
+
+function plannerCalBlockTitleImpliesAfternoon(name) {
+  if (plannerCalBlockTitleImpliesFullDay(name)) return false;
+  const t = String(name || '').trim().toLowerCase();
+  return (
+    (/\bmiddag\b/.test(t) && /\bgeblokkeerd\b/.test(t)) ||
+    /13\s*[.:]\s*00\s*[-–]\s*17\s*[.:]\s*00/.test(t)
+  );
+}
+
+/**
+ * Overlap met [windowStartHour, windowEndHour) in uren lokale tijd Amsterdam.
+ * Gebruikt timeSlot/blockEndLabel; valt terug op startMs en titel “Dag geblokkeerd” als eindtijd ontbreekt.
+ */
+function plannerDashCalBlockOverlapsWorkWindow(block, windowStartHour, windowEndHour) {
+  function parseHourFromLabel(v) {
+    const m = String(v || '').match(/(\d{1,2}):(\d{2})/);
+    if (!m) return null;
+    const hh = Number(m[1]);
+    const mm = Number(m[2]);
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+    return hh + mm / 60;
+  }
+  let startHour = parseHourFromLabel(block?.timeSlot);
+  let endHour = parseHourFromLabel(block?.blockEndLabel);
+  if (!Number.isFinite(startHour) && block?.startMs != null && Number.isFinite(block.startMs) && block.startMs !== 0) {
+    startHour = plannerAmsterdamFractionalHourFromMs(block.startMs);
+  }
+  if (
+    (!Number.isFinite(endHour) || (Number.isFinite(startHour) && endHour <= startHour)) &&
+    block?.isCalBlock &&
+    plannerCalBlockTitleImpliesFullDay(block.name)
+  ) {
+    endHour = 24;
+  }
+  if (!Number.isFinite(startHour) || !Number.isFinite(endHour) || endHour <= startHour) {
+    return false;
+  }
+  return startHour < windowEndHour && endHour > windowStartHour;
+}
+
 function render() {
   applyUiScalePref();
   assignRouteStops();
@@ -9082,19 +9159,35 @@ function render() {
   const afternoonApts = clients.filter((x) => x.dayPart !== 0);
   const dateStrUi = getDateStr(currentDate);
   const dashBlockedPending = isDashBlockedPending(dateStrUi) && blocks.length === 0;
-  const hasMorningBlock = blocks.some((x) => Number(x?.dayPart) === 0);
-  const hasAfternoonBlock = blocks.some((x) => Number(x?.dayPart) === 1);
-  const hasFullDayBlock = blocks.some((x) => String(x?.dayPartKey || '').toLowerCase() === 'full' || Number(x?.dayPart) === 2);
+
+  const hasExplicitFullDayBlock = blocks.some(
+    (x) => String(x?.dayPartKey || '').toLowerCase() === 'full' || Number(x?.dayPart) === 2
+  );
+  const hasMorningWindowBlock = blocks.some((x) => plannerDashCalBlockOverlapsWorkWindow(x, 8, 13));
+  const hasAfternoonWindowBlock = blocks.some((x) => plannerDashCalBlockOverlapsWorkWindow(x, 13, 18));
+  const hasMorningByTitle = blocks.some((x) => plannerCalBlockTitleImpliesMorning(x.name));
+  const hasAfternoonByTitle = blocks.some((x) => plannerCalBlockTitleImpliesAfternoon(x.name));
+  const hasFullDayByTitle = blocks.some((x) => plannerCalBlockTitleImpliesFullDay(x.name));
+
   let blockStatusText = '';
   if (blocks.length) {
-    const fullDay = hasFullDayBlock || (hasMorningBlock && hasAfternoonBlock) || blocks.length > 1;
-    blockStatusText = fullDay
-      ? 'DEZE DAG IS GEBLOKKEERD'
-      : hasMorningBlock
-        ? 'OCHTEND GEBLOKKEERD'
-        : hasAfternoonBlock
-          ? 'MIDDAG GEBLOKKEERD'
-          : 'DEZE DAG IS GEBLOKKEERD';
+    const fullDay =
+      hasExplicitFullDayBlock ||
+      hasFullDayByTitle ||
+      (hasMorningWindowBlock && hasAfternoonWindowBlock) ||
+      (hasMorningByTitle && hasAfternoonByTitle);
+    const morningOnly =
+      !fullDay &&
+      (hasMorningWindowBlock || hasMorningByTitle) &&
+      !(hasAfternoonWindowBlock || hasAfternoonByTitle);
+    const afternoonOnly =
+      !fullDay &&
+      (hasAfternoonWindowBlock || hasAfternoonByTitle) &&
+      !(hasMorningWindowBlock || hasMorningByTitle);
+    if (fullDay) blockStatusText = 'DEZE DAG IS GEBLOKKEERD';
+    else if (morningOnly) blockStatusText = 'OCHTEND GEBLOKKEERD';
+    else if (afternoonOnly) blockStatusText = 'MIDDAG GEBLOKKEERD';
+    else blockStatusText = 'DEZE DAG IS GEBLOKKEERD';
   }
 
   const bannerEl = document.getElementById('dayBlockedBanner');
