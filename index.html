@@ -429,17 +429,8 @@
     letter-spacing: -0.02em;
     line-height: 1.15;
   }
-  .appt-lead-col .appt-number {
-    position: static;
-    top: auto;
-    left: auto;
-  }
 
-  .appt-inner {
-    padding: 12px 12px 12px 30px;
-    display: flex;
-    flex-direction: column;
-  }
+  .appt-inner { padding: 12px 12px 12px 30px; }
 
   .appt-top {
     display: flex;
@@ -447,56 +438,6 @@
     align-items: center;
     margin-bottom: 2px;
     gap: 6px;
-  }
-  .appt-lead-col {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 10px;
-    flex: 1 1 auto;
-    min-width: 0;
-  }
-  .appt-times-stack {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 10px;
-    min-width: 0;
-  }
-  .appt-time-line {
-    font-size: 12px;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    color: rgba(255, 208, 0, 0.85);
-  }
-  .appt-time-line--muted {
-    font-size: 11px;
-    font-weight: 500;
-    color: rgba(255, 208, 0, 0.55);
-  }
-  .appt-address-line {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    margin-top: 4px;
-    min-width: 0;
-  }
-  .appt-address-pin {
-    flex-shrink: 0;
-    display: inline-flex;
-    margin-top: 2px;
-    opacity: 0.85;
-  }
-  .appt-notes--technical {
-    margin-top: 8px;
-    padding: 5px 10px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid var(--border);
-    font-size: 11px;
-    color: var(--muted);
-    line-height: 1.35;
   }
 
   .appt-internal-slot {
@@ -593,8 +534,6 @@
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
-    align-self: flex-end;
-    margin-top: 8px;
   }
 
   .appt-actions .icon-btn.appt-action-icon {
@@ -4928,8 +4867,7 @@
     transform: none;
   }
   .appt-inner {
-    display: flex;
-    flex-direction: column;
+    display: block;
     padding: 16px 16px 16px 36px;
   }
   .appt-top,
@@ -5379,64 +5317,17 @@
   .appt-top {
     display: flex;
     align-items: flex-start;
-    justify-content: flex-start;
+    justify-content: space-between;
     gap: 12px;
   }
-  .appt-lead-col {
+  .appt-top .appt-time {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 8px;
-    min-width: 44px;
-  }
-  .appt-times-stack {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 2px;
-    text-align: center;
-  }
-  .appt-time-line {
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: -0.02em;
+    gap: 10px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
     font-variant-numeric: tabular-nums;
-    color: var(--ink);
-    line-height: 1.2;
-  }
-  .appt-time-line--muted {
-    font-size: 10.5px;
-    font-weight: 500;
-    color: var(--ink-muted);
-  }
-  .appt-address-line {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    margin-top: 4px;
-    min-width: 0;
-  }
-  .appt-address-pin {
-    flex-shrink: 0;
-    display: inline-flex;
-    margin-top: 3px;
-  }
-  .appt-notes--technical {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 10px;
-    padding: 6px 10px;
-    border-radius: 999px;
-    background: #f0ebe3;
-    border: 1px solid var(--border);
-    font-size: 11.5px;
-    color: var(--ink-muted);
-    line-height: 1.35;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
   .slot-daypart-hint,
   .ghl-cal-time-hint {
@@ -5466,8 +5357,6 @@
   }
   .appt-actions {
     gap: 6px;
-    align-self: flex-end;
-    margin-top: 12px;
   }
   .appt-actions .icon-btn.appt-action-icon {
     width: 32px;
@@ -6115,127 +6004,27 @@
     body:not(.user-jerry) .appt-card {
       margin-bottom: 11px;
     }
-    /* Desktop afspraakkaarten (Warm Minimal): hiërarchie + compacte density */
-    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) {
-      border-radius: 13px;
+    body:not(.user-jerry) .appt-inner {
+      padding: 11px 11px 11px 28px;
     }
-    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-inner {
-      position: relative;
-      padding: 18px 20px 56px 20px;
-      gap: 0;
+    body:not(.user-jerry) .appt-number {
+      font-size: clamp(13px, 1.5vw, 15px);
     }
-    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-top {
-      margin-bottom: 10px;
+    body:not(.user-jerry) .appt-address {
+      font-size: clamp(14px, 1.65vw, 16px);
     }
-    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-lead-col {
-      flex-direction: column;
-      align-items: center;
-      min-width: 52px;
-      width: 52px;
-      gap: 8px;
+    body:not(.user-jerry) .appt-name {
+      font-size: 12px;
     }
-    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-number {
-      width: 34px;
-      height: 34px;
-      font-size: 13px;
-    }
-    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-time-line {
-      font-size: 12.5px;
-    }
-    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-time-line--muted {
-      font-size: 10px;
-    }
-    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-body {
-      gap: 6px;
-      margin: 0 0 12px;
-    }
-    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-name {
-      font-size: 17.5px;
-      font-weight: 700;
-      color: #1a1512;
-      letter-spacing: -0.02em;
-      line-height: 1.2;
-    }
-    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-address {
-      font-size: 14.5px;
-      font-weight: 600;
-      color: #0f7a4b;
-      line-height: 1.35;
-    }
-    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-desc {
-      font-size: 15px;
-      font-weight: 500;
-      color: #4a433a;
-      white-space: normal;
-      overflow: visible;
-      text-overflow: clip;
-      line-height: 1.4;
-      margin-top: 2px;
-    }
-    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .meta-label {
-      font-size: 10px;
-    }
-    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .meta-value {
-      font-size: 12.5px;
-    }
-    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-meta {
-      margin: 4px 0 0;
-      gap: 10px;
-    }
-    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .tag {
-      font-size: 11.5px;
-      padding: 3px 9px;
-    }
-    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-price {
-      font-size: 18px;
-      font-weight: 700;
-    }
-    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-footer {
-      margin-top: 4px;
-      padding-right: 200px;
-      align-items: flex-start;
-    }
-    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-actions {
-      position: absolute;
-      right: 16px;
-      bottom: 14px;
-      margin-top: 0;
-      align-self: auto;
-    }
-    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-actions .icon-btn.appt-action-icon {
-      width: 38px;
-      height: 38px;
-      min-width: 38px;
-      min-height: 38px;
-      border-radius: 10px;
-    }
-    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-actions .icon-btn.appt-action-icon .appt-action-svg {
-      width: 19px;
-      height: 19px;
-    }
-    body:not(.user-jerry) #panelAfspraken .appt-card.done::after {
-      top: 14px;
-      right: 16px;
+    body:not(.user-jerry) .appt-time {
       font-size: 11px;
-      padding: 5px 10px;
-      border-radius: 999px;
-      background: #0f7a4b;
-      color: #fff;
-      border: none;
-      font-weight: 600;
-      letter-spacing: 0.02em;
     }
-    body:not(.user-jerry) #panelAfspraken .appt-card.done .appt-footer-right {
-      padding-top: 28px;
+    body:not(.user-jerry) .appt-desc {
+      font-size: 11px;
     }
-    body:not(.user-jerry) #panelAfspraken .appt-card.done {
-      background: #e8f6ef;
-      border-color: rgba(15, 122, 75, 0.28);
-      opacity: 1;
-    }
-    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-notes--technical {
-      font-size: 11.5px;
-      max-width: calc(100% - 200px);
+    body:not(.user-jerry) .appt-body {
+      gap: 8px;
+      margin: 6px 0 10px;
     }
     body:not(.user-jerry) .appointments-header-actions .btn-add {
       font-size: 12px;
@@ -9223,30 +9012,6 @@ const APPT_ACTION_SVG = {
   close: '<svg xmlns="http://www.w3.org/2000/svg" class="appt-action-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M18 6L6 18M6 6l12 12"/></svg>'
 };
 
-/** Groen locatie-icoon (Warm Minimal kaarten) */
-const APPT_ADDRESS_PIN_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 21s7-4.35 7-10a7 7 0 1 0-14 0c0 5.65 7 10 7 10z" stroke="#0f7a4b" stroke-width="1.75" stroke-linejoin="round"/><circle cx="12" cy="11" r="2.25" fill="#0f7a4b"/></svg>';
-
-/**
- * Start/eind (of enkele regel) in linkerkolom; valt terug op dagdeel-hint zonder ETA.
- */
-function buildApptTimesStackHtml(a, slotHint) {
-  const raw = String(a.timeSlot || '').replace(/^~\s*/, '').trim();
-  if (!raw) {
-    return `<div class="appt-times-stack"><span class="appt-time-line appt-time-line--muted">${escapeHtml(slotHint)}</span></div>`;
-  }
-  const dashSplit = raw.split(/\s*[–—-]\s+/);
-  if (dashSplit.length >= 2) {
-    const a0 = dashSplit[0].trim();
-    const a1 = dashSplit.slice(1).join('–').trim();
-    return `<div class="appt-times-stack">
-      <span class="appt-time-line">${escapeHtml(a0)}</span>
-      <span class="appt-time-line">${escapeHtml(a1)}</span>
-    </div>`;
-  }
-  return `<div class="appt-times-stack"><span class="appt-time-line">${escapeHtml(raw)}</span></div>`;
-}
-
 const APPT_MOBILE_MENU_KEBAB_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" class="appt-action-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="5" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="19" r="1.5" fill="currentColor"/></svg>';
 const TOUCH_PRICE_OVERLAY_MAX_WIDTH = 1179;
@@ -9669,16 +9434,8 @@ function renderApptCard(a, i) {
     const lastServiceInputVal = String(a.lastService || '').trim() || routeYmdPlanner;
 
     const metaItems = [];
-    if (a.datumInstallatie) {
-      metaItems.push(
-        `<div class="meta-item"><div class="meta-label">Installatie</div><div class="meta-value">${escapeHtml(String(a.datumInstallatie))}</div></div>`
-      );
-    }
-    if (a.datumOnderhoud) {
-      metaItems.push(
-        `<div class="meta-item"><div class="meta-label">Laatste onderhoud</div><div class="meta-value">${escapeHtml(String(a.datumOnderhoud))}</div></div>`
-      );
-    }
+    if (a.datumInstallatie) metaItems.push(`<div class="meta-item"><div class="meta-label">Installatie</div><div class="meta-value">${a.datumInstallatie}</div></div>`);
+    if (a.datumOnderhoud) metaItems.push(`<div class="meta-item"><div class="meta-label">Laatste onderhoud</div><div class="meta-value">${a.datumOnderhoud}</div></div>`);
 
     const slotHint = (a.dayPart ?? 1) === 0 ? 'Ochtend 09–13' : 'Middag 13–17';
     const ghlMenuAttrs = a.ghlUrl
@@ -9715,9 +9472,23 @@ function renderApptCard(a, i) {
     <div class="appt-card ${isDone?'done':''} ${isOnderweg?'onderweg':''} ${isViolation?'violation':''}" id="card-${domId}">
       <div class="appt-inner">
         <div class="appt-top">
-          <div class="appt-lead-col">
-            <div class="appt-number">${a.routeStop != null ? a.routeStop : i + 1}</div>
-            ${buildApptTimesStackHtml(a, slotHint)}
+          <div class="appt-number">${a.routeStop != null ? a.routeStop : i + 1}</div>
+          <div class="appt-time">
+            ${a.fullAddressLine ? `<span class="appt-address">${a.fullAddressLine}</span>` : ''}
+          </div>
+          <div class="appt-actions">
+            <div class="appt-actions__icons">
+            ${a.phone ? `<a class="icon-btn appt-action-icon" href="tel:${a.phone}" title="Bellen">${APPT_ACTION_SVG.phone}</a>` : ''}
+            ${a.mapsLink ? `<a class="icon-btn appt-action-icon" href="${a.mapsLink}" target="_blank" rel="noopener noreferrer" title="Maps">${APPT_ACTION_SVG.map}</a>` : ''}
+            <button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">${APPT_ACTION_SVG.pencil}</button>
+            ${a.ghlUrl ? `<a class="icon-btn appt-action-icon" href="${a.ghlUrl}"${a.ghlAppUrl ? ` data-ghl-app="${escapeHtml(a.ghlAppUrl)}" onclick="return hkOpenGhlContact(event,this)"` : ''} target="_blank" rel="noopener noreferrer" title="Open in GHL">${APPT_ACTION_SVG.link}</a>` : ''}
+            ${isDone ? `<button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentDetailsModal(${idQ})' title="Bekijk details">${APPT_ACTION_SVG.eye}</button>` : ''}
+            <button type="button" class="icon-btn appt-action-icon" onclick='deleteAppt(${idQ})' title="Verwijderen">${APPT_ACTION_SVG.close}</button>
+            </div>
+            <div class="appt-actions__mobile">
+              <button type="button" class="icon-btn appt-action-icon appt-actions__menu-btn" id="mob-menu-btn-${domId}" aria-label="Meer acties" aria-expanded="false" aria-haspopup="true" aria-controls="mob-menu-${domId}" onclick="toggleMobileApptActionMenu(event,'${domId}')">${APPT_MOBILE_MENU_KEBAB_SVG}</button>
+              <div class="appt-actions__dropdown" id="mob-menu-${domId}" role="menu" aria-labelledby="mob-menu-btn-${domId}">${mobileMenuRows.join('')}</div>
+            </div>
           </div>
         </div>
         ${(() => {
@@ -9732,13 +9503,8 @@ function renderApptCard(a, i) {
           return `<span class="route-pin-badge">${pinTypeLabel} ${pin.time}</span>`;
         })()}
         <div class="appt-body">
-          <div class="appt-name">${escapeHtml(String(a.name || ''))}</div>
-          ${
-            a.fullAddressLine
-              ? `<div class="appt-address-line"><span class="appt-address-pin">${APPT_ADDRESS_PIN_SVG}</span><div class="appt-address">${escapeHtml(String(a.fullAddressLine))}</div></div>`
-              : ''
-          }
-          <div class="appt-desc">${escapeHtml(String(a.jobDescription || ''))}</div>
+          <div class="appt-name">${a.name}</div>
+          <div class="appt-desc">${a.jobDescription || ''}</div>
         </div>
         ${metaItems.length ? `<div class="appt-meta">${metaItems.join('')}</div>` : ''}
         ${(() => {
@@ -9746,8 +9512,7 @@ function renderApptCard(a, i) {
           const desc = String(a.jobDescription || '').trim();
           if (!note) return '';
           if (note.toLowerCase() === desc.toLowerCase()) return '';
-          const tech = /moneybird|mollie|factuur\s*#/i.test(note);
-          return `<div class="appt-notes${tech ? ' appt-notes--technical' : ''}">${tech ? '' : '● '}${escapeHtml(note)}</div>`;
+          return `<div class="appt-notes">● ${note}</div>`;
         })()}
         <div class="appt-footer">
           <div class="appt-footer-left">
@@ -9773,20 +9538,6 @@ function renderApptCard(a, i) {
               </div>
             </div>
           </div>
-        </div>
-        <div class="appt-actions">
-            <div class="appt-actions__icons">
-            ${a.phone ? `<a class="icon-btn appt-action-icon" href="tel:${a.phone}" title="Bellen">${APPT_ACTION_SVG.phone}</a>` : ''}
-            ${a.mapsLink ? `<a class="icon-btn appt-action-icon" href="${a.mapsLink}" target="_blank" rel="noopener noreferrer" title="Maps">${APPT_ACTION_SVG.map}</a>` : ''}
-            <button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">${APPT_ACTION_SVG.pencil}</button>
-            ${a.ghlUrl ? `<a class="icon-btn appt-action-icon" href="${a.ghlUrl}"${a.ghlAppUrl ? ` data-ghl-app="${escapeHtml(a.ghlAppUrl)}" onclick="return hkOpenGhlContact(event,this)"` : ''} target="_blank" rel="noopener noreferrer" title="Open in GHL">${APPT_ACTION_SVG.link}</a>` : ''}
-            ${isDone ? `<button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentDetailsModal(${idQ})' title="Bekijk details">${APPT_ACTION_SVG.eye}</button>` : ''}
-            <button type="button" class="icon-btn appt-action-icon" onclick='deleteAppt(${idQ})' title="Verwijderen">${APPT_ACTION_SVG.close}</button>
-            </div>
-            <div class="appt-actions__mobile">
-              <button type="button" class="icon-btn appt-action-icon appt-actions__menu-btn" id="mob-menu-btn-${domId}" aria-label="Meer acties" aria-expanded="false" aria-haspopup="true" aria-controls="mob-menu-${domId}" onclick="toggleMobileApptActionMenu(event,'${domId}')">${APPT_MOBILE_MENU_KEBAB_SVG}</button>
-              <div class="appt-actions__dropdown" id="mob-menu-${domId}" role="menu" aria-labelledby="mob-menu-btn-${domId}">${mobileMenuRows.join('')}</div>
-            </div>
         </div>
       </div>
       ${useTouchPriceOverlay ? '' : `
