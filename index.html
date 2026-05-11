@@ -5892,6 +5892,7 @@
       gap: 6px;
       align-items: center;
       flex-wrap: nowrap;
+      padding-top: 2px;
     }
     body:not(.user-jerry) #panelAfspraken .today-page-header .appointments-header-actions .planner-desktop-search {
       display: block;
@@ -5922,18 +5923,6 @@
     }
     body:not(.user-jerry) .planner-sidebar {
       min-height: calc(100dvh - 56px);
-    }
-    body:not(.user-jerry) .appointments {
-      padding: 14px 18px 18px;
-    }
-    body:not(.user-jerry) #panelAfspraken .today-page-header {
-      padding: 10px 18px;
-    }
-    body:not(.user-jerry) .today-week-strip-wrap {
-      padding: 10px 18px;
-    }
-    body:not(.user-jerry) .today-kpi-grid {
-      padding: 12px 18px;
     }
     body:not(.user-jerry) .planner-header-brand-row {
       gap: 8px;
@@ -5992,6 +5981,27 @@
       width: 38px;
       height: 38px;
       padding: 0;
+    }
+  }
+
+  /*
+   * Desktop #panelAfspraken — **onderaan** deze <style> zodat dit wint op het warm-minimal blok
+   * (±L5060: .appointments padding 0 + .today-page-header 18px) en op eerdere @media(1180)-regels.
+   * Alleen niet-Jerry; id-selector + !important alleen op verticale padding van dit paneel.
+   */
+  @media (min-width: 1180px) {
+    body:not(.user-jerry) #panelAfspraken.appointments {
+      padding: 0 18px 16px !important;
+    }
+    body:not(.user-jerry) #panelAfspraken > .today-page-header {
+      padding: 4px 18px !important;
+      align-items: flex-start;
+    }
+    body:not(.user-jerry) #panelAfspraken > .today-week-strip-wrap {
+      padding: 6px 18px !important;
+    }
+    body:not(.user-jerry) #panelAfspraken > .today-kpi-grid {
+      padding: 10px 18px !important;
     }
   }
 
