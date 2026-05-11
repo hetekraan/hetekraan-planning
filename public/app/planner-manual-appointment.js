@@ -704,13 +704,13 @@
     const fullName = `${first} ${last}`.trim() || String(a.name || '').trim();
     const baseLineDesc = String(a.jobDescription || 'Werkzaamheden').trim();
     const lines = [];
-    if (Number(a.price || 0) > 0) {
+    if (Number.isFinite(Number(a.price)) && Number(a.price) !== 0) {
       lines.push({ desc: baseLineDesc || 'Werkzaamheden', price: Math.round(Number(a.price) * 100) / 100 });
     }
     for (const ex of Array.isArray(a.extras) ? a.extras : []) {
       const p = Number(ex?.price);
       const d = String(ex?.desc || '').trim();
-      if (!d || !Number.isFinite(p) || p < 0) continue;
+      if (!d || !Number.isFinite(p) || p === 0) continue;
       lines.push({ desc: d, price: Math.round(p * 100) / 100 });
     }
 

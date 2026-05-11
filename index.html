@@ -8464,14 +8464,15 @@ function openDagopgave() {
     for (const a of klaar) {
       const total = calcTotalPrice(a);
       grandTotal += total;
-      const hasLines = a.price > 0 || (a.extras || []).length > 0;
+      const hasLines =
+        (Number.isFinite(Number(a.price)) && Number(a.price) !== 0) || (a.extras || []).length > 0;
 
       let linesHtml = '';
       if (hasLines) {
         linesHtml = '<div class="dagopgave-lines">';
-        if (a.price > 0 && (a.extras || []).length === 0) {
+        if (Number.isFinite(Number(a.price)) && Number(a.price) !== 0 && (a.extras || []).length === 0) {
           linesHtml += `<div class="dagopgave-line basis"><span>Werkzaamheden</span><span>€ ${a.price.toFixed(2).replace('.', ',')}</span></div>`;
-        } else if (a.price > 0) {
+        } else if (Number.isFinite(Number(a.price)) && Number(a.price) !== 0) {
           linesHtml += `<div class="dagopgave-line basis"><span>Basis</span><span>€ ${a.price.toFixed(2).replace('.', ',')}</span></div>`;
         }
         for (const ex of (a.extras || [])) {
@@ -8484,7 +8485,7 @@ function openDagopgave() {
         <div class="dagopgave-row">
           <div class="dagopgave-row-header">
             <span class="dagopgave-name">${a.name}</span>
-            <span class="dagopgave-total">${total > 0 ? '€ ' + total.toFixed(2).replace('.', ',') : '—'}</span>
+            <span class="dagopgave-total">${Number.isFinite(total) && total !== 0 ? '€ ' + total.toFixed(2).replace('.', ',') : '—'}</span>
           </div>
           <div class="dagopgave-meta">
             ${a.fullAddressLine ? a.fullAddressLine + '<br>' : ''}
@@ -8525,9 +8526,9 @@ function printDagopgave() {
     grandTotal += total;
 
     let linesHtml = '';
-    if (a.price > 0 && (a.extras || []).length === 0) {
+    if (Number.isFinite(Number(a.price)) && Number(a.price) !== 0 && (a.extras || []).length === 0) {
       linesHtml += `<div class="po-line"><span>Werkzaamheden</span><span>€ ${a.price.toFixed(2).replace('.', ',')}</span></div>`;
-    } else if (a.price > 0) {
+    } else if (Number.isFinite(Number(a.price)) && Number(a.price) !== 0) {
       linesHtml += `<div class="po-line"><span>Basis</span><span>€ ${a.price.toFixed(2).replace('.', ',')}</span></div>`;
     }
     for (const ex of (a.extras || [])) {
@@ -8538,7 +8539,7 @@ function printDagopgave() {
       <div class="po-row">
         <div class="po-row-header">
           <span>${a.name}</span>
-          <span>${total > 0 ? '€ ' + total.toFixed(2).replace('.', ',') : '—'}</span>
+          <span>${Number.isFinite(total) && total !== 0 ? '€ ' + total.toFixed(2).replace('.', ',') : '—'}</span>
         </div>
         <div class="po-meta">
           ${a.fullAddressLine || ''}${a.fullAddressLine && (a.jobType || a.jobDescription) ? ' · ' : ''}${a.jobType ? a.jobType.charAt(0).toUpperCase() + a.jobType.slice(1) : ''}${a.jobDescription ? ' — ' + a.jobDescription : ''}
@@ -8906,7 +8907,7 @@ function parsePriceRulesText(raw) {
       const desc = line.slice(0, idx).trim();
       const rawPrice = line.slice(idx + 1).trim().replace(',', '.');
       const n = Number(rawPrice);
-      if (!desc || !Number.isFinite(n) || n < 0) return null;
+      if (!desc || !Number.isFinite(n)) return null;
       return { desc, price: Math.round(n * 100) / 100 };
     })
     .filter(Boolean);
@@ -8946,7 +8947,7 @@ function openAppointmentDetailsModal(apptId) {
     </div>
     <div class="details-section">
       <div class="details-section-title">Prijs</div>
-      ${basePrice > 0 ? `<div class="details-price-line"><span>Basis</span><span>€${euroDisplay(basePrice)}</span></div>` : ''}
+      ${Number.isFinite(basePrice) && basePrice !== 0 ? `<div class="details-price-line"><span>Basis</span><span>€${euroDisplay(basePrice)}</span></div>` : ''}
       ${lines.length ? lines.map((row) => `<div class="details-price-line"><span>${row.desc}</span><span>€${euroDisplay(row.price)}</span></div>`).join('') : '<div class="details-empty">Geen prijsregels</div>'}
       <div class="details-total"><span>Totaal</span><span>€${euroDisplay(total)}</span></div>
     </div>
@@ -9063,7 +9064,7 @@ function clonePriceLinesForDraft(lines) {
   const src = Array.isArray(lines) ? lines : [];
   return src.map((row) => ({
     desc: String(row?.desc || ''),
-    price: Number.isFinite(Number(row?.price)) ? Math.max(0, Math.round(Number(row.price) * 100) / 100) : 0,
+    price: Number.isFinite(Number(row?.price)) ? Math.round(Number(row.price) * 100) / 100 : 0,
   }));
 }
 
@@ -9096,7 +9097,7 @@ function buildTouchPriceOverlayInnerHtml(a, draft) {
           oninput='onTouchOverlayExtraDescInput(${idQ},${i},this.value)' />
         <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
           <span style="font-size:13px;color:var(--muted)">€</span>
-          <input class="form-input price-input" type="number" inputmode="decimal" step="0.01" min="0" value="${Number.isFinite(Number(e.price)) ? e.price : ''}"
+          <input class="form-input price-input" type="text" inputmode="decimal" value="${Number.isFinite(Number(e.price)) ? e.price : ''}"
             style="width:88px" placeholder="0"
             oninput='onTouchOverlayExtraPriceInput(${idQ},${i},this.value)' />
           <button type="button" class="extra-remove" title="Regel verwijderen" onclick='removeTouchOverlayExtra(${idQ},${i})'>✕</button>
@@ -9119,7 +9120,7 @@ function buildTouchPriceOverlayInnerHtml(a, draft) {
       </div>` : ''}
     <div class="price-section" id="touch-price-${domId}">
       <div class="price-section-label">Prijsoverzicht${extras.length === 0 && !a.price ? '<span style="color:var(--muted);font-size:10px;font-weight:400;margin-left:6px">Nog geen prijs uit chat</span>' : ''}</div>
-      ${a.price > 0 ? `<div class="extra-item extra-item--basis"><span>Basis</span><span>€${euroDisplay(a.price)}</span></div>` : ''}
+      ${Number.isFinite(Number(a.price)) && Number(a.price) !== 0 ? `<div class="extra-item extra-item--basis"><span>Basis</span><span>€${euroDisplay(a.price)}</span></div>` : ''}
       ${extrasHtml}
       <button type="button" class="btn-add-price-line" onclick='addTouchOverlayEmptyPriceLine(event, ${idQ})'>+ Regel toevoegen</button>
       <div class="add-extra-row" style="flex-direction:column;gap:5px;margin-top:6px">
@@ -9127,7 +9128,7 @@ function buildTouchPriceOverlayInnerHtml(a, draft) {
         <div class="catalog-v1-results" id="catalog-results-${domId}"></div>
         <div style="display:flex;gap:6px;align-items:center">
           <input class="form-input" type="text" id="extra-desc-${domId}" placeholder="Snel: omschrijving" style="flex:1">
-          <input class="form-input price-input" type="number" id="extra-price-${domId}" placeholder="€" min="0" step="0.01" inputmode="decimal">
+          <input class="form-input price-input" type="text" id="extra-price-${domId}" placeholder="€" inputmode="decimal">
           <button type="button" class="btn-add-extra" onclick='addTouchOverlayQuickExtra(${idQ})' title="Regel toevoegen (ingevuld)">+</button>
         </div>
       </div>
@@ -9248,11 +9249,12 @@ function onTouchOverlayExtraDescInput(id, idx, value) {
 function onTouchOverlayExtraPriceInput(id, idx, raw) {
   if (!isTouchPriceOverlayOpenFor(id) || !touchPriceOverlayState.draft?.extras?.[idx]) return;
   const s = String(raw ?? '').trim().replace(',', '.');
-  if (s === '' || s === '.') {
-    touchPriceOverlayState.draft.extras[idx].price = 0;
+  if (s === '' || s === '.' || s === '-') {
+    updateTouchOverlayTotalLabel(id);
+    return;
   } else {
     const n = parseFloat(s);
-    if (!Number.isNaN(n)) touchPriceOverlayState.draft.extras[idx].price = Math.max(0, Math.round(n * 100) / 100);
+    if (!Number.isNaN(n)) touchPriceOverlayState.draft.extras[idx].price = Math.round(n * 100) / 100;
   }
   updateTouchOverlayTotalLabel(id);
 }
@@ -9280,8 +9282,9 @@ function addTouchOverlayQuickExtra(id) {
   const descEl = document.getElementById(`extra-desc-${sid}`);
   const priceEl = document.getElementById(`extra-price-${sid}`);
   const desc = descEl?.value?.trim();
-  const price = parseFloat(priceEl?.value);
-  if (!desc || Number.isNaN(price) || price <= 0) {
+  const priceRaw = String(priceEl?.value ?? '').trim().replace(',', '.');
+  const price = parseFloat(priceRaw);
+  if (!desc || Number.isNaN(price) || price === 0) {
     showToast('Vul omschrijving én bedrag in', 'info');
     return;
   }
@@ -9310,9 +9313,9 @@ function buildAppointmentPriceSectionInnerHtml(a) {
                 oninput='onExtraDescInput(${idQ},${i},this.value)' onchange='updateExtraLine(${idQ},${i},this.value,null)' />
               <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
                 <span style="font-size:13px;color:var(--muted)">€</span>
-                <input class="form-input price-input" type="number" inputmode="decimal" step="0.01" min="0" value="${Number.isFinite(Number(e.price)) ? e.price : ''}"
+                <input class="form-input price-input" type="text" inputmode="decimal" value="${Number.isFinite(Number(e.price)) ? e.price : ''}"
                   style="width:88px" placeholder="0"
-                  oninput='onExtraPriceInput(${idQ},${i},this.value)' onchange='updateExtraLine(${idQ},${i},null,parseFloat(this.value))' />
+                  oninput='onExtraPriceInput(${idQ},${i},this.value)' onchange='updateExtraLine(${idQ},${i},null,this.value)' />
                 <button type="button" class="extra-remove" title="Regel verwijderen" onclick='removeExtra(${idQ},${i})'>✕</button>
               </div>
             </div>`
@@ -9320,7 +9323,7 @@ function buildAppointmentPriceSectionInnerHtml(a) {
     .join('');
   return `
           <div class="price-section-label">Prijsoverzicht${extras.length === 0 && !a.price ? '<span style="color:var(--muted);font-size:10px;font-weight:400;margin-left:6px">Nog geen prijs uit chat</span>' : ''}</div>
-          ${a.price > 0 ? `<div class="extra-item extra-item--basis"><span>Basis</span><span>€${euroDisplay(a.price)}</span></div>` : ''}
+          ${Number.isFinite(Number(a.price)) && Number(a.price) !== 0 ? `<div class="extra-item extra-item--basis"><span>Basis</span><span>€${euroDisplay(a.price)}</span></div>` : ''}
           ${extrasHtml}
           <button type="button" class="btn-add-price-line" onclick='addEmptyPriceLine(event, ${idQ})'>+ Regel toevoegen</button>
           <div class="add-extra-row" style="flex-direction:column;gap:5px;margin-top:6px">
@@ -9328,7 +9331,7 @@ function buildAppointmentPriceSectionInnerHtml(a) {
             <div class="catalog-v1-results" id="catalog-results-${domId}"></div>
             <div style="display:flex;gap:6px;align-items:center">
               <input class="form-input" type="text" id="extra-desc-${domId}" placeholder="Snel: omschrijving" style="flex:1">
-              <input class="form-input price-input" type="number" id="extra-price-${domId}" placeholder="€" min="0" step="0.01" inputmode="decimal">
+              <input class="form-input price-input" type="text" id="extra-price-${domId}" placeholder="€" inputmode="decimal">
               <button type="button" class="btn-add-extra" onclick='addExtra(${idQ})' title="Regel toevoegen (ingevuld)">+</button>
             </div>
           </div>
@@ -10983,12 +10986,15 @@ function onExtraPriceInput(id, idx, raw) {
   const a = appointments.find((x) => String(x.id) === String(id));
   if (!a || !a.extras || !a.extras[idx]) return;
   const s = String(raw ?? '').trim().replace(',', '.');
-  if (s === '' || s === '.') {
-    a.extras[idx].price = 0;
+  if (s === '' || s === '.' || s === '-') {
+    logPriceLineInputChangedDebounced(id, idx, 'price');
+    updatePriceTotalLabel(id);
+    debouncedPersistPriceLinesForAppt(id);
+    return;
   } else {
     const n = parseFloat(s);
     if (!Number.isNaN(n)) {
-      a.extras[idx].price = Math.max(0, Math.round(n * 100) / 100);
+      a.extras[idx].price = Math.round(n * 100) / 100;
     }
   }
   logPriceLineInputChangedDebounced(id, idx, 'price');
@@ -11033,8 +11039,12 @@ function updateExtraLine(id, idx, desc, price) {
   const a = appointments.find((x) => String(x.id) === String(id));
   if (!a || !a.extras || !a.extras[idx]) return;
   if (desc !== null && desc !== undefined) a.extras[idx].desc = String(desc).trim();
-  if (price !== null && price !== undefined && !Number.isNaN(Number(price))) {
-    a.extras[idx].price = Math.max(0, Math.round(Number(price) * 100) / 100);
+  if (price !== null && price !== undefined) {
+    const priceStr = String(price).trim().replace(',', '.');
+    const priceNum = Number(priceStr);
+    if (priceStr !== '' && !Number.isNaN(priceNum)) {
+      a.extras[idx].price = Math.round(priceNum * 100) / 100;
+    }
   }
   remountPriceSectionWithEditorScrollLogging(id, 'other');
   debouncedPersistPriceLinesForAppt(id);
@@ -11061,8 +11071,9 @@ function addExtra(id) {
   const descEl   = document.getElementById(`extra-desc-${sid}`);
   const priceEl  = document.getElementById(`extra-price-${sid}`);
   const desc  = descEl?.value?.trim();
-  const price = parseFloat(priceEl?.value);
-  if (!desc || isNaN(price) || price <= 0) {
+  const priceRaw = String(priceEl?.value ?? '').trim().replace(',', '.');
+  const price = parseFloat(priceRaw);
+  if (!desc || isNaN(price) || price === 0) {
     showToast('Vul omschrijving én bedrag in', 'info');
     return;
   }
@@ -11078,7 +11089,7 @@ function addExtra(id) {
     );
   } catch (_) {}
   if (!a.extras) a.extras = [];
-  a.extras.push({ desc, price });
+  a.extras.push({ desc, price: Math.round(price * 100) / 100 });
   try {
     console.info(
       '[planner] price_line_added',
@@ -11102,7 +11113,7 @@ function addExtraFromCatalog(id, item) {
   if (!a || !item) return;
   const desc = String(item.desc || '').trim();
   const price = Number(item.price);
-  if (!desc || !Number.isFinite(price) || price <= 0) return;
+  if (!desc || !Number.isFinite(price) || price === 0) return;
   if (isTouchPriceOverlayOpenFor(id) && touchPriceOverlayState.draft) {
     if (!Array.isArray(touchPriceOverlayState.draft.extras)) touchPriceOverlayState.draft.extras = [];
     touchPriceOverlayState.draft.extras.push({ desc, price: Math.round(price * 100) / 100 });

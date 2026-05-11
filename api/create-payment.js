@@ -83,11 +83,11 @@ export default async function handler(req, res) {
   try {
     // ── Regellijst opbouwen ──────────────────────────────────────────────────
     const invoiceLines = [];
-    if (basePrice > 0) {
+    if (Number.isFinite(Number(basePrice)) && Number(basePrice) !== 0) {
       invoiceLines.push({ desc: appointmentDesc || 'Werkzaamheden', price: basePrice });
     }
     for (const line of (lines || [])) {
-      if (line.price > 0) invoiceLines.push(line);
+      if (Number.isFinite(Number(line?.price)) && Number(line.price) !== 0) invoiceLines.push(line);
     }
 
     if (!invoiceLines.length) {
