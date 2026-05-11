@@ -271,6 +271,67 @@
     .hk-stale-banner:not(.hidden) { display: block; }
     .btn-send:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
 
+    .hk-suggest-summary {
+      font-size: 13px;
+      line-height: 1.45;
+      color: #4f463d;
+      background: #faf7f2;
+      border: 1px solid #e6dccf;
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+    }
+    .hk-suggest-summary-row { margin-top: 6px; }
+    .hk-suggest-summary-row:first-child { margin-top: 0; }
+    .hk-suggest-summary-k {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #6b625a;
+      display: block;
+      margin-bottom: 2px;
+    }
+    .hk-invite-error {
+      display: none;
+      background: #fff0f0;
+      border: 1px solid #e8b4b4;
+      color: #7a2424;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.4;
+      margin-bottom: 12px;
+    }
+    .hk-invite-error:not(.hidden) { display: block; }
+    .hk-toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1f1a17;
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-size: 13px;
+      z-index: 100;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    .hk-prev-slots { margin-top: 12px; font-size: 13px; color: #6b625a; }
+    .hk-prev-slots summary { cursor: pointer; user-select: none; font-weight: 600; color: #4f463d; }
+    .slot-actions { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+    .slot-hide {
+      border: none;
+      background: transparent;
+      color: #9a8f82;
+      font-size: 12px;
+      cursor: pointer;
+      text-decoration: underline;
+      padding: 0;
+      font-family: inherit;
+    }
+    .slot-hide:active { color: #e5481d; }
+
     .btn-back {
       display: block; width: 100%; margin-top: 10px;
       background: #fff; border: 1px solid #e6dccf; border-radius: 10px;
@@ -299,7 +360,7 @@
   <div class="logo-icon"><img src="/logo.png" alt="Hetekraan logo"></div>
 </div>
 
-<!-- Blijft zichtbaar tijdens preview/WhatsApp: #searchCard wordt verborgen na berekenen. -->
+<!-- #searchCard blijft zichtbaar na berekenen (herberekenen / aanpassen zonder formulier te verliezen). -->
 <div class="card" id="proposalConstraintsBar">
   <details class="hk-suggest-constraints" style="font-size:13px;color:#555">
     <summary style="cursor:pointer;user-select:none;color:#666">Beperkingen (optioneel)</summary>
@@ -322,9 +383,10 @@
       </div>
     </div>
     <div id="hkSuggestDatesRow" style="display:none;margin-top:12px">
-      <label class="field-label" for="hkSuggestSpecificDates">Datums (YYYY-MM-DD)</label>
-      <textarea class="field-input" id="hkSuggestSpecificDates" rows="3" style="resize:vertical;font-family:ui-monospace,monospace;font-size:12px" placeholder="2026-04-08&#10;2026-04-10"></textarea>
-      <p style="font-size:11px;color:#555;margin-top:6px">Eén datum per regel, of gescheiden door komma/spatie. Alleen deze dagen worden gebruikt.</p>
+      <label class="field-label" for="hkSuggestSpecificDates">Specifieke datums</label>
+      <textarea class="field-input" id="hkSuggestSpecificDates" rows="3" style="resize:vertical;font-family:ui-monospace,monospace;font-size:12px" placeholder="2026-05-11&#10;2026-05-12"></textarea>
+      <p style="font-size:11px;color:#555;margin-top:6px">Intern: YYYY-MM-DD (Europe/Amsterdam). Onderstaand overzicht toont Nederlandse datum.</p>
+      <div id="hkSuggestSpecificDatesNl" style="font-size:12px;color:#1f1a17;margin-top:8px;display:none"></div>
     </div>
     <div id="hkSuggestMinStartDateRow" style="margin-top:12px">
       <label class="field-label" for="hkSuggestMinStartDate">Niet eerder dan</label>
@@ -345,6 +407,10 @@
   <div class="field-row">
     <label class="field-label">Telefoonnummer</label>
     <input class="field-input" type="tel"  id="inputPhone" placeholder="06-12345678">
+  </div>
+  <div class="field-row">
+    <label class="field-label" for="inputEmail">E-mail (optioneel)</label>
+    <input class="field-input" type="email" id="inputEmail" placeholder="klant@voorbeeld.nl" autocomplete="email">
   </div>
   <div class="field-row">
     <label class="field-label">Adres klant</label>
@@ -378,6 +444,11 @@
     <input type="checkbox" id="spoedToggle">
     Spoedboeking — soepelere planning
   </label>
+  <div class="field-row">
+    <label class="field-label" for="hkSuggestCustomerUnavailability">Klant kan niet / verhinderingen (optioneel)</label>
+    <textarea class="field-input field-textarea" id="hkSuggestCustomerUnavailability" rows="2" placeholder="Bijv. 2026-05-20 niet, of dinsdagmiddag geen tijd."></textarea>
+    <p class="field-help">Datums als YYYY-MM-DD worden automatisch uitgesloten in de berekening. Overige tekst staat in de samenvatting en in de boekingslink (voor de klant).</p>
+  </div>
   <button type="button" class="btn-search" id="searchBtn">Tijdsloten berekenen →</button>
 </div>
 
@@ -397,18 +468,28 @@
     </div>
   </div>
 
-  <div class="section-label">Voorgestelde tijdsloten</div>
+  <div id="hkSuggestSummary" class="hk-suggest-summary hidden" aria-live="polite"></div>
+  <div id="hkSlotsFetchedAt" class="field-help" style="margin-bottom:10px;display:none"></div>
+  <div class="section-label" id="hkPrimarySlotsHeading">Voorgestelde tijdsloten</div>
   <div id="activeMinStartDateInfo" style="font-size:12px;color:#666;margin-bottom:8px;display:none"></div>
   <div id="slotList"></div>
+  <details class="hk-prev-slots hidden" id="hkPrevSlotsWrap">
+    <summary>Vorige opties</summary>
+    <div id="hkPrevSlotList" style="margin-top:10px"></div>
+  </details>
 </div>
 
 <div class="card hidden" id="messageCard">
   <div class="preview-label">📱 WhatsApp bericht dat verstuurd wordt</div>
   <div id="activeMinStartDateInfoPreview" style="font-size:12px;color:#666;margin-bottom:8px;display:none"></div>
   <div class="preview-bubble" id="previewText"></div>
+  <div id="inviteErrorBanner" class="hk-invite-error hidden" role="alert"></div>
   <div id="hkPreviewStaleBanner" class="hk-stale-banner hidden" role="status">
     Beperkingen gewijzigd — bereken de tijdsloten opnieuw.
   </div>
+  <button type="button" class="btn-back" id="copyBookingLinkBtn" style="margin-bottom:10px">
+    Boekingslink kopiëren
+  </button>
   <button type="button" class="btn-send btn-send-spoed hidden" id="sendSpoedBtn">
     <span>🚨</span> Stuur spoed tijdsloten
   </button>
@@ -435,11 +516,17 @@
 </div>
  </div>
 
+<div id="hkToast" class="hk-toast hidden" role="status"></div>
+
 <script>
   const BLOCK_ICONS = { morning: '🌅', afternoon: '☀️' };
   let resolvedContactId = null;
   let loadedSlots       = [];
+  /** Zichtbare slotregels voor verbergen (zelfde sleutel als server: dateStr|block). */
+  const hiddenSlotKeys = new Set();
+  let suggestCalculatedOnce = false;
   let sendInviteInFlight = false;
+  let copyLinkInFlight = false;
   /** Zelfde shape als dashboard/GHL: { desc, price }. */
   const suggestPriceLines = [];
   let suggestCatalogDropdownOpen = false;
@@ -458,7 +545,9 @@
       .join(',');
     const dates = (document.getElementById('hkSuggestSpecificDates')?.value || '').trim();
     const minStartDate = (document.getElementById('hkSuggestMinStartDate')?.value || '').trim();
-    return JSON.stringify({ mode, dows, dates, minStartDate });
+    const unavail = (document.getElementById('hkSuggestCustomerUnavailability')?.value || '').trim();
+    const email = (document.getElementById('inputEmail')?.value || '').trim();
+    return JSON.stringify({ mode, dows, dates, minStartDate, unavail, email });
   }
 
   function applySendButtonEnabledState() {
@@ -507,19 +596,37 @@
     if (d) d.style.display = mode === 'dates' ? 'block' : 'none';
   }
 
-  function localDateYmdNow() {
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, '0');
-    const d = String(now.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+  function amsterdamTodayYmd() {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Amsterdam',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+  }
+
+  /** Eerste suggest-dag = volgende kalenderdag in Amsterdam (zelfde idee als /api/suggest-slots). */
+  function amsterdamEarliestSuggestYmd() {
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Amsterdam',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const start = fmt.format(new Date());
+    let ms = Date.now();
+    for (let i = 0; i < 50; i++) {
+      ms += 3600000;
+      if (fmt.format(new Date(ms)) !== start) return fmt.format(new Date(ms));
+    }
+    return fmt.format(new Date(ms));
   }
 
   function normalizeUiMinStartDate(raw) {
     const s = String(raw || '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
-    const today = localDateYmdNow();
-    return s < today ? today : s;
+    const todayAmsterdam = amsterdamTodayYmd();
+    return s < todayAmsterdam ? todayAmsterdam : s;
   }
 
   function parseUiSpecificDates() {
@@ -527,21 +634,62 @@
     return [
       ...new Set(
         raw
-          .split(/[\s,;]+/)
+          .split(/[\s,;:|]+/)
           .map((s) => s.trim())
           .filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s))
       ),
-    ];
+    ].sort();
   }
 
-  function formatYmdNl(ymd) {
+  function parseIsoDatesFromFreeText(text) {
+    const raw = String(text || '');
+    const re = /\b(\d{4}-\d{2}-\d{2})\b/g;
+    const found = [];
+    let m;
+    while ((m = re.exec(raw)) !== null) found.push(m[1]);
+    return [...new Set(found)].sort();
+  }
+
+  /** Nederlandse datum met weekdag; kalenderdag via Europe/Amsterdam. */
+  function formatYmdNlLong(ymd) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(ymd || ''))) return String(ymd || '');
-    const d = new Date(`${ymd}T12:00:00`);
-    return d.toLocaleDateString('nl-NL', {
+    const [y, mo, d] = ymd.split('-').map((x) => parseInt(x, 10));
+    const ms = Date.UTC(y, mo - 1, d, 12, 0, 0);
+    return new Intl.DateTimeFormat('nl-NL', {
+      timeZone: 'Europe/Amsterdam',
+      weekday: 'long',
       day: 'numeric',
       month: 'long',
       year: 'numeric',
-    });
+    }).format(new Date(ms));
+  }
+
+  function formatSlotDateNl(s) {
+    const ymd = String(s?.dateStr || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return formatYmdNlLong(ymd);
+    return capitalize(String(s?.dateLabel || '').trim());
+  }
+
+  function syncSpecificDatesNlSummary() {
+    const el = document.getElementById('hkSuggestSpecificDatesNl');
+    if (!el) return;
+    const dates = parseUiSpecificDates();
+    if (!dates.length) {
+      el.style.display = 'none';
+      el.textContent = '';
+      return;
+    }
+    el.style.display = 'block';
+    el.textContent = `Geselecteerd: ${dates.map(formatYmdNlLong).join(' · ')}`;
+  }
+
+  function mergeExcludedDatesIntoProposal(constraints) {
+    const raw = document.getElementById('hkSuggestCustomerUnavailability')?.value || '';
+    const fromText = parseIsoDatesFromFreeText(raw);
+    if (!fromText.length) return constraints;
+    if (!constraints) return { excludedDates: fromText };
+    const merged = [...new Set([...(constraints.excludedDates || []), ...fromText])].sort();
+    return { ...constraints, excludedDates: merged };
   }
 
   /**
@@ -553,8 +701,9 @@
     const minStartDate = normalizeUiMinStartDate(minStartDateRaw);
     const base = {};
     if (minStartDate) base.scanStartDate = minStartDate;
-    if (mode === 'auto') return Object.keys(base).length > 0 ? base : null;
-    if (mode === 'weekdays') {
+    let out = null;
+    if (mode === 'auto') out = Object.keys(base).length > 0 ? base : null;
+    else if (mode === 'weekdays') {
       const boxes = document.querySelectorAll('.hk-suggest-dow:checked');
       const days = [
         ...new Set(
@@ -563,15 +712,14 @@
             .filter((n) => Number.isFinite(n) && n >= 1 && n <= 5)
         ),
       ].sort((a, b) => a - b);
-      if (days.length === 0) return Object.keys(base).length > 0 ? base : null;
-      return { ...base, allowedWeekdays: days };
-    }
-    if (mode === 'dates') {
+      if (days.length === 0) out = Object.keys(base).length > 0 ? base : null;
+      else out = { ...base, allowedWeekdays: days };
+    } else if (mode === 'dates') {
       const dates = parseUiSpecificDates();
-      if (dates.length === 0) return Object.keys(base).length > 0 ? base : null;
-      return { ...base, allowedDates: dates, datesOnly: true };
-    }
-    return Object.keys(base).length > 0 ? base : null;
+      if (dates.length === 0) out = Object.keys(base).length > 0 ? base : null;
+      else out = { ...base, allowedDates: dates, datesOnly: true };
+    } else out = Object.keys(base).length > 0 ? base : null;
+    return mergeExcludedDatesIntoProposal(out);
   }
 
   /** iOS/Safari/Chrome: autofill zet .value vaak pas ná de huidige click-tick; één tick wachten voorkomt “eerste klik doet niks”. */
@@ -673,13 +821,252 @@
     const minStartDate = normalizeUiMinStartDate(document.getElementById('hkSuggestMinStartDate')?.value || '');
     const selectedPriceItems = getSelectedPriceItems();
     const totaalprijs = getPriceTotal(selectedPriceItems);
+    const customerUnavailability = document.getElementById('hkSuggestCustomerUnavailability')?.value?.trim() || '';
+    const rawEmail = document.getElementById('inputEmail')?.value?.trim() || '';
+    const customerEmail =
+      rawEmail && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(rawEmail) && rawEmail.length <= 254
+        ? rawEmail.toLowerCase()
+        : '';
     return {
       typeOnderhoud,
       probleemomschrijving,
       minStartDate,
       selectedPriceItems,
       totaalprijs,
+      customerUnavailability,
+      customerEmail,
     };
+  }
+
+  function slotKeyFromSuggestion(s) {
+    return `${String(s.dateStr || '').trim()}|${String(s.block || '').trim()}`;
+  }
+
+  function getSlotsForBooking() {
+    return (Array.isArray(loadedSlots) ? loadedSlots : []).filter((s) => !hiddenSlotKeys.has(slotKeyFromSuggestion(s)));
+  }
+
+  function esc(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function buildInviteRequestBody(spoedMode) {
+    const name = document.getElementById('inputName').value.trim();
+    const phone = document.getElementById('inputPhone').value.trim();
+    const address = document.getElementById('inputAddress').value.trim();
+    const intake = readPlannerIntakeState();
+    const body = resolvedContactId
+      ? {
+          contactId: resolvedContactId,
+          address,
+          type: intake.typeOnderhoud,
+          workType: intake.typeOnderhoud,
+          desc: intake.probleemomschrijving,
+          priceRules: intake.selectedPriceItems,
+          priceTotal: intake.totaalprijs,
+        }
+      : {
+          name,
+          phone,
+          address,
+          type: intake.typeOnderhoud,
+          workType: intake.typeOnderhoud,
+          desc: intake.probleemomschrijving,
+          priceRules: intake.selectedPriceItems,
+          priceTotal: intake.totaalprijs,
+        };
+    const visible = getSlotsForBooking();
+    if (visible.length) {
+      body.selectedSlots = visible.map((s) => ({
+        dateStr: String(s.dateStr || '').trim(),
+        block: String(s.block || '').trim(),
+      }));
+    }
+    if (pendingProposalConstraints) body.proposalConstraints = pendingProposalConstraints;
+    if (intake.minStartDate) {
+      body.intakeData = { ...(body.intakeData || {}), minStartDate: intake.minStartDate };
+    }
+    if (intake.customerUnavailability) body.customerUnavailability = intake.customerUnavailability;
+    if (intake.customerEmail) body.email = intake.customerEmail;
+    if (spoedMode) body.spoedMode = true;
+    return body;
+  }
+
+  function renderSuggestSummary(displayName, addressLine, intake) {
+    const box = document.getElementById('hkSuggestSummary');
+    if (!box) return;
+    const mode = document.getElementById('hkSuggestConstraintMode')?.value || 'auto';
+    const rows = [];
+    const phone = document.getElementById('inputPhone')?.value?.trim() || '';
+    const em = intake.customerEmail || '';
+    rows.push(
+      `<div class="hk-suggest-summary-row"><span class="hk-suggest-summary-k">Klant</span>${esc(displayName)}${phone ? ` · ${esc(phone)}` : ''}${em ? ` · ${esc(em)}` : ''}</div>`
+    );
+    rows.push(`<div class="hk-suggest-summary-row"><span class="hk-suggest-summary-k">Adres</span>${esc(addressLine || '—')}</div>`);
+    rows.push(`<div class="hk-suggest-summary-row"><span class="hk-suggest-summary-k">Type werk</span>${esc(intake.typeOnderhoud || '—')}</div>`);
+    if (intake.probleemomschrijving) {
+      rows.push(`<div class="hk-suggest-summary-row"><span class="hk-suggest-summary-k">Omschrijving</span>${esc(intake.probleemomschrijving)}</div>`);
+    }
+    if (isSpoedEnabled()) rows.push('<div class="hk-suggest-summary-row"><span class="hk-suggest-summary-k">Planning</span>Spoedboeking (soepeler venster)</div>');
+    const minD = normalizeUiMinStartDate(document.getElementById('hkSuggestMinStartDate')?.value || '');
+    if (minD) rows.push(`<div class="hk-suggest-summary-row"><span class="hk-suggest-summary-k">Niet eerder dan</span>${esc(formatYmdNlLong(minD))}</div>`);
+    if (mode === 'weekdays') {
+      const labels = { 1: 'maandag', 2: 'dinsdag', 3: 'woensdag', 4: 'donderdag', 5: 'vrijdag' };
+      const dows = [...document.querySelectorAll('.hk-suggest-dow:checked')]
+        .map((b) => labels[parseInt(b.value, 10)])
+        .filter(Boolean);
+      rows.push(`<div class="hk-suggest-summary-row"><span class="hk-suggest-summary-k">Weekdagen</span>${esc(dows.join(', ') || '—')}</div>`);
+    } else if (mode === 'dates') {
+      const ds = parseUiSpecificDates();
+      rows.push(
+        `<div class="hk-suggest-summary-row"><span class="hk-suggest-summary-k">Specifieke datums</span>${esc(ds.length ? ds.map(formatYmdNlLong).join(' · ') : '—')}</div>`
+      );
+    } else {
+      rows.push('<div class="hk-suggest-summary-row"><span class="hk-suggest-summary-k">Datums</span>Automatisch venster (werkdagen)</div>');
+    }
+    const pc = pendingProposalConstraints;
+    if (pc?.excludedDates?.length) {
+      rows.push(
+        `<div class="hk-suggest-summary-row"><span class="hk-suggest-summary-k">Uitgesloten (data)</span>${esc(pc.excludedDates.map(formatYmdNlLong).join(' · '))}</div>`
+      );
+    }
+    if (intake.customerUnavailability) {
+      rows.push(`<div class="hk-suggest-summary-row"><span class="hk-suggest-summary-k">Verhinderingen</span>${esc(intake.customerUnavailability)}</div>`);
+    }
+    box.innerHTML = rows.join('');
+    box.classList.remove('hidden');
+  }
+
+  function renderSlotList(suggestions) {
+    const list = document.getElementById('slotList');
+    if (!list) return;
+    list.innerHTML = '';
+    let displayIdx = 0;
+    (suggestions || []).forEach((s) => {
+      const k = slotKeyFromSuggestion(s);
+      if (hiddenSlotKeys.has(k)) return;
+      displayIdx += 1;
+      const div = document.createElement('div');
+      div.className = 'slot-item';
+      div.dataset.slotKey = k;
+      div.innerHTML = `
+        <span class="slot-icon">${BLOCK_ICONS[s.block] || '🕐'}</span>
+        <div style="min-width:0">
+          <div class="slot-date">Optie ${displayIdx}: ${esc(formatSlotDateNl(s))}</div>
+          <div class="slot-time">${esc(String(s.timeLabel || ''))}</div>
+        </div>
+        <div class="slot-actions">
+          <span class="slot-badge">${esc(String(s.slotsLeft ?? ''))} vrij</span>
+          <button type="button" class="slot-hide" data-hide-slot="${esc(k)}">Verberg</button>
+        </div>
+      `;
+      list.appendChild(div);
+    });
+  }
+
+  function refreshWhatsAppPreview() {
+    const sugg = getSlotsForBooking();
+    const n = sugg.length;
+    const slotPhrase =
+      n <= 1 ? 'dit tijdslot' : n === 2 ? 'een van de volgende twee tijdslots' : `een van de volgende ${n} tijdslots`;
+    let msg = `We hebben nog een gaatje op ${slotPhrase}:\n\n`;
+    sugg.forEach((s, i) => {
+      msg += `*Optie ${i + 1}:* ${formatSlotDateNl(s)} tussen ${s.timeLabel}\n`;
+    });
+    msg += `\nKlik op de link om jouw voorkeur door te geven, dan plannen we het gelijk in:\n[boekingslink]`;
+    const el = document.getElementById('previewText');
+    if (el) el.textContent = msg;
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('hkToast');
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.remove('hidden');
+    clearTimeout(showToast._tm);
+    showToast._tm = setTimeout(() => t.classList.add('hidden'), 2600);
+  }
+
+  function clearInviteError() {
+    const b = document.getElementById('inviteErrorBanner');
+    if (b) {
+      b.textContent = '';
+      b.classList.add('hidden');
+    }
+  }
+
+  function showInviteError(msg) {
+    const b = document.getElementById('inviteErrorBanner');
+    if (!b) return;
+    b.textContent = msg;
+    b.classList.remove('hidden');
+  }
+
+  async function copyBookingLink() {
+    if (copyLinkInFlight) return;
+    if (previewStale) {
+      showToast('Beperkingen gewijzigd — bereken tijdsloten opnieuw.');
+      return;
+    }
+    const visible = getSlotsForBooking();
+    if (!visible.length) {
+      showToast('Geen zichtbare tijdsloten — toon minstens één optie.');
+      return;
+    }
+    copyLinkInFlight = true;
+    const btn = document.getElementById('copyBookingLinkBtn');
+    try {
+      if (btn) btn.disabled = true;
+      clearInviteError();
+      const body = buildInviteRequestBody(isSpoedEnabled());
+      body.bookingLinkOnly = true;
+      const ac = new AbortController();
+      const to = setTimeout(() => ac.abort(), 120000);
+      let res;
+      try {
+        res = await fetch('/api/send-booking-invite', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: ac.signal,
+        });
+      } finally {
+        clearTimeout(to);
+      }
+      const raw = await res.text();
+      let data;
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        throw new Error('Server gaf geen geldige JSON.');
+      }
+      if (!res.ok || !data.success) throw new Error(data.error || data.message || `HTTP ${res.status}`);
+      const url = data.bookingUrl;
+      if (!url) throw new Error('Geen boekingslink ontvangen.');
+      try {
+        await navigator.clipboard.writeText(url);
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = url;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      showToast('Boekingslink gekopieerd');
+    } catch (e) {
+      const msg = e && e.name === 'AbortError' ? 'Timeout — probeer opnieuw.' : e.message || String(e);
+      showInviteError(msg);
+    } finally {
+      copyLinkInFlight = false;
+      if (btn) btn.disabled = false;
+    }
   }
 
   function onSendBtnClick(ev) {
@@ -709,9 +1096,18 @@
       });
     }
     const taDates = document.getElementById('hkSuggestSpecificDates');
-    if (taDates) taDates.addEventListener('input', invalidatePreviewIfConstraintsChanged);
+    if (taDates) {
+      taDates.addEventListener('input', () => {
+        syncSpecificDatesNlSummary();
+        invalidatePreviewIfConstraintsChanged();
+      });
+      syncSpecificDatesNlSummary();
+    }
+    const unEl = document.getElementById('hkSuggestCustomerUnavailability');
+    if (unEl) unEl.addEventListener('input', invalidatePreviewIfConstraintsChanged);
     const minStartDateInput = document.getElementById('hkSuggestMinStartDate');
     if (minStartDateInput) {
+      minStartDateInput.min = amsterdamTodayYmd();
       minStartDateInput.addEventListener('change', () => {
         const normalized = normalizeUiMinStartDate(minStartDateInput.value);
         if (normalized !== minStartDateInput.value) minStartDateInput.value = normalized;
@@ -719,6 +1115,20 @@
       });
       minStartDateInput.addEventListener('input', invalidatePreviewIfConstraintsChanged);
     }
+    const slotListEl = document.getElementById('slotList');
+    if (slotListEl) {
+      slotListEl.addEventListener('click', (ev) => {
+        const hb = ev.target && ev.target.closest && ev.target.closest('[data-hide-slot]');
+        if (!hb) return;
+        const k = hb.getAttribute('data-hide-slot');
+        if (!k) return;
+        hiddenSlotKeys.add(k);
+        renderSlotList(loadedSlots);
+        refreshWhatsAppPreview();
+      });
+    }
+    const copyLnk = document.getElementById('copyBookingLinkBtn');
+    if (copyLnk) copyLnk.addEventListener('click', (e) => { e.preventDefault(); void copyBookingLink(); });
     // Delegatie + pointer: betrouwbaarder dan één listener op de knop (WebKit / webviews).
     const msgCard = document.getElementById('messageCard');
     if (msgCard) msgCard.addEventListener('click', onSendBtnClick);
@@ -777,8 +1187,15 @@
     const cid   = getParam('contactId');
     const name  = getParam('name');
     const phone = getParam('phone');
+    const mail  = getParam('email');
     if (name)  document.getElementById('inputName').value  = name;
     if (phone) document.getElementById('inputPhone').value = phone;
+    if (mail) {
+      const emEl = document.getElementById('inputEmail');
+      if (emEl) emEl.value = mail;
+    }
+    const emailInput = document.getElementById('inputEmail');
+    if (emailInput) emailInput.addEventListener('input', invalidatePreviewIfConstraintsChanged);
     if (cid) {
       resolvedContactId = cid;
       // Zelfde tick-delay als zoekknop: voorkomt rare eerste-klik op sommige browsers.
@@ -791,7 +1208,6 @@
   });
 
   async function loadSlots() {
-    pendingProposalConstraints = null;
     const sendBtnEarly = document.getElementById('sendBtn');
     if (sendBtnEarly && !document.getElementById('messageCard').classList.contains('hidden')) {
       sendBtnEarly.disabled = true;
@@ -799,10 +1215,23 @@
 
     const name    = document.getElementById('inputName').value.trim();
     const phone   = document.getElementById('inputPhone').value.trim();
+    const emailRaw = document.getElementById('inputEmail')?.value?.trim() || '';
     const address = document.getElementById('inputAddress').value.trim();
     const spoedMode = isSpoedEnabled();
+    if (emailRaw && (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(emailRaw) || emailRaw.length > 254)) {
+      showError('Ongeldig e-mailadres', 'Controleer het e-mailadres of laat het veld leeg.', { keepResultPreview: true });
+      return;
+    }
+    if (!resolvedContactId && !phone && !name && emailRaw) {
+      showError(
+        'Vul ook de naam in',
+        'Voor zoeken op e-mail is een klantnaam verplicht (of gebruik telefoon / contactlink).',
+        { keepResultPreview: true }
+      );
+      return;
+    }
     if (!name && !phone && !resolvedContactId) {
-      showError('Vul de naam of het telefoonnummer in.', '');
+      showError('Vul de naam en/of het telefoonnummer in (of gebruik een contactlink met contactId).', '', { keepResultPreview: true });
       return;
     }
 
@@ -813,22 +1242,36 @@
     const hasSpecificDates = specificDates.length > 0;
     const activeMinStartDate = normalizeUiMinStartDate(document.getElementById('hkSuggestMinStartDate')?.value || '');
     if (mode === 'weekdays' && !hasWeekdays) {
-      showError('Kies minstens één weekdag (ma–vr).', '');
+      showError('Kies minstens één weekdag (ma–vr).', '', { keepResultPreview: true });
       return;
     }
     if (mode === 'dates' && !hasSpecificDates) {
-      showError('Vul minstens één geldige datum (YYYY-MM-DD).', '');
+      showError('Vul minstens één geldige datum (YYYY-MM-DD).', '', { keepResultPreview: true });
       return;
+    }
+    const earliestSuggest = amsterdamEarliestSuggestYmd();
+    if (mode === 'dates' && hasSpecificDates) {
+      const tooEarly = specificDates.filter((d) => d < earliestSuggest);
+      if (tooEarly.length) {
+        showError(
+          'Datum te vroeg',
+          `Planning start vanaf ${formatYmdNlLong(earliestSuggest)}. Pas aan: ${tooEarly.map(formatYmdNlLong).join(', ')}.`,
+          { keepResultPreview: true }
+        );
+        return;
+      }
     }
     if (mode === 'dates' && activeMinStartDate && specificDates.every((d) => d < activeMinStartDate)) {
       showError(
         'Conflicterende beperkingen',
-        `Alle specifieke datums liggen vóór "Niet eerder dan" (${formatYmdNl(activeMinStartDate)}). Kies een latere datum of pas de specifieke datums aan.`
+        `Alle specifieke datums liggen vóór "Niet eerder dan" (${formatYmdNlLong(activeMinStartDate)}). Kies een latere datum of pas de specifieke datums aan.`,
+        { keepResultPreview: true }
       );
       return;
     }
 
-    hide('searchCard');
+    const searchBtn = document.getElementById('searchBtn');
+    if (searchBtn) searchBtn.disabled = true;
     show('loadingCard');
 
     try {
@@ -839,6 +1282,7 @@
         const p = new URLSearchParams();
         if (name)    p.set('name',    name);
         if (phone)   p.set('phone',   phone);
+        if (emailRaw) p.set('email', emailRaw);
         if (address) p.set('address', address);
         url += p.toString();
       }
@@ -860,6 +1304,7 @@
         showError(
           'Verbindingsfout',
           `HTTP ${res.status}: de server gaf geen geldige JSON (controleer /api/suggest-slots). ${String(raw).replace(/\s+/g, ' ').slice(0, 180)}`,
+          { keepResultPreview: true }
         );
         return;
       }
@@ -871,23 +1316,43 @@
           showError(
             'Conflicterende beperkingen',
             data?.error ||
-              'Alle specifieke datums liggen vóór de vroegste startdatum. Kies latere datums of pas "Niet eerder dan" aan.'
+              'Alle specifieke datums liggen vóór de vroegste startdatum. Kies latere datums of pas "Niet eerder dan" aan.',
+            { keepResultPreview: true }
           );
           return;
         }
         const errMsg = data.error || data.message || String(raw).slice(0, 200);
-        showError('Kon tijdsloten niet laden', `HTTP ${res.status}: ${errMsg}`);
+        showError('Kon tijdsloten niet laden', `HTTP ${res.status}: ${errMsg}`, { keepResultPreview: true });
         return;
       }
 
       if (!data.success || !data.suggestions?.length) {
         showError(
           'Geen tijdsloten beschikbaar',
-          'Er zijn geen vrije dagdelen (volgens de planningregels) in de komende week op werkdagen. Controleer de agenda of probeer later opnieuw.'
+          'Er zijn geen vrije dagdelen (volgens de planningregels) in de komende week op werkdagen. Controleer de agenda of probeer later opnieuw.',
+          { keepResultPreview: true }
         );
         return;
       }
 
+      const prevWrap = document.getElementById('hkPrevSlotsWrap');
+      const prevList = document.getElementById('hkPrevSlotList');
+      const curSlotList = document.getElementById('slotList');
+      const hadPrior =
+        Array.isArray(loadedSlots) &&
+        loadedSlots.length > 0 &&
+        curSlotList &&
+        curSlotList.innerHTML.trim() &&
+        !document.getElementById('resultCard')?.classList.contains('hidden');
+      if (hadPrior && prevWrap && prevList && curSlotList) {
+        prevList.innerHTML = curSlotList.innerHTML;
+        prevWrap.classList.remove('hidden');
+      } else if (prevWrap) {
+        prevWrap.classList.add('hidden');
+        if (prevList) prevList.innerHTML = '';
+      }
+
+      hiddenSlotKeys.clear();
       resolvedContactId = data.contactId || resolvedContactId;
       const suggestions = (data.suggestions || []).slice(0, 2);
       loadedSlots = suggestions;
@@ -900,7 +1365,7 @@
       ].filter(Boolean);
       activeMinInfoTargets.forEach((el) => {
         if (activeMinStartDate) {
-          el.textContent = `Planning vanaf ${formatYmdNl(activeMinStartDate)}`;
+          el.textContent = `Planning vanaf ${formatYmdNlLong(activeMinStartDate)}`;
           el.style.display = 'block';
         } else {
           el.textContent = '';
@@ -915,94 +1380,59 @@
       document.getElementById('contactAddress').textContent = data.address || address || '';
       show('resultCard');
 
-      // Slots
-      const list = document.getElementById('slotList');
-      list.innerHTML = '';
-      suggestions.forEach((s, i) => {
-        const div = document.createElement('div');
-        div.className = 'slot-item';
-        div.innerHTML = `
-          <span class="slot-icon">${BLOCK_ICONS[s.block] || '🕐'}</span>
-          <div>
-            <div class="slot-date">Optie ${i + 1}: ${capitalize(s.dateLabel)}</div>
-            <div class="slot-time">${s.timeLabel}</div>
-          </div>
-          <span class="slot-badge">${s.slotsLeft} vrij</span>
-        `;
-        list.appendChild(div);
-      });
+      const intakeSnap = readPlannerIntakeState();
+      renderSuggestSummary(displayName, data.address || address || '', intakeSnap);
+      const fetchedAt = document.getElementById('hkSlotsFetchedAt');
+      if (fetchedAt) {
+        const t = new Date();
+        const timeStr = t.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' });
+        fetchedAt.textContent = suggestCalculatedOnce
+          ? `Nieuwe opties opgehaald om ${timeStr} (Amsterdam).`
+          : `Opties opgehaald om ${timeStr} (Amsterdam).`;
+        fetchedAt.style.display = 'block';
+      }
+      const head = document.getElementById('hkPrimarySlotsHeading');
+      if (head) head.textContent = suggestCalculatedOnce ? 'Nieuwe voorgestelde tijdsloten' : 'Voorgestelde tijdsloten';
 
-      // Bericht preview (zelfde opties als de lijst erboven)
-      const sugg = suggestions;
-      const n = sugg.length;
-      const slotPhrase =
-        n <= 1 ? 'dit tijdslot' : n === 2 ? 'een van de volgende twee tijdslots' : `een van de volgende ${n} tijdslots`;
-      let msg = `We hebben nog een gaatje op ${slotPhrase}:\n\n`;
-      sugg.forEach((s, i) => {
-        msg += `*Optie ${i + 1}:* ${capitalize(s.dateLabel)} tussen ${s.timeLabel}\n`;
-      });
-      msg += `\nKlik op de link om jouw voorkeur door te geven, dan plannen we het gelijk in:\n[boekingslink]`;
-      document.getElementById('previewText').textContent = msg;
+      renderSlotList(suggestions);
+      refreshWhatsAppPreview();
       show('messageCard');
       updateStaleUi();
       resetInviteFlowState();
 
+      suggestCalculatedOnce = true;
+      if (searchBtn) {
+        searchBtn.textContent = 'Nieuwe opties berekenen →';
+      }
+
     } catch (e) {
       hide('loadingCard');
-      showError('Verbindingsfout', e.message);
+      showError('Verbindingsfout', e.message, { keepResultPreview: true });
+    } finally {
+      hide('loadingCard');
+      if (searchBtn) searchBtn.disabled = false;
     }
   }
 
   async function sendInvite(spoedMode = false) {
     if (sendInviteInFlight) return;
     if (previewStale) return;
-    sendInviteInFlight = true;
+    clearInviteError();
+    if (!getSlotsForBooking().length) {
+      showInviteError('Geen zichtbare tijdsloten — haal opnieuw opties op of zet een verborgen optie weer aan.');
+      return;
+    }
     const btn = document.getElementById('sendBtn');
     const spoedBtn = document.getElementById('sendSpoedBtn');
+    if (!btn) return;
+    sendInviteInFlight = true;
     try {
-      if (!btn) return;
       btn.disabled = true;
       if (spoedBtn) spoedBtn.disabled = true;
       if (spoedMode && spoedBtn) spoedBtn.innerHTML = '<span>⏳</span> Versturen…';
       else btn.innerHTML = '<span>⏳</span> Versturen…';
 
-      const name    = document.getElementById('inputName').value.trim();
-      const phone   = document.getElementById('inputPhone').value.trim();
-      const address = document.getElementById('inputAddress').value.trim();
-      const intake  = readPlannerIntakeState();
-
-      const body = resolvedContactId
-        ? {
-            contactId: resolvedContactId,
-            address,
-            type: intake.typeOnderhoud,
-            workType: intake.typeOnderhoud,
-            desc: intake.probleemomschrijving,
-            priceRules: intake.selectedPriceItems,
-            priceTotal: intake.totaalprijs,
-          }
-        : {
-            name,
-            phone,
-            address,
-            type: intake.typeOnderhoud,
-            workType: intake.typeOnderhoud,
-            desc: intake.probleemomschrijving,
-            priceRules: intake.selectedPriceItems,
-            priceTotal: intake.totaalprijs,
-          };
-      // Exact gekozen opties uit de suggest-preview (`loadedSlots` komt uit `/api/suggest-slots` response).
-      if (Array.isArray(loadedSlots) && loadedSlots.length) {
-        body.selectedSlots = loadedSlots.map((s) => ({
-          dateStr: String(s.dateStr || '').trim(),
-          block: String(s.block || '').trim(),
-        }));
-      }
-      if (pendingProposalConstraints) body.proposalConstraints = pendingProposalConstraints;
-      if (intake.minStartDate) {
-        body.intakeData = { ...(body.intakeData || {}), minStartDate: intake.minStartDate };
-      }
-      if (spoedMode) body.spoedMode = true;
+      const body = buildInviteRequestBody(spoedMode);
 
       const ac = new AbortController();
       const to = setTimeout(() => ac.abort(), 120000);
@@ -1044,14 +1474,14 @@
         document.getElementById('successSub').textContent = sub;
         show('successCard');
       } else {
-        showError('Versturen mislukt', data.error || data.message || 'Probeer het opnieuw.');
+        showInviteError(data.error || data.message || 'Versturen mislukt — probeer het opnieuw.');
       }
     } catch (e) {
       const msg =
         e && e.name === 'AbortError'
           ? 'Het duurde te lang (timeout). Probeer opnieuw of ververs de pagina.'
           : e.message || String(e);
-      showError('Verbindingsfout', msg);
+      showInviteError(msg);
     } finally {
       sendInviteInFlight = false;
       resetSendButton();
@@ -1061,6 +1491,26 @@
   function resetForm() {
     resolvedContactId = null;
     loadedSlots = [];
+    hiddenSlotKeys.clear();
+    suggestCalculatedOnce = false;
+    const sb = document.getElementById('searchBtn');
+    if (sb) sb.textContent = 'Tijdsloten berekenen →';
+    const sf = document.getElementById('hkSlotsFetchedAt');
+    if (sf) {
+      sf.textContent = '';
+      sf.style.display = 'none';
+    }
+    const sum = document.getElementById('hkSuggestSummary');
+    if (sum) {
+      sum.innerHTML = '';
+      sum.classList.add('hidden');
+    }
+    const prevWrap = document.getElementById('hkPrevSlotsWrap');
+    const prevList = document.getElementById('hkPrevSlotList');
+    if (prevWrap) prevWrap.classList.add('hidden');
+    if (prevList) prevList.innerHTML = '';
+    const ph = document.getElementById('hkPrimarySlotsHeading');
+    if (ph) ph.textContent = 'Voorgestelde tijdsloten';
     pendingProposalConstraints = null;
     lastConstraintsUiSnapshotAtPreview = null;
     previewStale = false;
@@ -1074,6 +1524,9 @@
     });
     const ta = document.getElementById('hkSuggestSpecificDates');
     if (ta) ta.value = '';
+    syncSpecificDatesNlSummary();
+    const unavail = document.getElementById('hkSuggestCustomerUnavailability');
+    if (unavail) unavail.value = '';
     const minDate = document.getElementById('hkSuggestMinStartDate');
     if (minDate) minDate.value = '';
     [document.getElementById('activeMinStartDateInfo'), document.getElementById('activeMinStartDateInfoPreview')]
@@ -1087,6 +1540,8 @@
     syncSpoedUi();
     document.getElementById('inputName').value    = '';
     document.getElementById('inputPhone').value   = '';
+    const emailEl = document.getElementById('inputEmail');
+    if (emailEl) emailEl.value = '';
     document.getElementById('inputAddress').value = '';
     const typeSel = document.getElementById('inputTypeOnderhoud');
     if (typeSel) typeSel.value = 'onderhoud';
@@ -1100,6 +1555,7 @@
     updatePriceTotalUi();
     hide('resultCard'); hide('messageCard'); hide('successCard'); hide('errorCard'); hide('loadingCard');
     show('searchCard');
+    clearInviteError();
     updateStaleUi();
     resetSendButton();
   }
@@ -1111,8 +1567,17 @@
     updateStaleUi();
   }
 
-  function showError(title, msg) {
-    hide('loadingCard'); hide('searchCard'); hide('resultCard'); hide('messageCard');
+  function showError(title, msg, opts) {
+    const wantKeep = opts && opts.keepResultPreview === true;
+    const rc = document.getElementById('resultCard');
+    const keep = wantKeep && rc && !rc.classList.contains('hidden');
+    hide('loadingCard');
+    hide('successCard');
+    if (!keep) {
+      hide('resultCard');
+      hide('messageCard');
+    }
+    show('searchCard');
     document.getElementById('errorTitle').textContent = title;
     document.getElementById('errorMsg').textContent   = msg;
     show('errorCard');
