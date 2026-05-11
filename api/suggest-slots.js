@@ -28,7 +28,12 @@ import {
   cachedFetchCalendarEventsForDay,
   cachedListConfirmedSyntheticEventsForDate,
 } from '../lib/amsterdam-day-read-cache.js';
-import { readCanonicalAddressLine } from '../lib/ghl-contact-canonical.js';
+import {
+  isValidPlainEmail,
+  normalizeCanonicalGhlEmail,
+  readCanonicalAddressLine,
+  readGhlDuplicateSearchContactId,
+} from '../lib/ghl-contact-canonical.js';
 import {
   GHL_CONFIG_MISSING_MSG,
   ghlCalendarIdFromEnv,
@@ -408,6 +413,7 @@ export default async function handler(req, res) {
       address: addressParam,
       name: nameParam,
       phone: phoneParam,
+      email: emailParam,
       type: typeQ,
       workType: workTypeQ,
       proposalConstraints: proposalConstraintsRaw,
@@ -421,15 +427,21 @@ export default async function handler(req, res) {
         hasContactId: !!contactId,
         hasName: !!(nameParam && String(nameParam).trim()),
         hasPhone: !!(phoneParam && String(phoneParam).trim()),
+        hasEmail: !!(emailParam && String(emailParam).trim()),
         hasAddress: !!(addressParam && String(addressParam).trim()),
         type: typeQ || null,
         workType: workTypeQ || null,
       });
     }
 
-    if (!contactId && !addressParam && !nameParam && !phoneParam) {
-      return res.status(400).json({ error: 'contactId, address, name of phone vereist' });
+    const hasContact = !!contactId;
+    const hasAddr = !!(addressParam && String(addressParam).trim());
+    const hasName = !!(nameParam && String(nameParam).trim());
+    const hasPhone = !!(phoneParam && String(phoneParam).trim());
+    if (!hasContact && !hasAddr && !hasName && !hasPhone) {
+      return res.status(400).json({ error: 'contactId, adres, naam of telefoon vereist' });
     }
+    const suggestEmailNorm = isValidPlainEmail(emailParam) ? normalizeCanonicalGhlEmail(emailParam) : '';
 
     if (!GHL_API_KEY) {
       return res.status(500).json({ success: false, error: 'GHL API key ontbreekt' });
@@ -487,6 +499,32 @@ export default async function handler(req, res) {
               contactPhone = c.phone || contactPhone;
               if (!address) {
                 address = readCanonicalAddressLine(c) || c.address1 || '';
+              }
+            }
+          }
+        } catch {}
+      }
+      if (!resolvedContactId && suggestEmailNorm) {
+        try {
+          const er = await fetch(
+            `${GHL_BASE}/contacts/search/duplicate?locationId=${locId}&email=${encodeURIComponent(suggestEmailNorm)}`,
+            { headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-07-28' } }
+          );
+          if (er.ok) {
+            const ed = await er.json().catch(() => ({}));
+            const cid = readGhlDuplicateSearchContactId(ed);
+            if (cid) {
+              resolvedContactId = cid;
+              const c = ed?.contact;
+              if (c && String(c.id) === cid) {
+                cachedContact = c;
+                contactName = c.firstName
+                  ? `${c.firstName} ${c.lastName || ''}`.trim()
+                  : c.name || contactName;
+                contactPhone = c.phone || contactPhone;
+                if (!address) {
+                  address = readCanonicalAddressLine(c) || c.address1 || '';
+                }
               }
             }
           }

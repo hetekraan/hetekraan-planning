@@ -22,8 +22,11 @@ import { signBookingToken } from '../lib/session.js';
 import { availabilityDebugEnabled, logAvailability } from '../lib/availability-debug.js';
 import {
   buildCanonicalAddressWritePayload,
+  isValidPlainEmail,
   logCanonicalAddressWrite,
+  normalizeCanonicalGhlEmail,
   readCanonicalAddressLine,
+  readGhlDuplicateSearchContactId,
 } from '../lib/ghl-contact-canonical.js';
 import {
   appendBookingCanonFields,
@@ -68,6 +71,19 @@ function mergeMinStartDateIntoProposalConstraints(existing, minStartDate) {
     merged.scanStartDate = min;
   }
   return merged;
+}
+
+/** Alleen niet-lege velden; boekingstoken blijft compact en JSON-vriendelijk. */
+function compactProposalForToken(c) {
+  if (!c || typeof c !== 'object' || Array.isArray(c)) return null;
+  const out = {};
+  for (const [k, v] of Object.entries(c)) {
+    if (v === undefined || v === null) continue;
+    if (typeof v === 'string' && v.trim() === '') continue;
+    if (Array.isArray(v) && v.length === 0) continue;
+    out[k] = v;
+  }
+  return Object.keys(out).length ? out : null;
 }
 
 function normalizeSelectedInviteSlots(raw) {
@@ -669,11 +685,13 @@ export default async function handler(req, res) {
 
   try {
   const body = parseRequestBody(req);
+  const bookingLinkOnly = body.bookingLinkOnly === true;
   const tResolve0 = Date.now();
   let {
     contactId,
     name: nameParam,
     phone: phoneParam,
+    email: emailParam,
     address: addressParam,
     type: typeParam,
     workType: workTypeParam,
@@ -682,7 +700,9 @@ export default async function handler(req, res) {
     priceTotal: priceTotalParam,
   } = body;
 
-  // Zoek contact op naam of telefoon als er geen contactId is
+  const inviteEmailNorm = isValidPlainEmail(emailParam) ? normalizeCanonicalGhlEmail(emailParam) : '';
+
+  // Zoek contact op telefoon, e-mail of naam als er geen contactId is
   if (!contactId) {
     const searchPhone = (phoneParam || '').replace(/\s/g, '');
     if (searchPhone) {
@@ -690,7 +710,20 @@ export default async function handler(req, res) {
         `${GHL_BASE}/contacts/search/duplicate?locationId=${GHL_LOCATION_ID}&number=${encodeURIComponent(searchPhone)}`,
         { headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-07-28' } }
       );
-      if (sr.ok) contactId = (await sr.json())?.contact?.id || null;
+      if (sr.ok) {
+        const sd = await sr.json().catch(() => ({}));
+        contactId = readGhlDuplicateSearchContactId(sd);
+      }
+    }
+    if (!contactId && inviteEmailNorm) {
+      const er = await fetch(
+        `${GHL_BASE}/contacts/search/duplicate?locationId=${GHL_LOCATION_ID}&email=${encodeURIComponent(inviteEmailNorm)}`,
+        { headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-07-28' } }
+      );
+      if (er.ok) {
+        const ed = await er.json().catch(() => ({}));
+        contactId = readGhlDuplicateSearchContactId(ed);
+      }
     }
     if (!contactId && nameParam) {
       const nr = await fetch(
@@ -711,6 +744,7 @@ export default async function handler(req, res) {
           lastName: parts.slice(1).join(' ') || '',
           phone: normalizeNlPhone((phoneParam || '').replace(/\s/g, '')) || (phoneParam || '').replace(/\s/g, '') || '',
           address1: addressParam || '',
+          ...(inviteEmailNorm ? { email: inviteEmailNorm } : {}),
         })
       });
       if (cc.ok) contactId = (await cc.json())?.contact?.id || null;
@@ -755,7 +789,7 @@ export default async function handler(req, res) {
 
   let phoneSyncedToE164 = false;
   const tPhonePut0 = Date.now();
-  if (effectivePhone && /^\+31[1-9]\d{8}$/.test(effectivePhone)) {
+  if (!bookingLinkOnly && effectivePhone && /^\+31[1-9]\d{8}$/.test(effectivePhone)) {
     const raw = String(contact.phone || '').trim();
     const needsSync = !raw || !raw.startsWith('+') || normalizeNlPhone(raw) !== effectivePhone;
     if (needsSync) {
@@ -793,6 +827,7 @@ export default async function handler(req, res) {
     ? String(body.intakeData.minStartDate || '').trim()
     : '';
   const intakeMinStartDate = YMD_RE.test(intakeMinStartDateRaw) ? intakeMinStartDateRaw : '';
+  const customerUnavailability = String(body.customerUnavailability || '').trim().slice(0, 800);
   const proposalConstraintsRaw = parseProposalConstraints(body.proposalConstraints);
   const proposalConstraints = mergeMinStartDateIntoProposalConstraints(
     proposalConstraintsRaw,
@@ -866,18 +901,28 @@ export default async function handler(req, res) {
   // Boekingstoken — Model B / tokenSchemaVersion 2: slots = dateStr + block (+ labels), geen GHL free-slot instants.
   // inviteIssuedAt: unieke waarde zodat de base64-string áltijd wijzigt → GHL "custom field updated" triggert
   // opnieuw (zelfde opties zonder dit gaven soms een identieke token = geen workflow).
+  const proposalForToken = compactProposalForToken(proposalConstraints);
+
+  const emailForToken =
+    inviteEmailNorm || normalizeCanonicalGhlEmail(String(contact.email || '').trim());
+
   const bookingData = {
     contactId,
     name,
     phone: phoneInToken,
-    email: String(contact.email || '').trim(),
+    email: emailForToken,
     address,
     type: workType,
     inviteIssuedAt: Date.now(),
     tokenSchemaVersion: 2,
     intakeData: {
       minStartDate: intakeMinStartDate || '',
+      ...(customerUnavailability ? { customerUnavailability } : {}),
+      ...(emailForToken ? { customerEmail: emailForToken } : {}),
     },
+    ...(proposalForToken && Object.keys(proposalForToken).length
+      ? { proposalConstraints: proposalForToken }
+      : {}),
     slots: slots.map((s) => ({
       id: blockOfferKey(s.dateStr, s.block),
       dateStr: s.dateStr,
@@ -889,6 +934,17 @@ export default async function handler(req, res) {
   const token = signBookingToken(bookingData);
   // Query-URL: /book/<token> geeft met cleanUrls 404 op Vercel; /book?token= laadt book.html wel.
   const bookingUrl = `${publicBaseUrl()}/book?token=${encodeURIComponent(token)}`;
+
+  if (bookingLinkOnly) {
+    perf.invite_path = 'booking_link_only';
+    return res.status(200).json({
+      success: true,
+      bookingLinkOnly: true,
+      bookingUrl,
+      contactId,
+      contactName: name,
+    });
+  }
 
   // Custom field IDs voor GHL workflow
   const FIELD_SLOT1          = 'EiSw9gZQSG4kyhPn1rtF'; // Tijdslot optie 1
