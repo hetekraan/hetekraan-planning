@@ -2061,12 +2061,12 @@ export default async function handler(req, res) {
             const baseFromDiff = totalNum !== null ? Math.round((totalNum - extrasSum) * 100) / 100 : null;
             const effectiveBase = baseFromReq !== null
               ? baseFromReq
-              : (baseFromDiff !== null && baseFromDiff > 0 ? baseFromDiff : null);
+              : (baseFromDiff !== null && baseFromDiff !== 0 ? baseFromDiff : null);
             const baseDesc = String(appointmentDesc || type || 'Werkzaamheden').trim();
             const lines = [
-              ...(effectiveBase && effectiveBase > 0 ? [{ desc: baseDesc, price: effectiveBase }] : []),
+              ...(effectiveBase !== null && effectiveBase !== 0 ? [{ desc: baseDesc, price: effectiveBase }] : []),
               ...extrasLines,
-            ].filter((l) => l.desc && Number(l.price) > 0);
+            ].filter((l) => l.desc && Number(l.price) !== 0);
 
             const linesSum = Math.round(lines.reduce((s, r) => s + Number(r.price || 0), 0) * 100) / 100;
             if (totalNum !== null && Math.abs(linesSum - totalNum) > 0.01) {
@@ -2629,12 +2629,12 @@ export default async function handler(req, res) {
           const baseFromDiff = totalNum !== null ? Math.round((totalNum - extrasSum) * 100) / 100 : null;
           const effectiveBase = baseFromReq !== null
             ? baseFromReq
-            : (baseFromDiff !== null && baseFromDiff > 0 ? baseFromDiff : null);
+            : (baseFromDiff !== null && baseFromDiff !== 0 ? baseFromDiff : null);
           const baseDesc = String(appointmentDesc || type || 'Werkzaamheden').trim();
           const lines = [
-            ...(effectiveBase && effectiveBase > 0 ? [{ desc: baseDesc, price: effectiveBase }] : []),
+            ...(effectiveBase !== null && effectiveBase !== 0 ? [{ desc: baseDesc, price: effectiveBase }] : []),
             ...extrasLines,
-          ].filter((l) => l.desc && Number(l.price) > 0);
+          ].filter((l) => l.desc && Number(l.price) !== 0);
           if (lines.length === 0) {
             return res.status(200).json({
               success: true,

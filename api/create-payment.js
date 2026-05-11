@@ -87,7 +87,7 @@ export default async function handler(req, res) {
       invoiceLines.push({ desc: appointmentDesc || 'Werkzaamheden', price: basePrice });
     }
     for (const line of (lines || [])) {
-      if (line.price > 0) invoiceLines.push(line);
+      if (Number.isFinite(Number(line?.price)) && Number(line.price) !== 0) invoiceLines.push(line);
     }
 
     if (!invoiceLines.length) {

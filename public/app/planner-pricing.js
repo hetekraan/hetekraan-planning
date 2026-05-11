@@ -37,7 +37,7 @@
         desc: String(e.desc || '').trim(),
         price: Math.round((Number(e.price) || 0) * 100) / 100,
       }))
-      .filter((e) => e.desc && e.price > 0 && Number.isFinite(e.price));
+      .filter((e) => e.desc && e.price !== 0 && Number.isFinite(e.price));
     lines = dedupePriceLines(lines);
     const total = calcTotalPrice(a);
     try {

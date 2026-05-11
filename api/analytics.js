@@ -526,7 +526,7 @@ function buildAnalyticsFromAppointments(appointments = []) {
     if (!weekMap[wk]) weekMap[wk] = { week: wk, omzet: 0, marge: 0, installatie: 0, reparatie: 0, onderhoud: 0 };
     const total = calcAppointmentTotal(a);
     const factor = Number(categoryCostFactor[jobType] ?? categoryCostFactor.onbekend);
-    const margin = Math.max(0, total - total * factor);
+    const margin = total - total * factor;
     weekMap[wk].omzet = Math.round((weekMap[wk].omzet + total) * 100) / 100;
     weekMap[wk].marge = Math.round((weekMap[wk].marge + margin) * 100) / 100;
     if (jobType === 'installatie' || jobType === 'reparatie' || jobType === 'onderhoud') {
