@@ -8599,7 +8599,7 @@ function buildTouchPriceOverlayInnerHtml(a, draft) {
           oninput='onTouchOverlayExtraDescInput(${idQ},${i},this.value)' />
         <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
           <span style="font-size:13px;color:var(--muted)">€</span>
-          <input class="form-input price-input" type="number" inputmode="decimal" step="0.01" value="${Number.isFinite(Number(e.price)) ? e.price : ''}"
+          <input class="form-input price-input" type="text" inputmode="decimal" value="${Number.isFinite(Number(e.price)) ? e.price : ''}"
             style="width:88px" placeholder="0"
             oninput='onTouchOverlayExtraPriceInput(${idQ},${i},this.value)' />
           <button type="button" class="extra-remove" title="Regel verwijderen" onclick='removeTouchOverlayExtra(${idQ},${i})'>✕</button>
@@ -8630,7 +8630,7 @@ function buildTouchPriceOverlayInnerHtml(a, draft) {
         <div class="catalog-v1-results" id="catalog-results-${domId}"></div>
         <div style="display:flex;gap:6px;align-items:center">
           <input class="form-input" type="text" id="extra-desc-${domId}" placeholder="Snel: omschrijving" style="flex:1">
-          <input class="form-input price-input" type="number" id="extra-price-${domId}" placeholder="€" step="0.01" inputmode="decimal">
+          <input class="form-input price-input" type="text" id="extra-price-${domId}" placeholder="€" inputmode="decimal">
           <button type="button" class="btn-add-extra" onclick='addTouchOverlayQuickExtra(${idQ})' title="Regel toevoegen (ingevuld)">+</button>
         </div>
       </div>
@@ -8815,7 +8815,7 @@ function buildAppointmentPriceSectionInnerHtml(a) {
                 oninput='onExtraDescInput(${idQ},${i},this.value)' onchange='updateExtraLine(${idQ},${i},this.value,null)' />
               <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
                 <span style="font-size:13px;color:var(--muted)">€</span>
-                <input class="form-input price-input" type="number" inputmode="decimal" step="0.01" value="${Number.isFinite(Number(e.price)) ? e.price : ''}"
+                <input class="form-input price-input" type="text" inputmode="decimal" value="${Number.isFinite(Number(e.price)) ? e.price : ''}"
                   style="width:88px" placeholder="0"
                   oninput='onExtraPriceInput(${idQ},${i},this.value)' onchange='updateExtraLine(${idQ},${i},null,this.value)' />
                 <button type="button" class="extra-remove" title="Regel verwijderen" onclick='removeExtra(${idQ},${i})'>✕</button>
@@ -8833,7 +8833,7 @@ function buildAppointmentPriceSectionInnerHtml(a) {
             <div class="catalog-v1-results" id="catalog-results-${domId}"></div>
             <div style="display:flex;gap:6px;align-items:center">
               <input class="form-input" type="text" id="extra-desc-${domId}" placeholder="Snel: omschrijving" style="flex:1">
-              <input class="form-input price-input" type="number" id="extra-price-${domId}" placeholder="€" step="0.01" inputmode="decimal">
+              <input class="form-input price-input" type="text" id="extra-price-${domId}" placeholder="€" inputmode="decimal">
               <button type="button" class="btn-add-extra" onclick='addExtra(${idQ})' title="Regel toevoegen (ingevuld)">+</button>
             </div>
           </div>
