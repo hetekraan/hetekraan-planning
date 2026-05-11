@@ -72,7 +72,6 @@ import {
 import {
   createConfirmedReservation,
   deleteConfirmedReservationForContactDate,
-  listReservationsForContact,
 } from '../lib/block-reservation-store.js';
 import {
   getCustomerDayFullFlag,
@@ -110,6 +109,7 @@ import {
 import { listPrices } from '../lib/prices-store.js';
 import { loadPlannerAppointmentsSource } from '../lib/planner-appointments-source.js';
 import { cacheAppointmentAnalyticsFromPriceLines } from '../lib/analytics-appointments-write.js';
+import { searchPlannerAppointmentsGhl } from '../lib/planner-appointment-search-ghl.js';
 
 function releaseDebugNoopGhl() {}
 
@@ -1400,91 +1400,17 @@ export default async function handler(req, res) {
 
       case 'searchAppointments': {
         const qRaw = String(req.query?.q || '').trim();
-        const q = qRaw.toLowerCase();
-        if (q.length < 2) {
-          return res.status(200).json({ results: [] });
-        }
-
-        const locationId = ghlLocationIdFromEnv();
-        const today = formatYyyyMmDdInAmsterdam(new Date());
-        const startDate = addAmsterdamCalendarDays(today, -180);
-        const endDate = addAmsterdamCalendarDays(today, 60);
-
-        const contactsUrl = `${GHL_BASE}/contacts/` +
-          `?locationId=${encodeURIComponent(locationId)}` +
-          `&query=${encodeURIComponent(qRaw)}` +
-          `&limit=20`;
-
-        let contacts = [];
-        try {
-          const contactsRes = await fetchWithRetry(
-            contactsUrl,
-            {
-              method: 'GET',
-              headers: {
-                Authorization: `Bearer ${GHL_API_KEY}`,
-                'Content-Type': 'application/json',
-                Version: '2021-04-15',
-              },
-            }
-          );
-          const contactsData = await contactsRes.json();
-          contacts = Array.isArray(contactsData?.contacts)
-            ? contactsData.contacts
-            : [];
-        } catch (err) {
-          console.error('[search] contacts fetch error:', err);
-          return res.status(200).json({ results: [] });
-        }
-
-        const out = [];
-        for (const contact of contacts) {
-          const cid = contact.id;
-          if (!cid) continue;
-
-          const reservations = await listReservationsForContact(cid);
-          const filtered = reservations.filter((r) => {
-            return r.dateStr >= startDate && r.dateStr <= endDate;
-          });
-
-          const name = [contact.firstName, contact.lastName]
-            .filter(Boolean)
-            .join(' ') || contact.name || '';
-          const address = readCanonicalAddressLine(contact) || contact.address1 || '';
-
-          if (filtered.length === 0) {
-            out.push({
-              id: `search:${cid}:no-appt`,
-              contactId: cid,
-              name,
-              address,
-              date: null,
-              timeSlot: null,
-              status: null,
-              type: null,
-            });
-          } else {
-            for (const r of filtered) {
-              const blockLabel = r.block === 'morning'
-                ? '09:00 - 13:00'
-                : '13:00 - 17:00';
-              out.push({
-                id: `search:${cid}:${r.dateStr}:${r.block}`,
-                contactId: cid,
-                name,
-                address,
-                date: r.dateStr,
-                timeSlot: blockLabel,
-                status: 'confirmed',
-                type: r.workType || null,
-              });
-            }
-          }
-        }
-
-        return res.status(200).json({
-          results: out.slice(0, 40),
+        const { results, error } = await searchPlannerAppointmentsGhl(qRaw, {
+          limitContacts: 20,
+          maxResults: 40,
+          dateDaysBack: 180,
+          dateDaysForward: 60,
         });
+        if (error) {
+          console.warn('[searchAppointments]', error);
+          return res.status(200).json({ results: [] });
+        }
+        return res.status(200).json({ results });
       }
 
       case 'updateContactDashboard': {

@@ -160,24 +160,31 @@
           }
           directionsRenderer.setDirections(result);
           const legs = result.routes?.[0]?.legs || [];
-          const orderedStops = result.routes?.[0]?.waypoint_order || ordered.map((_, i) => i);
-          legs.forEach((leg, i) => {
-            const stopIdx = orderedStops[i];
-            if (stopIdx == null) return;
-            stopMarkers.push(new google.maps.Marker({
-              position: leg.end_location,
-              map,
-              label: String(i + 1),
-              icon: {
-                path: google.maps.SymbolPath.CIRCLE,
-                scale: 10,
-                fillColor: '#111111',
-                fillOpacity: 1,
-                strokeWeight: 1,
-                strokeColor: '#ffffff',
-              },
-            }));
-          });
+          // Eén leg per tussenstop: leg[i].end = i-de waypoint (niet het depotbeen).
+          // Label = zelfde `routeStop` als routeplanner-lijst (ochtend/middag volgorde = `ordered`).
+          for (let i = 0; i < ordered.length; i++) {
+            const leg = legs[i];
+            const appt = ordered[i];
+            if (!leg?.end_location || !appt) continue;
+            const rs = appt.routeStop;
+            const label =
+              rs != null && String(rs).trim() !== '' && Number.isFinite(Number(rs)) ? String(rs) : String(i + 1);
+            stopMarkers.push(
+              new google.maps.Marker({
+                position: leg.end_location,
+                map,
+                label,
+                icon: {
+                  path: google.maps.SymbolPath.CIRCLE,
+                  scale: 11,
+                  fillColor: '#111111',
+                  fillOpacity: 1,
+                  strokeWeight: 2,
+                  strokeColor: '#ffffff',
+                },
+              })
+            );
+          }
           if (legs[0]?.start_location) {
             depotMarkers.push(new google.maps.Marker({
               position: legs[0].start_location,

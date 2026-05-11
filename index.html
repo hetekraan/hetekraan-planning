@@ -5209,9 +5209,90 @@
     box-shadow: var(--shadow-sm);
     margin-bottom: 14px;
   }
-  .appt-card.search-hit {
-    border-color: rgba(255, 107, 53, 0.55);
-    box-shadow: 0 0 0 1px rgba(255, 107, 53, 0.25);
+  .planner-desktop-search-banner {
+    font-size: 12px;
+    color: var(--ink-muted);
+    margin-bottom: 10px;
+    line-height: 1.45;
+  }
+  @media (max-width: 1179px) {
+    .planner-desktop-remote-results {
+      display: none !important;
+    }
+  }
+  body.user-jerry .planner-desktop-remote-results {
+    display: none !important;
+  }
+  .planner-desktop-remote-results-inner {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    box-shadow: var(--shadow-sm);
+  }
+  .planner-desktop-remote-hit-list {
+    max-height: min(280px, 38vh);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .planner-desktop-remote-hit {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-page);
+    color: var(--ink);
+    cursor: pointer;
+    font: inherit;
+  }
+  .planner-desktop-remote-hit:hover {
+    border-color: rgba(255, 107, 53, 0.45);
+  }
+  .planner-desktop-remote-hit__date {
+    flex: 0 0 118px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-muted);
+    line-height: 1.35;
+  }
+  .planner-desktop-remote-hit__main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .planner-desktop-remote-hit__name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .planner-desktop-remote-hit__addr {
+    font-size: 12px;
+    color: var(--ink-soft);
+    line-height: 1.35;
+    word-break: break-word;
+  }
+  .planner-desktop-remote-hit__sub {
+    font-size: 11px;
+    color: var(--ink-muted);
+    line-height: 1.35;
+  }
+  .planner-desktop-remote-hit__hint {
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+    align-self: center;
   }
   .planning-section .appt-card:last-child {
     margin-bottom: 0;
@@ -5833,6 +5914,35 @@
     body:not(.user-jerry) .route-num.depot {
       font-size: 12px;
     }
+    body:not(.user-jerry) header {
+      padding: 6px 16px 8px;
+    }
+    body:not(.user-jerry) .layout {
+      min-height: calc(100dvh - 56px);
+    }
+    body:not(.user-jerry) .planner-sidebar {
+      min-height: calc(100dvh - 56px);
+    }
+    body:not(.user-jerry) .appointments {
+      padding: 14px 18px 18px;
+    }
+    body:not(.user-jerry) #panelAfspraken .today-page-header {
+      padding: 10px 18px;
+    }
+    body:not(.user-jerry) .today-week-strip-wrap {
+      padding: 10px 18px;
+    }
+    body:not(.user-jerry) .today-kpi-grid {
+      padding: 12px 18px;
+    }
+    body:not(.user-jerry) .planner-header-brand-row {
+      gap: 8px;
+      align-items: center;
+    }
+    body:not(.user-jerry) .planner-brand-logo {
+      height: 34px;
+      max-width: min(200px, 40vw);
+    }
     .route-panel {
       display: flex !important;
       flex-direction: column;
@@ -5970,9 +6080,9 @@
           type="text"
           id="plannerDesktopSearchInput"
           class="form-input planner-desktop-search"
-          placeholder="Zoek naam, adres, telefoon, werk, status, notities..."
+          placeholder="Zoek (database): naam, adres, tel, type, status, datum…"
           autocomplete="off"
-          oninput="onPlannerDesktopSearchInput(this.value)"
+          oninput="onPlannerDesktopSearchInput()"
         />
         <button type="button" class="today-btn today-btn--ghost" id="plannerBlockToggleBtn" onclick="onBlockDayButtonClick()">Blokkeer</button>
         <button type="button" class="today-btn today-btn--primary" onclick="openModal()">+ Nieuwe afspraak</button>
@@ -6012,6 +6122,7 @@
       </button>
     </div>
     <div id="dayBlockedBanner" class="day-blocked-banner" style="display:none" role="status"></div>
+    <div id="plannerDesktopSearchPanel" class="planner-desktop-remote-results" hidden aria-live="polite"></div>
     <div id="apptList"></div>
     <div class="total-bar">
       <div class="total-label">Totaal dagomzet</div>
@@ -6749,7 +6860,11 @@ let appointments = [];
 /** Server: Redis “dag vol” voor klantboekingen (geen GHL-blok). */
 let plannerCustomerDayFull = false;
 let plannerCustomerDayFullStoreConfigured = false;
-let plannerDesktopSearchTerm = '';
+let plannerDesktopSearchDebounceTimer = null;
+let plannerDesktopRemoteSearchRows = [];
+let plannerDesktopRemoteSearchError = null;
+let plannerDesktopRemoteSearchLoading = false;
+let plannerDesktopRemoteSearchReqSeq = 0;
 let globalSearchTimer = null;
 let globalSearchResultsCache = [];
 let plannerSidebarView = 'today';
@@ -6775,27 +6890,171 @@ function escapeHtml(s) {
     .replaceAll("'", '&#39;');
 }
 
-function onPlannerDesktopSearchInput(value) {
-  plannerDesktopSearchTerm = String(value || '').trim();
-  render();
+function plannerDesktopRemoteSearchEnabled() {
+  try {
+    if (document.body?.classList?.contains('user-jerry')) return false;
+    return !!(window.matchMedia && window.matchMedia('(min-width: 1180px)').matches);
+  } catch (_) {
+    return false;
+  }
 }
 
-function plannerAppointmentMatchesDesktopSearch(a) {
-  const q = String(plannerDesktopSearchTerm || '').trim().toLowerCase();
-  if (!q) return true;
-  const haystack = [
-    a?.name,
-    a?.fullAddressLine,
-    a?.address,
-    a?.phone,
-    a?.jobType,
-    a?.status,
-    a?.jobDescription,
-    a?.notes,
-  ]
-    .map((v) => String(v || '').toLowerCase())
-    .join(' ');
-  return haystack.includes(q);
+function formatPlannerSearchResultDate(ymd) {
+  const d = window.HKPlannerUtils?.plannerDateFromYmd ? window.HKPlannerUtils.plannerDateFromYmd(ymd) : null;
+  if (!d || !(d instanceof Date) || Number.isNaN(d.getTime())) return String(ymd || '');
+  return formatDate(d);
+}
+
+function onPlannerDesktopSearchInput() {
+  if (plannerDesktopSearchDebounceTimer) clearTimeout(plannerDesktopSearchDebounceTimer);
+  plannerDesktopSearchDebounceTimer = setTimeout(() => {
+    plannerDesktopSearchDebounceTimer = null;
+    void runPlannerDesktopRemoteSearch();
+  }, 320);
+}
+
+function clearPlannerDesktopRemoteSearchUi() {
+  plannerDesktopRemoteSearchRows = [];
+  plannerDesktopRemoteSearchError = null;
+  plannerDesktopRemoteSearchLoading = false;
+  const panel = document.getElementById('plannerDesktopSearchPanel');
+  if (panel) {
+    panel.hidden = true;
+    panel.innerHTML = '';
+  }
+}
+
+async function runPlannerDesktopRemoteSearch() {
+  const inp = document.getElementById('plannerDesktopSearchInput');
+  const q = String(inp?.value ?? '').trim();
+  if (!plannerDesktopRemoteSearchEnabled()) {
+    clearPlannerDesktopRemoteSearchUi();
+    render();
+    return;
+  }
+  if (q.length < 2) {
+    clearPlannerDesktopRemoteSearchUi();
+    render();
+    return;
+  }
+  const seq = ++plannerDesktopRemoteSearchReqSeq;
+  plannerDesktopRemoteSearchLoading = true;
+  plannerDesktopRemoteSearchError = null;
+  render();
+  try {
+    const res = await fetch(`/api/planner-search?q=${encodeURIComponent(q)}`, {
+      headers: { 'X-HK-Auth': hkAuthHeader() },
+      cache: 'no-store',
+    });
+    const data = await res.json().catch(() => ({}));
+    if (seq !== plannerDesktopRemoteSearchReqSeq) return;
+    if (!res.ok) {
+      plannerDesktopRemoteSearchError = String(data?.error || `HTTP ${res.status}`);
+      plannerDesktopRemoteSearchRows = [];
+    } else {
+      plannerDesktopRemoteSearchError = null;
+      plannerDesktopRemoteSearchRows = Array.isArray(data?.results) ? data.results : [];
+    }
+  } catch (e) {
+    if (seq !== plannerDesktopRemoteSearchReqSeq) return;
+    plannerDesktopRemoteSearchError = String(e?.message || e || 'Zoeken mislukt');
+    plannerDesktopRemoteSearchRows = [];
+  } finally {
+    if (seq === plannerDesktopRemoteSearchReqSeq) plannerDesktopRemoteSearchLoading = false;
+    render();
+  }
+}
+
+function updatePlannerDesktopSearchPanel(currentYmd) {
+  const panel = document.getElementById('plannerDesktopSearchPanel');
+  if (!panel) return;
+  if (!plannerDesktopRemoteSearchEnabled()) {
+    panel.hidden = true;
+    panel.innerHTML = '';
+    return;
+  }
+  const inp = document.getElementById('plannerDesktopSearchInput');
+  const q = String(inp?.value ?? '').trim();
+  if (q.length < 2) {
+    panel.hidden = true;
+    panel.innerHTML = '';
+    return;
+  }
+  panel.hidden = false;
+  if (plannerDesktopRemoteSearchLoading) {
+    panel.innerHTML =
+      '<div class="planner-desktop-remote-results-inner"><div class="planner-desktop-search-banner">Zoeken…</div></div>';
+    return;
+  }
+  if (plannerDesktopRemoteSearchError) {
+    panel.innerHTML = `<div class="planner-desktop-remote-results-inner"><div class="planner-desktop-search-banner" style="color:#c53030">${escapeHtml(plannerDesktopRemoteSearchError)}</div></div>`;
+    return;
+  }
+  const rows = plannerDesktopRemoteSearchRows;
+  if (!rows.length) {
+    panel.innerHTML =
+      '<div class="planner-desktop-remote-results-inner"><div class="planner-desktop-search-banner">Geen treffers (GHL/Redis).</div></div>';
+    return;
+  }
+  const lines = rows
+    .map((r, i) => {
+      const dateStr = r.date ? formatPlannerSearchResultDate(r.date) : '— (geen reservering in venster)';
+      const type = r.type ? String(r.type) : '';
+      const status = r.status ? String(r.status) : '';
+      const ts = r.timeSlot ? String(r.timeSlot) : '';
+      const meta = [type, status, ts].filter(Boolean).join(' · ');
+      const phone = r.phone ? String(r.phone) : '';
+      const notes = r.notes ? String(r.notes) : '';
+      const sub = [meta, phone, notes].filter(Boolean).join(' · ');
+      return `<button type="button" class="planner-desktop-remote-hit" onclick="void plannerNavigateToDesktopSearchRow(${i})">
+        <span class="planner-desktop-remote-hit__date">${escapeHtml(dateStr)}</span>
+        <span class="planner-desktop-remote-hit__main">
+          <span class="planner-desktop-remote-hit__name">${escapeHtml(r.name || '—')}</span>
+          <span class="planner-desktop-remote-hit__addr">${escapeHtml(r.address || '')}</span>
+          ${sub ? `<span class="planner-desktop-remote-hit__sub">${escapeHtml(sub)}</span>` : ''}
+        </span>
+        ${r.date && String(r.date) !== String(currentYmd) ? '<span class="planner-desktop-remote-hit__hint">Andere dag</span>' : ''}
+      </button>`;
+    })
+    .join('');
+  panel.innerHTML = `<div class="planner-desktop-remote-results-inner"><div class="planner-desktop-search-banner" role="status">${rows.length} treffer(s) — klik om te openen</div><div class="planner-desktop-remote-hit-list">${lines}</div></div>`;
+}
+
+async function plannerNavigateToDesktopSearchRow(idx) {
+  const row = plannerDesktopRemoteSearchRows[idx];
+  if (!row) return;
+  const inp = document.getElementById('plannerDesktopSearchInput');
+  if (inp) inp.value = '';
+  clearPlannerDesktopRemoteSearchUi();
+  if (plannerDesktopSearchDebounceTimer) {
+    clearTimeout(plannerDesktopSearchDebounceTimer);
+    plannerDesktopSearchDebounceTimer = null;
+  }
+  if (!row.date) {
+    if (typeof showToast === 'function') showToast('Geen datum op dit resultaat — open contact in GHL.', 'info');
+    render();
+    return;
+  }
+  await goToDateStr(String(row.date), 'planner_desktop_search');
+  const byId = appointments.find((a) => String(a.id) === String(row.id));
+  const byContact =
+    !byId && row.contactId
+      ? appointments.find((a) => String(a.contactId || '') === String(row.contactId || ''))
+      : null;
+  const hit = byId || byContact;
+  if (!hit) {
+    if (typeof showToast === 'function') showToast('Afspraak niet gevonden op deze dag in de planner.', 'info');
+    render();
+    return;
+  }
+  scrollToCard(hit.id);
+  const domId = appointmentDomSafeId(hit.id);
+  const el = document.getElementById(`card-${domId}`);
+  if (el) {
+    el.classList.add('drag-over');
+    setTimeout(() => el.classList.remove('drag-over'), 1600);
+  }
+  render();
 }
 
 /**
@@ -8263,7 +8522,14 @@ function goToDateStr(ymd, source = 'go_to_date') {
   logPlannerDateNav('requested', { source, dateStr });
   setCurrentDateAndRefreshUi(nextDate);
   logPlannerDateNav('ui_synced', { source, dateStr });
-  return loadAppointments(currentDate);
+  return loadAppointments(currentDate).then(() => {
+    try {
+      const inp = document.getElementById('plannerDesktopSearchInput');
+      if (plannerDesktopRemoteSearchEnabled() && String(inp?.value ?? '').trim().length >= 2) {
+        void runPlannerDesktopRemoteSearch();
+      }
+    } catch (_) {}
+  });
 }
 
 /** App layout: scroll naar afronden na “onderweg” */
@@ -9048,9 +9314,8 @@ function renderApptCard(a, i) {
       `<button type="button" role="menuitem" class="appt-actions__menu-item" onclick="closeMobileApptActionMenus();openAppointmentEditModal(${idQ})">Bewerken</button>`,
       `<button type="button" role="menuitem" class="appt-actions__menu-item appt-actions__menu-item--danger" onclick="closeMobileApptActionMenus();deleteAppt(${idQ})">Verwijderen</button>`
     );
-    const hasDesktopSearch = String(plannerDesktopSearchTerm || '').trim().length > 0;
     return `
-    <div class="appt-card ${isDone?'done':''} ${isOnderweg?'onderweg':''} ${isViolation?'violation':''} ${hasDesktopSearch ? 'search-hit' : ''}" id="card-${domId}">
+    <div class="appt-card ${isDone?'done':''} ${isOnderweg?'onderweg':''} ${isViolation?'violation':''}" id="card-${domId}">
       <div class="appt-inner">
         <div class="appt-top">
           <div class="appt-number">${a.routeStop != null ? a.routeStop : i + 1}</div>
@@ -9233,9 +9498,8 @@ function render() {
   const sorted = [...appointments].sort((a, b) => (a.routeStop || 99) - (b.routeStop || 99));
   const blocks = sorted.filter((x) => x.isCalBlock).sort((a, b) => (a.startMs || 0) - (b.startMs || 0));
   const clients = sorted.filter((x) => !x.isCalBlock);
-  const visibleClients = clients.filter((x) => plannerAppointmentMatchesDesktopSearch(x));
-  const morningApts = visibleClients.filter((x) => x.dayPart === 0);
-  const afternoonApts = visibleClients.filter((x) => x.dayPart !== 0);
+  const morningApts = clients.filter((x) => x.dayPart === 0);
+  const afternoonApts = clients.filter((x) => x.dayPart !== 0);
   const dateStrUi = getDateStr(currentDate);
   const dashBlockedPending = isDashBlockedPending(dateStrUi) && blocks.length === 0;
 
@@ -9335,6 +9599,7 @@ function render() {
     listHtml = '<div class="empty-hint">Geen afspraken voor deze dag.</div>';
   }
   document.getElementById('apptList').innerHTML = listHtml;
+  updatePlannerDesktopSearchPanel(dateStrUi);
 
   const routeStops = getRouteStopsForSidebar();
   renderRoute(routeStops);
