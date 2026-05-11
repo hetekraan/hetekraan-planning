@@ -1019,11 +1019,30 @@
     }
     copyLinkInFlight = true;
     const btn = document.getElementById('copyBookingLinkBtn');
+    const prevBtnLabel = btn ? btn.textContent : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Boekingslink maken…';
+    }
+    showToast('Boekingslink maken…');
     try {
-      if (btn) btn.disabled = true;
       clearInviteError();
       const body = buildInviteRequestBody(isSpoedEnabled());
       body.bookingLinkOnly = true;
+      const displayName = (document.getElementById('contactName')?.textContent || '').trim()
+        || document.getElementById('inputName')?.value?.trim()
+        || '';
+      body.bookingLinkResume = {
+        contactName: displayName,
+        phone: document.getElementById('inputPhone')?.value?.trim() || '',
+      };
+      body.bookingLinkResumeSlots = visible.map((s) => ({
+        dateStr: String(s.dateStr || '').trim(),
+        block: String(s.block || '').trim(),
+        dateLabel: String(s.dateLabel || '').trim(),
+        blockLabel: String(s.blockLabel || '').trim(),
+        timeLabel: String(s.timeLabel || '').trim(),
+      }));
       const ac = new AbortController();
       const to = setTimeout(() => ac.abort(), 120000);
       let res;
@@ -1065,7 +1084,10 @@
       showInviteError(msg);
     } finally {
       copyLinkInFlight = false;
-      if (btn) btn.disabled = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = prevBtnLabel || 'Boekingslink kopiëren';
+      }
     }
   }
 

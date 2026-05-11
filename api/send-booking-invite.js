@@ -335,6 +335,40 @@ function dutchDateLabel(dateStr) {
 }
 
 /**
+ * Hergebruik slotregels uit suggest-UI: vermijdt GHL-kalender + geo bij bookingLinkOnly.
+ * @returns {Array<{ dateStr: string, block: string, score: number, legacyScore: number, evalScore: number, dateLabel: string, blockLabel: string, timeLabel: string }> | null}
+ */
+function tryBuildSlotsFromBookingLinkResume(selectedNormalized, resumeSlotsRaw) {
+  if (!Array.isArray(selectedNormalized) || selectedNormalized.length === 0) return null;
+  if (!Array.isArray(resumeSlotsRaw) || resumeSlotsRaw.length !== selectedNormalized.length) return null;
+  const picked = [];
+  for (let i = 0; i < selectedNormalized.length; i++) {
+    const sel = selectedNormalized[i];
+    const row = resumeSlotsRaw[i];
+    if (!row || typeof row !== 'object') return null;
+    const dateStr = String(row.dateStr || '').trim();
+    const block = String(row.block || '').trim();
+    if (dateStr !== sel.dateStr || block !== sel.block) return null;
+    if (block !== 'morning' && block !== 'afternoon') return null;
+    const fallback = blockDisplayLabels(block);
+    const dateLabelRaw = String(row.dateLabel || '').trim();
+    const blockLabelRaw = String(row.blockLabel || '').trim();
+    const timeLabelRaw = String(row.timeLabel || '').trim();
+    picked.push({
+      dateStr: sel.dateStr,
+      block: sel.block,
+      score: 0,
+      legacyScore: 0,
+      evalScore: 0,
+      dateLabel: dateLabelRaw || dutchDateLabel(sel.dateStr),
+      blockLabel: blockLabelRaw || fallback.blockLabelNl,
+      timeLabel: timeLabelRaw || fallback.slotLabelSpace,
+    });
+  }
+  return picked;
+}
+
+/**
  * Tot 2 opties `dateStr` + `block`, zelfde regels als api/suggest-slots (block-capacity-offers + merged kalender).
  * @param {Record<string, unknown> | null | undefined} proposalConstraints — geparsed; null = geen filter
  */
@@ -681,11 +715,17 @@ export default async function handler(req, res) {
     pick_block_wall_ms: 0,
     selected_slots_validate_ms: 0,
     map_token_response_ms: 0,
+    token_sign_ms: 0,
+    booking_link_resume_slots: false,
   };
 
+  let body = null;
   try {
-  const body = parseRequestBody(req);
+  body = parseRequestBody(req);
   const bookingLinkOnly = body.bookingLinkOnly === true;
+  if (bookingLinkOnly) {
+    console.log('[send-booking-invite]', JSON.stringify({ event: 'booking_link_start', ts: Date.now() }));
+  }
   const tResolve0 = Date.now();
   let {
     contactId,
@@ -701,6 +741,11 @@ export default async function handler(req, res) {
   } = body;
 
   const inviteEmailNorm = isValidPlainEmail(emailParam) ? normalizeCanonicalGhlEmail(emailParam) : '';
+  const bookingLinkResume =
+    body.bookingLinkResume && typeof body.bookingLinkResume === 'object' && !Array.isArray(body.bookingLinkResume)
+      ? body.bookingLinkResume
+      : null;
+  const selectedNormalized = normalizeSelectedInviteSlots(body.selectedSlots);
 
   // Zoek contact op telefoon, e-mail of naam als er geen contactId is
   if (!contactId) {
@@ -755,23 +800,60 @@ export default async function handler(req, res) {
 
   if (!contactId) return res.status(400).json({ error: 'Kon geen contact vinden of aanmaken' });
 
-  // Haal contactgegevens op
-  const tGet0 = Date.now();
-  const cr = await fetch(`${GHL_BASE}/contacts/${contactId}`, {
-    headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' }
-  });
-  if (!cr.ok) {
-    perf.ghl_contact_get_ms = Date.now() - tGet0;
-    return res.status(404).json({ error: 'Contact niet gevonden' });
+  let bookingLinkSnapshotSlots = null;
+  if (
+    bookingLinkOnly &&
+    contactId &&
+    bookingLinkResume &&
+    String(bookingLinkResume.contactName || '').trim() &&
+    selectedNormalized.length > 0
+  ) {
+    bookingLinkSnapshotSlots = tryBuildSlotsFromBookingLinkResume(
+      selectedNormalized,
+      body.bookingLinkResumeSlots
+    );
+    if (bookingLinkSnapshotSlots) perf.booking_link_resume_slots = true;
   }
 
-  const cd      = await cr.json();
-  perf.ghl_contact_get_ms = Date.now() - tGet0;
-  const contact = cd?.contact || cd;
-  const name    = contact.firstName
-    ? `${contact.firstName} ${contact.lastName || ''}`.trim()
-    : (contact.name || nameParam || 'Klant');
-  const firstName = contact.firstName || name.split(' ')[0];
+  let contact;
+  let name;
+  let firstName;
+
+  if (bookingLinkSnapshotSlots) {
+    perf.ghl_contact_get_ms = 0;
+    const nameFromResume = String(bookingLinkResume.contactName || '').trim();
+    const parts = nameFromResume.split(/\s+/).filter(Boolean);
+    const resumePhoneRaw = String(bookingLinkResume.phone || '').replace(/\s/g, '');
+    const resumePhoneNorm = normalizeNlPhone(resumePhoneRaw) || resumePhoneRaw;
+    contact = {
+      firstName: parts[0] || nameFromResume || 'Klant',
+      lastName: parts.length > 1 ? parts.slice(1).join(' ') : '',
+      phone: resumePhoneNorm,
+      email: inviteEmailNorm || '',
+      customFields: [],
+      address1: addressParam || '',
+    };
+    name = `${contact.firstName} ${contact.lastName}`.trim() || nameFromResume || 'Klant';
+    firstName = contact.firstName || name.split(' ')[0];
+  } else {
+    // Haal contactgegevens op
+    const tGet0 = Date.now();
+    const cr = await fetch(`${GHL_BASE}/contacts/${contactId}`, {
+      headers: { 'Authorization': `Bearer ${GHL_API_KEY}`, 'Version': '2021-04-15' },
+    });
+    if (!cr.ok) {
+      perf.ghl_contact_get_ms = Date.now() - tGet0;
+      return res.status(404).json({ error: 'Contact niet gevonden' });
+    }
+
+    const cd = await cr.json();
+    perf.ghl_contact_get_ms = Date.now() - tGet0;
+    contact = cd?.contact || cd;
+    name = contact.firstName
+      ? `${contact.firstName} ${contact.lastName || ''}`.trim()
+      : (contact.name || nameParam || 'Klant');
+    firstName = contact.firstName || name.split(' ')[0];
+  }
 
   const address = addressParam || readCanonicalAddressLine(contact) || contact.address1 || '';
   const canonicalAddr = buildCanonicalAddressWritePayload(address);
@@ -834,14 +916,28 @@ export default async function handler(req, res) {
     intakeMinStartDate
   );
 
-  const selectedRaw = body.selectedSlots;
-  const selectedNormalized = normalizeSelectedInviteSlots(selectedRaw);
   let slots = [];
 
   const dbg = availabilityDebugEnabled();
   const trace = dbg ? { flow: 'send-booking-invite', timeZone: 'Europe/Amsterdam', dayDecisions: [] } : null;
 
-  if (selectedNormalized.length) {
+  if (bookingLinkSnapshotSlots) {
+    perf.invite_path = 'booking_link_resume_slots';
+    const tSel0 = Date.now();
+    slots = bookingLinkSnapshotSlots;
+    perf.selected_slots_validate_ms = Date.now() - tSel0;
+    if (trace) {
+      logAvailability('invite_booking_flow_summary', {
+        ...trace,
+        offeredToClient: slots.map((c) => ({
+          dateStr: c.dateStr,
+          block: c.block,
+          offerKey: blockOfferKey(c.dateStr, c.block),
+        })),
+        source: 'booking_link_resume_slots',
+      });
+    }
+  } else if (selectedNormalized.length) {
     perf.invite_path = 'selected_slots';
     const tSel0 = Date.now();
     const blockSlotUserId = await resolveBlockSlotAssignedUserId(
@@ -931,7 +1027,9 @@ export default async function handler(req, res) {
       time: s.timeLabel,
     })),
   };
+  const tSign0 = Date.now();
   const token = signBookingToken(bookingData);
+  perf.token_sign_ms = Date.now() - tSign0;
   // Query-URL: /book/<token> geeft met cleanUrls 404 op Vercel; /book?token= laadt book.html wel.
   const bookingUrl = `${publicBaseUrl()}/book?token=${encodeURIComponent(token)}`;
 
@@ -1157,7 +1255,23 @@ export default async function handler(req, res) {
       ghl_tag_ops_ms: perf.ghl_tag_ops_ms,
       token_clear_sleep_ms: perf.token_clear_sleep_ms,
       map_token_response_ms: perf.map_token_response_ms,
+      token_sign_ms: perf.token_sign_ms,
+      booking_link_resume_slots: perf.booking_link_resume_slots,
     });
+    if (body?.bookingLinkOnly === true) {
+      console.log(
+        '[send-booking-invite]',
+        JSON.stringify({
+          event: 'booking_link_timing',
+          validate_slots_ms: perf.selected_slots_validate_ms,
+          contact_resolve_ms: perf.contact_resolve_ms,
+          ghl_contact_get_ms: perf.ghl_contact_get_ms,
+          token_sign_ms: perf.token_sign_ms,
+          total_ms: perf.total_ms,
+          resume_slots: perf.booking_link_resume_slots === true,
+        })
+      );
+    }
   }
 }
 
