@@ -816,6 +816,20 @@
     margin-bottom: 8px;
     line-height: 1.45;
   }
+  .appt-moneybird-sent {
+    display: inline-block;
+    margin: 6px 0 0;
+    max-width: 100%;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    color: rgba(26, 21, 18, 0.58);
+    padding: 5px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--bg-page);
+    line-height: 1.35;
+  }
 
   .appt-footer {
     display: flex;
@@ -6149,6 +6163,173 @@
     body:not(.user-jerry) #panelAfspraken > .today-kpi-grid {
       padding: 10px 18px !important;
     }
+
+    /* Desktop: hiërarchie & leesbaarheid (#panelAfspraken, warm minimal; geen Jerry / geen <1180) */
+    body:not(.user-jerry) #panelAfspraken .today-page-heading h1 {
+      font-size: clamp(34px, 2.35vw, 40px);
+      line-height: 1.1;
+      letter-spacing: -0.034em;
+      font-weight: 700;
+      color: #14110f;
+    }
+    body:not(.user-jerry) #panelAfspraken .today-page-heading p {
+      font-size: clamp(16px, 1.05vw, 18px);
+      line-height: 1.42;
+      font-weight: 500;
+      color: rgba(26, 21, 18, 0.72);
+    }
+    body:not(.user-jerry) #panelAfspraken .today-page-header .today-btn {
+      font-weight: 500;
+      color: rgba(45, 40, 36, 0.58);
+      border-color: rgba(0, 0, 0, 0.09);
+      background: rgba(255, 255, 255, 0.72);
+      box-shadow: none;
+    }
+    body:not(.user-jerry) #panelAfspraken .today-page-header .today-btn:hover {
+      color: rgba(26, 21, 18, 0.85);
+      border-color: rgba(0, 0, 0, 0.12);
+    }
+    body:not(.user-jerry) #panelAfspraken .today-page-header .today-btn--primary {
+      color: #faf8f5;
+      background: #2f2b28;
+      border-color: #2f2b28;
+      opacity: 0.94;
+    }
+    body:not(.user-jerry) #panelAfspraken .today-page-header .today-btn--primary:hover {
+      opacity: 1;
+    }
+
+    body:not(.user-jerry) #panelAfspraken .today-kpi-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      color: rgba(26, 21, 18, 0.58);
+    }
+    body:not(.user-jerry) #panelAfspraken .today-kpi-value {
+      font-size: clamp(21px, 1.55vw, 24px);
+      margin-top: 4px;
+      font-weight: 700;
+      color: #14110f;
+    }
+    body:not(.user-jerry) #panelAfspraken .today-kpi-sub {
+      font-size: 13.5px;
+      line-height: 1.35;
+      font-weight: 500;
+      color: rgba(26, 21, 18, 0.64);
+    }
+
+    body:not(.user-jerry) #panelAfspraken .planning-section-title {
+      font-size: 10.5px;
+      font-weight: 600;
+      letter-spacing: 0.09em;
+      color: rgba(26, 21, 18, 0.52);
+    }
+
+    body:not(.user-jerry) .route-num {
+      width: 28px;
+      height: 28px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #2a2622;
+      border-color: rgba(0, 0, 0, 0.14);
+      background: #f4f1ed;
+    }
+    body:not(.user-jerry) .route-num.depot {
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-number {
+      width: 30px;
+      height: 30px;
+      font-size: 15px;
+      font-weight: 700;
+      color: #14110f;
+      background: rgba(255, 107, 53, 0.14);
+      border: 1px solid rgba(255, 107, 53, 0.38);
+      box-sizing: border-box;
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-address {
+      font-size: clamp(15px, 1.15vw, 17px);
+      font-weight: 600;
+      color: #14110f;
+      letter-spacing: -0.02em;
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-body {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-desc {
+      order: 1;
+      font-size: clamp(14.5px, 1.05vw, 16px);
+      font-weight: 600;
+      line-height: 1.48;
+      color: rgba(26, 21, 18, 0.82);
+      white-space: normal;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 4;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-name {
+      order: 2;
+      font-size: 14px;
+      font-weight: 500;
+      color: rgba(42, 38, 34, 0.82);
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-meta .meta-label {
+      color: rgba(26, 21, 18, 0.48);
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-card:not(.cal-block) .appt-meta .meta-value {
+      color: rgba(26, 21, 18, 0.68);
+      font-size: 11px;
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-notes {
+      color: rgba(26, 21, 18, 0.66);
+      background: rgba(26, 21, 18, 0.04);
+      border-color: rgba(26, 21, 18, 0.1);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-moneybird-sent {
+      margin-top: 8px;
+    }
+
+    body:not(.user-jerry) #panelAfspraken .appt-actions .icon-btn.appt-action-icon {
+      opacity: 0.9;
+      box-shadow: none;
+      border-color: rgba(0, 0, 0, 0.08);
+      background: rgba(255, 255, 255, 0.65);
+      color: rgba(45, 40, 36, 0.5);
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-actions .icon-btn.appt-action-icon:hover {
+      opacity: 1;
+      color: rgba(26, 21, 18, 0.75);
+      border-color: rgba(0, 0, 0, 0.12);
+      background: rgba(255, 255, 255, 0.92);
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-footer-cta-row .btn-prijs,
+    body:not(.user-jerry) #panelAfspraken .appt-footer-cta-row .btn-done {
+      color: rgba(45, 40, 36, 0.52);
+      background: rgba(255, 255, 255, 0.55);
+      border-color: rgba(0, 0, 0, 0.08);
+      font-weight: 500;
+      box-shadow: none;
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-footer-cta-row .btn-prijs:hover,
+    body:not(.user-jerry) #panelAfspraken .appt-footer-cta-row .btn-done:hover {
+      color: rgba(26, 21, 18, 0.78);
+      border-color: rgba(0, 0, 0, 0.11);
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-footer-cta-row .btn-prijs.active,
+    body:not(.user-jerry) #panelAfspraken .appt-footer-cta-row .btn-done.active {
+      color: rgba(26, 21, 18, 0.88);
+      border-color: rgba(0, 0, 0, 0.14);
+      background: rgba(255, 255, 255, 0.88);
+    }
   }
 
 </style>
@@ -9400,6 +9581,15 @@ function remountPriceSectionWithEditorScrollLogging(id, actionType) {
   );
 }
 
+/** Verwijdert technische Moneybird-regels uit notitietekst; toont badge als er een factuur-marker was. */
+function splitPlannerNoteMoneybirdUI(note) {
+  const raw = String(note || '');
+  const mbRe = /\[moneybird\]\s+invoiceId=\S+\s+reference=\S+(?:\s+url=\S+)?/gi;
+  const showMoneybirdBadge = /\[moneybird\]\s+invoiceId=/i.test(raw);
+  const cleanedNote = raw.replace(mbRe, '').replace(/(?:\r?\n){3,}/g, '\n\n').trim();
+  return { cleanedNote, showMoneybirdBadge };
+}
+
 function renderApptCard(a, i) {
     const domId = appointmentDomSafeId(a.id);
     const idQ = JSON.stringify(a.id);
@@ -9508,11 +9698,17 @@ function renderApptCard(a, i) {
         </div>
         ${metaItems.length ? `<div class="appt-meta">${metaItems.join('')}</div>` : ''}
         ${(() => {
-          const note = String(a.notes || '').trim();
+          const noteRaw = String(a.notes || '').trim();
+          const { cleanedNote, showMoneybirdBadge } = splitPlannerNoteMoneybirdUI(noteRaw);
           const desc = String(a.jobDescription || '').trim();
-          if (!note) return '';
-          if (note.toLowerCase() === desc.toLowerCase()) return '';
-          return `<div class="appt-notes">● ${note}</div>`;
+          const parts = [];
+          if (cleanedNote && cleanedNote.toLowerCase() !== desc.toLowerCase()) {
+            parts.push(`<div class="appt-notes">● ${escapeHtml(cleanedNote)}</div>`);
+          }
+          if (showMoneybirdBadge) {
+            parts.push('<div class="appt-moneybird-sent" role="status">Factuur verstuurd via Moneybird</div>');
+          }
+          return parts.join('');
         })()}
         <div class="appt-footer">
           <div class="appt-footer-left">
