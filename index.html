@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="Planner">
 <link rel="manifest" href="/manifest.webmanifest">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='42' fill='%231a1512'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
 <title>Hetekraan — Planning</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="/styles/global.css">
@@ -4007,6 +4007,9 @@
     height: var(--appts-header-cta-height) !important;
     font-size: 17px !important;
   }
+  body.user-jerry .planner-desktop-search {
+    display: none !important;
+  }
   body.user-jerry .icon-btn {
     min-width: 56px !important;
     min-height: 56px !important;
@@ -5099,6 +5102,11 @@
     color: var(--bg-card);
     border-color: var(--ink);
   }
+  .planner-desktop-search {
+    display: none;
+    width: clamp(220px, 22vw, 320px);
+    min-width: 0;
+  }
   .today-week-strip-wrap {
     background: var(--bg-card);
     border-bottom: 1px solid var(--border);
@@ -5200,6 +5208,10 @@
     background: var(--bg-card);
     box-shadow: var(--shadow-sm);
     margin-bottom: 14px;
+  }
+  .appt-card.search-hit {
+    border-color: rgba(255, 107, 53, 0.55);
+    box-shadow: 0 0 0 1px rgba(255, 107, 53, 0.25);
   }
   .planning-section .appt-card:last-child {
     margin-bottom: 0;
@@ -5717,6 +5729,11 @@
   }
 
   @media (min-width: 1180px) {
+    body:not(.user-jerry) header {
+      background: transparent;
+      border-bottom: none;
+      box-shadow: none;
+    }
     header {
       display: grid;
       grid-template-columns: 240px minmax(0, 1fr) auto;
@@ -5789,6 +5806,32 @@
     .appointments {
       padding: 24px;
       border-right: none;
+    }
+    body:not(.user-jerry) #panelAfspraken .today-page-header .appointments-header-actions {
+      gap: 6px;
+      align-items: center;
+      flex-wrap: nowrap;
+    }
+    body:not(.user-jerry) #panelAfspraken .today-page-header .appointments-header-actions .planner-desktop-search {
+      display: block;
+    }
+    body:not(.user-jerry) #panelAfspraken .today-page-header .appointments-header-actions .today-btn {
+      min-height: 38px;
+      padding: 6px 10px;
+      font-size: 12px;
+      border-radius: 10px;
+    }
+    body:not(.user-jerry) .route-num {
+      width: 28px;
+      height: 28px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text);
+      border-color: rgba(0, 0, 0, 0.16);
+      background: #fff;
+    }
+    body:not(.user-jerry) .route-num.depot {
+      font-size: 12px;
     }
     .route-panel {
       display: flex !important;
@@ -5923,6 +5966,14 @@
         <p id="todayMixMeta">0 afspraken · 0 reparaties · 0 installaties · 0 onderhoud</p>
       </div>
       <div class="appointments-header-actions">
+        <input
+          type="text"
+          id="plannerDesktopSearchInput"
+          class="form-input planner-desktop-search"
+          placeholder="Zoek naam, adres, telefoon, werk, status, notities..."
+          autocomplete="off"
+          oninput="onPlannerDesktopSearchInput(this.value)"
+        />
         <button type="button" class="today-btn today-btn--ghost" id="plannerBlockToggleBtn" onclick="onBlockDayButtonClick()">Blokkeer</button>
         <button type="button" class="today-btn today-btn--primary" onclick="openModal()">+ Nieuwe afspraak</button>
       </div>
@@ -6698,6 +6749,7 @@ let appointments = [];
 /** Server: Redis “dag vol” voor klantboekingen (geen GHL-blok). */
 let plannerCustomerDayFull = false;
 let plannerCustomerDayFullStoreConfigured = false;
+let plannerDesktopSearchTerm = '';
 let globalSearchTimer = null;
 let globalSearchResultsCache = [];
 let plannerSidebarView = 'today';
@@ -6721,6 +6773,29 @@ function escapeHtml(s) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
+
+function onPlannerDesktopSearchInput(value) {
+  plannerDesktopSearchTerm = String(value || '').trim();
+  render();
+}
+
+function plannerAppointmentMatchesDesktopSearch(a) {
+  const q = String(plannerDesktopSearchTerm || '').trim().toLowerCase();
+  if (!q) return true;
+  const haystack = [
+    a?.name,
+    a?.fullAddressLine,
+    a?.address,
+    a?.phone,
+    a?.jobType,
+    a?.status,
+    a?.jobDescription,
+    a?.notes,
+  ]
+    .map((v) => String(v || '').toLowerCase())
+    .join(' ');
+  return haystack.includes(q);
 }
 
 /**
@@ -8973,8 +9048,9 @@ function renderApptCard(a, i) {
       `<button type="button" role="menuitem" class="appt-actions__menu-item" onclick="closeMobileApptActionMenus();openAppointmentEditModal(${idQ})">Bewerken</button>`,
       `<button type="button" role="menuitem" class="appt-actions__menu-item appt-actions__menu-item--danger" onclick="closeMobileApptActionMenus();deleteAppt(${idQ})">Verwijderen</button>`
     );
+    const hasDesktopSearch = String(plannerDesktopSearchTerm || '').trim().length > 0;
     return `
-    <div class="appt-card ${isDone?'done':''} ${isOnderweg?'onderweg':''} ${isViolation?'violation':''}" id="card-${domId}">
+    <div class="appt-card ${isDone?'done':''} ${isOnderweg?'onderweg':''} ${isViolation?'violation':''} ${hasDesktopSearch ? 'search-hit' : ''}" id="card-${domId}">
       <div class="appt-inner">
         <div class="appt-top">
           <div class="appt-number">${a.routeStop != null ? a.routeStop : i + 1}</div>
@@ -9157,8 +9233,9 @@ function render() {
   const sorted = [...appointments].sort((a, b) => (a.routeStop || 99) - (b.routeStop || 99));
   const blocks = sorted.filter((x) => x.isCalBlock).sort((a, b) => (a.startMs || 0) - (b.startMs || 0));
   const clients = sorted.filter((x) => !x.isCalBlock);
-  const morningApts = clients.filter((x) => x.dayPart === 0);
-  const afternoonApts = clients.filter((x) => x.dayPart !== 0);
+  const visibleClients = clients.filter((x) => plannerAppointmentMatchesDesktopSearch(x));
+  const morningApts = visibleClients.filter((x) => x.dayPart === 0);
+  const afternoonApts = visibleClients.filter((x) => x.dayPart !== 0);
   const dateStrUi = getDateStr(currentDate);
   const dashBlockedPending = isDashBlockedPending(dateStrUi) && blocks.length === 0;
 
