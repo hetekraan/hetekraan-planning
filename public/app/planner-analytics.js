@@ -18,7 +18,7 @@
   /** Geen echte bron in deze versie — altijd “Niet gekoppeld”, ook als analytics faalt. */
   const KPI_KEYS_NOT_LINKED = ['adSpend', 'sessions', 'conversie'];
 
-  let period = '30d';
+  let period = 'today';
   let customStart = '';
   let customEnd = '';
   let analyticsData = null;
@@ -41,6 +41,28 @@
   let customPickerViewMonth = '';
   let customDraftStart = '';
   let customDraftEnd = '';
+
+  /** Oude bookmarks: period=7d / 30d → nieuwe week- / maand-logica. */
+  function normalizeLegacyAnalyticsPeriodKey(raw) {
+    const key = String(raw ?? '').trim().toLowerCase();
+    if (key === '7d') return 'week';
+    if (key === '30d') return 'month';
+    return key;
+  }
+
+  function applyAnalyticsPeriodFromUrl() {
+    try {
+      const search = String(global.location?.search || '');
+      let raw = new URLSearchParams(search).get('period');
+      if (raw == null || raw === '') {
+        const h = String(global.location?.hash || '');
+        const q = h.indexOf('?');
+        if (q >= 0) raw = new URLSearchParams(h.slice(q + 1)).get('period');
+      }
+      if (raw == null || String(raw).trim() === '') return;
+      period = normalizeLegacyAnalyticsPeriodKey(String(raw).trim());
+    } catch (_) {}
+  }
 
   function fmtEuro(n) {
     return `€ ${Number(n || 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -81,6 +103,40 @@
     const d = new Date(`${ymd}T12:00:00Z`);
     d.setUTCDate(d.getUTCDate() + delta);
     return d.toISOString().slice(0, 10);
+  }
+  /** Middelpunt van een Amsterdamse kalenderdag (ymd) voor weekday-berekening. */
+  function instantForAmsterdamCalendarYmd(ymd) {
+    const parts = String(ymd || '')
+      .trim()
+      .split('-');
+    if (parts.length !== 3) return Date.now();
+    const y = parseInt(parts[0], 10);
+    const mo = parseInt(parts[1], 10);
+    const d = parseInt(parts[2], 10);
+    if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return Date.now();
+    const ymdStr = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const start = Date.UTC(y, mo - 1, d, 0, 0, 0) - 12 * 3600000;
+    const end = start + 72 * 3600000;
+    for (let t = start; t < end; t += 1800000) {
+      if (new Date(t).toLocaleDateString('en-CA', { timeZone: 'Europe/Amsterdam' }) === ymdStr) {
+        return t;
+      }
+    }
+    return Date.UTC(y, mo - 1, d, 12, 0, 0);
+  }
+  /** Maandag = 0 … zondag = 6 (ISO-week, Amsterdam). */
+  function weekdayMon0Amsterdam(ymd) {
+    const t = instantForAmsterdamCalendarYmd(ymd);
+    const wd = new Date(t).toLocaleDateString('en-US', { timeZone: 'Europe/Amsterdam', weekday: 'short' });
+    const map = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+    return map[wd] ?? 0;
+  }
+  /** Maandag van de week waarin `ymd` (Amsterdam) valt, t/m diezelfde logica als todayYmd. */
+  function mondayThisWeekAmsterdam(ymd) {
+    const n = weekdayMon0Amsterdam(ymd);
+    let cur = String(ymd || '').trim();
+    for (let i = 0; i < n; i += 1) cur = addDaysYmd(cur, -1);
+    return cur;
   }
   function startOfMonthYmd(ymd) {
     const d = new Date(`${ymd}T12:00:00Z`);
@@ -161,7 +217,8 @@
     }
   }
   function buildRangeQuery(inputPeriod, isPrevious = false) {
-    if (inputPeriod === 'custom') {
+    const p = normalizeLegacyAnalyticsPeriodKey(inputPeriod);
+    if (p === 'custom') {
       const s = customStart || todayYmd();
       const e = customEnd || s;
       if (!isPrevious) return `startDate=${encodeURIComponent(s)}&endDate=${encodeURIComponent(e)}`;
@@ -171,15 +228,37 @@
       const prevStart = addDaysYmd(prevEnd, -(diff - 1));
       return `startDate=${encodeURIComponent(prevStart)}&endDate=${encodeURIComponent(prevEnd)}`;
     }
-    if (inputPeriod === 'today') {
+    if (p === 'today') {
       const t = todayYmd();
       if (!isPrevious) return `startDate=${encodeURIComponent(t)}&endDate=${encodeURIComponent(t)}`;
-      const p = addDaysYmd(t, -1);
-      return `startDate=${encodeURIComponent(p)}&endDate=${encodeURIComponent(p)}`;
+      const prev = addDaysYmd(t, -1);
+      return `startDate=${encodeURIComponent(prev)}&endDate=${encodeURIComponent(prev)}`;
     }
-    if (!isPrevious) return `period=${encodeURIComponent(inputPeriod)}`;
-    const prevMap = { '7d': '7d', '30d': '30d', kwartaal: 'kwartaal', jaar: 'jaar' };
-    return `period=${encodeURIComponent(prevMap[inputPeriod] || '30d')}&_prev=1`;
+    if (p === 'week') {
+      const today = todayYmd();
+      const start = mondayThisWeekAmsterdam(today);
+      const end = today;
+      if (!isPrevious) return `startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}`;
+      const dayMs = 24 * 60 * 60 * 1000;
+      const diff = Math.max(1, Math.floor((new Date(`${end}T12:00:00Z`) - new Date(`${start}T12:00:00Z`)) / dayMs) + 1);
+      const prevEnd = addDaysYmd(start, -1);
+      const prevStart = addDaysYmd(prevEnd, -(diff - 1));
+      return `startDate=${encodeURIComponent(prevStart)}&endDate=${encodeURIComponent(prevEnd)}`;
+    }
+    if (p === 'month') {
+      const today = todayYmd();
+      const start = startOfMonthYmd(today);
+      const end = today;
+      if (!isPrevious) return `startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}`;
+      const dayMs = 24 * 60 * 60 * 1000;
+      const diff = Math.max(1, Math.floor((new Date(`${end}T12:00:00Z`) - new Date(`${start}T12:00:00Z`)) / dayMs) + 1);
+      const prevEnd = addDaysYmd(start, -1);
+      const prevStart = addDaysYmd(prevEnd, -(diff - 1));
+      return `startDate=${encodeURIComponent(prevStart)}&endDate=${encodeURIComponent(prevEnd)}`;
+    }
+    if (!isPrevious) return `period=${encodeURIComponent(p)}`;
+    const prevMap = { week: '7d', month: '30d', kwartaal: 'kwartaal', jaar: 'jaar' };
+    return `period=${encodeURIComponent(prevMap[p] || '30d')}&_prev=1`;
   }
   function comparePct(curr, prev) {
     const c = Number(curr || 0);
@@ -582,8 +661,8 @@
     if (!el) return;
     const opts = [
       ['today', 'Vandaag'],
-      ['7d', '7d'],
-      ['30d', '30d'],
+      ['week', 'Deze week'],
+      ['month', 'Deze maand'],
       ['kwartaal', 'Kwartaal'],
       ['jaar', 'Jaar'],
       ['custom', 'Aangepast'],
@@ -591,12 +670,12 @@
     el.innerHTML = opts.map(([id, label]) => `<button type="button" class="chip-btn ${period === id ? 'is-active' : ''}" data-period="${id}">${label}</button>`).join('');
     el.querySelectorAll('[data-period]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const next = btn.getAttribute('data-period') || '30d';
+        const next = btn.getAttribute('data-period') || 'today';
         if (next === 'custom') {
           openCustomRangePicker();
           return;
         }
-        period = next;
+        period = normalizeLegacyAnalyticsPeriodKey(next);
         renderPeriodFilters();
         void loadAllSections();
       });
@@ -870,6 +949,10 @@
     renderOperationalSection();
   }
   function render() {
+    if (!bootstrapped) {
+      applyAnalyticsPeriodFromUrl();
+    }
+    period = normalizeLegacyAnalyticsPeriodKey(period);
     renderPeriodFilters();
     renderKpis();
     renderInventorySection();

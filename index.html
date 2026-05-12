@@ -115,6 +115,13 @@
     top: 0;
     z-index: 100;
   }
+  @media (min-width: 1180px) {
+    body:not(.user-jerry) header {
+      position: relative;
+      top: auto;
+      z-index: 20;
+    }
+  }
 
   .logo {
     font-family: var(--font-display);
@@ -2458,15 +2465,65 @@
   .mobile-menu-panel {
     position: absolute;
     inset: 0 auto 0 0;
-    width: min(84vw, 320px);
+    width: min(84vw, 300px);
+    max-width: 100%;
     background: var(--surface);
     border-right: 1px solid var(--border);
+    box-shadow: 4px 0 24px rgba(26, 21, 18, 0.08);
     transform: translateX(-102%);
     transition: transform 0.24s ease;
-    padding: max(12px, env(safe-area-inset-top)) 12px 12px;
+    padding: max(14px, env(safe-area-inset-top)) 14px 16px max(16px, env(safe-area-inset-bottom));
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
+    z-index: 2;
+    pointer-events: auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .mobile-menu-item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 44px;
+    padding: 10px 14px;
+    border-radius: var(--wm-radius-md, 10px);
+    border: 1px solid var(--border);
+    background: #fff;
+    color: #645c52;
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    text-align: center;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .mobile-menu-item:hover {
+    background: #fdfbf8;
+    border-color: #d9d2c5;
+  }
+  .mobile-menu-item:active {
+    background: #f5f1ea;
+  }
+  .mobile-menu-item--primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .mobile-menu-item--primary:hover {
+    opacity: 0.92;
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .mobile-menu-item--danger {
+    border-color: rgba(160, 47, 8, 0.35);
+    color: #a02f08;
+    background: #fff8f5;
   }
   .mobile-menu-overlay.visible .mobile-menu-panel {
     transform: translateX(0);
@@ -3912,6 +3969,43 @@
   body.user-jerry .meta-value {
     font-size: 16px !important;
   }
+  body.user-jerry .appt-meta .meta-pill {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 8px 14px 10px !important;
+    border-radius: 999px !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+  }
+  body.user-jerry .appt-meta .meta-pill-label {
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.07em !important;
+    text-transform: uppercase !important;
+    color: rgba(200, 200, 220, 0.75) !important;
+  }
+  body.user-jerry .appt-meta .meta-pill-value {
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    color: rgba(232, 232, 240, 0.92) !important;
+  }
+  body.user-jerry .appt-wm-pill--moneybird,
+  body.user-jerry a.appt-wm-pill--moneybird {
+    font-size: 12px !important;
+    padding: 5px 12px !important;
+    border-radius: 999px !important;
+    border: 1px solid rgba(255, 255, 255, 0.14) !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+    color: rgba(210, 210, 230, 0.9) !important;
+    text-decoration: none !important;
+    font-weight: 600 !important;
+  }
+  body.user-jerry a.appt-wm-pill--moneybird:hover {
+    border-color: rgba(255, 255, 255, 0.22) !important;
+    background: rgba(255, 255, 255, 0.09) !important;
+  }
   body.user-jerry .appt-notes {
     font-size: clamp(16px, 4vw, 22px) !important;
     padding: 10px 12px !important;
@@ -4525,6 +4619,31 @@
     border: 1px solid var(--border);
     background: #fdfbf8;
   }
+  body:not(.user-jerry) .appt-meta .meta-pill {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 5px 10px 6px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: #fff;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
+  }
+  body:not(.user-jerry) .appt-meta .meta-pill-label {
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #8e867c;
+    line-height: 1.2;
+  }
+  body:not(.user-jerry) .appt-meta .meta-pill-value {
+    font-size: 11px;
+    font-weight: 600;
+    color: #645c52;
+    line-height: 1.25;
+  }
   .appt-notes {
     margin-top: 8px;
     border-radius: var(--wm-radius-sm);
@@ -4733,15 +4852,17 @@
   }
   body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-btn--onderweg-actie {
     min-height: 36px;
-    padding: 0 14px;
+    padding: 0 12px;
     border-radius: var(--wm-radius-sm);
-    border: none;
-    background: linear-gradient(180deg, rgba(251, 191, 36, 0.95) 0%, rgba(245, 158, 11, 0.92) 100%);
-    color: #422006;
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset, 0 2px 8px rgba(217, 119, 6, 0.22);
+    border: 1px solid var(--border);
+    background: #ffffff;
+    color: #645c52;
+    box-shadow: none;
   }
   body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-btn--onderweg-actie:hover {
-    filter: brightness(1.03);
+    color: var(--text);
+    border-color: #d9d2c5;
+    background: #fdfbf8;
   }
   body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-btn--klaar {
     min-height: 36px;
@@ -4792,6 +4913,23 @@
     background: rgba(16, 185, 129, 0.12);
     border: 1px solid rgba(16, 185, 129, 0.4);
     color: #047857;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--moneybird,
+  body:not(.user-jerry) .appt-card--layout-v2 a.appt-wm-pill--moneybird {
+    background: rgba(142, 134, 124, 0.08);
+    border: 1px solid rgba(142, 134, 124, 0.22);
+    color: #8e867c;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 a.appt-wm-pill--moneybird:hover {
+    border-color: rgba(142, 134, 124, 0.35);
+    color: #645c52;
+    background: rgba(142, 134, 124, 0.12);
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--moneybird--text {
+    cursor: default;
   }
   body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-actions-slot {
     margin: 0;
@@ -4897,12 +5035,19 @@
   }
 
   .mobile-menu-panel {
-    border-radius: 12px 12px 0 0;
-    background: #fff;
+    background: #fdfbf8;
+    border-radius: 0 12px 12px 0;
     border: 1px solid var(--border);
-    border-bottom: none;
-    padding: 16px;
-    box-shadow: none;
+    border-left: none;
+    box-shadow: 4px 0 28px rgba(26, 21, 18, 0.07);
+  }
+  .mobile-menu-panel .section-title,
+  .mobile-menu-title {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #8e867c;
+    margin-bottom: 6px;
   }
   .mobile-tab {
     border-radius: var(--wm-radius-md);
@@ -6048,6 +6193,14 @@
     padding: 6px 10px;
   }
   .chip-btn.is-active { background: var(--ink); color: #fff; border-color: var(--ink); }
+  #panelAnalytics .chip-btn {
+    font-size: 11px;
+    padding: 4px 9px;
+    min-height: 28px;
+    line-height: 1.2;
+    border-radius: 6px;
+    font-weight: 500;
+  }
   .table-clean { width: 100%; border-collapse: collapse; font-size: 13px; }
   .table-clean th, .table-clean td { border-bottom: 1px solid var(--border); padding: 8px 6px; text-align: left; }
   .table-clean th { color: var(--ink-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
@@ -6209,7 +6362,7 @@
     /* ── Desktop compact density (Daan): na warm-minimal defaults; niet Jerry / niet <1180 ── */
     body:not(.user-jerry) {
       --appts-header-util-size: 40px;
-      --appts-header-cta-height: 36px;
+      --appts-header-cta-height: 32px;
       --appts-header-actions-gap: 8px;
       --appts-header-util-gap: 5px;
       --appt-action-icon-size: 38px;
@@ -6300,9 +6453,19 @@
       margin: 6px 0 10px;
     }
     body:not(.user-jerry) .appointments-header-actions .btn-add {
-      font-size: 12px;
-      padding: 0 12px;
-      border-radius: 12px;
+      font-size: 11.5px;
+      padding: 0 10px;
+      border-radius: 8px;
+      min-height: 32px;
+      height: 32px;
+    }
+    body:not(.user-jerry) .appointments-header-util .btn-dagopgave,
+    body:not(.user-jerry) .appointments-header-util .planner-app-icon-btn.btn-day-block {
+      width: 34px;
+      height: 34px;
+      min-width: 34px;
+      min-height: 34px;
+      border-radius: 8px;
     }
     body:not(.user-jerry) #panelAfspraken .today-page-header .appointments-header-actions .today-btn {
       min-height: 32px;
@@ -6311,10 +6474,10 @@
       border-radius: 9px;
     }
     body:not(.user-jerry) .appointments-header-util .btn-dagopgave {
-      font-size: 16px;
+      font-size: 14px;
     }
     body:not(.user-jerry) .appointments-header-util .planner-app-icon-btn.btn-day-block .btn-day-block-ic {
-      font-size: 16px;
+      font-size: 14px;
     }
     body:not(.user-jerry) .planner-desktop-search {
       width: clamp(200px, 19vw, 280px);
@@ -6450,14 +6613,14 @@
   <button class="mobile-tab" id="tabMenu" onclick="toggleMobileMenu(true)">☰ Menu</button>
 </div>
 <div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="if(event.target===this)toggleMobileMenu(false)">
-  <div class="mobile-menu-panel">
-    <div class="section-title" style="margin-bottom:4px">Menu</div>
-    <button class="btn-add" type="button" onclick="toggleMobileMenu(false);openModal()">+ Afspraak</button>
-    <button class="btn-dagopgave" type="button" onclick="toggleMobileMenu(false);openDagopgave()">● Dagopgave</button>
-    <button type="button" class="planner-app-icon-btn btn-day-block btn-day-block--menu" id="btnBlockDayGhlMobile" onclick="toggleMobileMenu(false);onBlockDayButtonClick()" aria-label="Blokkeer dag">
-      <span class="btn-day-block-ic" aria-hidden="true">■</span>
+  <div class="mobile-menu-panel" role="dialog" aria-label="Menu" onclick="event.stopPropagation()">
+    <div class="section-title mobile-menu-title">Menu</div>
+    <button class="mobile-menu-item mobile-menu-item--primary" type="button" onclick="toggleMobileMenu(false);openModal()">+ Nieuwe afspraak</button>
+    <button class="mobile-menu-item" type="button" onclick="toggleMobileMenu(false);openDagopgave()">Dagopgave</button>
+    <button type="button" class="mobile-menu-item" id="btnBlockDayGhlMobile" onclick="toggleMobileMenu(false);onBlockDayButtonClick()" aria-label="Blokkeer of deblokkeer dag">
+      <span class="btn-day-block-ic" aria-hidden="true">■</span> Blokkeer dag
     </button>
-    <button class="btn-logout" type="button" onclick="toggleMobileMenu(false);logoutPlanning()">Uitloggen</button>
+    <button class="mobile-menu-item mobile-menu-item--danger" type="button" onclick="toggleMobileMenu(false);logoutPlanning()">Uitloggen</button>
   </div>
 </div>
 <div class="global-search" id="globalSearchWrap" aria-hidden="true">
@@ -7317,6 +7480,26 @@ function escapeHtml(s) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
+
+/** Verwijdert planner Moneybird-notitiemarker uit zichtbare kaarttekst. */
+function stripMoneybirdPlannerMarkers(text) {
+  return String(text || '')
+    .replace(/\[moneybird\]\s*[^\n\r]*/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** Haalt Moneybird public/payment-URL uit notities/omschrijving (geen id/reference tonen). */
+function extractMoneybirdUrlFromPlannerText(text) {
+  const raw = String(text || '');
+  const block = raw.match(/\[moneybird\][^\n\r]*/i);
+  if (block) {
+    const um = block[0].match(/\burl=(\S+)/i);
+    if (um && um[1]) return um[1].trim().replace(/[,;)\]}>'"]+$/, '');
+  }
+  const m2 = raw.match(/\burl=(https?:\/\/[^\s]+)/i);
+  return m2 ? m2[1].trim().replace(/[,;)\]}>'"]+$/, '') : '';
 }
 
 function plannerDesktopRemoteSearchEnabled() {
@@ -9714,8 +9897,26 @@ function renderApptCard(a, i) {
     const lastServiceInputVal = String(a.lastService || '').trim() || routeYmdPlanner;
 
     const metaItems = [];
-    if (a.datumInstallatie) metaItems.push(`<div class="meta-item"><div class="meta-label">Installatie</div><div class="meta-value">${a.datumInstallatie}</div></div>`);
-    if (a.datumOnderhoud) metaItems.push(`<div class="meta-item"><div class="meta-label">Laatste onderhoud</div><div class="meta-value">${a.datumOnderhoud}</div></div>`);
+    if (a.datumInstallatie) {
+      metaItems.push(
+        `<div class="meta-pill"><span class="meta-pill-label">Installatie</span><span class="meta-pill-value">${escapeHtml(a.datumInstallatie)}</span></div>`
+      );
+    }
+    if (a.datumOnderhoud) {
+      metaItems.push(
+        `<div class="meta-pill"><span class="meta-pill-label">Laatste onderhoud</span><span class="meta-pill-value">${escapeHtml(a.datumOnderhoud)}</span></div>`
+      );
+    }
+
+    const mbSourceText = `${String(a.notes || '')}\n${String(a.jobDescription || '')}`;
+    const mbUrl = isDone ? extractMoneybirdUrlFromPlannerText(mbSourceText) : '';
+    const moneybirdPillHtml = isDone
+      ? mbUrl
+        ? `<a class="appt-wm-pill appt-wm-pill--moneybird" href="${escapeHtml(mbUrl)}" target="_blank" rel="noopener noreferrer">Factuur via Moneybird</a>`
+        : `<span class="appt-wm-pill appt-wm-pill--moneybird appt-wm-pill--moneybird--text">Factuur via Moneybird</span>`
+      : '';
+    const jobDescDisplay = stripMoneybirdPlannerMarkers(String(a.jobDescription || ''));
+    const noteStripped = stripMoneybirdPlannerMarkers(String(a.notes || '').trim());
 
     const ghlMenuAttrs = a.ghlUrl
       ? a.ghlAppUrl
@@ -9779,7 +9980,7 @@ function renderApptCard(a, i) {
       pillHtml = `<span class="appt-wm-pill appt-wm-pill--onderweg">${wmPillClock}Onderweg</span>`;
     } else {
       pillHtml = `<span class="appt-wm-pill appt-wm-pill--type appt-wm-pill--type-${escapeHtml(jobTypeKey)}">${escapeHtml(jobTypeLabel)}</span>`;
-      if (/(garantie)/i.test(String(a.jobDescription || '') + ' ' + String(a.notes || ''))) {
+      if (/(garantie)/i.test(`${jobDescDisplay} ${noteStripped}`)) {
         pillHtml += ` <span class="appt-wm-pill appt-wm-pill--garantie">Garantie</span>`;
       }
     }
@@ -9800,11 +10001,9 @@ function renderApptCard(a, i) {
       return `<span class="route-pin-badge">${pinTypeLabel} ${pin.time}</span>`;
     })();
     const notesHtml = (() => {
-      const note = String(a.notes || '').trim();
-      const desc = String(a.jobDescription || '').trim();
-      if (!note) return '';
-      if (note.toLowerCase() === desc.toLowerCase()) return '';
-      return `<div class="appt-notes appt-wm-notes">● ${note}</div>`;
+      if (!noteStripped) return '';
+      if (noteStripped.toLowerCase() === String(jobDescDisplay || '').trim().toLowerCase()) return '';
+      return `<div class="appt-notes appt-wm-notes">● ${escapeHtml(noteStripped)}</div>`;
     })();
     const jerryIconStrip = !layoutV2
       ? `<div class="appt-actions__icons appt-wm-jerry-icons">
@@ -9833,12 +10032,12 @@ function renderApptCard(a, i) {
                 ${jerryIconStrip}
               </div>
             </div>
-            <div class="appt-desc appt-wm-desc">${a.jobDescription || ''}</div>
+            <div class="appt-desc appt-wm-desc">${jobDescDisplay}</div>
             ${metaItems.length ? `<div class="appt-meta appt-wm-meta">${metaItems.join('')}</div>` : ''}
             ${notesHtml}
             <div class="appt-wm-rule" role="separator"></div>
             <div class="appt-footer appt-wm-footer">
-              <div class="appt-wm-footer-left">${pillHtml}</div>
+              <div class="appt-wm-footer-left">${pillHtml}${moneybirdPillHtml}</div>
               <div class="appt-footer-right appt-wm-footer-right">
                 <div class="appt-footer-actions-touch appt-wm-cta-wrap">
                   <div class="appt-footer-cta-row appt-wm-cta-row">
@@ -9882,22 +10081,21 @@ function renderApptCard(a, i) {
         ${pinHtml}
         <div class="appt-body">
           <div class="appt-name">${a.name}</div>
-          <div class="appt-desc">${a.jobDescription || ''}</div>
+          <div class="appt-desc">${jobDescDisplay}</div>
         </div>
         ${metaItems.length ? `<div class="appt-meta">${metaItems.join('')}</div>` : ''}
         ${(() => {
-          const note = String(a.notes || '').trim();
-          const desc = String(a.jobDescription || '').trim();
-          if (!note) return '';
-          if (note.toLowerCase() === desc.toLowerCase()) return '';
-          return `<div class="appt-notes">● ${note}</div>`;
+          if (!noteStripped) return '';
+          if (noteStripped.toLowerCase() === String(jobDescDisplay || '').trim().toLowerCase()) return '';
+          return `<div class="appt-notes">● ${escapeHtml(noteStripped)}</div>`;
         })()}
         <div class="appt-footer">
           <div class="appt-footer-left">
             <div class="appt-tags">
               <span class="tag ${a.jobType}">${a.jobType}</span>
-              ${/(garantie)/i.test(String(a.jobDescription || '') + ' ' + String(a.notes || '')) ? '<span class="tag garantie">garantie</span>' : ''}
+              ${/(garantie)/i.test(`${jobDescDisplay} ${noteStripped}`) ? '<span class="tag garantie">garantie</span>' : ''}
               ${a.phone ? `<span class="appt-phone">${a.phone}</span>` : ''}
+              ${isDone ? moneybirdPillHtml : ''}
             </div>
           </div>
           <div class="appt-footer-right">
