@@ -79,6 +79,24 @@
     } = ctx;
     const a = findAppointmentById(id);
     if (!a) return;
+
+    const routeDate = getDateStr(getCurrentDate());
+    const logConfirm = (event, extra = {}) => {
+      try {
+        console.info(
+          `[planner] ${event}`,
+          JSON.stringify({
+            contactId: a.contactId || null,
+            appointmentId: a.id != null ? String(a.id) : null,
+            routeDate,
+            ...extra,
+          })
+        );
+      } catch (_) {}
+    };
+
+    logConfirm('confirm_done_started', {});
+
     if (global.HKPlannerPricing?.flushDebouncedPersistPriceLines) {
       await global.HKPlannerPricing.flushDebouncedPersistPriceLines({
         appointment: a,
@@ -89,94 +107,141 @@
     const total = calcTotalPrice(a);
     const lines = a.extras || [];
     const contact = a.contact || {};
-    const routeDate = getDateStr(getCurrentDate());
     const domId = appointmentDomSafeId(id);
     const sdateEl = document.getElementById(`sdate-${domId}`);
     let lastMaintenance = String(sdateEl?.value || '').trim();
     if (!lastMaintenance) lastMaintenance = String(a.lastService || '').trim();
     if (!lastMaintenance) lastMaintenance = routeDate;
+
+    if (!a.contactId) {
+      logConfirm('confirm_done_failed', { reason: 'no_contact_id' });
+      showToast('Afronden mislukt — geen GHL-contact gekoppeld; factuur niet verstuurd', 'info');
+      return;
+    }
+
     let moneybirdHandled = false;
     /** @type {Record<string, unknown>|null} */
     let ghlDataAfterComplete = null;
-    if (a.contactId) {
-      try {
-        const ghlRes = await fetch('/api/ghl?action=completeAppointment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
-          body: JSON.stringify({
-            contactId: a.contactId,
-            appointmentId: a.id || undefined,
-            type: a.jobType,
-            sendReview: a.review,
-            lastService: lastMaintenance,
-            totalPrice: total,
-            extras: lines,
-            basePrice: Number(a.price) || 0,
-            appointmentDesc: String(a.jobDescription || '').trim(),
-            routeDate,
-          }),
-        });
-        let ghlData = /** @type {Record<string, unknown>} */ ({});
-        let jsonParseFailed = false;
-        try {
-          ghlData = await ghlRes.json();
-        } catch {
-          jsonParseFailed = true;
-          ghlData = {};
-        }
-        ghlDataAfterComplete = ghlData;
-        const rawKeys = Object.keys(ghlData || {});
-        const mbRaw = Object.prototype.hasOwnProperty.call(ghlData, 'moneybird')
-          ? ghlData.moneybird
-          : undefined;
-        const mb = mbRaw != null && typeof mbRaw === 'object' && !Array.isArray(mbRaw) ? mbRaw : null;
-        const invoiceIdStr = mb && mb.invoiceId != null ? String(mb.invoiceId).trim() : '';
-        const tokenStr =
-          mb && (mb.invoiceToken != null || mb.invoicePayToken != null)
-            ? String(mb.invoiceToken != null ? mb.invoiceToken : mb.invoicePayToken).trim()
-            : '';
-        moneybirdHandled =
-          mb != null &&
-          (mb.created === true ||
-            invoiceIdStr !== '' ||
-            mb.skipped === true ||
-            tokenStr !== '');
-        console.log(
-          '[planner] completeAppointment_response',
-          JSON.stringify({
-            contactId: a.contactId,
-            appointmentId: a.id != null ? String(a.id) : undefined,
-            ghlStatus: ghlRes.status,
-            ghlOk: ghlRes.ok,
-            jsonParseFailed,
-            rawKeys,
-            hasMoneybirdObject: mb != null,
-            moneybirdCreated: mb ? mb.created === true : false,
-            moneybirdInvoiceId: invoiceIdStr || undefined,
-            moneybirdSkipped: mb ? mb.skipped === true : false,
-            moneybirdInvoiceToken: tokenStr || undefined,
-            moneybirdHandled,
-          })
-        );
-        if (!ghlRes.ok) showToast(`⚠ GHL kon niet worden bijgewerkt (${ghlRes.status}) — afspraak wel klaar gezet`, 'info');
-        else {
-          try {
-            console.info(
-              '[planner] price_lines_persisted_after_complete',
-              JSON.stringify({
-                contactId: a.contactId || null,
-                appointmentId: a.id != null ? String(a.id) : null,
-                totalPrice: total,
-                extrasLineCount: Array.isArray(lines) ? lines.length : 0,
-                basePrice: Number(a.price) || 0,
-              })
-            );
-          } catch (_) {}
-        }
-      } catch {
-        showToast('⚠ GHL niet bereikbaar — afspraak wel klaar gezet', 'info');
-      }
+    /** @type {Response|null} */
+    let ghlRes = null;
+    let fetchErrored = false;
+    let jsonParseFailed = false;
+
+    try {
+      ghlRes = await fetch('/api/ghl?action=completeAppointment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
+        body: JSON.stringify({
+          contactId: a.contactId,
+          appointmentId: a.id || undefined,
+          type: a.jobType,
+          sendReview: a.review,
+          lastService: lastMaintenance,
+          totalPrice: total,
+          extras: lines,
+          basePrice: Number(a.price) || 0,
+          appointmentDesc: String(a.jobDescription || '').trim(),
+          routeDate,
+        }),
+      });
+    } catch (e) {
+      fetchErrored = true;
+      logConfirm('confirm_done_failed', {
+        reason: 'fetch_error',
+        message: e && e.message ? String(e.message) : String(e),
+      });
+      showToast('Afronden mislukt — factuur niet verstuurd', 'info');
+      return;
     }
+
+    try {
+      ghlDataAfterComplete = await ghlRes.json();
+    } catch {
+      jsonParseFailed = true;
+      ghlDataAfterComplete = {};
+    }
+
+    const gate = global.HKPlannerConfirmDoneGate || {};
+    const shouldKlaar =
+      typeof gate.shouldMarkKlaarLocally === 'function'
+        ? gate.shouldMarkKlaarLocally({
+            hasContactId: !!a.contactId,
+            ghlResponseOk: !!ghlRes.ok,
+            fetchErrored: false,
+          })
+        : !!ghlRes.ok;
+
+    if (!shouldKlaar) {
+      logConfirm('confirm_done_failed', {
+        reason: 'ghl_response_not_ok',
+        ghlStatus: ghlRes.status,
+        jsonParseFailed,
+      });
+      showToast('Afronden mislukt — factuur niet verstuurd', 'info');
+      return;
+    }
+
+    const rawKeys = Object.keys(ghlDataAfterComplete || {});
+    const mbRaw = Object.prototype.hasOwnProperty.call(ghlDataAfterComplete || {}, 'moneybird')
+      ? ghlDataAfterComplete.moneybird
+      : undefined;
+    const mb = mbRaw != null && typeof mbRaw === 'object' && !Array.isArray(mbRaw) ? mbRaw : null;
+    const invoiceIdStr = mb && mb.invoiceId != null ? String(mb.invoiceId).trim() : '';
+    const tokenStr =
+      mb && (mb.invoiceToken != null || mb.invoicePayToken != null)
+        ? String(mb.invoiceToken != null ? mb.invoiceToken : mb.invoicePayToken).trim()
+        : '';
+    moneybirdHandled =
+      mb != null &&
+      (mb.created === true ||
+        invoiceIdStr !== '' ||
+        mb.skipped === true ||
+        tokenStr !== '');
+    console.log(
+      '[planner] completeAppointment_response',
+      JSON.stringify({
+        contactId: a.contactId,
+        appointmentId: a.id != null ? String(a.id) : undefined,
+        ghlStatus: ghlRes.status,
+        ghlOk: ghlRes.ok,
+        jsonParseFailed,
+        rawKeys,
+        hasMoneybirdObject: mb != null,
+        moneybirdCreated: mb ? mb.created === true : false,
+        moneybirdInvoiceId: invoiceIdStr || undefined,
+        moneybirdSkipped: mb ? mb.skipped === true : false,
+        moneybirdInvoiceToken: tokenStr || undefined,
+        moneybirdHandled,
+      })
+    );
+
+    if (mb && mb.skipped === true) {
+      const r = mb.reason != null ? String(mb.reason).trim() : '';
+      logConfirm('moneybird_skipped_reason', {
+        reason: r || null,
+        moneybirdCreated: mb.created === true,
+        invoiceId: invoiceIdStr || undefined,
+      });
+      const skipMsg =
+        typeof gate.moneybirdSkippedUserMessage === 'function'
+          ? gate.moneybirdSkippedUserMessage(mb)
+          : null;
+      if (skipMsg) showToast(skipMsg, 'info');
+    }
+
+    try {
+      console.info(
+        '[planner] price_lines_persisted_after_complete',
+        JSON.stringify({
+          contactId: a.contactId || null,
+          appointmentId: a.id != null ? String(a.id) : null,
+          totalPrice: total,
+          extrasLineCount: Array.isArray(lines) ? lines.length : 0,
+          basePrice: Number(a.price) || 0,
+        })
+      );
+    } catch (_) {}
+
     const mbForLegacy = (() => {
       const d = ghlDataAfterComplete;
       if (!d || !Object.prototype.hasOwnProperty.call(d, 'moneybird')) return null;
@@ -247,6 +312,11 @@
     }
     a.status = 'klaar';
     saveKlaarStatus(a.id, a.contactId, getDateStr(getCurrentDate()));
+    logConfirm('confirm_done_completed', {
+      jsonParseFailed,
+      moneybirdSkipped: mb ? mb.skipped === true : false,
+      moneybirdReason: mb && mb.reason != null ? String(mb.reason) : null,
+    });
     console.info(
       '[planner] completion_state_written',
       JSON.stringify({
