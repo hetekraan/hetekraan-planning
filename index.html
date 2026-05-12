@@ -4564,6 +4564,278 @@
     padding: 14px 16px 16px;
   }
 
+  /* WM layout v2: afspraakkaart (alleen niet-Jerry; planner blijft vanilla) */
+  body:not(.user-jerry) .appt-card--layout-v2 {
+    border-radius: var(--wm-radius-md);
+    margin-bottom: var(--wm-gap-3);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    overflow: visible;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-actions-mobile {
+    position: relative;
+    z-index: 4;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2:hover {
+    transform: none;
+    border-color: rgba(142, 134, 124, 0.38);
+    box-shadow: 0 6px 20px rgba(36, 32, 28, 0.06);
+  }
+  body:not(.user-jerry) .appt-card--layout-v2.done::after {
+    display: none;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2.appt-card--todo {
+    border-left: 3px solid rgba(142, 134, 124, 0.35);
+  }
+  body:not(.user-jerry) .appt-card--layout-v2.onderweg {
+    border-color: rgba(217, 119, 6, 0.42);
+    border-left: 3px solid rgba(245, 158, 11, 0.72);
+    background: linear-gradient(180deg, rgba(255, 251, 235, 0.55) 0%, var(--surface) 52%);
+  }
+  body:not(.user-jerry) .appt-card--layout-v2.done {
+    border-left: 3px solid rgba(16, 185, 129, 0.55);
+    opacity: 1;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-inner--wm {
+    padding: 16px 18px 16px 16px;
+    gap: 0;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-layout {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+    column-gap: 10px;
+    align-items: start;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-num {
+    position: static;
+    padding-top: 2px;
+    font-size: 15px;
+    font-weight: 700;
+    color: rgba(100, 92, 82, 0.45);
+    text-align: center;
+    line-height: 1.2;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-head-text {
+    flex: 1;
+    min-width: 0;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-address {
+    font-size: clamp(14px, 1.4vw, 16px);
+    font-weight: 700;
+    color: #3d3833;
+    line-height: 1.3;
+    letter-spacing: -0.02em;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-customer {
+    margin-top: 4px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: #8e867c;
+    line-height: 1.35;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .route-pin-badge {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 11px;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-head-aside {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-price {
+    font-size: 17px;
+    font-weight: 700;
+    color: #645c52;
+    letter-spacing: -0.02em;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2.done .appt-wm-price {
+    color: rgba(100, 92, 82, 0.65);
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-desc {
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: #8e867c;
+    margin-top: 4px;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-meta {
+    margin-top: 4px;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-notes {
+    margin-top: 6px;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-rule {
+    height: 1px;
+    background: var(--border);
+    margin: 10px 0 4px;
+    border: 0;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 0;
+    border-top: none;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-footer-left {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-footer-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-cta-wrap {
+    width: auto;
+    max-width: none;
+    margin-left: 0;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-cta-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 8px;
+    width: auto;
+    max-width: none;
+    margin-left: 0;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-weight: 600;
+    -webkit-font-smoothing: antialiased;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-btn-ic {
+    flex-shrink: 0;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-btn--onderweg-actie {
+    min-height: 36px;
+    padding: 0 14px;
+    border-radius: var(--wm-radius-sm);
+    border: none;
+    background: linear-gradient(180deg, rgba(251, 191, 36, 0.95) 0%, rgba(245, 158, 11, 0.92) 100%);
+    color: #422006;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset, 0 2px 8px rgba(217, 119, 6, 0.22);
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-btn--onderweg-actie:hover {
+    filter: brightness(1.03);
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-btn--klaar {
+    min-height: 36px;
+    padding: 0 12px;
+    border-radius: var(--wm-radius-sm);
+    border: 1px solid rgba(16, 185, 129, 0.55);
+    background: rgba(16, 185, 129, 0.1);
+    color: #047857;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-btn--klaar:hover {
+    background: rgba(16, 185, 129, 0.16);
+  }
+  body:not(.user-jerry) .appt-card--layout-v2.done .appt-wm-btn--prijs {
+    border-color: rgba(16, 185, 129, 0.42);
+    background: rgba(255, 255, 255, 0.65);
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    line-height: 1.3;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill-ic {
+    flex-shrink: 0;
+    opacity: 0.85;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--type {
+    background: rgba(142, 134, 124, 0.12);
+    border: 1px solid rgba(142, 134, 124, 0.2);
+    color: #645c52;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--garantie {
+    background: rgba(59, 130, 246, 0.08);
+    border: 1px solid rgba(59, 130, 246, 0.22);
+    color: #1d4ed8;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--onderweg {
+    background: rgba(251, 191, 36, 0.16);
+    border: 1px solid rgba(245, 158, 11, 0.45);
+    color: #b45309;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--klaar {
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.4);
+    color: #047857;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-actions-slot {
+    margin: 0;
+    overflow: visible;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-menu-btn {
+    border-radius: var(--wm-radius-sm);
+    background: rgba(255, 255, 255, 0.55);
+    border: 1px solid var(--border);
+  }
+  @media (min-width: 640px) {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-actions-mobile {
+      display: block !important;
+    }
+  }
+  @media (max-width: 1179px) {
+    body:not(.user-jerry) .appt-card--layout-v2 {
+      display: block !important;
+    }
+    body:not(.user-jerry) .appt-card--layout-v2 > .complete-bar {
+      grid-column: auto !important;
+      grid-row: auto !important;
+    }
+  }
+  @media (max-width: 639px) {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-footer-actions-touch,
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-footer-cta-row {
+      max-width: none !important;
+      width: 100% !important;
+      margin-left: 0 !important;
+    }
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-footer {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-footer-right {
+      margin-left: 0;
+      width: 100%;
+    }
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-cta-row {
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+  }
+
   .planner-week-nav {
     border-radius: var(--wm-radius-lg);
     margin-top: 6px;
@@ -9023,7 +9295,7 @@ const touchPriceOverlayState = {
   scrollYBeforeOpen: 0,
 };
 
-/** Sluit alle compacte mobiele actiemenu’s op afspraakkaarten (breakpoint ≤639px). */
+/** Sluit alle ⋯-actiemenu’s op afspraakkaarten (mobiel + layout v2 desktop). */
 function closeMobileApptActionMenus() {
   document.querySelectorAll('.appt-actions__dropdown.is-open').forEach((dd) => {
     dd.classList.remove('is-open');
@@ -9037,8 +9309,12 @@ function toggleMobileApptActionMenu(ev, domId) {
     ev.preventDefault();
     ev.stopPropagation();
   }
-  if (!window.matchMedia || !window.matchMedia('(max-width: 639px)').matches) return;
   const dd = document.getElementById('mob-menu-' + domId);
+  const card = dd?.closest('.appt-card');
+  const layoutV2Card = card?.classList.contains('appt-card--layout-v2');
+  const narrowMobile =
+    window.matchMedia && window.matchMedia('(max-width: 639px)').matches;
+  if (!layoutV2Card && !narrowMobile) return;
   const btn = dd?.closest('.appt-actions__mobile')?.querySelector('.appt-actions__menu-btn');
   if (!dd || !btn) return;
   const willOpen = !dd.classList.contains('is-open');
@@ -9440,7 +9716,6 @@ function renderApptCard(a, i) {
     if (a.datumInstallatie) metaItems.push(`<div class="meta-item"><div class="meta-label">Installatie</div><div class="meta-value">${a.datumInstallatie}</div></div>`);
     if (a.datumOnderhoud) metaItems.push(`<div class="meta-item"><div class="meta-label">Laatste onderhoud</div><div class="meta-value">${a.datumOnderhoud}</div></div>`);
 
-    const slotHint = (a.dayPart ?? 1) === 0 ? 'Ochtend 09–13' : 'Middag 13–17';
     const ghlMenuAttrs = a.ghlUrl
       ? a.ghlAppUrl
         ? ` data-ghl-app="${escapeHtml(a.ghlAppUrl)}" onclick="closeMobileApptActionMenus();return hkOpenGhlContact(event,this)"`
@@ -9468,11 +9743,120 @@ function renderApptCard(a, i) {
       );
     }
     mobileMenuRows.push(
-      `<button type="button" role="menuitem" class="appt-actions__menu-item" onclick="closeMobileApptActionMenus();openAppointmentEditModal(${idQ})">Bewerken</button>`,
-      `<button type="button" role="menuitem" class="appt-actions__menu-item appt-actions__menu-item--danger" onclick="closeMobileApptActionMenus();deleteAppt(${idQ})">Verwijderen</button>`
+      `<button type="button" role="menuitem" class="appt-actions__menu-item appt-wm-menu-item" onclick="closeMobileApptActionMenus();openAppointmentEditModal(${idQ})">✏️ Bewerken</button>`,
+      `<button type="button" role="menuitem" class="appt-actions__menu-item appt-actions__menu-item--danger appt-wm-menu-item" onclick="closeMobileApptActionMenus();deleteAppt(${idQ})">✕ Verwijderen</button>`
     );
-    return `
-    <div class="appt-card ${isDone?'done':''} ${isOnderweg?'onderweg':''} ${isViolation?'violation':''}" id="card-${domId}">
+    const layoutV2 =
+      typeof document !== 'undefined' && document.body && !document.body.classList.contains('user-jerry');
+    const wmPillClock =
+      '<svg class="appt-wm-pill-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+    const wmPillCheck =
+      '<svg class="appt-wm-pill-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+    const wmBtnCheck =
+      '<svg class="appt-wm-btn-ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>';
+    const jobTypeKey = String(a.jobType || 'onbekend').toLowerCase();
+    const jobTypeLabel = jobTypeKey.charAt(0).toUpperCase() + jobTypeKey.slice(1);
+    const customerLine = (() => {
+      const n = escapeHtml(String(a.name || '').trim());
+      const p = String(a.phone || '').trim();
+      if (!n && !p) return '';
+      if (!n) return escapeHtml(p);
+      if (!p) return n;
+      return `${n} · ${escapeHtml(p)}`;
+    })();
+    const priceHeader = (() => {
+      const total = Math.round(calcTotalPrice(a) * 100) / 100;
+      const txt = total > 0 ? `€${euroDisplay(total)}` : String(a.priceLabel || '').trim();
+      if (!txt) return '';
+      const zeroAttr = total <= 0 ? ' data-zero="1"' : '';
+      return `<span class="appt-price appt-wm-price" id="appt-price-${domId}"${zeroAttr}>${txt}</span>`;
+    })();
+    let pillHtml = '';
+    if (isDone) {
+      pillHtml = `<span class="appt-wm-pill appt-wm-pill--klaar">${wmPillCheck}Klaar · Gefactureerd</span>`;
+    } else if (isOnderweg) {
+      pillHtml = `<span class="appt-wm-pill appt-wm-pill--onderweg">${wmPillClock}Onderweg</span>`;
+    } else {
+      pillHtml = `<span class="appt-wm-pill appt-wm-pill--type appt-wm-pill--type-${escapeHtml(jobTypeKey)}">${escapeHtml(jobTypeLabel)}</span>`;
+      if (/(garantie)/i.test(String(a.jobDescription || '') + ' ' + String(a.notes || ''))) {
+        pillHtml += ` <span class="appt-wm-pill appt-wm-pill--garantie">Garantie</span>`;
+      }
+    }
+    const primaryCta = !isDone
+      ? isOnderweg
+        ? `<button type="button" class="btn-done appt-wm-btn appt-wm-btn--klaar ${isOnderweg ? 'active' : ''}" onclick='${useTouchPriceOverlay ? `togglePrijs(event, ${idQ})` : `scrollToPrijs(${idQ})`}' title="Naar prijs en afronden" aria-label="Markeer klaar">${wmBtnCheck} Klaar</button>`
+        : `<button type="button" class="btn-done appt-wm-btn appt-wm-btn--onderweg-actie" onclick='askOnderweg(${idQ})' title="Markeer onderweg" aria-label="Markeer onderweg">Onderweg →</button>`
+      : '';
+    const pinHtml = (() => {
+      const pin =
+        a.internalFixedPin && typeof a.internalFixedPin === 'object'
+          ? a.internalFixedPin
+          : a.internalFixedStartTime
+            ? { type: 'exact', time: a.internalFixedStartTime }
+            : null;
+      if (!pin) return '';
+      const pinTypeLabel = { exact: 'Op', after: 'Na', before: 'Voor' }[pin.type] || 'Op';
+      return `<span class="route-pin-badge">${pinTypeLabel} ${pin.time}</span>`;
+    })();
+    const notesHtml = (() => {
+      const note = String(a.notes || '').trim();
+      const desc = String(a.jobDescription || '').trim();
+      if (!note) return '';
+      if (note.toLowerCase() === desc.toLowerCase()) return '';
+      return `<div class="appt-notes appt-wm-notes">● ${note}</div>`;
+    })();
+    const jerryIconStrip = !layoutV2
+      ? `<div class="appt-actions__icons appt-wm-jerry-icons">
+            ${a.phone ? `<a class="icon-btn appt-action-icon" href="tel:${a.phone}" title="Bellen">${APPT_ACTION_SVG.phone}</a>` : ''}
+            ${a.mapsLink ? `<a class="icon-btn appt-action-icon" href="${a.mapsLink}" target="_blank" rel="noopener noreferrer" title="Maps">${APPT_ACTION_SVG.map}</a>` : ''}
+            <button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">${APPT_ACTION_SVG.pencil}</button>
+            ${a.ghlUrl ? `<a class="icon-btn appt-action-icon" href="${a.ghlUrl}"${a.ghlAppUrl ? ` data-ghl-app="${escapeHtml(a.ghlAppUrl)}" onclick="return hkOpenGhlContact(event,this)"` : ''} target="_blank" rel="noopener noreferrer" title="Open in GHL">${APPT_ACTION_SVG.link}</a>` : ''}
+            ${isDone ? `<button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentDetailsModal(${idQ})' title="Bekijk details">${APPT_ACTION_SVG.eye}</button>` : ''}
+            <button type="button" class="icon-btn appt-action-icon" onclick='deleteAppt(${idQ})' title="Verwijderen">${APPT_ACTION_SVG.close}</button>
+            </div>`
+      : '';
+    const wmCore = layoutV2
+      ? `
+      <div class="appt-inner appt-inner--wm">
+        <div class="appt-wm-layout">
+          <div class="appt-number appt-wm-num">${a.routeStop != null ? a.routeStop : i + 1}</div>
+          <div class="appt-wm-main">
+            <div class="appt-wm-header">
+              <div class="appt-wm-head-text">
+                ${a.fullAddressLine ? `<div class="appt-address appt-wm-address">${escapeHtml(a.fullAddressLine)}</div>` : '<div class="appt-address appt-wm-address">—</div>'}
+                ${customerLine ? `<div class="appt-wm-customer">${customerLine}</div>` : ''}
+                ${pinHtml}
+              </div>
+              <div class="appt-wm-head-aside">
+                ${priceHeader}
+                ${jerryIconStrip}
+              </div>
+            </div>
+            <div class="appt-desc appt-wm-desc">${a.jobDescription || ''}</div>
+            ${metaItems.length ? `<div class="appt-meta appt-wm-meta">${metaItems.join('')}</div>` : ''}
+            ${notesHtml}
+            <div class="appt-wm-rule" role="separator"></div>
+            <div class="appt-footer appt-wm-footer">
+              <div class="appt-wm-footer-left">${pillHtml}</div>
+              <div class="appt-footer-right appt-wm-footer-right">
+                <div class="appt-footer-actions-touch appt-wm-cta-wrap">
+                  <div class="appt-footer-cta-row appt-wm-cta-row">
+                    <button type="button" class="btn-prijs appt-wm-btn appt-wm-btn--prijs ${(barVisible && !isOnderweg) || touchOverlayForCard ? 'active' : ''}" onclick='togglePrijs(event, ${idQ})' title="Prijsoverzicht bekijken" aria-label="Prijs" style="touch-action:manipulation">Prijs</button>
+                    ${primaryCta}
+                    <div class="appt-actions appt-wm-actions-slot">
+                      <div class="appt-actions__mobile appt-wm-actions-mobile">
+                        <button type="button" class="icon-btn appt-action-icon appt-actions__menu-btn appt-wm-menu-btn" id="mob-menu-btn-${domId}" aria-label="Meer acties" aria-expanded="false" aria-haspopup="true" aria-controls="mob-menu-${domId}" onclick="toggleMobileApptActionMenu(event,'${domId}')">${APPT_MOBILE_MENU_KEBAB_SVG}</button>
+                        <div class="appt-actions__dropdown appt-wm-dropdown" id="mob-menu-${domId}" role="menu" aria-labelledby="mob-menu-btn-${domId}">${mobileMenuRows.join('')}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>`
+      : `
       <div class="appt-inner">
         <div class="appt-top">
           <div class="appt-number">${a.routeStop != null ? a.routeStop : i + 1}</div>
@@ -9494,17 +9878,7 @@ function renderApptCard(a, i) {
             </div>
           </div>
         </div>
-        ${(() => {
-          const pin =
-            a.internalFixedPin && typeof a.internalFixedPin === 'object'
-              ? a.internalFixedPin
-              : a.internalFixedStartTime
-                ? { type: 'exact', time: a.internalFixedStartTime }
-                : null;
-          if (!pin) return '';
-          const pinTypeLabel = { exact: 'Op', after: 'Na', before: 'Voor' }[pin.type] || 'Op';
-          return `<span class="route-pin-badge">${pinTypeLabel} ${pin.time}</span>`;
-        })()}
+        ${pinHtml}
         <div class="appt-body">
           <div class="appt-name">${a.name}</div>
           <div class="appt-desc">${a.jobDescription || ''}</div>
@@ -9542,7 +9916,11 @@ function renderApptCard(a, i) {
             </div>
           </div>
         </div>
-      </div>
+      </div>`;
+    const v2Class = layoutV2 ? ' appt-card--layout-v2' : '';
+    return `
+    <div class="appt-card${v2Class} ${isDone?'done':''} ${isOnderweg?'onderweg':''} ${!isDone && !isOnderweg ? 'appt-card--todo' : ''} ${isViolation?'violation':''}" id="card-${domId}">
+      ${wmCore}
       ${useTouchPriceOverlay ? '' : `
       <div class="complete-bar ${barVisible?'visible':''}" id="bar-${domId}">
         <div class="complete-row">
@@ -10275,6 +10653,12 @@ function cancelOnderweg(id) {
         btnDone.classList.remove('active');
         btnDone.setAttribute('onclick', `askOnderweg(${JSON.stringify(id)})`);
         btnDone.setAttribute('title', 'Markeer onderweg');
+        btnDone.setAttribute('aria-label', 'Markeer onderweg');
+        if (btnDone.classList.contains('appt-wm-btn--klaar')) {
+          btnDone.classList.remove('appt-wm-btn--klaar');
+          btnDone.classList.add('appt-wm-btn--onderweg-actie');
+          btnDone.innerHTML = 'Onderweg →';
+        }
       }
       return { renderScope: synced ? 'card' : 'full render' };
     },
@@ -10903,7 +11287,8 @@ function syncAppointmentCardPriceLabel(id) {
     if (rendered) {
       rendered.textContent = nextText;
     } else {
-      const right = card.querySelector('.appt-footer-right');
+      const right =
+        card.querySelector('.appt-wm-head-aside') || card.querySelector('.appt-footer-right');
       if (right) {
         right.insertAdjacentHTML('afterbegin', `<span class="appt-price" id="appt-price-${domId}">${nextText}</span>`);
       }
@@ -11601,7 +11986,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener(
     'click',
     (e) => {
-      if (!window.matchMedia?.('(max-width: 639px)')?.matches) return;
       if (e.target.closest?.('.appt-actions__mobile')) return;
       closeMobileApptActionMenus();
     },
