@@ -90,6 +90,12 @@ Flow:
 7. Response bevat de nieuwe route-state met `revision`.
 8. Andere clients zien de wijziging via polling/focus refresh.
 
+In-flight feedback:
+
+- "Route opslaan..." blijft zichtbaar totdat de server response binnen is. De optimistic volgorde mag al zichtbaar zijn, maar de status moet duidelijk maken dat de centrale route nog niet veilig is opgeslagen.
+- Als de response langer dan 5 seconden uitblijft, toont de UI: "Verbinding traag, opnieuw proberen?" met een retry-knop.
+- Zolang die status zichtbaar is, mag de UI niet suggereren dat het veilig is om het tabblad te sluiten of de iPad weg te stoppen.
+
 Polling:
 
 - Basis blijft 30 seconden voor volledige plannerdata.
@@ -124,6 +130,10 @@ Page-load check:
 
 - `getAppointments` retourneert route-state plus `routeInputFingerprint` of timestamps.
 - Server bepaalt `lastRouteInputChangedAt` uit afspraakmutaties die route raken. Minimale eerste versie: bij iedere route-impacting endpoint-mutatie expliciet route-state markeren als dirty.
+- Page-load optimaliseert niet onbeperkt. Een optimize-run start alleen als:
+  - `routeInputFingerprint` daadwerkelijk verschilt van de fingerprint waarmee de route voor het laatst is geoptimaliseerd; of
+  - `lastOptimizedAt` meer dan 10 seconden geleden is én de route dirty/stale is.
+- Deze server-side debounce voorkomt dat 50 open tabbladen op een drukke dag 50 optimize-calls starten. Binnen het 10-seconden venster geven reads de bestaande route terug met status `optimizing|stale` of wachten ze op dezelfde in-flight optimize als die al loopt.
 - Client hoeft niet zelf te raden of de route optimaal is. Bij load kan de server:
   - route-state missen: route initialiseren en optimaliseren;
   - route-state `lastOptimizedAt < lastRouteInputChangedAt`: optimalisatie starten;
@@ -164,12 +174,12 @@ Race: afspraak wordt net `klaar` terwijl optimizer wil schrijven:
 
 ## E. UI-impact
 
-Verwijderen:
+Verwijderen/hernoemen:
 
 - `Bevestig route` knop weg.
 - `Ontgrendel route` knop weg.
 - "Lokaal concept" UI weg.
-- Reset naar lokale route-state weg of hernoemen naar "Heroptimaliseer route" als serveractie.
+- Reset naar lokale route-state wordt `Heroptimaliseer route`.
 
 Nieuwe UI:
 
@@ -189,6 +199,15 @@ Nieuwe UI:
 - Bij CAS conflict:
   - geen harde fout als retry slaagt;
   - bij definitieve fout: "Route is net bijgewerkt. Probeer je wijziging opnieuw."
+
+`Heroptimaliseer route`:
+
+- Dit is een server-side optimize-call, geen lokale reset.
+- De knop roept `POST /api/route/optimize` aan voor de actieve dag.
+- De optimizer berekent alle niet-gepinde, niet-`klaar` stops opnieuw.
+- Bestaande `pinsByContactId` en `internalFixedStart` blijven behouden en worden gerespecteerd.
+- UI toont de knop altijd in het routepaneel, maar geeft extra nadruk als de route `violationsByContactId` of stale/dirty status heeft.
+- Tooltip: "Bereken de live route opnieuw. Handmatige pins en vaste tijden blijven behouden."
 
 ## F. Sprint 1 hergebruik
 
@@ -221,18 +240,40 @@ Huidige productie heeft:
 - `hk_route_times_*` en `hk_route_confirmed_order_*` in browser localStorage.
 - UI met `Bevestig route` en `Ontgrendel route`.
 
-Migratie:
+Gekozen migratiepad: optie A, één deploy.
 
-1. Deploy server met read-through migratie:
-   - Bij eerste route-read voor een dag: lees `hk:route_live:*`.
-   - Als die ontbreekt, lees bestaande `hk:route_lock:*`.
-   - Als bestaande lock `locked=true` en order/ETA aanwezig is, schrijf een nieuwe `hk:route_live:*` met `source: "migrated_route_lock"` en revision 1.
-   - Als bestaande lock ontbreekt of `locked=false`, initialiseer `hk:route_live:*` door actuele niet-klaar afspraken te optimaliseren.
-2. Laat oude `hk:route_lock:*` ongemoeid voor rollback/observatie, maar schrijf er niet meer naar.
-3. Client negeert lokale route localStorage volledig voor routevolgorde.
-4. Client verwijdert legacy route localStorage keys opportunistisch na succesvolle load.
-5. UI-release verwijdert confirm/unlock knoppen pas nadat server route-live read/write werkt.
-6. Geen downtime: bij ontbrekende live route kan server synchronisch initialiseren of een korte loading state teruggeven terwijl optimize start.
+- Migratie is volledig server-side.
+- UI verwijdert `Bevestig route` en `Ontgrendel route` meteen in dezelfde release.
+- Eerste read van een dag initialiseert automatisch live-route als `hk:route_live:*` ontbreekt.
+
+Server-side read-through check:
+
+1. `getAppointments` of de route-read helper roept `ensureRouteLiveState(locationId, dateStr, appointments)` aan.
+2. `ensureRouteLiveState` leest `hk:route_live:{locationId}:{dateStr}`.
+3. Als live-state bestaat en schema/revision geldig is, retourneert de server die als `routeState`.
+4. Als live-state ontbreekt, leest de server eenmalig `hk:route_lock:{locationId}:{dateStr}`.
+5. Als legacy lock `locked=true` en order/ETA aanwezig is, schrijft de server `hk:route_live:*` met `source: "migrated_route_lock"`.
+6. Als legacy lock ontbreekt of `locked=false`, initialiseert de server `hk:route_live:*` door actuele niet-`klaar` afspraken te optimaliseren.
+7. Oude `hk:route_lock:*` blijft ongemoeid voor observatie/rollback, maar nieuwe code schrijft er niet meer naar.
+
+Hoe de UI weet dat dit nieuwe route-state is:
+
+- `getAppointments` retourneert een expliciet object, bijvoorbeeld `routeState`, met `schemaVersion`, `routeStatus: "live"`, `revision`, `source` en `migratedFromLegacy: true|false`.
+- De UI gebruikt alleen `routeState.routeStatus === "live"` voor routevolgorde.
+- Legacy `routeLock` mag tijdens overgang nog in de response zitten voor observatie/debug, maar de UI gebruikt die niet meer voor rendering.
+- Als `routeState` ontbreekt of `routeStatus !== "live"`, toont de UI een route error/loading state en valt niet terug naar localStorage.
+
+Als migratie of initialisatie faalt:
+
+- Redis traag/time-out: UI toont "Live route laden..." met retry, route drag/drop tijdelijk disabled.
+- Optimizer error: UI toont "Route kon niet worden geoptimaliseerd" met knop `Heroptimaliseer route`; afsprakenlijst blijft zichtbaar op tijdvolgorde, maar routepaneel claimt geen live route.
+- Bestaande legacy lock kan niet gemigreerd worden: server logt `route_live_migration_failed`, response bevat `routeStateError`, UI toont error state.
+- Geen downtime: afspraakdata blijft leesbaar; alleen route-acties wachten tot live route-state beschikbaar is.
+
+Client cleanup:
+
+- Client negeert lokale route localStorage volledig voor routevolgorde.
+- Client verwijdert legacy route localStorage keys opportunistisch na succesvolle live route-load.
 
 Rollback:
 
@@ -247,7 +288,8 @@ Doel:
 - Jerry zet klant `klaar`.
 - Factuurflow blijft lopen via bestaande `completeAppointment`.
 - Daarna vraagt de UI: "Onderweg naar [volgende klant]?"
-- Bij bevestiging: WhatsApp ETA wordt klaargezet/verstuurd, met 30 seconden annuleerbuffer.
+- Bij bevestiging: WhatsApp ETA wordt direct verstuurd.
+- Bewuste trade-off: geen 30 seconden annuleerbuffer in sprint 1. Een client-driven timer is onbetrouwbaar als de iPad direct in een jaszak gaat; een server queue is te veel infrastructuur voor deze sprint.
 
 Flow:
 
@@ -255,15 +297,10 @@ Flow:
 2. Server bepaalt op basis van de live route de volgende niet-klaar stop.
 3. Client toont prompt met naam, adres en ETA: "Onderweg naar De Vries om ~10:45?"
 4. Bij ja: `POST /api/route/send-next-eta` met `currentContactId`, `nextContactId`, `routeDate`, `eta`, `revision`.
-5. Server schrijft een pending ETA-send record in Redis met TTL/executeAt + 30 seconden.
-6. UI toont "WhatsApp wordt over 30 sec verstuurd" met annuleren.
-7. Na 30 seconden voert server of een request-driven worker de bestaande ETA workflow uit:
+5. Server voert direct de bestaande ETA workflow uit:
    - GHL custom field geplande aankomst = ETA.
    - Tag/workflow: bestaande `monteur-eta` (`GHL_ETA_WORKFLOW_TAG`) of nieuwe expliciet benoemde workflowtag.
-
-Open punt:
-
-- Serverless zonder cron/queue heeft geen gegarandeerde background timer. Eerste implementatie kan de 30 sec buffer client-driven doen zolang de app open is; robuuste productievariant vraagt een queue/cron/Upstash QStash. Dit niet stilzwijgend als betrouwbaar background-systeem ontwerpen.
+6. UI toont succes of foutmelding. Annuleren na bevestiging is in sprint 1 niet beschikbaar.
 
 ## I. Ochtendmelding
 
@@ -329,7 +366,7 @@ Handmatig voor merge:
    - Verwacht: eerste klant 09:00, overige klanten 1-uursvenster rondom ETA.
 12. Onderweg-next prompt:
    - Klaar afronden.
-   - Verwacht: prompt voor volgende klant, ETA-send met 30 sec annuleren.
+   - Verwacht: prompt voor volgende klant, ETA-send direct na bevestiging.
 13. Legacy migration:
    - Dag met bestaande `hk:route_lock:*`.
    - Verwacht: eerste load migreert naar `hk:route_live:*`.
@@ -355,7 +392,7 @@ Technische tests:
 - Geen monteurscapaciteit of meerdere voertuigen.
 - Geen betaal/factuurflow refactor.
 - Geen GHL workflow-herbouw; alleen bestaande tags/workflows aanroepen met betere data.
-- Geen gegarandeerde server-side 30-sec ETA queue tenzij expliciet gekozen als aparte infrastructuurtaak.
+- Geen 30 sec annuleerbuffer voor onderweg-WhatsApp. Komt mogelijk later met server-queue (Upstash QStash).
 - Geen Supabase-migratie van route-state.
 - Geen behoud van lokale route-drafts als fallback source-of-truth.
 - Geen support voor "bevestigde route" als aparte status: de route is live of niet beschikbaar.
