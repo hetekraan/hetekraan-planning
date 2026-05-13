@@ -81,6 +81,7 @@ import {
 import {
   getRouteLock,
   isRouteLockStoreConfigured,
+  isRouteRefactorEnabled,
   setRouteLock,
 } from '../lib/route-lock-store.js';
 import {
@@ -189,6 +190,148 @@ function plannerBodyIncludesInvoiceKeys(body) {
     'factuurPlaats',
     'factuurReferentie',
   ].some((k) => body[k] !== undefined);
+}
+
+function currentPlannerUserFromReq(req) {
+  const token = req?.headers?.['x-hk-auth'];
+  const session = token ? verifySessionToken(token) : null;
+  return String(session?.user || req?.body?.updatedBy || req?.body?.user || '').trim() || null;
+}
+
+async function assertRouteMutationAllowed({
+  locationId,
+  dateStr,
+  action,
+  payload,
+  forceRouteLockOverride,
+  user,
+  blockedFields,
+} = {}) {
+  const loc = String(locationId || '').trim();
+  const ds = normalizeYyyyMmDdInput(String(dateStr || ''));
+  if (!isRouteRefactorEnabled()) {
+    console.warn(
+      'ROUTE_REFACTOR_DISABLED',
+      JSON.stringify({
+        scope: 'api/ghl',
+        action: action || 'unknown',
+        routeDate: ds || null,
+        user: user || null,
+      })
+    );
+    return { ok: true };
+  }
+  if (!loc || !ds) return { ok: true };
+  const currentLock = await getRouteLock(loc, ds);
+  if (!currentLock || currentLock.locked !== true) return { ok: true };
+  if (forceRouteLockOverride === true) {
+    console.warn(
+      'FORCE_ROUTE_LOCK_OVERRIDE_UNAVAILABLE',
+      JSON.stringify({
+        action: action || 'unknown',
+        routeDate: ds,
+        user: user || null,
+        payloadKeys: payload && typeof payload === 'object' ? Object.keys(payload).slice(0, 40) : [],
+      })
+    );
+  }
+  return {
+    ok: false,
+    code: 'ROUTE_LOCKED_MUTATION_BLOCKED',
+    currentLock,
+    ...(Array.isArray(blockedFields) && blockedFields.length ? { blockedFields } : {}),
+  };
+}
+
+function sendRouteMutationBlocked(res, guard) {
+  return res.status(409).json({
+    ok: false,
+    code: 'ROUTE_LOCKED_MUTATION_BLOCKED',
+    currentLock: guard?.currentLock || null,
+    ...(Array.isArray(guard?.blockedFields) && guard.blockedFields.length
+      ? { blockedFields: guard.blockedFields }
+      : {}),
+  });
+}
+
+function normalizeComparableText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function routeSlotLabelFromPayload(body) {
+  const slotKey = String(body?.slotKey || '').trim();
+  return (
+    String(body?.slotLabel || body?.newTimeWindow || '').trim() ||
+    (slotKey === 'afternoon'
+      ? SLOT_LABEL_AFTERNOON_NL
+      : slotKey === 'morning'
+        ? SLOT_LABEL_MORNING_NL
+        : '')
+  );
+}
+
+async function fetchPlannerContactForRouteCompare(contactId) {
+  const cid = String(contactId || '').trim();
+  if (!cid) return null;
+  try {
+    const rr = await fetchWithRetry(`${GHL_BASE}/contacts/${encodeURIComponent(cid)}`, {
+      headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' },
+      _allowPostRetry: false,
+    });
+    if (!rr.ok) return null;
+    const data = await rr.json().catch(() => null);
+    return data?.contact || data || null;
+  } catch {
+    return null;
+  }
+}
+
+function plannerUpdateRouteBlockedFields(body, contact) {
+  const out = [];
+  const hasOwn = (key) => Object.prototype.hasOwnProperty.call(body || {}, key);
+  const currentDate = normalizeYyyyMmDdInput(
+    getField(contact, BOOKING_FORM_FIELD_IDS.boeking_bevestigd_datum, 'boeking_bevestigd_datum')
+  );
+  const nextDate = normalizeYyyyMmDdInput(String(body?.date || ''));
+  const prevDate = normalizeYyyyMmDdInput(String(body?.prevDate || body?.originalDate || ''));
+  if (nextDate && ((currentDate && currentDate !== nextDate) || (prevDate && prevDate !== nextDate))) {
+    out.push('date');
+  }
+
+  const nextSlotLabel = routeSlotLabelFromPayload(body);
+  const currentSlotLabel =
+    getField(contact, BOOKING_FORM_FIELD_IDS.tijdslot, 'tijdslot') ||
+    getField(contact, FIELD_IDS.tijdafspraak, 'tijdafspraak');
+  if (
+    (hasOwn('slotKey') || hasOwn('slotLabel')) &&
+    nextSlotLabel &&
+    currentSlotLabel &&
+    normalizeComparableText(nextSlotLabel) !== normalizeComparableText(currentSlotLabel)
+  ) {
+    if (hasOwn('slotKey')) out.push('slotKey');
+    if (hasOwn('slotLabel')) out.push('slotLabel');
+  }
+
+  if (hasOwn('type')) {
+    const nextType = normalizeWorkType(body?.type || '');
+    const currentType = normalizeWorkType(
+      getField(contact, BOOKING_FORM_FIELD_IDS.type_onderhoud, 'type_onderhoud') ||
+        getField(contact, FIELD_IDS.type_onderhoud, 'type_onderhoud')
+    );
+    if (!currentType || nextType !== currentType) out.push('type');
+  }
+
+  if (hasOwn('address')) {
+    const nextAddress = normalizeComparableText(body?.address);
+    const currentAddress = normalizeComparableText(readCanonicalAddressLine(contact) || contact?.address1 || '');
+    if (nextAddress && (!currentAddress || nextAddress !== currentAddress)) out.push('address');
+  }
+
+  if (hasOwn('internalFixedStart')) {
+    out.push('internalFixedStart');
+  }
+
+  return Array.from(new Set(out));
 }
 
 /**
@@ -2902,6 +3045,16 @@ export default async function handler(req, res) {
         const cid = String(req.body?.contactId || '').trim();
         const routeDate = normalizeYyyyMmDdInput(String(req.body?.routeDate || ''));
         if (!cid) return res.status(400).json({ error: 'contactId vereist' });
+        if (!routeDate) return res.status(400).json({ error: 'routeDate vereist (YYYY-MM-DD)' });
+        const routeGuard = await assertRouteMutationAllowed({
+          locationId: locConfigured,
+          dateStr: routeDate,
+          action: 'setInternalFixedStart',
+          payload: req.body,
+          forceRouteLockOverride: req.body?.forceRouteLockOverride === true,
+          user: currentPlannerUserFromReq(req),
+        });
+        if (!routeGuard.ok) return sendRouteMutationBlocked(res, routeGuard);
         const fieldId = await resolvePlannerInternalFixedStartFieldId();
         if (!fieldId) {
           console.warn(
@@ -2991,6 +3144,21 @@ export default async function handler(req, res) {
           const ftInv = normalizePlannerInvoiceTypeFromBody(req.body?.factuurType);
           if (ftInv === 'bedrijf' && !String(req.body?.factuurBedrijfsnaam || '').trim()) {
             return res.status(400).json({ error: 'Bij factuurtype Bedrijf is bedrijfsnaam verplicht.' });
+          }
+        }
+        const updateRouteGuard = await assertRouteMutationAllowed({
+          locationId: locConfigured,
+          dateStr: dateNorm,
+          action: 'updatePlannerBookingDetails',
+          payload: req.body,
+          forceRouteLockOverride: req.body?.forceRouteLockOverride === true,
+          user: currentPlannerUserFromReq(req),
+        });
+        if (!updateRouteGuard.ok) {
+          const currentContact = await fetchPlannerContactForRouteCompare(cid);
+          const blockedFields = plannerUpdateRouteBlockedFields(req.body || {}, currentContact);
+          if (blockedFields.length) {
+            return sendRouteMutationBlocked(res, { ...updateRouteGuard, blockedFields });
           }
         }
 
@@ -3326,15 +3494,25 @@ export default async function handler(req, res) {
             orderLen: Array.isArray(routeLock.orderContactIds) ? routeLock.orderContactIds.length : 0,
           }));
           const lockWrite = await setRouteLock(locConfigured, lockDate, routeLock);
-          if (!lockWrite.ok && lockWrite.code === 'REVISION_CONFLICT') {
+          if (
+            !lockWrite.ok &&
+            (lockWrite.code === 'REVISION_CONFLICT' || lockWrite.code === 'EXPECTED_REVISION_REQUIRED')
+          ) {
             console.warn('[planner] route_lock_revision_conflict', JSON.stringify({
               routeDate: lockDate,
               expectedRevision: routeLock.expectedRevision ?? null,
               currentRevision: lockWrite.currentLock?.revision ?? null,
+              code: lockWrite.code,
             }));
             return res.status(409).json({
-              error: 'Route is intussen gewijzigd, laad opnieuw.',
-              code: 'ROUTE_LOCK_REVISION_CONFLICT',
+              error:
+                lockWrite.code === 'EXPECTED_REVISION_REQUIRED'
+                  ? 'Route heeft al een centrale versie, laad opnieuw voordat je opslaat.'
+                  : 'Route is intussen gewijzigd, laad opnieuw.',
+              code:
+                lockWrite.code === 'EXPECTED_REVISION_REQUIRED'
+                  ? 'ROUTE_LOCK_EXPECTED_REVISION_REQUIRED'
+                  : 'ROUTE_LOCK_REVISION_CONFLICT',
               currentLock: lockWrite.currentLock || null,
             });
           }
@@ -3430,15 +3608,22 @@ export default async function handler(req, res) {
           ...routeLock,
           dateStr,
         });
-        if (!out.ok && out.code === 'REVISION_CONFLICT') {
+        if (!out.ok && (out.code === 'REVISION_CONFLICT' || out.code === 'EXPECTED_REVISION_REQUIRED')) {
           console.warn('[planner] route_lock_revision_conflict', JSON.stringify({
             routeDate: dateStr,
             expectedRevision: routeLock.expectedRevision ?? null,
             currentRevision: out.currentLock?.revision ?? null,
+            code: out.code,
           }));
           return res.status(409).json({
-            error: 'Route is intussen gewijzigd, laad opnieuw.',
-            code: 'ROUTE_LOCK_REVISION_CONFLICT',
+            error:
+              out.code === 'EXPECTED_REVISION_REQUIRED'
+                ? 'Route heeft al een centrale versie, laad opnieuw voordat je opslaat.'
+                : 'Route is intussen gewijzigd, laad opnieuw.',
+            code:
+              out.code === 'EXPECTED_REVISION_REQUIRED'
+                ? 'ROUTE_LOCK_EXPECTED_REVISION_REQUIRED'
+                : 'ROUTE_LOCK_REVISION_CONFLICT',
             currentLock: out.currentLock || null,
           });
         }
@@ -3494,6 +3679,15 @@ export default async function handler(req, res) {
         if (!addressNorm) return res.status(400).json({ error: 'address verplicht' });
         if (!dateNorm) return res.status(400).json({ error: 'date verplicht (YYYY-MM-DD)' });
         if (!/^\d{2}:\d{2}$/.test(timeNorm)) return res.status(400).json({ error: 'time verplicht (HH:mm)' });
+        const routeGuard = await assertRouteMutationAllowed({
+          locationId: locConfigured,
+          dateStr: dateNorm,
+          action: 'createAppointment',
+          payload: req.body,
+          forceRouteLockOverride: req.body?.forceRouteLockOverride === true,
+          user: currentPlannerUserFromReq(req),
+        });
+        if (!routeGuard.ok) return sendRouteMutationBlocked(res, routeGuard);
         if (plannerBodyIncludesInvoiceKeys(req.body || {})) {
           const ftInv = normalizePlannerInvoiceTypeFromBody(req.body?.factuurType);
           if (ftInv === 'bedrijf' && !String(req.body?.factuurBedrijfsnaam || '').trim()) {
@@ -3886,6 +4080,15 @@ export default async function handler(req, res) {
         if (!cid || !dateNorm) {
           return res.status(400).json({ error: 'contactId en geldige routeDate (YYYY-MM-DD) vereist' });
         }
+        const routeGuard = await assertRouteMutationAllowed({
+          locationId: locConfigured,
+          dateStr: dateNorm,
+          action: 'deletePlannerBooking',
+          payload: req.body,
+          forceRouteLockOverride: req.body?.forceRouteLockOverride === true,
+          user: currentPlannerUserFromReq(req),
+        });
+        if (!routeGuard.ok) return sendRouteMutationBlocked(res, routeGuard);
 
         const rid = String(rowId ?? '').trim();
         const hkRow = /^hk-b1:([^:]+):(\d{4}-\d{2}-\d{2})$/i.exec(rid);
@@ -3976,6 +4179,17 @@ export default async function handler(req, res) {
         const newDateNorm = normalizeYyyyMmDdInput(String(newDate || ''));
         if (!cid || !newDateNorm || !prevDateNorm) {
           return res.status(400).json({ error: 'contactId, prevDate en newDate vereist (YYYY-MM-DD)' });
+        }
+        for (const guardDate of Array.from(new Set([prevDateNorm, newDateNorm]))) {
+          const routeGuard = await assertRouteMutationAllowed({
+            locationId: locConfigured,
+            dateStr: guardDate,
+            action: 'rescheduleAppointment',
+            payload: req.body,
+            forceRouteLockOverride: req.body?.forceRouteLockOverride === true,
+            user: currentPlannerUserFromReq(req),
+          });
+          if (!routeGuard.ok) return sendRouteMutationBlocked(res, routeGuard);
         }
         const slotPart =
           slotKey === 'afternoon' || slotKey === 'morning'
