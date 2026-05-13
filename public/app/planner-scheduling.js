@@ -219,7 +219,7 @@
         ctx.setCurrentDate(targetDate);
       }
       const nextCurrentDate = ctx.getCurrentDate();
-      await ctx.loadAppointments(nextCurrentDate);
+      await ctx.loadAppointments(nextCurrentDate, { plannerLoadQuiet: true });
       ctx.showToast(
         `✓ ${a.name} verplaatst naar ${newDate !== todayVal ? `${newDate} ` : ''}${slotConfig.label}`,
         'success'

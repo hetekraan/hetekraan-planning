@@ -1,4 +1,8 @@
 (function initPlannerStorage(global) {
+  /**
+   * Legacy `hk_klaar_ids` in localStorage. Niet meer bron voor groene “klaar”-kaart:
+   * status komt uit server `getAppointments`. Keys blijven leesbaar voor mismatch-warnings / handmatige inspectie.
+   */
   const HK_KLAAR_KEY = 'hk_klaar_ids';
 
   function klaarStorageKeyContactDate(contactId, routeYmd) {

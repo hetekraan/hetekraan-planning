@@ -237,6 +237,10 @@ function normalizeYyyyMmDdInput(str) {
   return `${String(y).padStart(4, '0')}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
+function hkDebugStatusSync() {
+  return String(process.env.HK_DEBUG_STATUS_SYNC || '').trim() === '1';
+}
+
 /** True als het event deze Amsterdam-kalenderdag raakt (o.a. meerdere-dagen vakantie). */
 function eventOverlapsAmsterdamDay(e, dateStr) {
   const bounds = amsterdamCalendarDayBoundsMs(dateStr);
@@ -1344,6 +1348,17 @@ export default async function handler(req, res) {
             samples: completionSamples,
           })
         );
+        if (hkDebugStatusSync()) {
+          console.info(
+            'PLANNER_APPOINTMENT_STATUS',
+            JSON.stringify({
+              phase: 'server_after_map',
+              dateStr: date,
+              sampleCount: completionSamples.length,
+              samples: completionSamples,
+            })
+          );
+        }
         let customerDayFull = false;
         try {
           customerDayFull = await getCustomerDayFullFlag(locId, date);
@@ -1632,6 +1647,22 @@ export default async function handler(req, res) {
             ghlContactPutOk: true,
           })
         );
+        if (hkDebugStatusSync()) {
+          const datumCfId = LEGACY_COMPLETE_FIELD_IDS.datum_laatste_onderhoud;
+          console.info(
+            'APPOINTMENT_COMPLETE_WRITE',
+            JSON.stringify({
+              contactId,
+              appointmentId: appointmentId != null ? String(appointmentId) : null,
+              routeDateRequested: routeDate != null ? String(routeDate) : null,
+              serviceDay,
+              datumLaatsteOnderhoudWritten: datumLaatsteOnderhoud,
+              lastServiceRaw: lastService != null ? String(lastService) : null,
+              customFieldIdsWritten: (customFields || []).map((f) => String(f?.id || '')).filter(Boolean),
+              writesDatumLaatsteOnderhoudId: (customFields || []).some((f) => String(f?.id || '') === datumCfId),
+            })
+          );
+        }
 
         let moneybirdResult = null;
         // Moneybird factuur aanmaken (niet-fataal voor complete-flow)
@@ -2468,6 +2499,19 @@ export default async function handler(req, res) {
             contactId,
             appointmentId: appointmentId != null ? String(appointmentId) : null,
             message: inventoryErr?.message || String(inventoryErr),
+          });
+        }
+
+        const invDate =
+          normalizeYyyyMmDdInput(String(routeDate || '').trim()) ||
+          normalizeYyyyMmDdInput(String(serviceDay || '').trim());
+        if (invDate) {
+          invalidateRedisSyntheticsCacheForDate(invDate);
+          invalidateAmsterdamDayGhlReadCachesForDate({
+            locationId: ghlLocationIdFromEnv(),
+            calendarId: effectiveCalendarId(),
+            dateStr: invDate,
+            trigger: 'completeAppointment',
           });
         }
 

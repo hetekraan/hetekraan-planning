@@ -1,4 +1,6 @@
 (function initPlannerRoute(global) {
+  let saveRouteTimesMutationInFlight = false;
+
   function timeToWindow(timeStr, isFirst) {
     if (isFirst || timeStr === '08:00' || timeStr === '09:00') return timeStr;
     const [h, m] = String(timeStr || '08:00').split(':').map(Number);
@@ -118,62 +120,70 @@
           internalFixedStartByContactId[cid] = { type: 'exact', time: legacyTime };
         }
       });
-      const res = await fetch('/api/ghl?action=saveRouteTimes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-HK-Auth': ctx.hkAuthHeader() },
-        body: JSON.stringify({
-          routeTimes: toSave,
-          routeLock: {
-            dateStr: routeDate,
-            locked: true,
+      saveRouteTimesMutationInFlight = true;
+      try {
+        const res = await fetch('/api/ghl?action=saveRouteTimes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-HK-Auth': ctx.hkAuthHeader() },
+          body: JSON.stringify({
+            routeTimes: toSave,
+            routeLock: {
+              dateStr: routeDate,
+              locked: true,
+              orderContactIds,
+              etasByContactId,
+              internalFixedStartByContactId,
+              updatedBy: plannerUser || 'unknown',
+              expectedRevision:
+                typeof ctx.getRouteLockRevisionForDate === 'function'
+                  ? ctx.getRouteLockRevisionForDate(routeDate)
+                  : undefined,
+            },
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Fout');
+        if (btn) {
+          btn.textContent = '✓ Opgeslagen';
+          btn.classList.add('saved');
+        }
+        let msg = `✓ ${data.saved} klanten: geplande aankomst opgeslagen`;
+        if (data.calendarSynced > 0) {
+          msg += ` · ${data.calendarSynced} afspraak${data.calendarSynced > 1 ? 'en' : ''} in GHL-agenda bijgewerkt`;
+        }
+        if (data.calendarErrors?.length) msg += ` · ⚠️ ${data.calendarErrors.length} agenda-update mislukt (zie serverlog)`;
+        ctx.showToast(msg, 'success');
+        if (typeof ctx.setConfirmedRouteOrder === 'function') {
+          ctx.setConfirmedRouteOrder(
+            routeDate,
+            orderContactIds
+          );
+        }
+        if (typeof ctx.logRouteOrder === 'function') {
+          ctx.logRouteOrder('route_order_confirmed', {
+            routeDate,
+            sourceOfTruth: 'server_route_lock',
+            appointmentIds: routeSequence.map((a) => (a?.id != null ? String(a.id) : '')).filter(Boolean),
+            confirmedOrderIds: orderContactIds,
+            loadedOrderIds: orderContactIds,
+          });
+        }
+        if (typeof ctx.saveRouteOperationalLock === 'function') {
+          ctx.saveRouteOperationalLock(routeDate, {
             orderContactIds,
             etasByContactId,
             internalFixedStartByContactId,
-            updatedBy: plannerUser || 'unknown',
-            expectedRevision:
-              typeof ctx.getRouteLockRevisionForDate === 'function'
-                ? ctx.getRouteLockRevisionForDate(routeDate)
-                : undefined,
-          },
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Fout');
-      if (btn) {
-        btn.textContent = '✓ Opgeslagen';
-        btn.classList.add('saved');
-      }
-      let msg = `✓ ${data.saved} klanten: geplande aankomst opgeslagen`;
-      if (data.calendarSynced > 0) {
-        msg += ` · ${data.calendarSynced} afspraak${data.calendarSynced > 1 ? 'en' : ''} in GHL-agenda bijgewerkt`;
-      }
-      if (data.calendarErrors?.length) msg += ` · ⚠️ ${data.calendarErrors.length} agenda-update mislukt (zie serverlog)`;
-      ctx.showToast(msg, 'success');
-      if (typeof ctx.setConfirmedRouteOrder === 'function') {
-        ctx.setConfirmedRouteOrder(
-          routeDate,
-          orderContactIds
-        );
-      }
-      if (typeof ctx.logRouteOrder === 'function') {
-        ctx.logRouteOrder('route_order_confirmed', {
-          routeDate,
-          sourceOfTruth: 'server_route_lock',
-          appointmentIds: routeSequence.map((a) => (a?.id != null ? String(a.id) : '')).filter(Boolean),
-          confirmedOrderIds: orderContactIds,
-          loadedOrderIds: orderContactIds,
-        });
-      }
-      if (typeof ctx.saveRouteOperationalLock === 'function') {
-        ctx.saveRouteOperationalLock(routeDate, {
-          orderContactIds,
-          etasByContactId,
-          internalFixedStartByContactId,
-        });
-      }
-      ctx.saveRouteSnapshot(routeDate);
-      if (typeof ctx.render === 'function') {
-        ctx.render();
+          });
+        }
+        ctx.saveRouteSnapshot(routeDate);
+        if (typeof ctx.render === 'function') {
+          ctx.render();
+        }
+        if (typeof ctx.loadAppointments === 'function') {
+          await ctx.loadAppointments(ctx.getCurrentDate(), { plannerLoadQuiet: true });
+        }
+      } finally {
+        saveRouteTimesMutationInFlight = false;
       }
       if (btn) {
         setTimeout(() => {
@@ -195,5 +205,6 @@
     sendETA,
     sendMorningMessages,
     confirmRoute,
+    isSaveRouteMutationInFlight: () => saveRouteTimesMutationInFlight,
   };
 })(window);

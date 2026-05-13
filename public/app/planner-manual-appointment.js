@@ -634,7 +634,7 @@
 
       resetManualAppointmentForm({ dateYmd: getDateStr(getCurrentDate()) });
       closeModal();
-      await loadAppointments(getCurrentDate());
+      await loadAppointments(getCurrentDate(), { plannerLoadQuiet: true });
       if (data.warning) {
         showToast(`✓ Contact opgeslagen, maar agenda-slot niet geplaatst: ${data.warning}`, 'info');
       } else {

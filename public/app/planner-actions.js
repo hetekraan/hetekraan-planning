@@ -2,6 +2,14 @@
   let hkGhlBlockDayInFlight = false;
   const invoiceRetryInFlightByApptId = new Set();
 
+  function hkDbgStatusSync() {
+    try {
+      return localStorage.getItem('hk_debug_status_sync') === '1';
+    } catch (_) {
+      return false;
+    }
+  }
+
   async function confirmDeleteAppt(ctx) {
     const {
       getRescheduleId,
@@ -73,9 +81,9 @@
       getDateStr,
       getCurrentDate,
       showPaymentLinkFallback,
-      saveKlaarStatus,
       render,
       appointmentDomSafeId,
+      loadAppointments,
     } = ctx;
     const a = findAppointmentById(id);
     if (!a) return;
@@ -112,6 +120,20 @@
     let lastMaintenance = String(sdateEl?.value || '').trim();
     if (!lastMaintenance) lastMaintenance = String(a.lastService || '').trim();
     if (!lastMaintenance) lastMaintenance = routeDate;
+
+    if (hkDbgStatusSync()) {
+      console.info(
+        'MONTEUR_COMPLETE_CLICK',
+        JSON.stringify({
+          contactId: a.contactId || null,
+          appointmentId: a.id != null ? String(a.id) : null,
+          routeDate,
+          lastServiceSent: lastMaintenance,
+          lastServiceFromInput: String(sdateEl?.value || '').trim() || null,
+          lastServiceFromAppt: String(a.lastService || '').trim() || null,
+        })
+      );
+    }
 
     if (!a.contactId) {
       logConfirm('confirm_done_failed', { reason: 'no_contact_id' });
@@ -311,7 +333,6 @@
       } catch {}
     }
     a.status = 'klaar';
-    saveKlaarStatus(a.id, a.contactId, getDateStr(getCurrentDate()));
     logConfirm('confirm_done_completed', {
       jsonParseFailed,
       moneybirdSkipped: mb ? mb.skipped === true : false,
@@ -323,10 +344,33 @@
         contactId: a.contactId || null,
         appointmentId: a.id != null ? String(a.id) : null,
         serviceDay: routeDate,
-        layer: 'client_ui_and_localStorage',
+        layer: 'optimistic_ui_then_server_reload',
       })
     );
     render();
+    if (typeof loadAppointments === 'function') {
+      try {
+        await loadAppointments(getCurrentDate(), { plannerLoadQuiet: true });
+        const after = findAppointmentById(id);
+        if (after && String(after.status || '') !== 'klaar') {
+          console.warn(
+            '[planner] completeAppointment_server_status_not_klaar_after_reload',
+            JSON.stringify({
+              appointmentId: after.id != null ? String(after.id) : null,
+              contactId: after.contactId || null,
+              routeDate,
+              serverStatus: String(after.status || ''),
+            })
+          );
+          showToast(
+            'Opgeslagen, maar overzicht toont nog niet “klaar” — server/GHL-sync controleren of pagina zo verversen.',
+            'info'
+          );
+        }
+      } catch (e) {
+        logConfirm('confirm_done_reload_skipped', { message: e && e.message ? String(e.message) : String(e) });
+      }
+    }
     requestAnimationFrame(() => {
       const card = document.getElementById('card-' + appointmentDomSafeId(id));
       if (card) {
