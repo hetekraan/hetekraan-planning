@@ -6,157 +6,41 @@
    */
   async function optimizeRoute(ctx) {
     const dateStr = ctx.getDateStr(ctx.getCurrentDate());
-    if (typeof ctx.guardRouteMutation === 'function') {
-      const allowed = ctx.guardRouteMutation(dateStr, 'optimize', 'route_locked_prevents_optimize');
-      if (!allowed) {
-        ctx.showToast('Route is bevestigd. Ontgrendel eerst om de volgorde te wijzigen.', 'info');
-        return;
-      }
-    }
-    if (typeof ctx.isRouteOperationalLocked === 'function' && ctx.isRouteOperationalLocked(dateStr)) {
-      ctx.showToast('Route is vergrendeld na “Bevestig route”. Ontgrendel eerst (🔓).', 'info');
+    const routeState = typeof ctx.getLiveRouteState === 'function' ? ctx.getLiveRouteState(dateStr) : null;
+    if (!routeState) {
+      ctx.showToast('Live route wordt nog geladen. Probeer zo opnieuw.', 'info');
       return;
     }
-    const active = ctx.orderRouteMorningFirst(ctx.getRouteStopsForSidebar());
-    const done = ctx.getAppointmentsRef().filter((a) => !a.fullAddressLine || a.status === 'klaar');
-    if (active.length < 2) {
-      ctx.showToast('Minimaal 2 adressen nodig om te optimaliseren', 'info');
-      return;
-    }
-
-    function apptPayload(a) {
-      return {
-        address: a.fullAddressLine || a.address,
-        timeWindow: a.timeWindow || null,
-        jobDuration: ctx.jobDurationForType(a.jobType),
-        dayPart: a.dayPart,
-        bookingLocked: !!a.bookingLocked,
-        internalFixedStart: a.internalFixedPin || a.internalFixedStartTime || undefined,
-      };
-    }
-
-    ctx.showToast('⏳ Route wordt geoptimaliseerd...', 'loading');
+    if (typeof ctx.setRouteUiStatus === 'function') ctx.setRouteUiStatus(dateStr, { optimizing: true, slow: false });
+    ctx.showToast('⏳ Live route wordt bijgewerkt...', 'loading');
     try {
-      const pinnedByContactId = {};
-      active.forEach((a) => {
-        const cid = a?.contactId ? String(a.contactId) : '';
-        const pin = a?.internalFixedPin && typeof a.internalFixedPin === 'object'
-          ? a.internalFixedPin
-          : a?.internalFixedStartTime
-            ? { type: 'exact', time: String(a.internalFixedStartTime) }
-            : null;
-        if (!cid || !pin?.time) return;
-        pinnedByContactId[cid] = {
-          type: String(pin.type || 'exact').toLowerCase(),
-          time: String(pin.time),
-        };
-      });
-      const res = await fetch('/api/optimize-route', {
+      const res = await fetch('/api/route/optimize', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-HK-Auth': ctx.hkAuthHeader() },
         body: JSON.stringify({
-          mode: 'partitionedDay',
-          returnToDepot: true,
-          appointments: active.map(apptPayload),
+          locationId:
+            routeState.locationId ||
+            (typeof ctx.getPlannerLocationId === 'function' ? ctx.getPlannerLocationId() : ''),
+          dateStr,
+          expectedRevision: Number(routeState.revision) || 0,
+          updatedBy: typeof ctx.getCurrentPlannerUser === 'function' ? ctx.getCurrentPlannerUser() : '',
+          reason: 'manual_button',
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || data.message || 'Onbekende fout');
-      if (data.mode !== 'partitionedDay' || !Array.isArray(data.order) || !Array.isArray(data.etas)) {
-        throw new Error('Route-API: onverwacht antwoord (partitionedDay)');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok || !data.routeState) {
+        throw new Error(data?.code || data?.error || `Optimaliseren mislukt (${res.status})`);
       }
-
-      const optimized = data.order.map((i) => active[i]);
-      optimized.forEach((a) => {
-        a.violation = false;
-      });
-      data.order.forEach((apptIdx, step) => {
-        const appt = active[apptIdx];
-        if (appt) {
-          const cid = appt?.contactId ? String(appt.contactId) : '';
-          const pin = cid ? pinnedByContactId[cid] : null;
-          if (pin && pin.type === 'exact' && pin.time) {
-            appt.timeSlot = pin.time;
-            try {
-              console.info(
-                '[planner] fixed_time_overwrite_blocked',
-                JSON.stringify({
-                  appointmentId: appt?.id != null ? String(appt.id) : null,
-                  contactId: cid || null,
-                  routeDate: dateStr,
-                  attemptedEta: data.etas[step] || null,
-                  preservedTime: pin.time,
-                })
-              );
-            } catch (_) {}
-          } else {
-            appt.timeSlot = data.etas[step];
-          }
-          appt.estimated = true;
-        }
-      });
-      if (data.violations?.length) {
-        data.violations.forEach((v) => {
-          const step = data.order.indexOf(v.apptIdx);
-          if (step >= 0 && optimized[step]) optimized[step].violation = true;
-        });
-      }
-
-      ctx.setAppointments([...optimized, ...done]);
-      if (typeof ctx.setConfirmedRouteOrder === 'function') {
-        ctx.setConfirmedRouteOrder(
-          dateStr,
-          optimized.map((a) => (a?.contactId ? String(a.contactId) : '')).filter(Boolean)
-        );
-      }
-      if (typeof ctx.logRouteOrder === 'function') {
-        ctx.logRouteOrder('route_order_optimized', {
-          routeDate: dateStr,
-          sourceOfTruth: 'client_partitionedDay_optimization_pre_confirm',
-          appointmentIds: optimized.map((a) => (a?.id != null ? String(a.id) : '')).filter(Boolean),
-          confirmedOrderIds: optimized.map((a) => (a?.contactId ? String(a.contactId) : '')).filter(Boolean),
-        });
-      }
-      try {
-        console.info(
-          '[planner] fixed_time_preserved_after_optimize',
-          JSON.stringify({
-            routeDate: dateStr,
-            pinnedCount: Object.keys(pinnedByContactId).length,
-            pinnedContactIds: Object.keys(pinnedByContactId),
-          })
-        );
-      } catch (_) {}
-
-      if (typeof ctx.setLastPartitionedRoutePlan === 'function') {
-        ctx.setLastPartitionedRoutePlan(dateStr, {
-          contactIdsOrder: optimized.map((a) => (a?.contactId ? String(a.contactId) : '')).filter(Boolean),
-          legInfo: Array.isArray(data.legInfo) ? data.legInfo : [],
-          returnLegToDepotMinutes: Number.isFinite(Number(data.returnLegToDepotMinutes))
-            ? Number(data.returnLegToDepotMinutes)
-            : undefined,
-        });
-      }
-
-      const legSecs = (data.legInfo || []).reduce((s, l) => s + (l.durationSeconds || 0), 0);
-      const returnMin = Number(data.returnLegToDepotMinutes);
-      const totalTravelMins = Math.round(legSecs / 60) + (Number.isFinite(returnMin) ? returnMin : 0);
-      const vCount = optimized.filter((a) => a.violation).length;
-      const violationMsg = vCount > 0 ? ` · ⚠️ ${vCount} tijdsvenster${vCount > 1 ? 's' : ''} niet haalbaar` : '';
-
-      const btn = document.getElementById('btnOptimize');
-      const unlock = document.getElementById('btnUnlock');
-      if (btn) btn.disabled = false;
-      if (unlock) unlock.style.display = 'none';
-      ctx.saveRouteSnapshot(dateStr);
-      ctx.showToast(
-        `⚡ Route geoptimaliseerd (09–13 / 13–17, depot)\n${active.length} stops · ~${totalTravelMins} min rijden (incl. terug depot indien berekend)${violationMsg}`,
-        'success'
-      );
+      if (typeof ctx.setLiveRouteState === 'function') ctx.setLiveRouteState(dateStr, data.routeState);
+      if (typeof ctx.applyRouteSnapshot === 'function') ctx.applyRouteSnapshot(dateStr);
+      if (typeof ctx.scheduleRouteRevisionFollowupRefresh === 'function') ctx.scheduleRouteRevisionFollowupRefresh(dateStr);
+      ctx.showToast('Live route bijgewerkt', 'success');
       ctx.render();
     } catch (e) {
-      console.error('Optimalisatie mislukt:', e);
-      ctx.showToast('Kon route niet optimaliseren: ' + e.message, 'info');
+      console.error('Heroptimaliseren mislukt:', e);
+      ctx.showToast('Kon live route niet bijwerken: ' + e.message, 'info');
+    } finally {
+      if (typeof ctx.clearRouteUiStatus === 'function') ctx.clearRouteUiStatus(dateStr, ['optimizing']);
     }
   }
 
@@ -165,13 +49,6 @@
     const a = ctx.findAppointmentById(ctx.getRescheduleId());
     if (!a) return;
     const routeDate = ctx.getDateStr(ctx.getCurrentDate());
-    if (typeof ctx.guardRouteMutation === 'function') {
-      const allowed = ctx.guardRouteMutation(routeDate, 'other', 'route_locked_prevents_reschedule');
-      if (!allowed) {
-        ctx.showToast('Route is bevestigd. Ontgrendel eerst om de volgorde te wijzigen.', 'info');
-        return;
-      }
-    }
     const newDate = document.getElementById('rDate')?.value;
     const slotKeyRaw = document.getElementById('rSlot')?.value;
     const slotConfig = window.HKPlannerUtils?.getPlannerSlotConfig
