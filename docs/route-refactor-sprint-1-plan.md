@@ -4,6 +4,8 @@ Status: Fase 1A plan. Nog geen route-logica wijzigen voordat dit plan is goedgek
 
 Doel van sprint 1: route-divergentie tussen gebruikers stoppen. De centrale Redis route-lock (`hk:route_lock:{locationId}:{dateStr}`) wordt leidend voor de bevestigde route. Browser `localStorage` mag alleen nog een lokaal concept of read-through cache bevatten, nooit de bevestigde bron van waarheid.
 
+Feature flag / noodrem: alle nieuwe sprint-1 route-source-of-truth wijzigingen komen achter `ROUTE_REFACTOR_ENABLED`, default `true`. Als deze env var op `false` staat, valt het systeem terug op het oude gedrag waarbij lokale route-state de route nog kan overrulen. Dit is alleen bedoeld als tijdelijke rollback-optie bij productieproblemen.
+
 ## 1. Hernoeming localStorage keys
 
 ### Voorstel nieuwe namen
@@ -135,8 +137,24 @@ Aanvullende route-impacting endpoints die in dezelfde guard moeten worden beoord
 - `POST /api/ghl?action=setInternalFixedStart`
   - Dit beïnvloedt ETA/routeberekening en moet blokkeren als `routeDate` locked is.
 - `POST /api/ghl?action=updatePlannerBookingDetails`
-  - Alleen blokkeren als de wijziging route-impacting velden raakt: `date`, `slotKey`, `slotLabel`, `address`, `type`, `internalFixedStart`.
-  - Prijs/notities/factuurvelden hoeven niet geblokkeerd te worden als ze routevolgorde of reistijd niet beïnvloeden.
+  - Alleen blokkeren als de wijziging route-impacting velden raakt.
+  - Expliciet WEL blokkeren bij centrale `locked=true`:
+    - `date`
+    - `slotKey`
+    - `slotLabel`
+    - `type`
+    - `address`
+    - `internalFixedStart`
+  - `address` is een bewust twijfelgeval: een typfoutcorrectie is een veelvoorkomende use case, maar adreswijziging beïnvloedt reistijd en routevolgorde. Voor sprint 1 blokkeren we daarom `address` met duidelijke UI-melding: "Adres wijzigen vereist eerst ontgrendelen."
+  - Expliciet NIET blokkeren:
+    - `price`
+    - `priceLines` / productselectie
+    - `plannerNotities` / notities
+    - klantnaam
+    - telefoon
+    - e-mail
+    - factuurvelden
+    - statusvelden die geen routevolgorde, dagdeel, reistijd of ETA beïnvloeden
 
 Force/admin override:
 
@@ -176,7 +194,8 @@ Als Jerry of planner een lokaal concept heeft en de ander bevestigt ondertussen 
 
 - Eerstvolgende polling/focus refresh ontvangt `routeLock.locked=true`.
 - Client past centrale route toe en negeert/verwerpt lokale draft.
-- Toast: "Route is bevestigd door {updatedBy || iemand anders}; jouw lokale concept is vervangen door de centrale route."
+- Toast als `updatedBy` gevuld is: "De route is bijgewerkt door {updatedBy}. Jouw onbevestigde wijzigingen zijn vervallen."
+- Toast als `updatedBy` leeg of onbekend is: "De route is centraal bijgewerkt. Jouw onbevestigde wijzigingen zijn vervallen."
 - Debug log: `route_local_draft_discarded_due_to_server_lock` met date, localOrder, serverOrder, revision.
 
 Geraakte files:
@@ -185,6 +204,17 @@ Geraakte files:
   - `routePanelStatusText`, `routePanelStatusBadge`, `updateRoutePanelChrome()`.
 - `public/app/planner-route-local-ui.js`
   - Tekst en zichtbaarheid van `routeLocalHint`.
+
+### `updatedBy` huidige staat
+
+- `updatedBy` bestaat nu al in de route-lock payload.
+- Bij `Bevestig route` vult `public/app/planner-route.js` dit met `ctx.getCurrentPlannerUser()`; de context in `index.html` geeft daarvoor `readPlannerUsernameRaw() || ''` door.
+- Bij ontgrendelen vult `index.html` `routeLock.updatedBy` met `readPlannerUsernameRaw() || 'unknown'`.
+- `lib/route-lock-store.js` bewaart `updatedBy` als getrimde string of `null`.
+- `readPlannerUsernameRaw()` leest de plannernaam uit `localStorage` key `hk_user`, die door de bestaande login-flow wordt gezet. Dit geeft in de praktijk namen zoals `daan` of `jerry`.
+- Betrouwbaarheid: bruikbaar voor een operator-toast, maar niet als security/audit-identiteit. Het is browser/localStorage gebaseerd en kan leeg, verouderd of handmatig aangepast zijn.
+- Sprint 1 gebruikt dit minimale bestaande mechanisme voor toasts. Als `updatedBy` ontbreekt of `unknown` is, valt de UI terug op de generieke toast "De route is centraal bijgewerkt. Jouw onbevestigde wijzigingen zijn vervallen."
+- Geen volledige auth- of rollenrefactor in sprint 1.
 
 ## 6. Polling/refresh-gedrag
 
@@ -199,13 +229,35 @@ Voor sprint 1:
 - Voeg route-revision detectie toe aan client state:
   - Bewaar per dag `lastSeenRouteRevision`.
   - Als `getAppointments` een hogere `routeLock.revision` teruggeeft, toon toast/log en forceer centrale route-state.
+- Voeg een snelle follow-up refresh toe bij actieve centrale route:
+  - Als de huidige dag een centrale `routeLock.locked === true` heeft en de client ziet dat de laatst bekende revision afwijkt van de lokale `lastSeenRouteRevision`, plan dan een stille refresh binnen 5 seconden.
+  - Deze 5-seconden refresh is alleen voor een gedetecteerde route-revision wijziging of mismatch, niet als algemene pollingverlaging.
+  - Basis polling blijft 30 seconden; focus/visibility refresh blijft zoals nu.
 - Voeg eventueel later een lichte response header toe:
   - `X-HK-Route-Lock-Revision`
   - `X-HK-Route-Lock-Checksum`
   - Dit is handig maar niet vereist voor sprint 1, omdat `routeLock` al in de JSON response zit.
 - Geen websocket/server push in deze sprint.
 
-## 7. Niet in deze sprint
+## 7. Rollback-strategie
+
+- Voeg env var `ROUTE_REFACTOR_ENABLED` toe.
+- Default gedrag: als de env var ontbreekt of niet exact `false` is, staat sprint 1 aan.
+- Rollback: zet `ROUTE_REFACTOR_ENABLED=false` in Vercel.
+- Verwacht effect bij `false`:
+  - Nieuwe server-authoritative route-state afdwinging wordt uitgeschakeld.
+  - Oude lokale fallback/override routegedrag blijft of wordt hersteld.
+  - Atomic CAS en server mutation guards kunnen in disabled mode bypassed worden zodat bestaande workflows blijven werken zoals vóór sprint 1.
+- Operationeel rollback-proces:
+  - Vercel dashboard openen.
+  - Project env var `ROUTE_REFACTOR_ENABLED` op `false` zetten voor Production.
+  - Redeploy triggeren vanuit Vercel dashboard of de laatste Production deployment opnieuw deployen.
+  - Geen codewijziging nodig voor de noodrem; Vercel moet wel een nieuwe serverless deployment/runtime met de aangepaste env var krijgen.
+- Logging:
+  - Bij disabled mode logt de server `ROUTE_REFACTOR_DISABLED` bij route-lock writes en route-impacting mutation guards.
+  - Client mag `route_refactor_disabled` loggen als de server dit in responses teruggeeft.
+
+## 8. Niet in deze sprint
 
 - Auto-optimalisatie elke 15 minuten.
 - Nieuwe-afspraak-trigger die route automatisch opnieuw inpast.
@@ -215,7 +267,7 @@ Voor sprint 1:
 - Grote UI-redesign of Tailwind/design-token werk.
 - Refactor van het volledige `index.html` routeblok naar nieuwe componenten.
 
-## 8. Testplan
+## 9. Testplan
 
 Handmatige twee-device/twee-browser scenario's:
 
@@ -249,6 +301,15 @@ Handmatige twee-device/twee-browser scenario's:
    - Zet handmatig legacy `hk_route_confirmed_order_YYYY-MM-DD` en `routeOperationalLock` in `hk_route_times_YYYY-MM-DD`.
    - Zonder centrale lock: legacy wordt lokale draft.
    - Met centrale lock: legacy wordt genegeerd.
+8. `updatePlannerBookingDetails` guard:
+   - Bevestig route.
+   - Probeer `date`, `slotKey`, `slotLabel`, `type`, `address` en `internalFixedStart` te wijzigen.
+   - Verwacht: server blokkeert met 409; UI toont voor adres expliciet "Adres wijzigen vereist eerst ontgrendelen."
+   - Probeer prijs, productselectie, notities, klantnaam, telefoon, e-mail, factuurvelden en statusvelden zonder route-impact te wijzigen.
+   - Verwacht: server staat dit toe.
+9. Rollback flag:
+   - Zet lokaal/test `ROUTE_REFACTOR_ENABLED=false`.
+   - Verwacht: oude lokale fallback/override routegedrag is actief en server mutation guards blokkeren niet op centrale route-lock.
 
 Technische checks:
 
