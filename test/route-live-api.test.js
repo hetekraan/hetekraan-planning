@@ -170,8 +170,22 @@ test('reorder rejects stale contactId in orderedContactIds', async () => {
     expectedRevision: 5,
   });
   assert.equal(res.statusCode, 400);
-  assert.equal(res.body.code, 'STALE_CONTACT_ID');
+  assert.equal(res.body.code, 'STALE_OR_KLAAR_CONTACT');
   assert.deepEqual(res.body.staleContactIds, ['ghost']);
+});
+
+test('reorder rejects klaar contactId in orderedContactIds', async () => {
+  const handler = createReorderHandler(createDeps());
+  const res = await run(handler, {
+    locationId: 'loc-1',
+    dateStr: '2026-05-20',
+    orderedContactIds: ['c1', 'done', 'c2'],
+    movedContactId: 'c2',
+    expectedRevision: 5,
+  });
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.body.code, 'STALE_OR_KLAAR_CONTACT');
+  assert.deepEqual(res.body.staleContactIds, ['done']);
 });
 
 test('unpin removes pin and is idempotent', async () => {

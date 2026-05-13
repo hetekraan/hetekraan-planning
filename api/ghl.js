@@ -83,6 +83,8 @@ import {
   isRouteLockStoreConfigured,
   setRouteLock,
 } from '../lib/route-lock-store.js';
+import { ensureRouteLiveState } from '../lib/route-live-store.js';
+import { triggerLiveRouteRecalculation } from '../lib/route-live-optimizer.js';
 import {
   buildCompleteAppointmentPayload,
   LEGACY_COMPLETE_FIELD_IDS,
@@ -1150,6 +1152,94 @@ function fallbackContactName(input = {}) {
   return 'Onbekende klant';
 }
 
+async function loadPlannerAppointmentsForDate(date, options = {}) {
+  const plannerNotitiesFieldId = await resolvePlannerNotitiesFieldId();
+  const plannerInternalFixedStartFieldId = await resolvePlannerInternalFixedStartFieldId();
+  const invoicePartyFieldIdsForPlanner = await resolveInvoicePartyFieldIds({
+    baseUrl: GHL_BASE,
+    apiKey: GHL_API_KEY,
+    locationId: ghlLocationIdFromEnv(),
+  });
+  const locId = ghlLocationIdFromEnv();
+  const calId = ghlCalendarIdFromEnv();
+  return loadPlannerAppointmentsSource(
+    {
+      date,
+      locId,
+      calId,
+      apiKey: GHL_API_KEY,
+      baseUrl: GHL_BASE,
+      plannerNotitiesFieldId,
+      plannerInternalFixedStartFieldId,
+      invoicePartyFieldIdsForPlanner,
+      traceLastEditedContactId: options.traceLastEditedContactId || '',
+    },
+    {
+      amsterdamCalendarDayBoundsMs,
+      eventStartMsGhl,
+      eventEndMsGhl,
+      getEventStartDayAmsterdam,
+      canonicalGhlEventId,
+      resolveBlockSlotAssignedUserId,
+      fetchWithRetry,
+      amsterdamDayReadCacheGet,
+      amsterdamDayReadCacheSet,
+      amsterdamDayReadCacheKeyCalendarEvents,
+      amsterdamDayReadCacheKeyBlockedSlots,
+      fetchBlockedSlotsAsEvents,
+      markBlockLikeOnCalendarEvents,
+      cachedListConfirmedSyntheticEventsForDate,
+      getField,
+      BOOKING_FORM_FIELD_IDS,
+      FIELD_IDS,
+      splitAddressLineToStraatHuis,
+      readCanonicalAddressLine,
+      logCanonicalAddressRead,
+      SLOT_LABEL_MORNING_NL,
+      SLOT_LABEL_AFTERNOON_NL,
+      normalizeInternalFixedPinFromBody,
+      parseStructuredPriceRulesString,
+      readInvoicePartyField,
+      mapEnrichedGhlEventToAppointment,
+    }
+  );
+}
+
+async function triggerLiveRouteRecalculationForDate(locationId, dateStr, reason, options = {}) {
+  const date = normalizeYyyyMmDdInput(String(dateStr || ''));
+  if (!date) return { ok: false, skipped: true, code: 'BAD_DATE' };
+  try {
+    const sourceOut = await loadPlannerAppointmentsForDate(date);
+    return triggerLiveRouteRecalculation({
+      locationId,
+      dateStr: date,
+      appointments: sourceOut.appointments,
+      reason,
+      updatedBy: options.updatedBy || null,
+      deps: options.deps || {},
+    });
+  } catch (err) {
+    console.warn(
+      'route_live_auto_recalc_failed',
+      JSON.stringify({
+        reason,
+        date,
+        locationId,
+        error: err?.message || String(err),
+      })
+    );
+    return { ok: false, code: 'ROUTE_RECALC_LOAD_FAILED' };
+  }
+}
+
+function plannerUpdateHasRouteImpactingFields(body = {}) {
+  const routeImpacting = ['slotKey', 'slotLabel', 'type', 'address', 'internalFixedStart'];
+  if (routeImpacting.some((key) => Object.prototype.hasOwnProperty.call(body, key))) return true;
+  const previousDate = normalizeYyyyMmDdInput(String(body.prevDate || body.previousDate || body.oldDate || ''));
+  const nextDate = normalizeYyyyMmDdInput(String(body.date || ''));
+  return Boolean(previousDate && nextDate && previousDate !== nextDate);
+}
+
 export default async function handler(req, res) {
   applySecurityHeaders(res);
   const requestId = getOrCreateRequestId(req, res);
@@ -1229,61 +1319,15 @@ export default async function handler(req, res) {
     switch (action) {
 
       case 'getAppointments': {
-        const plannerNotitiesFieldId = await resolvePlannerNotitiesFieldId();
-        const plannerInternalFixedStartFieldId = await resolvePlannerInternalFixedStartFieldId();
-        const invoicePartyFieldIdsForPlanner = await resolveInvoicePartyFieldIds({
-          baseUrl: GHL_BASE,
-          apiKey: GHL_API_KEY,
-          locationId: ghlLocationIdFromEnv(),
-        });
         const dateRaw = req.query.date;
         const date = normalizeYyyyMmDdInput(
           Array.isArray(dateRaw) ? String(dateRaw[0]) : String(dateRaw || '')
         );
         if (!date) return res.status(400).json({ error: 'Ongeldige datum' });
         const locId = locConfigured;
-        const calId = calConfigured;
-        const sourceOut = await loadPlannerAppointmentsSource(
-          {
-            date,
-            locId,
-            calId,
-            apiKey: GHL_API_KEY,
-            baseUrl: GHL_BASE,
-            plannerNotitiesFieldId,
-            plannerInternalFixedStartFieldId,
-            invoicePartyFieldIdsForPlanner,
-            traceLastEditedContactId: _traceLastEditedContactId,
-          },
-          {
-            amsterdamCalendarDayBoundsMs,
-            eventStartMsGhl,
-            eventEndMsGhl,
-            getEventStartDayAmsterdam,
-            canonicalGhlEventId,
-            resolveBlockSlotAssignedUserId,
-            fetchWithRetry,
-            amsterdamDayReadCacheGet,
-            amsterdamDayReadCacheSet,
-            amsterdamDayReadCacheKeyCalendarEvents,
-            amsterdamDayReadCacheKeyBlockedSlots,
-            fetchBlockedSlotsAsEvents,
-            markBlockLikeOnCalendarEvents,
-            cachedListConfirmedSyntheticEventsForDate,
-            getField,
-            BOOKING_FORM_FIELD_IDS,
-            FIELD_IDS,
-            splitAddressLineToStraatHuis,
-            readCanonicalAddressLine,
-            logCanonicalAddressRead,
-            SLOT_LABEL_MORNING_NL,
-            SLOT_LABEL_AFTERNOON_NL,
-            normalizeInternalFixedPinFromBody,
-            parseStructuredPriceRulesString,
-            readInvoicePartyField,
-            mapEnrichedGhlEventToAppointment,
-          }
-        );
+        const sourceOut = await loadPlannerAppointmentsForDate(date, {
+          traceLastEditedContactId: _traceLastEditedContactId,
+        });
         const appointments = sourceOut.appointments;
         const contactMap = sourceOut.contactMap;
         const gaPerf = sourceOut.gaPerf;
@@ -1359,10 +1403,18 @@ export default async function handler(req, res) {
             console.warn('[getAppointments] routeLock:', rlErr?.message || rlErr);
           }
         }
+        let routeState = null;
+        try {
+          const live = await ensureRouteLiveState(locId, date, appointments);
+          if (live?.ok) routeState = live.routeState || null;
+        } catch (liveErr) {
+          console.warn('[getAppointments] routeLiveState:', liveErr?.message || liveErr);
+        }
         return res.status(200).json({
           appointments,
           customerDayFull,
           customerDayFullStoreConfigured: isCustomerDayFullStoreConfigured(),
+          routeState,
           routeLock,
           routeLockStoreConfigured,
         });
@@ -2470,6 +2522,11 @@ export default async function handler(req, res) {
             message: inventoryErr?.message || String(inventoryErr),
           });
         }
+        await triggerLiveRouteRecalculationForDate(
+          locConfigured,
+          datumLaatsteOnderhoud || routeDate,
+          'completeAppointment'
+        );
 
         return res.status(200).json({
           success: true,
@@ -2901,6 +2958,11 @@ export default async function handler(req, res) {
             pinTime: pin?.time || null,
           })
         );
+        await triggerLiveRouteRecalculationForDate(
+          locConfigured,
+          routeDate,
+          'setInternalFixedStart'
+        );
         return res.status(200).json({ success: true, internalFixedStart: pin || null });
       }
 
@@ -2987,6 +3049,7 @@ export default async function handler(req, res) {
         const plannerNotitiesNorm = String(plannerNotitiesRaw).trim();
         const internalFixedPinRaw = req.body?.internalFixedStart;
         const internalFixedPin = normalizeInternalFixedPinFromBody(internalFixedPinRaw);
+        const routeImpactingUpdate = plannerUpdateHasRouteImpactingFields(req.body || {});
         console.log('[updatePlannerBookingDetails][normalized]', {
           contactId: cid,
           dateNorm,
@@ -3212,6 +3275,13 @@ export default async function handler(req, res) {
                 ? [{ desc: descNorm || 'Handmatige afspraak', price: totalNum }]
                 : [],
           });
+          if (routeImpactingUpdate) {
+            await triggerLiveRouteRecalculationForDate(
+              locConfigured,
+              dateNorm,
+              'updatePlannerBookingDetails'
+            );
+          }
           return res.status(200).json({
             success: true,
             contactId: cid,
@@ -3247,6 +3317,13 @@ export default async function handler(req, res) {
               ? [{ desc: descNorm || 'Handmatige afspraak', price: totalNum }]
               : [],
         });
+        if (routeImpactingUpdate) {
+          await triggerLiveRouteRecalculationForDate(
+            locConfigured,
+            dateNorm,
+            'updatePlannerBookingDetails'
+          );
+        }
         return res.status(200).json({
           success: true,
           contactId: cid,
@@ -3741,6 +3818,11 @@ export default async function handler(req, res) {
               ? [{ desc: desc || 'Handmatige afspraak', price: priceNum }]
               : [],
         });
+        await triggerLiveRouteRecalculationForDate(
+          locConfigured,
+          dateNorm,
+          'createAppointment'
+        );
 
         return res.status(200).json({
           success: true,
@@ -3907,6 +3989,11 @@ export default async function handler(req, res) {
           redis: redisOut,
           ghlAppointment: ghlApptResult,
         });
+        await triggerLiveRouteRecalculationForDate(
+          locConfigured,
+          dateNorm,
+          'deletePlannerBooking'
+        );
 
         return res.status(200).json({
           success: true,
@@ -4042,6 +4129,18 @@ export default async function handler(req, res) {
           newDate: newDateNorm,
           slotPart,
         });
+        await triggerLiveRouteRecalculationForDate(
+          locConfigured,
+          prevDateNorm,
+          'rescheduleAppointment_prevDate'
+        );
+        if (newDateNorm !== prevDateNorm) {
+          await triggerLiveRouteRecalculationForDate(
+            locConfigured,
+            newDateNorm,
+            'rescheduleAppointment_newDate'
+          );
+        }
         return res.status(200).json({
           success: true,
           slotLabel: windowLabel || null,
