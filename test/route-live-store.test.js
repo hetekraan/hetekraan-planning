@@ -224,6 +224,100 @@ test('ensureRouteLiveState migrates existing locked route lock', async () => {
   });
 });
 
+test('ensureRouteLiveState filters stale contactIds during legacy migration', async () => {
+  await withRouteLiveStore(async (mod, mock) => {
+    mock.store.set(
+      'hk:route_lock:loc-1:2026-05-20',
+      JSON.stringify({
+        locked: true,
+        revision: 4,
+        orderContactIds: ['contact-1', 'ghost-contact', 'contact-2', 'contact-3'],
+        etasByContactId: {
+          'contact-1': '09:00',
+          'ghost-contact': '09:45',
+          'contact-2': '10:30',
+          'contact-3': '11:15',
+        },
+        pinsByContactId: {
+          'contact-2': {
+            type: 'manual_order',
+            anchor: 'after:contact-1',
+            createdAt: 1760000000000,
+            createdBy: 'jerry',
+          },
+          'ghost-contact': {
+            type: 'manual_order',
+            anchor: 'after:contact-1',
+            createdAt: 1760000000000,
+            createdBy: 'jerry',
+          },
+        },
+        internalFixedStartByContactId: {
+          'contact-3': { type: 'exact', time: '11:15' },
+          'ghost-contact': { type: 'exact', time: '09:45' },
+        },
+        updatedBy: 'jerry',
+      })
+    );
+
+    const out = await mod.ensureRouteLiveState('loc-1', '2026-05-20', [
+      { contactId: 'contact-1', status: 'ingepland', timeSlot: '09:00' },
+      { contactId: 'contact-2', status: 'onderweg', timeSlot: '10:30' },
+      { contactId: 'contact-3', status: 'ingepland', timeSlot: '11:15' },
+    ]);
+
+    assert.equal(out.ok, true);
+    assert.equal(out.created, true);
+    assert.equal(out.migratedFromLegacy, true);
+    assert.equal(out.routeState.source, 'migrated_route_lock');
+    assert.deepEqual(out.routeState.orderContactIds, ['contact-1', 'contact-2', 'contact-3']);
+    assert.deepEqual(out.routeState.etasByContactId, {
+      'contact-1': '09:00',
+      'contact-2': '10:30',
+      'contact-3': '11:15',
+    });
+    assert.deepEqual(Object.keys(out.routeState.pinsByContactId), ['contact-2']);
+    assert.deepEqual(out.routeState.internalFixedStartByContactId, {
+      'contact-3': { type: 'exact', time: '11:15' },
+    });
+  });
+});
+
+test('ensureRouteLiveState re-initializes when all legacy contacts are stale', async () => {
+  await withRouteLiveStore(async (mod, mock) => {
+    mock.store.set(
+      'hk:route_lock:loc-1:2026-05-20',
+      JSON.stringify({
+        locked: true,
+        revision: 4,
+        orderContactIds: ['old-1', 'old-2', 'old-3', 'old-4'],
+        etasByContactId: {
+          'old-1': '09:00',
+          'old-2': '10:00',
+          'old-3': '11:00',
+          'old-4': '12:00',
+        },
+        updatedBy: 'jerry',
+      })
+    );
+
+    const out = await mod.ensureRouteLiveState('loc-1', '2026-05-20', [
+      { contactId: 'new-1', status: 'ingepland', timeSlot: '13:00' },
+      { contactId: 'new-2', status: 'onderweg', timeSlot: '14:00' },
+    ]);
+
+    assert.equal(out.ok, true);
+    assert.equal(out.created, true);
+    assert.equal(out.migratedFromLegacy, false);
+    assert.equal(out.routeState.source, 'initialized_from_appointments');
+    assert.deepEqual(out.routeState.orderContactIds, ['new-1', 'new-2']);
+    assert.deepEqual(out.routeState.etasByContactId, {
+      'new-1': '13:00',
+      'new-2': '14:00',
+    });
+  });
+});
+
 test('ensureRouteLiveState initializes from non-klaar appointments', async () => {
   await withRouteLiveStore(async (mod) => {
     const out = await mod.ensureRouteLiveState('loc-1', '2026-05-20', [
