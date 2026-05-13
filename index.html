@@ -7554,7 +7554,42 @@ function startPlannerVersionWatch() {
 }
 startPlannerVersionWatch();
 
-let currentDate = new Date();
+function plannerDateFromYmd(ymd) {
+  const m = String(ymd || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const dt = new Date(Date.UTC(y, mo - 1, d, 12, 0, 0));
+  if (
+    dt.getUTCFullYear() !== y ||
+    dt.getUTCMonth() !== mo - 1 ||
+    dt.getUTCDate() !== d
+  ) {
+    return null;
+  }
+  return dt;
+}
+
+function readInitialPlannerDateFromUrl() {
+  try {
+    return plannerDateFromYmd(new URLSearchParams(window.location.search || '').get('date'));
+  } catch (_) {
+    return null;
+  }
+}
+
+function updatePlannerDateQueryParam(dateStr) {
+  const ds = String(dateStr || '').trim();
+  if (!plannerDateFromYmd(ds)) return;
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set('date', ds);
+    history.replaceState(history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  } catch (_) {}
+}
+
+let currentDate = readInitialPlannerDateFromUrl() || new Date();
 let appointments = [];
 /** Server: Redis “dag vol” voor klantboekingen (geen GHL-blok). */
 let plannerCustomerDayFull = false;
@@ -9512,6 +9547,7 @@ function goToDateStr(ymd, source = 'go_to_date') {
   const nextDate = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12, 0, 0));
   const dateStr = getDateStr(nextDate);
   logPlannerDateNav('requested', { source, dateStr });
+  updatePlannerDateQueryParam(dateStr);
   setCurrentDateAndRefreshUi(nextDate);
   logPlannerDateNav('ui_synced', { source, dateStr });
   return loadAppointments(currentDate).then(() => {
@@ -9629,7 +9665,7 @@ function switchSidebarView(view, event) {
   if (compact && blockedOnCompact) {
     if (window.location.hash === '#panelAnalytics' || window.location.hash === '#panelPrices') {
       try {
-        history.replaceState(null, '', '#');
+        history.replaceState(null, '', `${window.location.pathname}${window.location.search}#`);
       } catch (_) {}
     }
   }
@@ -9718,7 +9754,7 @@ function normalizeInitialSidebarViewForViewport() {
   const hash = String(window.location.hash || '').trim().toLowerCase();
   if (hash === '#panelanalytics' || hash === '#panelprices') {
     try {
-      history.replaceState(null, '', '#');
+      history.replaceState(null, '', `${window.location.pathname}${window.location.search}#`);
     } catch (_) {}
     plannerSidebarView = 'today';
   }
