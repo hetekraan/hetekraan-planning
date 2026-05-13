@@ -48,6 +48,7 @@
   function updateRouteLocalUi(input) {
     const dateStr = input?.dateStr;
     const routeSnapshotKey = input?.routeSnapshotKey;
+    const mode = input?.mode || 'disabled';
     if (!dateStr || !routeSnapshotKey) return;
 
     let hasLocalSnapshot = false;
@@ -68,10 +69,10 @@
     const resetButton = document.getElementById('btnResetLocalRoute');
 
     if (hint) {
-      if (routeOpLocked) {
+      if (mode === 'serverConfirmed' || routeOpLocked) {
         hint.style.display = 'none';
         hint.textContent = '';
-      } else if (hasLocalSnapshot) {
+      } else if (mode === 'localDraft' && hasLocalSnapshot) {
         hint.style.display = 'block';
         hint.textContent =
           'ℹ️ Lokale route (volgorde + tijden) actief — blijft zo na verversen tot je opnieuw bevestigt of hieronder reset.';

@@ -15,6 +15,7 @@
 <script src="/app/planner-block-state.js"></script>
 <script src="/app/planner-pricing.js"></script>
 <script src="/app/planner-load.js"></script>
+<script src="/app/planner-route-mode.js"></script>
 <script src="/app/planner-route-snapshot.js"></script>
 <script src="/app/planner-route-local-ui.js"></script>
 <script src="/app/planner-route-maps.js"></script>
@@ -8338,6 +8339,12 @@ const serverRouteLockByDate = new Map();
 let routeLockRedisStoreConfigured = false;
 /** Per dag: route lock store configured (voorkomt cross-day bleed). */
 const routeLockStoreConfiguredByDate = new Map();
+/** Per dag: actuele route-state mode (serverConfirmed/localDraft/disabled). */
+const routeStateModeByDate = new Map();
+/** Per dag: laatst geziene centrale route-lock revision. */
+const lastSeenRouteRevisionByDate = new Map();
+/** Per dag: geplande eenmalige follow-up refresh na revision-verhoging. */
+const routeRevisionFollowupTimerByDate = new Map();
 /** Laatst bekende bevestigde lock-order per dag (runtime fallback als server-lock tijdelijk ontbreekt). */
 const lastKnownLockedOrderByDate = new Map();
 
@@ -8373,6 +8380,34 @@ function getServerRouteLock(dateStr) {
   return hit && typeof hit === 'object' ? hit : null;
 }
 
+function resolveRouteStateModeForDate(dateStr, override = {}) {
+  const ds = String(dateStr || '').trim();
+  const routeLockStoreConfigured =
+    typeof override.routeLockStoreConfigured === 'boolean'
+      ? override.routeLockStoreConfigured
+      : isRouteLockStoreConfiguredForDate(ds);
+  const routeLock = Object.prototype.hasOwnProperty.call(override, 'routeLock')
+    ? override.routeLock
+    : getServerRouteLock(ds);
+  const routeRefactorEnabled =
+    typeof override.routeRefactorEnabled === 'boolean'
+      ? override.routeRefactorEnabled
+      : isRouteRefactorEnabledClient();
+  return (
+    window.HKPlannerRouteMode?.resolveRouteStateMode?.({
+      routeLockStoreConfigured,
+      routeLock,
+      routeRefactorEnabled,
+    }) || 'disabled'
+  );
+}
+
+function getRouteStateModeForDate(dateStr) {
+  const ds = String(dateStr || '').trim();
+  if (ds && routeStateModeByDate.has(ds)) return routeStateModeByDate.get(ds);
+  return resolveRouteStateModeForDate(ds);
+}
+
 function routeOrderIdsFromAppointments(list) {
   const src = Array.isArray(list) ? list : [];
   return src
@@ -8401,9 +8436,28 @@ function currentPlannerIdentity() {
   return String(readPlannerUsernameRaw() || localStorage.getItem('hk_user') || '').trim() || null;
 }
 
+function isRouteServerConfirmedForDate(dateStr) {
+  return getRouteStateModeForDate(dateStr) === 'serverConfirmed';
+}
+
+function isRouteMutationBlockedForDate(dateStr) {
+  const mode = getRouteStateModeForDate(dateStr);
+  if (mode === 'serverConfirmed') return true;
+  if (mode === 'disabled') {
+    const srv = getServerRouteLock(dateStr);
+    if (srv && srv.locked === true && !isRouteRefactorEnabledClient()) return true;
+    return !!window.HKPlannerRouteSnapshot?.isRouteOperationalLocked?.({
+      dateStr,
+      routeSnapshotKey,
+      routeRefactorEnabled: false,
+    });
+  }
+  return false;
+}
+
 function guardRouteMutationForDate(dateStr, mutationAction, fallbackReason) {
   const ds = String(dateStr || '').trim();
-  const locked = !!ds && isRouteOperationalLockedForDate(ds);
+  const locked = !!ds && isRouteMutationBlockedForDate(ds);
   logRouteOrder('route_order_mutation_attempt', {
     routeDate: ds,
     mutationAction: mutationAction || 'other',
@@ -8443,13 +8497,7 @@ function guardRouteMutationForDate(dateStr, mutationAction, fallbackReason) {
 }
 
 function isRouteOperationalLockedForDate(dateStr) {
-  const srv = getServerRouteLock(dateStr);
-  if (srv && srv.locked === true) return true;
-  return !!window.HKPlannerRouteSnapshot?.isRouteOperationalLocked?.({
-    dateStr,
-    routeSnapshotKey,
-    routeRefactorEnabled: isRouteRefactorEnabledClient(),
-  });
+  return isRouteMutationBlockedForDate(dateStr);
 }
 
 function isRouteLockStoreConfiguredForDate(dateStr) {
@@ -8461,6 +8509,72 @@ function isRouteLockStoreConfiguredForDate(dateStr) {
   return routeLockRedisStoreConfigured === true;
 }
 
+function clearLocalRouteDraftForDate(dateStr) {
+  const ds = String(dateStr || '').trim();
+  if (!ds) return;
+  clearLocalDraftRouteOrder(ds);
+  window.HKPlannerRouteSnapshot?.clearRouteLocalDraft?.({
+    dateStr: ds,
+    routeSnapshotKey,
+    routeRefactorEnabled: isRouteRefactorEnabledClient(),
+  });
+  clearLastPartitionedRoutePlan(ds);
+}
+
+function scheduleRouteRevisionFollowupRefresh(dateStr) {
+  const ds = String(dateStr || '').trim();
+  if (!ds || routeRevisionFollowupTimerByDate.has(ds)) return;
+  const timer = setTimeout(() => {
+    routeRevisionFollowupTimerByDate.delete(ds);
+    if (getDateStr(currentDate) !== ds) return;
+    loadAppointments(currentDate, { plannerLoadQuiet: true }).catch((err) => {
+      console.warn('[planner] route_revision_followup_refresh_failed', err?.message || err);
+    });
+  }, 5000);
+  routeRevisionFollowupTimerByDate.set(ds, timer);
+}
+
+function handleRouteModeTransition(dateStr, previousMode, nextMode, routeLock) {
+  const ds = String(dateStr || '').trim();
+  if (!ds || !isRouteRefactorEnabledClient()) return;
+  const previousRevision = lastSeenRouteRevisionByDate.get(ds) || 0;
+  const nextRevision = window.HKPlannerRouteMode?.routeRevision?.(routeLock) || 0;
+  const transition = window.HKPlannerRouteMode?.detectRouteModeSwitch?.({
+    previousMode,
+    nextMode,
+    routeLock,
+    routeRefactorEnabled: isRouteRefactorEnabledClient(),
+    previousRevision,
+    nextRevision,
+  });
+  if (!transition) return;
+  if (transition.discardLocalDraft) {
+    clearLocalRouteDraftForDate(ds);
+    logRouteOrder('route_local_draft_discarded_due_to_server_lock', {
+      routeDate: ds,
+      previousMode,
+      nextMode,
+      revision: nextRevision,
+      updatedBy: String(routeLock?.updatedBy || '').trim() || null,
+    });
+    if (transition.toastMessage) showToast(transition.toastMessage, 'info');
+  }
+  if (transition.serverLockReleased) {
+    serverRouteLockByDate.set(ds, { locked: false, updatedAt: Date.now() });
+    logRouteOrder('route_server_lock_released', {
+      routeDate: ds,
+      previousMode,
+      nextMode,
+      previousRevision,
+      revision: nextRevision,
+    });
+  }
+  if (transition.shouldScheduleRevisionFollowup) {
+    scheduleRouteRevisionFollowupRefresh(ds);
+  }
+  if (nextRevision > 0) lastSeenRouteRevisionByDate.set(ds, nextRevision);
+}
+
 function syncCentralRouteLockState(dateStr, routeLock, storeConfigured) {
   const ds = String(dateStr || '').trim();
   if (!ds) return;
@@ -8468,96 +8582,83 @@ function syncCentralRouteLockState(dateStr, routeLock, storeConfigured) {
     routeLockRedisStoreConfigured = storeConfigured;
     routeLockStoreConfiguredByDate.set(ds, storeConfigured === true);
   }
+  const nextMode = resolveRouteStateModeForDate(ds, {
+    routeLockStoreConfigured: storeConfigured === true,
+    routeLock,
+    routeRefactorEnabled: isRouteRefactorEnabledClient(),
+  });
+  const previousMode = routeStateModeByDate.get(ds);
+  routeStateModeByDate.set(ds, nextMode);
   migrateLegacyRouteLocalStorageForDate(ds, routeLock, storeConfigured);
-  if (storeConfigured === true) {
-    if (routeLock && routeLock.locked === true) {
-      const order = Array.isArray(routeLock.orderContactIds)
-        ? routeLock.orderContactIds.map((x) => String(x || '').trim()).filter(Boolean)
-        : [];
-      const checksumComputed = routeOrderChecksum(order);
-      const checksumReported = String(routeLock.orderChecksum || '').trim() || null;
-      if (checksumReported && checksumReported !== checksumComputed) {
-        logRouteOrder('route_lock_checksum_mismatch', {
-          routeDate: ds,
-          sourceOfTruth: 'server_route_lock',
-          reportedChecksum: checksumReported,
-          computedChecksum: checksumComputed,
-          confirmedOrderIds: order,
-        });
-      }
-      const etas = routeLock.etasByContactId && typeof routeLock.etasByContactId === 'object'
-        ? routeLock.etasByContactId
-        : {};
-      const internalFixedStartByContactId =
-        routeLock.internalFixedStartByContactId && typeof routeLock.internalFixedStartByContactId === 'object'
-          ? routeLock.internalFixedStartByContactId
-          : undefined;
-      logRouteOrder('route_lock_loaded', {
-        routeDate: ds,
-        sourceOfTruth: 'server_route_lock',
-        wasRouteLocked: true,
-        confirmedOrderIds: order,
-        revision: Number.isFinite(Number(routeLock.revision)) ? Math.floor(Number(routeLock.revision)) : 0,
-        orderChecksum: checksumReported || checksumComputed,
-      });
-      serverRouteLockByDate.set(ds, {
-        ...routeLock,
-        orderContactIds: order,
-        etasByContactId: etas,
-        locked: true,
-        ...(internalFixedStartByContactId ? { internalFixedStartByContactId } : {}),
-      });
-      window.HKPlannerRouteSnapshot?.saveRouteLocalDraft?.({
-        dateStr: ds,
-        routeSnapshotKey,
-        normalizeTimeStr,
-        routeRefactorEnabled: isRouteRefactorEnabledClient(),
-        orderContactIds: order,
-        etasByContactId: etas,
-        ...(internalFixedStartByContactId !== undefined
-          ? { internalFixedStartByContactId: internalFixedStartByContactId || {} }
-          : {}),
-      });
-      if (order.length) saveLocalDraftRouteOrder(ds, order);
-      if (order.length) lastKnownLockedOrderByDate.set(ds, order.slice());
-      logRouteOrder('route_lock_applied', {
-        routeDate: ds,
-        sourceOfTruth: 'server_route_lock',
-        wasRouteLocked: true,
-        confirmedOrderIds: order,
-      });
-      return;
-    }
-    const localLock = window.HKPlannerRouteSnapshot?.readRouteLocalDraft?.({
-      dateStr: ds,
-      routeSnapshotKey,
-      routeRefactorEnabled: isRouteRefactorEnabledClient(),
-    });
-    const localConfirmed = readLocalDraftRouteOrder(ds);
-    serverRouteLockByDate.set(ds, { locked: false, updatedAt: Date.now(), missingFromServer: true });
-    logRouteOrder('route_lock_missing', {
-      routeDate: ds,
-      sourceOfTruth: 'server_route_lock',
-      wasRouteLocked: false,
-      confirmedOrderIds: localConfirmed,
-      fallbackReason: 'route_lock_missing_with_central_store_enabled',
-      localLockPresent: !!(localLock && localLock.locked === true),
-    });
-    if (localLock?.locked || localConfirmed.length) {
-      const keepOrder = localLock?.orderContactIds?.length ? localLock.orderContactIds : localConfirmed;
-      if (keepOrder.length) lastKnownLockedOrderByDate.set(ds, keepOrder.slice());
-      logRouteOrder('route_lock_applied', {
-        routeDate: ds,
-        sourceOfTruth: localLock?.locked ? 'local_route_operational_lock' : 'local_confirmed_route_order',
-        wasRouteLocked: true,
-        confirmedOrderIds: keepOrder,
-        fallbackReason: 'server_lock_missing_keep_local_lock',
-      });
-      return;
+
+  if (nextMode === 'disabled') {
+    if (!isRouteRefactorEnabledClient()) {
+      serverRouteLockByDate.delete(ds);
+      routeStateModeByDate.set(ds, 'disabled');
     }
     return;
   }
-  // Geen centrale store => bestaande lokale lock blijft fallback.
+
+  handleRouteModeTransition(ds, previousMode, nextMode, routeLock);
+
+  if (nextMode === 'serverConfirmed') {
+    if (previousMode !== 'localDraft') {
+      clearLocalRouteDraftForDate(ds);
+    }
+    const order = Array.isArray(routeLock?.orderContactIds)
+      ? routeLock.orderContactIds.map((x) => String(x || '').trim()).filter(Boolean)
+      : [];
+    const checksumComputed = routeOrderChecksum(order);
+    const checksumReported = String(routeLock?.orderChecksum || '').trim() || null;
+    if (checksumReported && checksumReported !== checksumComputed) {
+      logRouteOrder('route_lock_checksum_mismatch', {
+        routeDate: ds,
+        sourceOfTruth: 'server_route_lock',
+        reportedChecksum: checksumReported,
+        computedChecksum: checksumComputed,
+        confirmedOrderIds: order,
+      });
+    }
+    const etas = routeLock?.etasByContactId && typeof routeLock.etasByContactId === 'object'
+      ? routeLock.etasByContactId
+      : {};
+    const internalFixedStartByContactId =
+      routeLock?.internalFixedStartByContactId && typeof routeLock.internalFixedStartByContactId === 'object'
+        ? routeLock.internalFixedStartByContactId
+        : undefined;
+    const revision = window.HKPlannerRouteMode?.routeRevision?.(routeLock) || 0;
+    logRouteOrder('route_lock_loaded', {
+      routeDate: ds,
+      sourceOfTruth: 'server_route_lock',
+      wasRouteLocked: true,
+      confirmedOrderIds: order,
+      revision,
+      orderChecksum: checksumReported || checksumComputed,
+    });
+    serverRouteLockByDate.set(ds, {
+      ...routeLock,
+      orderContactIds: order,
+      etasByContactId: etas,
+      locked: true,
+      ...(internalFixedStartByContactId ? { internalFixedStartByContactId } : {}),
+    });
+    if (order.length) lastKnownLockedOrderByDate.set(ds, order.slice());
+    logRouteOrder('route_lock_applied', {
+      routeDate: ds,
+      sourceOfTruth: 'server_route_lock',
+      wasRouteLocked: true,
+      confirmedOrderIds: order,
+    });
+    return;
+  }
+
+  serverRouteLockByDate.set(ds, { locked: false, updatedAt: Date.now(), missingFromServer: true });
+  logRouteOrder('route_lock_missing', {
+    routeDate: ds,
+    sourceOfTruth: 'local_route_draft',
+    wasRouteLocked: false,
+    fallbackReason: 'route_lock_missing_or_unlocked_local_draft_mode',
+  });
 }
 
 function markDashBlockedDate(dateStr) {
@@ -8769,15 +8870,24 @@ function applyRouteSnapshot(dateStr) {
   if (!window.HKPlannerRouteSnapshot?.applyRouteSnapshot) return false;
   const srv = getServerRouteLock(dateStr);
   const storeConfiguredForDate = isRouteLockStoreConfiguredForDate(dateStr);
-  const enforceServerOrder = storeConfiguredForDate === true && !!(srv && srv.locked === true);
+  const mode = resolveRouteStateModeForDate(dateStr, {
+    routeLockStoreConfigured: storeConfiguredForDate,
+    routeLock: srv,
+    routeRefactorEnabled: isRouteRefactorEnabledClient(),
+  });
+  routeStateModeByDate.set(String(dateStr || ''), mode);
+  const enforceServerOrder = mode === 'serverConfirmed';
   const applied = window.HKPlannerRouteSnapshot.applyRouteSnapshot({
     dateStr,
     routeSnapshotKey,
+    mode,
+    routeLockStoreConfigured: storeConfiguredForDate,
+    routeLock: srv,
     routeRefactorEnabled: isRouteRefactorEnabledClient(),
     getAppointmentsRef: () => appointments,
     normalizeTimeStr,
     operationalLockOverride: enforceServerOrder ? srv : null,
-    allowLooseSnapshot: !storeConfiguredForDate,
+    allowLooseSnapshot: mode !== 'serverConfirmed',
   });
   const sourceOfTruth = enforceServerOrder
     ? 'server_route_lock'
@@ -8848,112 +8958,66 @@ function getRouteStopsForSidebar() {
   if (!window.HKPlannerRouteLocalUi?.getRouteStopsForSidebar) return [];
   const dateStr = getDateStr(currentDate);
   const active = appointments.filter((a) => a?.fullAddressLine && a?.status !== 'klaar');
-  const opLock =
-    getServerRouteLock(dateStr) ||
-    window.HKPlannerRouteSnapshot?.readRouteLocalDraft?.({
-      dateStr,
-      routeSnapshotKey,
-      routeRefactorEnabled: isRouteRefactorEnabledClient(),
-    });
-  if (opLock?.locked && opLock.orderContactIds?.length) {
-    const byC = Object.fromEntries(active.filter((a) => a?.contactId).map((a) => [String(a.contactId), a]));
+  const storeConfiguredForDate = isRouteLockStoreConfiguredForDate(dateStr);
+  const srv = getServerRouteLock(dateStr);
+  const mode = resolveRouteStateModeForDate(dateStr, {
+    routeLockStoreConfigured: storeConfiguredForDate,
+    routeLock: srv,
+    routeRefactorEnabled: isRouteRefactorEnabledClient(),
+  });
+  routeStateModeByDate.set(String(dateStr || ''), mode);
+
+  const orderActive = (orderIds, sourceOfTruth, fallbackReason) => {
+    const byContact = Object.fromEntries(active.filter((a) => a?.contactId).map((a) => [String(a.contactId), a]));
     const used = new Set();
     const ordered = [];
-    for (const cid of opLock.orderContactIds) {
-      const k = String(cid || '').trim();
+    for (const contactId of orderIds || []) {
+      const k = String(contactId || '').trim();
       if (!k || used.has(k)) continue;
-      const hit = byC[k];
+      const hit = byContact[k];
       if (!hit) continue;
       ordered.push(hit);
       used.add(k);
     }
     for (const a of active) {
-      const k = a?.contactId ? String(a.contactId) : '';
+      const k = a?.contactId ? String(a.contactId).trim() : '';
       if (!k || !used.has(k)) {
         ordered.push(a);
         if (k) used.add(k);
       }
     }
+    logRouteOrder('route_order_source', {
+      routeDate: dateStr,
+      sourceOfTruth,
+      confirmedOrderIds: orderIds,
+      loadedOrderIds: routeOrderIdsFromAppointments(ordered),
+      fallbackReason,
+    });
     return ordered;
-  }
-  const storeConfiguredForDate = isRouteLockStoreConfiguredForDate(dateStr);
-  if (storeConfiguredForDate === true) {
-    const localConfirmed = readLocalDraftRouteOrder(dateStr);
-    if (localConfirmed.length) {
-      const byContact = Object.fromEntries(active.filter((a) => a?.contactId).map((a) => [String(a.contactId), a]));
-      const used = new Set();
-      const ordered = [];
-      for (const contactId of localConfirmed) {
-        const k = String(contactId || '').trim();
-        if (!k || used.has(k)) continue;
-        const hit = byContact[k];
-        if (!hit) continue;
-        ordered.push(hit);
-        used.add(k);
-      }
-      for (const a of active) {
-        const k = a?.contactId ? String(a.contactId).trim() : '';
-        if (!k || !used.has(k)) {
-          ordered.push(a);
-          if (k) used.add(k);
-        }
-      }
-      logRouteOrder('route_lock_applied', {
-        routeDate: dateStr,
-        sourceOfTruth: 'local_confirmed_route_order',
-        wasRouteLocked: true,
-        confirmedOrderIds: localConfirmed,
-        loadedOrderIds: routeOrderIdsFromAppointments(ordered),
-        fallbackReason: 'central_lock_missing_use_local_confirmed_order',
-      });
-      return ordered;
+  };
+
+  if (mode === 'serverConfirmed') {
+    const serverOrder = Array.isArray(srv?.orderContactIds) ? srv.orderContactIds : [];
+    if (serverOrder.length) {
+      return orderActive(serverOrder, 'server_route_lock', 'server_confirmed_mode');
     }
-    const remembered = lastKnownLockedOrderByDate.get(String(dateStr || '')) || [];
-    if (remembered.length) {
-      const byC = Object.fromEntries(active.filter((a) => a?.contactId).map((a) => [String(a.contactId), a]));
-      const used = new Set();
-      const ordered = [];
-      for (const cid of remembered) {
-        const k = String(cid || '').trim();
-        if (!k || used.has(k)) continue;
-        const hit = byC[k];
-        if (!hit) continue;
-        ordered.push(hit);
-        used.add(k);
-      }
-      for (const a of active) {
-        const k = a?.contactId ? String(a.contactId).trim() : '';
-        if (!k || !used.has(k)) {
-          ordered.push(a);
-          if (k) used.add(k);
-        }
-      }
-      logRouteOrder('route_lock_applied', {
-        routeDate: dateStr,
-        sourceOfTruth: 'runtime_last_known_locked_order',
-        wasRouteLocked: true,
-        confirmedOrderIds: remembered,
-        loadedOrderIds: routeOrderIdsFromAppointments(ordered),
-        fallbackReason: 'server_and_local_lock_missing_use_last_known_locked_order',
-      });
-      return ordered;
+  }
+
+  if (mode === 'localDraft') {
+    const localDraft = readLocalDraftRouteOrder(dateStr);
+    if (localDraft.length) {
+      return orderActive(localDraft, 'local_route_draft', 'local_draft_mode');
     }
     const loadedOrder = [...active];
     logRouteOrder('route_order_fallback_sort_used', {
       routeDate: dateStr,
-      sourceOfTruth: 'loaded_order_without_lock_sort',
-      fallbackReason: 'route_lock_missing_no_local_or_runtime_lock_keep_loaded_order',
+      sourceOfTruth: 'local_route_draft',
+      fallbackReason: 'local_draft_missing_keep_loaded_order',
       loadedOrderIds: routeOrderIdsFromAppointments(loadedOrder),
-    });
-    logRouteOrder('route_order_unlock_required', {
-      routeDate: dateStr,
-      mutationAction: 'other',
-      wasRouteLocked: false,
-      fallbackReason: 'central_lock_missing_manual_verify_required',
-      userName: currentPlannerIdentity(),
     });
     return loadedOrder;
   }
+
   const base = window.HKPlannerRouteLocalUi.getRouteStopsForSidebar({
     appointments,
     dateStr,
@@ -8988,6 +9052,7 @@ function updateRouteLocalUi() {
   return window.HKPlannerRouteLocalUi.updateRouteLocalUi({
     dateStr: getDateStr(currentDate),
     routeSnapshotKey,
+    mode: getRouteStateModeForDate(getDateStr(currentDate)),
   });
 }
 
@@ -10727,9 +10792,9 @@ function buildRouteSummaryHtml(routeStops, dateStr) {
 
 function updateRoutePanelChrome(routeStops) {
   const dateStr = getDateStr(currentDate);
-  const opLocked = isRouteOperationalLockedForDate(dateStr);
-  const srv = getServerRouteLock(dateStr);
-  const centralLocked = isRouteLockStoreConfiguredForDate(dateStr) === true && srv && srv.locked === true;
+  const mode = getRouteStateModeForDate(dateStr);
+  const serverConfirmed = mode === 'serverConfirmed';
+  const disabledLocked = mode === 'disabled' && isRouteMutationBlockedForDate(dateStr);
 
   const titleEl = document.getElementById('routePanelDateTitle');
   if (titleEl) titleEl.textContent = formatRoutePanelTitle(currentDate);
@@ -10739,16 +10804,16 @@ function updateRoutePanelChrome(routeStops) {
   let statusMain = '';
   let badge = '';
   let badgeMode = '';
-  if (opLocked) {
-    if (centralLocked) {
-      statusMain = 'Route vergrendeld voor alle apparaten';
-      badge = 'Alle devices';
-      badgeMode = 'central';
-    } else {
-      statusMain = 'Route bevestigd';
-      badge = 'Bevestigd';
-      badgeMode = 'local';
-    }
+  if (serverConfirmed) {
+    statusMain = 'Route vergrendeld voor alle apparaten';
+    badge = 'Alle devices';
+    badgeMode = 'central';
+  } else if (disabledLocked) {
+    statusMain = 'Route bevestigd';
+    badge = 'Bevestigd';
+    badgeMode = 'local';
+  } else if (mode === 'disabled') {
+    statusMain = 'Route-sync niet beschikbaar';
   } else {
     statusMain = 'Nog niet bevestigd';
   }
@@ -10766,14 +10831,17 @@ function updateRoutePanelChrome(routeStops) {
   }
 
   const btnOpt = document.getElementById('btnOptimize');
-  if (btnOpt) btnOpt.disabled = opLocked || routeLocked;
+  if (btnOpt) btnOpt.disabled = serverConfirmed || disabledLocked || routeLocked;
 
   const btnConf = document.getElementById('btnConfirmRoute');
-  if (btnConf) btnConf.disabled = opLocked;
+  if (btnConf) {
+    btnConf.disabled = serverConfirmed || disabledLocked;
+    btnConf.style.display = serverConfirmed ? 'none' : 'inline-flex';
+  }
 
   const unlockEl = document.getElementById('btnUnlock');
   if (unlockEl) {
-    const showUnlock = routeLocked || (opLocked && isRouteLockStoreConfiguredForDate(dateStr));
+    const showUnlock = routeLocked || serverConfirmed || disabledLocked;
     unlockEl.style.display = showUnlock ? 'inline-flex' : 'none';
   }
 
@@ -11095,9 +11163,9 @@ function initRouteDrag(list) {
       updateRouteLocalUi();
 
       const active = appointments.filter(a => a.fullAddressLine && a.status !== 'klaar');
-      routeLocked = true;
-      document.getElementById('btnOptimize').disabled = true;
-      document.getElementById('btnUnlock').style.display = 'inline-flex';
+      const routeMode = getRouteStateModeForDate(getDateStr(currentDate));
+      routeLocked = routeMode === 'disabled';
+      updateRoutePanelChrome(getRouteStopsForSidebar());
 
       (async () => {
         showToast('⏳ Reistijden berekenen (Google Maps)...', 'loading');
@@ -11105,7 +11173,7 @@ function initRouteDrag(list) {
           await recalculateRouteTimesPreservingOrder(active);
           saveRouteSnapshot(getDateStr(currentDate));
           render();
-          showToast('Volgorde aangepast met echte reistijden · 🔓 om opnieuw te optimaliseren', 'success');
+          showToast('Volgorde aangepast met echte reistijden', 'success');
         } catch (err) {
           console.error(err);
           // Zelfde regel als optimize-route: dayPart === 0 => eerste stop 09:00 aankomst; anders geen 09:00-pin.

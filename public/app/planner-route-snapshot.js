@@ -322,6 +322,14 @@
     const routeSnapshotKey = input?.routeSnapshotKey;
     const getAppointmentsRef = input?.getAppointmentsRef;
     const normalizeTimeStr = input?.normalizeTimeStr;
+    const mode =
+      input?.mode ||
+      window.HKPlannerRouteMode?.resolveRouteStateMode?.({
+        routeLockStoreConfigured: input?.routeLockStoreConfigured,
+        routeLock: input?.operationalLockOverride || input?.routeLock || null,
+        routeRefactorEnabled: routeRefactorEnabled(input),
+      }) ||
+      'disabled';
     if (!dateStr || !routeSnapshotKey || !getAppointmentsRef || !normalizeTimeStr) {
       return { hasData: false, contactIdsOrder: [], routeOperationalLock: null };
     }
@@ -329,10 +337,14 @@
     const snap = readSnapshot(routeSnapshotKey(dateStr));
     const hasSnap = !!snap;
     const opLockOverride = normalizeOperationalLock(input?.operationalLockOverride);
-    const allowLooseSnapshot = input?.allowLooseSnapshot !== false;
+    const allowLooseSnapshot = input?.allowLooseSnapshot !== false && mode !== 'serverConfirmed';
     if (!hasSnap && !opLockOverride) return { hasData: false, contactIdsOrder: [], routeOperationalLock: null };
 
-    const opLock = opLockOverride || readStoredRouteLocalDraft(snap, routeRefactorEnabled(input));
+    const opLock = mode === 'serverConfirmed'
+      ? opLockOverride
+      : mode === 'localDraft' || mode === 'disabled'
+        ? readStoredRouteLocalDraft(snap, routeRefactorEnabled(input))
+        : null;
 
     let appliedCount = 0;
     const byContactId = allowLooseSnapshot ? snap?.byContactId : null;
@@ -393,6 +405,7 @@
       contactIdsOrder,
       routeOperationalLock: opLock,
       routeLocalDraft: opLock,
+      mode,
     };
   }
 

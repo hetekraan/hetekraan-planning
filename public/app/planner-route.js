@@ -153,12 +153,22 @@
         }
         if (data.calendarErrors?.length) msg += ` · ⚠️ ${data.calendarErrors.length} agenda-update mislukt (zie serverlog)`;
         ctx.showToast(msg, 'success');
-        const saveDraftOrder = ctx.setLocalDraftRouteOrder || ctx.setConfirmedRouteOrder;
-        if (typeof saveDraftOrder === 'function') {
-          saveDraftOrder(
-            routeDate,
-            orderContactIds
-          );
+        if (typeof ctx.isRouteRefactorEnabled === 'function' && ctx.isRouteRefactorEnabled() === false) {
+          const saveDraftOrder = ctx.setLocalDraftRouteOrder || ctx.setConfirmedRouteOrder;
+          if (typeof saveDraftOrder === 'function') {
+            saveDraftOrder(routeDate, orderContactIds);
+          }
+          const saveDraft = ctx.saveRouteLocalDraft || ctx.saveRouteOperationalLock;
+          if (typeof saveDraft === 'function') {
+            saveDraft(routeDate, {
+              orderContactIds,
+              etasByContactId,
+              internalFixedStartByContactId,
+            });
+          }
+          ctx.saveRouteSnapshot(routeDate);
+        } else if (typeof ctx.syncCentralRouteLock === 'function' && data.routeLock) {
+          ctx.syncCentralRouteLock(routeDate, data.routeLock, true);
         }
         if (typeof ctx.logRouteOrder === 'function') {
           ctx.logRouteOrder('route_order_confirmed', {
@@ -169,15 +179,6 @@
             loadedOrderIds: orderContactIds,
           });
         }
-        const saveDraft = ctx.saveRouteLocalDraft || ctx.saveRouteOperationalLock;
-        if (typeof saveDraft === 'function') {
-          saveDraft(routeDate, {
-            orderContactIds,
-            etasByContactId,
-            internalFixedStartByContactId,
-          });
-        }
-        ctx.saveRouteSnapshot(routeDate);
         if (typeof ctx.render === 'function') {
           ctx.render();
         }
