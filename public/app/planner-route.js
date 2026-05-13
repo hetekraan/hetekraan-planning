@@ -1,6 +1,17 @@
 (function initPlannerRoute(global) {
   let saveRouteTimesMutationInFlight = false;
 
+  function isRouteLockRevisionConflict(status, data) {
+    if (Number(status) !== 409) return false;
+    const code = String(data?.code || '').trim();
+    return (
+      code === 'EXPECTED_REVISION_REQUIRED' ||
+      code === 'REVISION_CONFLICT' ||
+      code === 'ROUTE_LOCK_EXPECTED_REVISION_REQUIRED' ||
+      code === 'ROUTE_LOCK_REVISION_CONFLICT'
+    );
+  }
+
   function timeToWindow(timeStr, isFirst) {
     if (isFirst || timeStr === '08:00' || timeStr === '09:00') return timeStr;
     const [h, m] = String(timeStr || '08:00').split(':').map(Number);
@@ -122,26 +133,46 @@
       });
       saveRouteTimesMutationInFlight = true;
       try {
-        const res = await fetch('/api/ghl?action=saveRouteTimes', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-HK-Auth': ctx.hkAuthHeader() },
-          body: JSON.stringify({
-            routeTimes: toSave,
-            routeLock: {
-              dateStr: routeDate,
-              locked: true,
-              orderContactIds,
-              etasByContactId,
-              internalFixedStartByContactId,
-              updatedBy: plannerUser || 'unknown',
-              expectedRevision:
-                typeof ctx.getRouteLockRevisionForDate === 'function'
-                  ? ctx.getRouteLockRevisionForDate(routeDate)
-                  : undefined,
-            },
-          }),
+        const buildRouteLockPayload = (expectedRevision) => ({
+          dateStr: routeDate,
+          locked: true,
+          orderContactIds,
+          etasByContactId,
+          internalFixedStartByContactId,
+          updatedBy: plannerUser || 'unknown',
+          expectedRevision,
         });
-        const data = await res.json();
+        const postSaveRouteTimes = async (expectedRevision) => {
+          const res = await fetch('/api/ghl?action=saveRouteTimes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-HK-Auth': ctx.hkAuthHeader() },
+            body: JSON.stringify({
+              routeTimes: toSave,
+              routeLock: buildRouteLockPayload(expectedRevision),
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          return { res, data };
+        };
+        const currentRevision =
+          typeof ctx.getRouteLockRevisionForDate === 'function'
+            ? ctx.getRouteLockRevisionForDate(routeDate)
+            : 0;
+        let { res, data } = await postSaveRouteTimes(currentRevision);
+        if (!res.ok && isRouteLockRevisionConflict(res.status, data)) {
+          if (typeof ctx.loadAppointments === 'function') {
+            await ctx.loadAppointments(ctx.getCurrentDate(), { plannerLoadQuiet: true });
+          }
+          const refreshedRevision =
+            typeof ctx.getRouteLockRevisionForDate === 'function'
+              ? ctx.getRouteLockRevisionForDate(routeDate)
+              : currentRevision;
+          ({ res, data } = await postSaveRouteTimes(refreshedRevision));
+          if (!res.ok && isRouteLockRevisionConflict(res.status, data)) {
+            ctx.showToast('Route is door iemand anders aangepast, ververs de pagina', 'info');
+            return;
+          }
+        }
         if (!res.ok) throw new Error(data.error || 'Fout');
         if (btn) {
           btn.textContent = '✓ Opgeslagen';

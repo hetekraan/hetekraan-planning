@@ -7965,11 +7965,7 @@ function createPlannerCtx(merge = {}) {
     setConfirmedRouteOrder: (dateStr, contactIdsOrder) => saveLocalDraftRouteOrder(dateStr, contactIdsOrder),
     clearConfirmedRouteOrder: (dateStr) => clearLocalDraftRouteOrder(dateStr),
     isRouteOperationalLocked: (dateStr) => isRouteOperationalLockedForDate(dateStr),
-    getRouteLockRevisionForDate: (dateStr) => {
-      const lock = getServerRouteLock(dateStr);
-      const rev = Number(lock?.revision);
-      return Number.isFinite(rev) && rev >= 0 ? Math.floor(rev) : 0;
-    },
+    getRouteLockRevisionForDate,
     guardRouteMutation: (dateStr, mutationAction, fallbackReason) =>
       guardRouteMutationForDate(dateStr, mutationAction, fallbackReason),
     syncCentralRouteLock: (dateStr, routeLock, storeConfigured) =>
@@ -8408,6 +8404,16 @@ function getRouteStateModeForDate(dateStr) {
   return resolveRouteStateModeForDate(ds);
 }
 
+function getRouteLockRevisionForDate(dateStr) {
+  const ds = String(dateStr || '').trim();
+  if (!ds) return 0;
+  const seen = Number(lastSeenRouteRevisionByDate.get(ds));
+  if (Number.isFinite(seen) && seen >= 0) return Math.floor(seen);
+  const lock = getServerRouteLock(ds);
+  const rev = Number(lock?.revision);
+  return Number.isFinite(rev) && rev >= 0 ? Math.floor(rev) : 0;
+}
+
 function routeOrderIdsFromAppointments(list) {
   const src = Array.isArray(list) ? list : [];
   return src
@@ -8573,6 +8579,26 @@ function handleRouteModeTransition(dateStr, previousMode, nextMode, routeLock) {
     scheduleRouteRevisionFollowupRefresh(ds);
   }
   if (nextRevision > 0) lastSeenRouteRevisionByDate.set(ds, nextRevision);
+}
+
+function isRouteLockRevisionConflictResponse(status, data) {
+  if (Number(status) !== 409) return false;
+  const code = String(data?.code || '').trim();
+  return (
+    code === 'EXPECTED_REVISION_REQUIRED' ||
+    code === 'REVISION_CONFLICT' ||
+    code === 'ROUTE_LOCK_EXPECTED_REVISION_REQUIRED' ||
+    code === 'ROUTE_LOCK_REVISION_CONFLICT'
+  );
+}
+
+async function refreshRouteLockRevisionForDate(dateStr) {
+  const ds = String(dateStr || '').trim();
+  if (!ds) return 0;
+  if (getDateStr(currentDate) === ds) {
+    await loadAppointments(currentDate, { plannerLoadQuiet: true });
+  }
+  return getRouteLockRevisionForDate(ds);
 }
 
 function syncCentralRouteLockState(dateStr, routeLock, storeConfigured) {
@@ -11064,31 +11090,42 @@ let routeLocked = false;
 async function unlockRoute() {
   routeLocked = false;
   const dateStr = getDateStr(currentDate);
-  try {
+  async function postUnlock(expectedRevision) {
     const res = await fetch('/api/ghl?action=setRouteLock', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
       body: JSON.stringify({
         date: dateStr,
-        routeLock: { locked: false, updatedBy: readPlannerUsernameRaw() || 'unknown' },
+        routeLock: {
+          locked: false,
+          updatedBy: readPlannerUsernameRaw() || 'unknown',
+          expectedRevision,
+        },
       }),
     });
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      throw new Error(d.error || d.code || `Serverfout (${res.status})`);
+    const data = await res.json().catch(() => ({}));
+    return { res, data };
+  }
+  try {
+    let expectedRevision = getRouteLockRevisionForDate(dateStr);
+    let { res, data } = await postUnlock(expectedRevision);
+    if (!res.ok && isRouteLockRevisionConflictResponse(res.status, data)) {
+      expectedRevision = await refreshRouteLockRevisionForDate(dateStr);
+      ({ res, data } = await postUnlock(expectedRevision));
+      if (!res.ok && isRouteLockRevisionConflictResponse(res.status, data)) {
+        showToast('Route is door iemand anders aangepast, ververs de pagina', 'info');
+        return;
+      }
     }
+    if (!res.ok) {
+      throw new Error(data.error || data.code || `Serverfout (${res.status})`);
+    }
+    if (data.routeLock) syncCentralRouteLockState(dateStr, data.routeLock, true);
   } catch (err) {
     showToast(`Ontgrendelen mislukt: ${err.message || err}`, 'info');
     return;
   }
-  serverRouteLockByDate.set(String(dateStr), { locked: false, updatedAt: Date.now() });
-  window.HKPlannerRouteSnapshot?.clearRouteLocalDraft?.({
-    dateStr,
-    routeSnapshotKey,
-    routeRefactorEnabled: isRouteRefactorEnabledClient(),
-  });
-  clearLocalDraftRouteOrder(dateStr);
-  clearLastPartitionedRoutePlan(dateStr);
+  clearLocalRouteDraftForDate(dateStr);
   document.getElementById('btnOptimize').disabled = false;
   document.getElementById('btnUnlock').style.display = 'none';
   updateRouteLocalUi();
