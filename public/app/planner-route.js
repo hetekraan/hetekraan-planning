@@ -153,8 +153,9 @@
         }
         if (data.calendarErrors?.length) msg += ` · ⚠️ ${data.calendarErrors.length} agenda-update mislukt (zie serverlog)`;
         ctx.showToast(msg, 'success');
-        if (typeof ctx.setConfirmedRouteOrder === 'function') {
-          ctx.setConfirmedRouteOrder(
+        const saveDraftOrder = ctx.setLocalDraftRouteOrder || ctx.setConfirmedRouteOrder;
+        if (typeof saveDraftOrder === 'function') {
+          saveDraftOrder(
             routeDate,
             orderContactIds
           );
@@ -168,8 +169,9 @@
             loadedOrderIds: orderContactIds,
           });
         }
-        if (typeof ctx.saveRouteOperationalLock === 'function') {
-          ctx.saveRouteOperationalLock(routeDate, {
+        const saveDraft = ctx.saveRouteLocalDraft || ctx.saveRouteOperationalLock;
+        if (typeof saveDraft === 'function') {
+          saveDraft(routeDate, {
             orderContactIds,
             etasByContactId,
             internalFixedStartByContactId,

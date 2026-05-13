@@ -57,7 +57,10 @@
       hasLocalSnapshot = !!raw;
       if (raw) {
         const p = JSON.parse(raw);
-        routeOpLocked = !!(p?.routeOperationalLock && p.routeOperationalLock.locked);
+        routeOpLocked = !!(
+          (p?.routeLocalDraft && (p.routeLocalDraft.contactIdsOrder?.length || p.routeLocalDraft.orderContactIds?.length)) ||
+          (p?.routeOperationalLock && p.routeOperationalLock.locked)
+        );
       }
     } catch (_) {}
 
@@ -83,7 +86,7 @@
   async function resetLocalRouteTimes(input) {
     const dateStr = input?.dateStr;
     const routeSnapshotKey = input?.routeSnapshotKey;
-    const clearConfirmedRouteOrder = input?.clearConfirmedRouteOrder;
+    const clearLocalDraftRouteOrder = input?.clearLocalDraftRouteOrder || input?.clearConfirmedRouteOrder;
     const clearRouteOperationalLock = input?.clearRouteOperationalLock;
     const updateRouteLocalUiFn = input?.updateRouteLocalUi;
     const reload = input?.reload;
@@ -93,8 +96,8 @@
     try {
       localStorage.removeItem(routeSnapshotKey(dateStr));
     } catch (_) {}
-    if (typeof clearConfirmedRouteOrder === 'function') {
-      clearConfirmedRouteOrder();
+    if (typeof clearLocalDraftRouteOrder === 'function') {
+      clearLocalDraftRouteOrder();
     }
     if (typeof clearRouteOperationalLock === 'function') {
       clearRouteOperationalLock();

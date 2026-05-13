@@ -110,6 +110,9 @@
       if (typeof ctx.setPlannerCustomerDayFull === 'function') {
         ctx.setPlannerCustomerDayFull(!!data.customerDayFull, !!data.customerDayFullStoreConfigured);
       }
+      if (typeof ctx.setRouteRefactorEnabled === 'function') {
+        ctx.setRouteRefactorEnabled(data.routeRefactorEnabled !== false);
+      }
       if (typeof syncCentralRouteLock === 'function') {
         syncCentralRouteLock(dateStr, data.routeLock || null, !!data.routeLockStoreConfigured);
       }

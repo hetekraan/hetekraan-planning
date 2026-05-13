@@ -44,6 +44,46 @@
     return byContactId;
   }
 
+  function routeRefactorEnabled(input) {
+    if (input && Object.prototype.hasOwnProperty.call(input, 'routeRefactorEnabled')) {
+      return input.routeRefactorEnabled !== false;
+    }
+    try {
+      return window.HK_ROUTE_REFACTOR_ENABLED !== false;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  function normalizeRouteLocalDraft(raw) {
+    if (!raw) return null;
+    const orderRaw = Array.isArray(raw.contactIdsOrder)
+      ? raw.contactIdsOrder
+      : Array.isArray(raw.orderContactIds)
+        ? raw.orderContactIds
+        : [];
+    const order = orderRaw.map((x) => String(x || '').trim()).filter(Boolean);
+    const etas = raw.etasByContactId && typeof raw.etasByContactId === 'object' ? raw.etasByContactId : {};
+    if (!order.length && !Object.keys(etas).length) return null;
+    const internalRaw = raw.internalFixedStartByContactId;
+    const internalFixedStartByContactId =
+      internalRaw && typeof internalRaw === 'object'
+        ? Object.fromEntries(
+            Object.entries(internalRaw)
+              .map(([k, v]) => [String(k || '').trim(), normalizeInternalFixedPin(v, (x) => x)])
+              .filter(([k, v]) => k && v)
+          )
+        : {};
+    return {
+      locked: true,
+      savedAt: typeof raw.savedAt === 'number' ? raw.savedAt : Date.now(),
+      contactIdsOrder: order,
+      orderContactIds: order,
+      etasByContactId: etas,
+      ...(Object.keys(internalFixedStartByContactId).length ? { internalFixedStartByContactId } : {}),
+    };
+  }
+
   /** Operationele routevergrendeling na “Bevestig route” (niet hetzelfde als klant-boekings-slot). */
   function normalizeOperationalLock(raw) {
     if (!raw || !raw.locked) return null;
@@ -68,6 +108,28 @@
     };
   }
 
+  function readStoredRouteLocalDraft(snap, enabled) {
+    if (!snap || typeof snap !== 'object') return null;
+    if (enabled) return normalizeRouteLocalDraft(snap.routeLocalDraft) || normalizeOperationalLock(snap.routeOperationalLock);
+    return normalizeOperationalLock(snap.routeOperationalLock);
+  }
+
+  function routeLocalDraftPayloadFromLock(lock) {
+    const order = Array.isArray(lock?.contactIdsOrder)
+      ? lock.contactIdsOrder
+      : Array.isArray(lock?.orderContactIds)
+        ? lock.orderContactIds
+        : [];
+    return {
+      savedAt: lock?.savedAt || Date.now(),
+      contactIdsOrder: order.map((x) => String(x || '').trim()).filter(Boolean),
+      etasByContactId: lock?.etasByContactId && typeof lock.etasByContactId === 'object' ? lock.etasByContactId : {},
+      ...(lock?.internalFixedStartByContactId && typeof lock.internalFixedStartByContactId === 'object'
+        ? { internalFixedStartByContactId: lock.internalFixedStartByContactId }
+        : {}),
+    };
+  }
+
   function mergeRouteOrderIntoSnapshot(input) {
     const dateStr = input?.dateStr;
     const routeSnapshotKey = input?.routeSnapshotKey;
@@ -78,7 +140,8 @@
 
     const snapshotKey = routeSnapshotKey(dateStr);
     const prev = readSnapshot(snapshotKey) || {};
-    const opLock = normalizeOperationalLock(prev.routeOperationalLock);
+    const enabled = routeRefactorEnabled(input);
+    const opLock = readStoredRouteLocalDraft(prev, enabled);
     if (opLock?.locked) return;
 
     const byContactId = {
@@ -113,7 +176,8 @@
 
     const snapshotKey = routeSnapshotKey(dateStr);
     const prev = readSnapshot(snapshotKey) || {};
-    const opLock = normalizeOperationalLock(prev.routeOperationalLock);
+    const enabled = routeRefactorEnabled(input);
+    const opLock = readStoredRouteLocalDraft(prev, enabled);
 
     let contactIdsOrder = getContactIdsOrder() || [];
     if (!contactIdsOrder.length) {
@@ -129,16 +193,20 @@
           savedAt: Date.now(),
           byContactId: makeByContactId(getAppointmentsRef(), normalizeTimeStr),
           contactIdsOrder,
-          ...(opLock ? { routeOperationalLock: opLock } : {}),
+          ...(opLock
+            ? enabled
+              ? { routeLocalDraft: routeLocalDraftPayloadFromLock(opLock) }
+              : { routeOperationalLock: opLock }
+            : {}),
         })
       );
     } catch (_) {}
   }
 
   /**
-   * Sla harde route-lock op (volgorde + ETA’s) in dezelfde snapshot-sleutel als lokale route.
+   * Sla lokale route-draft op (volgorde + ETA’s) in dezelfde snapshot-sleutel als lokale route.
    */
-  function saveRouteOperationalLock(input) {
+  function saveRouteLocalDraft(input) {
     const dateStr = input?.dateStr;
     const routeSnapshotKey = input?.routeSnapshotKey;
     const normalizeTimeStr = input?.normalizeTimeStr;
@@ -146,6 +214,7 @@
     const etasByContactId = input?.etasByContactId;
     const internalFixedStartByContactIdIn = input?.internalFixedStartByContactId;
     if (!dateStr || !routeSnapshotKey || !normalizeTimeStr) return;
+    const enabled = routeRefactorEnabled(input);
 
     const snapshotKey = routeSnapshotKey(dateStr);
     const prev = readSnapshot(snapshotKey) || {};
@@ -183,6 +252,7 @@
       locked: true,
       savedAt: Date.now(),
       orderContactIds: cleanOrder,
+      contactIdsOrder: cleanOrder,
       etasByContactId: Object.fromEntries(
         Object.entries(etas).map(([k, v]) => [String(k), normalizeTimeStr(String(v || ''))]).filter(([, v]) => v)
       ),
@@ -191,19 +261,24 @@
         : {}),
     };
     try {
+      const routeLocalDraft = routeLocalDraftPayloadFromLock(lock);
       localStorage.setItem(
         snapshotKey,
         JSON.stringify({
           savedAt: Date.now(),
           byContactId,
           contactIdsOrder: cleanOrder,
-          routeOperationalLock: lock,
+          ...(enabled ? { routeLocalDraft } : { routeOperationalLock: lock }),
         })
       );
     } catch (_) {}
   }
 
-  function clearRouteOperationalLock(input) {
+  function saveRouteOperationalLock(input) {
+    return saveRouteLocalDraft(input);
+  }
+
+  function clearRouteLocalDraft(input) {
     const dateStr = input?.dateStr;
     const routeSnapshotKey = input?.routeSnapshotKey;
     if (!dateStr || !routeSnapshotKey) return;
@@ -212,9 +287,14 @@
     if (!prev) return;
     try {
       const next = { ...prev };
+      delete next.routeLocalDraft;
       delete next.routeOperationalLock;
       localStorage.setItem(snapshotKey, JSON.stringify(next));
     } catch (_) {}
+  }
+
+  function clearRouteOperationalLock(input) {
+    return clearRouteLocalDraft(input);
   }
 
   function isRouteOperationalLocked(input) {
@@ -222,15 +302,19 @@
     const routeSnapshotKey = input?.routeSnapshotKey;
     if (!dateStr || !routeSnapshotKey) return false;
     const snap = readSnapshot(routeSnapshotKey(dateStr));
-    return !!normalizeOperationalLock(snap?.routeOperationalLock)?.locked;
+    return !!readStoredRouteLocalDraft(snap, routeRefactorEnabled(input))?.locked;
   }
 
-  function readRouteOperationalLock(input) {
+  function readRouteLocalDraft(input) {
     const dateStr = input?.dateStr;
     const routeSnapshotKey = input?.routeSnapshotKey;
     if (!dateStr || !routeSnapshotKey) return null;
     const snap = readSnapshot(routeSnapshotKey(dateStr));
-    return normalizeOperationalLock(snap?.routeOperationalLock);
+    return readStoredRouteLocalDraft(snap, routeRefactorEnabled(input));
+  }
+
+  function readRouteOperationalLock(input) {
+    return readRouteLocalDraft(input);
   }
 
   function applyRouteSnapshot(input) {
@@ -248,7 +332,7 @@
     const allowLooseSnapshot = input?.allowLooseSnapshot !== false;
     if (!hasSnap && !opLockOverride) return { hasData: false, contactIdsOrder: [], routeOperationalLock: null };
 
-    const opLock = opLockOverride || normalizeOperationalLock(snap?.routeOperationalLock);
+    const opLock = opLockOverride || readStoredRouteLocalDraft(snap, routeRefactorEnabled(input));
 
     let appliedCount = 0;
     const byContactId = allowLooseSnapshot ? snap?.byContactId : null;
@@ -308,16 +392,43 @@
       hasData: appliedCount > 0 || contactIdsOrder.length > 0 || !!opLock?.locked,
       contactIdsOrder,
       routeOperationalLock: opLock,
+      routeLocalDraft: opLock,
     };
+  }
+
+  function migrateLegacyRouteSnapshot(input) {
+    const dateStr = input?.dateStr;
+    const routeSnapshotKey = input?.routeSnapshotKey;
+    const centralLocked = input?.centralLocked === true;
+    if (!dateStr || !routeSnapshotKey || !routeRefactorEnabled(input)) {
+      return { migrated: false, hadLegacyOperationalLock: false };
+    }
+    const snapshotKey = routeSnapshotKey(dateStr);
+    const prev = readSnapshot(snapshotKey);
+    const legacyLock = normalizeOperationalLock(prev?.routeOperationalLock);
+    if (!prev || !legacyLock) return { migrated: false, hadLegacyOperationalLock: false };
+    try {
+      const next = { ...prev };
+      delete next.routeOperationalLock;
+      if (!centralLocked && !next.routeLocalDraft) {
+        next.routeLocalDraft = routeLocalDraftPayloadFromLock(legacyLock);
+      }
+      localStorage.setItem(snapshotKey, JSON.stringify(next));
+    } catch (_) {}
+    return { migrated: true, hadLegacyOperationalLock: true };
   }
 
   window.HKPlannerRouteSnapshot = {
     mergeRouteOrderIntoSnapshot,
     saveRouteSnapshot,
     applyRouteSnapshot,
+    saveRouteLocalDraft,
     saveRouteOperationalLock,
+    clearRouteLocalDraft,
     clearRouteOperationalLock,
     isRouteOperationalLocked,
+    readRouteLocalDraft,
     readRouteOperationalLock,
+    migrateLegacyRouteSnapshot,
   };
 })();

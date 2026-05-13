@@ -103,8 +103,9 @@
       }
 
       ctx.setAppointments([...optimized, ...done]);
-      if (typeof ctx.setConfirmedRouteOrder === 'function') {
-        ctx.setConfirmedRouteOrder(
+      const saveDraftOrder = ctx.setLocalDraftRouteOrder || ctx.setConfirmedRouteOrder;
+      if (typeof saveDraftOrder === 'function') {
+        saveDraftOrder(
           dateStr,
           optimized.map((a) => (a?.contactId ? String(a.contactId) : '')).filter(Boolean)
         );
