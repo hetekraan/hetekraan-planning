@@ -8346,19 +8346,20 @@ function applyRouteSnapshot(dateStr) {
 function getRouteStopsForSidebar() {
   const dateStr = getDateStr(currentDate);
   const active = appointments.filter((a) => a?.fullAddressLine && a?.status !== 'klaar');
+  const base = [...active].sort(
+    (a, b) =>
+      (a?.dayPart ?? 0) - (b?.dayPart ?? 0) ||
+      (a?.startMs ?? 0) - (b?.startMs ?? 0) ||
+      String(a?.timeSlot || '').localeCompare(String(b?.timeSlot || ''))
+  );
   const state = getLiveRouteState(dateStr);
   const order = Array.isArray(state?.orderContactIds)
     ? state.orderContactIds.map((x) => String(x || '').trim()).filter(Boolean)
     : [];
   if (!order.length) {
-    return [...active].sort(
-      (a, b) =>
-        (a?.dayPart ?? 0) - (b?.dayPart ?? 0) ||
-        (a?.startMs ?? 0) - (b?.startMs ?? 0) ||
-        String(a?.timeSlot || '').localeCompare(String(b?.timeSlot || ''))
-    );
+    return base;
   }
-  const byContact = Object.fromEntries(active.filter((a) => a?.contactId).map((a) => [String(a.contactId), a]));
+  const byContact = Object.fromEntries(base.filter((a) => a?.contactId).map((a) => [String(a.contactId), a]));
   const used = new Set();
   const ordered = [];
   for (const contactId of order) {
