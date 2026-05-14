@@ -610,7 +610,7 @@ async function optimizeSubsetMatrixWithInternalPins({ key, origin, appointments,
 /**
  * Harde klantblokken + depot → ochtend → (overgang) → middag → optioneel terug naar depot.
  */
-async function handlePartitionedDay(req, res, key, appointments, returnToDepot) {
+async function handlePartitionedDay(res, key, appointments, returnToDepot) {
   const n = appointments.length;
   if (n < 1) {
     return res.status(400).json({ error: 'Geen afspraken' });
@@ -794,14 +794,23 @@ async function handlePartitionedDay(req, res, key, appointments, returnToDepot) 
   });
 }
 
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+function createMemoryJsonRes() {
+  return {
+    statusCode: 200,
+    body: undefined,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(body) {
+      this.body = body;
+      return this;
+    },
+  };
+}
 
-  const { appointments, preserveOrder, origin: originRaw, mode, returnToDepot } = req.body;
+async function runOptimizeRouteBody(body, res) {
+  const { appointments, preserveOrder, origin: originRaw, mode, returnToDepot } = body || {};
   if (!appointments || appointments.length < 1) {
     return res.status(400).json({ error: 'Geen afspraken' });
   }
@@ -811,7 +820,7 @@ export default async function handler(req, res) {
 
   if (mode === 'partitionedDay') {
     const wantReturn = returnToDepot !== false;
-    return handlePartitionedDay(req, res, key, appointments, wantReturn);
+    return handlePartitionedDay(res, key, appointments, wantReturn);
   }
 
   const origin = typeof originRaw === 'string' && originRaw.trim() ? originRaw.trim() : DEPOT;
@@ -954,4 +963,25 @@ export default async function handler(req, res) {
     method: methodTag,
     originUsed: originTag,
   });
+}
+
+export async function optimizeRoutePayload(body) {
+  const res = createMemoryJsonRes();
+  await runOptimizeRouteBody(body, res);
+  if (res.statusCode >= 400) {
+    const err = new Error(res.body?.message || res.body?.error || `optimize failed (${res.statusCode})`);
+    err.statusCode = res.statusCode;
+    err.body = res.body;
+    throw err;
+  }
+  return res.body;
+}
+
+export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  return runOptimizeRouteBody(req.body || {}, res);
 }
