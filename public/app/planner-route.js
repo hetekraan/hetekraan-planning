@@ -26,28 +26,45 @@
   }
 
   async function sendMorningMessages(ctx) {
-    const appts = ctx
-      .getAppointmentsRef()
-      .filter((a) => a.contactId && a.status === 'ingepland')
-      .map((a) => ({ contactId: a.contactId, timeFrom: a.timeSlot, timeTo: a.timeSlot }));
-    if (appts.length === 0) {
-      ctx.showToast('Geen ingeplande klanten om te melden', 'info');
-      return;
+    const dateStr =
+      typeof ctx.getDateStr === 'function' ? ctx.getDateStr(ctx.getCurrentDate()) : '';
+    const locationId =
+      typeof ctx.getPlannerLocationId === 'function' ? ctx.getPlannerLocationId() : '';
+    const updatedBy =
+      typeof ctx.getCurrentPlannerUser === 'function' ? ctx.getCurrentPlannerUser() : 'manual';
+    if (!dateStr || !locationId) {
+      ctx.showToast('Geen datum of locatie — herlaad de planner', 'info');
+      return { ok: false };
     }
     ctx.showToast('☀️ Ochtendmeldingen worden verstuurd...', 'loading');
     try {
       const res = await fetch('/api/ghl?action=sendMorningMessages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-HK-Auth': ctx.hkAuthHeader() },
-        body: JSON.stringify({ appointments: appts }),
+        body: JSON.stringify({ dateStr, locationId, updatedBy, by: 'manual' }),
       });
-      if (res.ok) ctx.showToast(`☀️ Verstuurd naar ${appts.length} klant${appts.length !== 1 ? 'en' : ''}`, 'success');
-      else {
-        const d = await res.json().catch(() => ({}));
-        ctx.showToast(`⚠ Ochtendmeldingen mislukt: ${d.error || res.status}`, 'info');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        ctx.showToast(data?.error || `Ochtendmeldingen mislukt (${res.status})`, 'info');
+        return { ok: false, data };
       }
+      const sent = Number(data?.sent) || 0;
+      if (data?.skipped && sent === 0) {
+        ctx.showToast('Geen ingeplande klanten om te melden', 'info');
+      } else {
+        ctx.showToast(
+          `☀️ Verstuurd naar ${sent} klant${sent === 1 ? '' : 'en'}`,
+          'success'
+        );
+      }
+      if (typeof ctx.refreshMorningMessageSettings === 'function') {
+        await ctx.refreshMorningMessageSettings();
+      }
+      if (typeof ctx.render === 'function') ctx.render();
+      return { ok: true, data };
     } catch {
       ctx.showToast('⚠ Ochtendmeldingen niet verstuurd: geen verbinding', 'info');
+      return { ok: false };
     }
   }
 

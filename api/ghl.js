@@ -85,6 +85,8 @@ import {
 } from '../lib/route-lock-store.js';
 import { ensureRouteLiveState } from '../lib/route-live-store.js';
 import { triggerLiveRouteRecalculation } from '../lib/route-live-optimizer.js';
+import { runMorningMessagesForDay } from '../lib/morning-message-run.js';
+import { sendMorningMessagesBatch } from '../lib/morning-message-send.js';
 import {
   buildCompleteAppointmentPayload,
   LEGACY_COMPLETE_FIELD_IDS,
@@ -4194,20 +4196,61 @@ export default async function handler(req, res) {
       }
 
       case 'sendMorningMessages': {
-        const { appointments } = req.body;
-        for (const appt of appointments || []) {
-          if (!appt.contactId) continue;
-          const planned = String(appt.timeFrom || appt.timeTo || DEFAULT_BOOK_START_MORNING).trim();
-          await fetchWithRetry(`${GHL_BASE}/contacts/${appt.contactId}`, {
-            method: 'PUT',
-            headers: { Authorization: `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', Version: '2021-04-15' },
-            body: JSON.stringify({
-              customFields: [{ id: FIELD_IDS.geplande_aankomst, field_value: planned }],
-            }),
+        if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+        const dateStr = normalizeYyyyMmDdInput(String(req.body?.dateStr || req.body?.date || ''));
+        const bodyLoc = String(req.body?.locationId || '').trim();
+        const locationId = bodyLoc || locConfigured;
+        const updatedBy = String(req.body?.updatedBy || req.body?.by || 'manual').trim() || 'manual';
+
+        if (dateStr && locationId) {
+          const out = await runMorningMessagesForDay({
+            locationId,
+            dateStr,
+            by: updatedBy,
+            skipIfAlreadySent: false,
+            skipEnabledCheck: true,
+            loadAppointmentsForDate: (d) => loadPlannerAppointmentsForDate(d),
+            sendDeps: {
+              apiKey: GHL_API_KEY,
+              geplandeAankomstFieldId: FIELD_IDS.geplande_aankomst,
+              fetchFn: fetchWithRetry,
+            },
           });
-          await pulseContactTag(appt.contactId, 'ochtend-melding', '[ghl sendMorningMessages]');
+          if (out.skipped && out.code === 'NO_INGEPLAND') {
+            return res.status(200).json({ success: true, sent: 0, skipped: true, code: out.code });
+          }
+          if (!out.ok && !out.skipped) {
+            return res.status(500).json({
+              error: out.code || 'MORNING_SEND_FAILED',
+              detail: out.error || out.errors,
+            });
+          }
+          return res.status(200).json({
+            success: true,
+            sent: out.sent || 0,
+            revision: out.revision,
+            skipped: !!out.skipped,
+            code: out.code || null,
+            via: 'workflow-tag-ochtend-melding',
+          });
         }
-        return res.status(200).json({ success: true, via: 'workflow-tag-ochtend-melding' });
+
+        const { appointments } = req.body;
+        const legacyRows = Array.isArray(appointments) ? appointments : [];
+        if (!legacyRows.length) {
+          return res.status(400).json({ error: 'dateStr+locationId of appointments vereist' });
+        }
+        const sendOut = await sendMorningMessagesBatch(legacyRows, {
+          apiKey: GHL_API_KEY,
+          geplandeAankomstFieldId: FIELD_IDS.geplande_aankomst,
+          fetchFn: fetchWithRetry,
+        });
+        return res.status(sendOut.ok ? 200 : 500).json({
+          success: sendOut.ok,
+          sent: sendOut.sent,
+          via: 'workflow-tag-ochtend-melding',
+          errors: sendOut.errors,
+        });
       }
 
       case 'blockCalendarDay': {
@@ -4599,3 +4642,5 @@ async function updateOpportunityStage(contactId, stage) {
     body: JSON.stringify({ status: stage })
   });
 }
+
+export { loadPlannerAppointmentsForDate, triggerLiveRouteRecalculationForDate };
