@@ -16,6 +16,18 @@
 <script src="/app/planner-block-state.js"></script>
 <script src="/app/planner-pricing.js"></script>
 <script src="/app/planner-load.js"></script>
+<script type="module">
+import {
+  createPlannerAutoRefreshController,
+  PLANNER_AUTO_REFRESH_MS,
+  PLANNER_FOCUS_REFRESH_MIN_MS,
+} from '/app/planner-auto-refresh-core.mjs';
+window.HKPlannerAutoRefresh = {
+  createPlannerAutoRefreshController,
+  PLANNER_AUTO_REFRESH_MS,
+  PLANNER_FOCUS_REFRESH_MIN_MS,
+};
+</script>
 <script src="/app/planner-route-maps.js"></script>
 <script src="/app/planner-modal-ui.js"></script>
 <script src="/app/planner-feedback-ui.js"></script>
@@ -7870,7 +7882,7 @@ async function openGlobalSearchResult(idx) {
   collapseGlobalSearchDock();
 }
 
-function createPlannerCtx() {
+function createPlannerCtx(merge = {}) {
   return {
     getDateStr,
     refreshGhlContactBaseUrl,
@@ -7936,6 +7948,7 @@ function createPlannerCtx() {
     setLastPartitionedRoutePlan: (dateStr, plan) => setLastPartitionedRoutePlan(dateStr, plan),
     clearLastPartitionedRoutePlan: (dateStr) => clearLastPartitionedRoutePlan(dateStr),
     logRouteOrder,
+    ...merge,
   };
 }
 window.createPlannerCtx = createPlannerCtx;
@@ -8151,7 +8164,7 @@ function scheduleRouteRevisionFollowupRefresh(dateStr) {
   clearTimeout(routeRevisionFollowupTimerByDate.get(ds));
   routeRevisionFollowupTimerByDate.set(ds, setTimeout(() => {
     if (getDateStr(currentDate) !== ds) return;
-    loadAppointments(currentDate);
+    loadAppointments(currentDate, { plannerLoadQuiet: true });
   }, 5000));
 }
 
@@ -8754,9 +8767,101 @@ function printDagopgave() {
   window.print();
 }
 
-async function loadAppointments(date) {
+async function loadAppointments(date, merge = {}) {
   if (!window.HKPlannerLoad?.loadAppointments) return;
-  return window.HKPlannerLoad.loadAppointments(createPlannerCtx(), date || currentDate);
+  return window.HKPlannerLoad.loadAppointments(createPlannerCtx(merge), date || currentDate);
+}
+
+let plannerAutoRefreshCtl = null;
+let __hkPlannerAutoRefreshListenersBound = false;
+
+function hkPlannerAutoRefreshDebug(tag, payload) {
+  try {
+    if (localStorage.getItem('hk_debug_status_sync') !== '1') return;
+    console.info(tag, JSON.stringify(payload || {}));
+  } catch (_) {}
+}
+
+function plannerModalOverlayBlocksAutoRefresh() {
+  try {
+    const loginOv = document.getElementById('loginOverlay');
+    if (loginOv && !loginOv.classList.contains('hidden')) return true;
+  } catch (_) {}
+  try {
+    if (document.querySelector('.modal-overlay.visible')) return true;
+  } catch (_) {}
+  try {
+    if (touchPriceOverlayState && touchPriceOverlayState.open) return true;
+  } catch (_) {}
+  return false;
+}
+
+function plannerRouteDragBlocksAutoRefresh() {
+  try {
+    return !!(
+      document.querySelector('.route-item.dragging') || document.querySelector('.routes-stop-row.is-dragging')
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
+function plannerRouteSaveBlocksAutoRefresh() {
+  if (pendingRouteWrite) return true;
+  if (routeReorderDebounceTimer) return true;
+  const ds = getDateStr(currentDate);
+  const ui = routeUiStatusByDate.get(ds);
+  return !!(ui && (ui.saving || ui.optimizing));
+}
+
+function plannerPriceDebounceBlocksAutoRefresh() {
+  return !!(
+    window.HKPlannerPricing &&
+    typeof window.HKPlannerPricing.hasPendingDebouncedPersist === 'function' &&
+    window.HKPlannerPricing.hasPendingDebouncedPersist()
+  );
+}
+
+function stopPlannerAppointmentAutoRefresh() {
+  plannerAutoRefreshCtl?.stop();
+  plannerAutoRefreshCtl = null;
+}
+
+function startPlannerAppointmentAutoRefresh() {
+  if (!window.HKPlannerAutoRefresh?.createPlannerAutoRefreshController) return;
+  if (typeof window.HKPlannerLoad?.loadAppointments !== 'function') return;
+  stopPlannerAppointmentAutoRefresh();
+  plannerAutoRefreshCtl = window.HKPlannerAutoRefresh.createPlannerAutoRefreshController({
+    intervalMs: window.HKPlannerAutoRefresh.PLANNER_AUTO_REFRESH_MS,
+    focusMinMs: window.HKPlannerAutoRefresh.PLANNER_FOCUS_REFRESH_MIN_MS,
+    loadQuiet: () => loadAppointments(currentDate, { plannerLoadQuiet: true }),
+    getInflight: () =>
+      typeof window.HKPlannerLoad?.getLoadAppointmentsInflight === 'function'
+        ? window.HKPlannerLoad.getLoadAppointmentsInflight()
+        : 0,
+    isDocumentVisible: () => document.visibilityState === 'visible',
+    modalBlocks: plannerModalOverlayBlocksAutoRefresh,
+    routeDragBlocks: plannerRouteDragBlocksAutoRefresh,
+    routeSaveBlocks: plannerRouteSaveBlocksAutoRefresh,
+    priceDebounceBlocks: plannerPriceDebounceBlocksAutoRefresh,
+    debug: hkPlannerAutoRefreshDebug,
+  });
+  plannerAutoRefreshCtl.start();
+  if (__hkPlannerAutoRefreshListenersBound) return;
+  __hkPlannerAutoRefreshListenersBound = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      void plannerAutoRefreshCtl?.tryBackgroundRefresh('visibility');
+    }
+  });
+  window.addEventListener('focus', () => {
+    void plannerAutoRefreshCtl?.tryBackgroundRefresh('focus');
+  });
+}
+
+function restartPlannerAppointmentAutoRefresh() {
+  stopPlannerAppointmentAutoRefresh();
+  startPlannerAppointmentAutoRefresh();
 }
 
 function formatDate(d) {
@@ -8862,6 +8967,7 @@ function goToDateStr(ymd, source = 'go_to_date') {
   const nextDate = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12, 0, 0));
   const dateStr = getDateStr(nextDate);
   logPlannerDateNav('requested', { source, dateStr });
+  restartPlannerAppointmentAutoRefresh();
   setCurrentDateAndRefreshUi(nextDate);
   logPlannerDateNav('ui_synced', { source, dateStr });
   return loadAppointments(currentDate).then(() => {
@@ -8976,6 +9082,7 @@ function switchSidebarView(view, event, opts = {}) {
   const compact = window.matchMedia('(max-width: 1024px)').matches;
   const blockedOnCompact = requested === 'analytics' || requested === 'prices';
   plannerSidebarView = compact && blockedOnCompact ? 'today' : requested;
+  restartPlannerAppointmentAutoRefresh();
   if (compact && blockedOnCompact) {
     if (window.location.hash === '#panelAnalytics' || window.location.hash === '#panelPrices') {
       try {
@@ -12061,6 +12168,7 @@ document.addEventListener('DOMContentLoaded', () => {
     collapseGlobalSearchDock();
   });
   checkLogin();
+  startPlannerAppointmentAutoRefresh();
 });
 </script>
 

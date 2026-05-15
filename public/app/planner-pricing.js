@@ -121,10 +121,15 @@
     return persistPriceLines({ appointment: a, authHeader });
   }
 
+  function hasPendingDebouncedPersist() {
+    return persistTimers.size > 0;
+  }
+
   global.HKPlannerPricing = {
     calcTotalPrice,
     persistPriceLines,
     debouncedPersistPriceLines,
     flushDebouncedPersistPriceLines,
+    hasPendingDebouncedPersist,
   };
 })(window);
