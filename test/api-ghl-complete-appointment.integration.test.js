@@ -77,6 +77,18 @@ async function runCompleteAppointmentScenario({ sendReview, contactFetch, expect
     if (u.endsWith('/contacts/c-1') && method === 'GET') {
       return contactFetch();
     }
+    if (u.includes('/locations/test-location/customFields') && method === 'GET') {
+      return makeJsonResponse(200, { customFields: [] });
+    }
+    if (u.includes('/calendars/events?') && method === 'GET') {
+      return makeJsonResponse(200, { events: [] });
+    }
+    if (u.includes('/calendars/blocked-slots') && method === 'GET') {
+      return makeJsonResponse(200, { blockedSlots: [] });
+    }
+    if (u.includes('/calendars/free-slots') && method === 'GET') {
+      return makeJsonResponse(200, {});
+    }
     return makeTextResponse(500, `unexpected fetch ${method} ${u}`);
   };
 

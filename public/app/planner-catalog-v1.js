@@ -136,7 +136,7 @@
       return catalogItems;
     })().finally(() => {
       loadingPromise = null;
-    })();
+    });
     return loadingPromise;
   }
 
