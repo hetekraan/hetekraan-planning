@@ -6038,6 +6038,43 @@ window.HKPlannerAutoRefresh = {
     border-color: var(--accent);
   }
   .routes-actions-stack .btn-maps,
+  .routes-morning-auto {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+    font-size: 13px;
+    line-height: 1.35;
+  }
+  .routes-morning-auto__label {
+    flex: 1;
+    color: var(--text);
+  }
+  .routes-morning-auto__hint {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 11px;
+    cursor: help;
+    flex-shrink: 0;
+  }
+  .routes-morning-sent-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--accent2);
+    white-space: nowrap;
+  }
   .routes-actions-stack .btn-morning,
   .routes-actions-stack .route-reset-link {
     width: 100%;
@@ -6876,6 +6913,17 @@ window.HKPlannerAutoRefresh = {
         <div id="routeMap" aria-label="Routekaart"></div>
         <div class="routes-summary" id="routeSummary" aria-live="polite"></div>
         <div class="routes-actions-stack">
+          <div class="routes-morning-auto" id="routesMorningAutoWrap">
+            <label class="routes-morning-auto__label" for="routesMorningAutoToggle">
+              Ochtendmelding automatisch versturen om 8:00
+            </label>
+            <span
+              class="routes-morning-auto__hint"
+              title="Als uit: geen automatische verzending op deze dag. Je kunt nog handmatig sturen via de knop hieronder."
+              aria-label="Uitleg automatische ochtendmelding"
+            >i</span>
+            <input type="checkbox" id="routesMorningAutoToggle" checked aria-label="Automatische ochtendmelding om 8:00" />
+          </div>
           <button type="button" class="today-btn today-btn--dark btn-optimize" id="btnOptimize" onclick="optimizeRoute()" title="Bereken de live route opnieuw. Handmatige pins en vaste tijden blijven behouden.">Heroptimaliseer route</button>
           <button type="button" class="today-btn today-btn--ghost" id="btnRouteRetry" onclick="routeRetryClick()" style="display:none">Verbinding traag, opnieuw proberen?</button>
           <a class="btn-maps" href="#" onclick="openMaps(event)">Open volledige route in Maps</a>
@@ -8053,6 +8101,7 @@ function createPlannerCtx(merge = {}) {
     setLastPartitionedRoutePlan: (dateStr, plan) => setLastPartitionedRoutePlan(dateStr, plan),
     clearLastPartitionedRoutePlan: (dateStr) => clearLastPartitionedRoutePlan(dateStr),
     logRouteOrder,
+    refreshMorningMessageSettings,
     ...merge,
     getPlannerDebugMeta: () => ({
       remoteAppVersion:
@@ -9082,6 +9131,7 @@ function goToDateStr(ymd, source = 'go_to_date') {
   setCurrentDateAndRefreshUi(nextDate);
   logPlannerDateNav('ui_synced', { source, dateStr });
   return loadAppointments(currentDate).then(() => {
+    void refreshMorningMessageSettings();
     try {
       const inp = document.getElementById('plannerDesktopSearchInput');
       if (plannerDesktopRemoteSearchEnabled() && String(inp?.value ?? '').trim().length >= 2) {
@@ -10536,6 +10586,7 @@ function renderRouteItemHtml(a) {
   const manualPinHtml = manualPin
     ? `<button type="button" class="route-pin-pill" title="Vastgezet door handmatige volgorde" onclick='event.stopPropagation(); unpinRouteContact(${JSON.stringify(cid)})'>Pin losmaken</button>`
     : '';
+  const morningSentHtml = cid ? morningMessageSentBadgeHtml(cid) : '';
   return `
     <div class="route-item ${a.status === 'klaar' ? 'done' : ''} ${a.violation ? 'has-violation' : ''}"
          draggable="true"
@@ -10551,7 +10602,7 @@ function renderRouteItemHtml(a) {
         </div>
         <div class="route-sub-row">
           <span class="route-addr">${shortAddr || '—'}</span>
-          <span class="route-sub-row__pills">${jobLbl ? `<span class="route-job-pill">${jobLbl}</span>` : `<span class="route-day-pill">${dayChip}</span>`}${manualPinHtml}${pinHtml}</span>
+          <span class="route-sub-row__pills">${jobLbl ? `<span class="route-job-pill">${jobLbl}</span>` : `<span class="route-day-pill">${dayChip}</span>`}${morningSentHtml}${manualPinHtml}${pinHtml}</span>
         </div>
       </div>
     </div>`;
@@ -10620,6 +10671,7 @@ function renderRoute(routeStops) {
 
   list.innerHTML = body;
 
+  void refreshMorningMessageSettings();
   initRouteDrag(list);
   window.HKPlannerRouteMaps?.renderRouteMap?.({
     apiKey: HK_GOOGLE_MAPS_API_KEY,
@@ -10707,6 +10759,114 @@ let _dragSrcId = null;
 let routeReorderDebounceTimer = null;
 let routeWriteSlowTimer = null;
 let pendingRouteWrite = null;
+let morningMessageSettingsCache = null;
+let morningMessageSettingsDateStr = '';
+
+function formatMorningSentClock(ts) {
+  const n = Number(ts);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  try {
+    return new Intl.DateTimeFormat('nl-NL', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Europe/Amsterdam',
+    }).format(new Date(n));
+  } catch (_) {
+    return '';
+  }
+}
+
+function getMorningMessageSettingsForUi() {
+  return morningMessageSettingsCache && typeof morningMessageSettingsCache === 'object'
+    ? morningMessageSettingsCache
+    : { enabled: true, lastSentAt: null, lastSentContactIds: [], lastSentWindowsByContactId: {} };
+}
+
+function morningMessageSentBadgeHtml(contactId) {
+  const settings = getMorningMessageSettingsForUi();
+  if (!settings.lastSentAt) return '';
+  const ids = Array.isArray(settings.lastSentContactIds) ? settings.lastSentContactIds : [];
+  if (!ids.includes(String(contactId))) return '';
+  const win =
+    settings.lastSentWindowsByContactId && settings.lastSentWindowsByContactId[contactId]
+      ? settings.lastSentWindowsByContactId[contactId]
+      : null;
+  const clock = formatMorningSentClock(settings.lastSentAt) || '08:00';
+  const windowLabel = win
+    ? win.timeFrom === win.timeTo
+      ? win.plannedValue || win.timeFrom
+      : `${win.timeFrom || ''}–${win.timeTo || ''}`
+    : '';
+  const tip = windowLabel
+    ? `Verzonden om ${clock} · venster ${windowLabel}`
+    : `Verzonden om ${clock}`;
+  return `<span class="routes-morning-sent-pill" title="${tip.replace(/"/g, '&quot;')}">📱 ${clock}</span>`;
+}
+
+async function refreshMorningMessageSettings() {
+  const dateStr = getDateStr(currentDate);
+  const locationId = GHL_LOCATION_ID_PUBLIC || '';
+  if (!locationId || !dateStr) return;
+  try {
+    const res = await fetch(
+      `/api/morning-message-settings?locationId=${encodeURIComponent(locationId)}&date=${encodeURIComponent(dateStr)}`,
+      { cache: 'no-store', headers: { 'X-HK-Auth': hkAuthHeader() } }
+    );
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data?.settings) {
+      morningMessageSettingsCache = data.settings;
+      morningMessageSettingsDateStr = dateStr;
+    }
+  } catch (_) {}
+  syncMorningMessageAutoToggleUi();
+}
+
+function syncMorningMessageAutoToggleUi() {
+  const inp = document.getElementById('routesMorningAutoToggle');
+  if (!inp) return;
+  const settings = getMorningMessageSettingsForUi();
+  inp.checked = settings.enabled !== false;
+}
+
+async function onMorningMessageAutoToggleChange() {
+  const inp = document.getElementById('routesMorningAutoToggle');
+  if (!inp) return;
+  const dateStr = getDateStr(currentDate);
+  const locationId = GHL_LOCATION_ID_PUBLIC || '';
+  if (!locationId || !dateStr) return;
+  const enabled = !!inp.checked;
+  try {
+    const res = await fetch('/api/morning-message-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
+      body: JSON.stringify({
+        locationId,
+        dateStr,
+        enabled,
+        updatedBy: readPlannerUsernameRaw() || 'planner',
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showToast(data?.error || 'Kon instelling niet opslaan', 'info');
+      inp.checked = !enabled;
+      return;
+    }
+    morningMessageSettingsCache = data.settings || { enabled };
+    morningMessageSettingsDateStr = dateStr;
+    showToast(enabled ? 'Automatische ochtendmelding aan' : 'Automatische ochtendmelding uit voor deze dag', 'success');
+  } catch (_) {
+    inp.checked = !enabled;
+    showToast('Kon instelling niet opslaan', 'info');
+  }
+}
+
+function wireMorningMessageAutoToggle() {
+  const inp = document.getElementById('routesMorningAutoToggle');
+  if (!inp || inp.dataset.hkWired === '1') return;
+  inp.dataset.hkWired = '1';
+  inp.addEventListener('change', () => void onMorningMessageAutoToggleChange());
+}
 
 function routeContactIdsFromStops(stops) {
   return (Array.isArray(stops) ? stops : [])
@@ -12293,6 +12453,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btn && btn.contains(e.target)) return;
     collapseGlobalSearchDock();
   });
+  wireMorningMessageAutoToggle();
   checkLogin();
   startPlannerAppointmentAutoRefresh();
 });

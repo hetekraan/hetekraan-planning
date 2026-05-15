@@ -66,8 +66,8 @@
       "schedule": "0 6 * * *"
     },
     {
-      "path": "/api/cron/morning-messages",
-      "schedule": "0 6 * * *"
+      "path": "/api/cron/send-morning-messages",
+      "schedule": "0 6 * * 1-5"
     }
   ],
   "functions": {
