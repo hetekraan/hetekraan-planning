@@ -4212,6 +4212,8 @@ export default async function handler(req, res) {
             loadAppointmentsForDate: (d) => loadPlannerAppointmentsForDate(d),
             sendDeps: {
               apiKey: GHL_API_KEY,
+              baseUrl: GHL_BASE,
+              locationId: locationId,
               geplandeAankomstFieldId: FIELD_IDS.geplande_aankomst,
               fetchFn: fetchWithRetry,
             },
@@ -4242,6 +4244,8 @@ export default async function handler(req, res) {
         }
         const sendOut = await sendMorningMessagesBatch(legacyRows, {
           apiKey: GHL_API_KEY,
+          baseUrl: GHL_BASE,
+          locationId: locConfigured,
           geplandeAankomstFieldId: FIELD_IDS.geplande_aankomst,
           fetchFn: fetchWithRetry,
         });

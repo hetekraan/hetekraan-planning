@@ -63,6 +63,8 @@ export default async function handler(req, res) {
         loadAppointmentsForDate: (d) => loadPlannerAppointmentsForDate(d),
         sendDeps: {
           apiKey: GHL_API_KEY,
+          baseUrl: 'https://services.leadconnectorhq.com',
+          locationId,
           geplandeAankomstFieldId: GEPLANDE_AANKOMST_FIELD,
         },
       });

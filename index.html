@@ -10792,11 +10792,13 @@ function morningMessageSentBadgeHtml(contactId) {
       ? settings.lastSentWindowsByContactId[contactId]
       : null;
   const clock = formatMorningSentClock(settings.lastSentAt) || '08:00';
-  const windowLabel = win
-    ? win.timeFrom === win.timeTo
-      ? win.plannedValue || win.timeFrom
-      : `${win.timeFrom || ''}–${win.timeTo || ''}`
-    : '';
+  const windowLabel = win?.windowPhrase
+    ? String(win.windowPhrase)
+    : win
+      ? win.timeFrom === win.timeTo
+        ? win.plannedValue || win.timeFrom
+        : `${win.timeFrom || ''}–${win.timeTo || ''}`
+      : '';
   const tip = windowLabel
     ? `Verzonden om ${clock} · venster ${windowLabel}`
     : `Verzonden om ${clock}`;
