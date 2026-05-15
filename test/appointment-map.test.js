@@ -10,6 +10,15 @@ test('plannerServiceMarkedCompleteOnRouteDay matches same route date', () => {
   assert.equal(plannerServiceMarkedCompleteOnRouteDay('2026-04-07', '2026-04-08'), false);
 });
 
+test('plannerServiceMarkedCompleteOnRouteDay accepts European d-m-y / d.m.y', () => {
+  assert.equal(plannerServiceMarkedCompleteOnRouteDay('8-4-2026', '2026-04-08'), true);
+  assert.equal(plannerServiceMarkedCompleteOnRouteDay('08-04-2026', '2026-04-08'), true);
+  assert.equal(plannerServiceMarkedCompleteOnRouteDay('08/04/2026', '2026-04-08'), true);
+  assert.equal(plannerServiceMarkedCompleteOnRouteDay('08.04.2026', '2026-04-08'), true);
+  assert.equal(plannerServiceMarkedCompleteOnRouteDay('08-04-2026T12:00:00', '2026-04-08'), true);
+  assert.equal(plannerServiceMarkedCompleteOnRouteDay('07-04-2026', '2026-04-08'), false);
+});
+
 test('mapEnrichedGhlEventToAppointment computes base from canonical total minus extras', () => {
   const ev = {
     id: 'evt-1',
@@ -43,6 +52,24 @@ test('mapEnrichedGhlEventToAppointment reads datum_laatste_onderhoud from field_
       firstName: 'Piet',
       lastName: 'Test',
       customFields: [{ id: 'hiTe3Yi5TlxheJq4bLzy', field_value: '2026-04-08' }],
+    },
+  };
+  const a = mapEnrichedGhlEventToAppointment(ev, 0, '2026-04-08');
+  assert.equal(a.status, 'klaar');
+});
+
+test('mapEnrichedGhlEventToAppointment klaar when datum CF is European d-m-y matching route day', () => {
+  const ev = {
+    id: 'evt-dmy',
+    startTime: new Date('2026-04-08T10:00:00+02:00').toISOString(),
+    contactId: 'c-dmy',
+    parsedPrice: '100',
+    parsedWork: 'Werk',
+    parsedJobType: 'onderhoud',
+    contact: {
+      firstName: 'Sam',
+      lastName: 'DMY',
+      customFields: [{ id: 'hiTe3Yi5TlxheJq4bLzy', field_value: '08-04-2026' }],
     },
   };
   const a = mapEnrichedGhlEventToAppointment(ev, 0, '2026-04-08');

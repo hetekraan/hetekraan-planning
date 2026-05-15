@@ -10,7 +10,6 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
 <title>Hetekraan — Planning</title>
-<script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="/styles/global.css">
 <script src="/app/planner-storage.js"></script>
 <script src="/app/planner-block-state.js"></script>
@@ -46,7 +45,10 @@ window.HKPlannerAutoRefresh = {
 <script src="/app/planner-customers.js"></script>
 <script src="/app/planner-prices.js"></script>
 <script src="/app/planner-inventory.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/tailwind.css">
 <style>
   :root {
     /* Match hetekraan.nl (Impreza): Karla body, Poppins headings */
@@ -6596,11 +6598,115 @@ window.HKPlannerAutoRefresh = {
       padding: 4px 18px !important;
       align-items: flex-start;
     }
+    body:not(.user-jerry) #panelAfspraken .today-page-heading h1 {
+      font-size: 23px;
+      line-height: 1.18;
+      letter-spacing: -0.03em;
+    }
+    body:not(.user-jerry) #panelAfspraken .today-page-heading p {
+      margin-top: 4px;
+      font-size: 13px;
+      line-height: 1.35;
+      color: var(--ink-soft);
+    }
+    body:not(.user-jerry) #panelAfspraken .today-page-header .appointments-header-actions {
+      align-items: center;
+      gap: 8px;
+    }
+    body:not(.user-jerry) #panelAfspraken .today-page-header .appointments-header-actions .today-btn {
+      min-height: 34px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.2;
+    }
     body:not(.user-jerry) #panelAfspraken > .today-week-strip-wrap {
       padding: 6px 18px !important;
     }
+    body:not(.user-jerry) #panelAfspraken .planner-week-day {
+      min-height: 46px;
+      padding: 9px 8px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 12px;
+    }
+    body:not(.user-jerry) #panelAfspraken .planner-week-day .planner-week-day-num {
+      font-size: 18px;
+      line-height: 1.05;
+      margin-top: 3px;
+      font-weight: 700;
+    }
     body:not(.user-jerry) #panelAfspraken > .today-kpi-grid {
       padding: 10px 18px !important;
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-head-aside {
+      gap: 8px;
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-jerry-icons {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-actions-slot {
+      display: none;
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-jerry-icons .icon-btn.appt-action-icon {
+      --appt-action-icon-size: 34px;
+      --appt-action-icon-radius: 8px;
+      width: var(--appt-action-icon-size);
+      height: var(--appt-action-icon-size);
+      min-width: var(--appt-action-icon-size);
+      min-height: var(--appt-action-icon-size);
+      padding: 0;
+      border-radius: var(--appt-action-icon-radius);
+      background: var(--appt-action-icon-bg);
+      border-color: var(--appt-action-icon-border);
+      color: var(--appt-action-icon-fg);
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-jerry-icons .icon-btn.appt-action-icon .appt-action-svg {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-jerry-icons .icon-btn.appt-action-icon:hover {
+      background: var(--appt-action-icon-bg-hover);
+      border-color: var(--appt-action-icon-border-hover);
+      color: var(--appt-action-icon-fg-hover);
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-cta-row {
+      gap: 8px;
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-btn--prijs,
+    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-btn--onderweg-actie,
+    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-btn--klaar {
+      min-height: 38px;
+      padding: 0 14px;
+      border-radius: 10px;
+      font-size: 12.5px;
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-pill--type {
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: lowercase;
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-pill--type-onderhoud {
+      background: #e5f4ec;
+      color: #0f7a4b;
+      border-color: #cde8d8;
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-pill--type-installatie {
+      background: #fbf0d4;
+      color: #a66a00;
+      border-color: #f0dfb1;
+    }
+    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-pill--type-reparatie {
+      background: #fbe9dd;
+      color: #a02f08;
+      border-color: #f3d7c4;
     }
   }
 
@@ -7906,7 +8012,6 @@ function createPlannerCtx(merge = {}) {
     loadAppointments,
     calcTotalPrice,
     showPaymentLinkFallback,
-    saveKlaarStatus,
     appointmentDomSafeId,
     findAppointmentById: (x) => appointments.find((a) => String(a.id) === String(x)),
     getRescheduleId: () => _rescheduleId,
@@ -7949,6 +8054,12 @@ function createPlannerCtx(merge = {}) {
     clearLastPartitionedRoutePlan: (dateStr) => clearLastPartitionedRoutePlan(dateStr),
     logRouteOrder,
     ...merge,
+    getPlannerDebugMeta: () => ({
+      remoteAppVersion:
+        typeof HK_REMOTE_APP_VERSION !== 'undefined' ? String(HK_REMOTE_APP_VERSION || '').trim() : '',
+      visibilityState:
+        typeof document !== 'undefined' && document.visibilityState ? String(document.visibilityState) : '',
+    }),
   };
 }
 window.createPlannerCtx = createPlannerCtx;
@@ -9722,6 +9833,30 @@ function remountPriceSectionWithEditorScrollLogging(id, actionType) {
 function renderApptCard(a, i) {
     const domId = appointmentDomSafeId(a.id);
     const idQ = JSON.stringify(a.id);
+    try {
+      if (
+        typeof localStorage !== 'undefined' &&
+        localStorage.getItem('hk_debug_status_sync') === '1' &&
+        !a.isCalBlock &&
+        i < 16
+      ) {
+        const dbg = a._hkDbgSync && typeof a._hkDbgSync === 'object' ? a._hkDbgSync : null;
+        console.info(
+          'PLANNER_CARD_RENDER_STATUS',
+          JSON.stringify({
+            idx: i,
+            appointmentId: a.id != null ? String(a.id) : '',
+            contactId: a.contactId || null,
+            viewedRouteDateStr: getDateStr(currentDate),
+            serverStatus: dbg ? dbg.serverStatus : '',
+            statusAfterLocalRepair: dbg ? dbg.statusAfterLocalRepair : '',
+            renderStatus: a.status || '',
+            datumOnderhoud: a.datumOnderhoud || '',
+            paymentStatus: a.paymentStatus || '',
+          })
+        );
+      }
+    } catch (_) {}
     if (a.isCalBlock) {
       const endPart = a.blockEndLabel ? ` – ${a.blockEndLabel}` : '';
       return `
@@ -9843,7 +9978,7 @@ function renderApptCard(a, i) {
     const primaryCta = !isDone
       ? isOnderweg
         ? `<button type="button" class="btn-done appt-wm-btn appt-wm-btn--klaar ${isOnderweg ? 'active' : ''}" onclick='${useTouchPriceOverlay ? `togglePrijs(event, ${idQ})` : `scrollToPrijs(${idQ})`}' title="Naar prijs en afronden" aria-label="Markeer klaar">${wmBtnCheck} Klaar</button>`
-        : `<button type="button" class="btn-done appt-wm-btn appt-wm-btn--onderweg-actie" onclick='askOnderweg(${idQ})' title="Markeer onderweg" aria-label="Markeer onderweg">Onderweg →</button>`
+        : `<button type="button" class="btn-done appt-wm-btn appt-wm-btn--onderweg-actie" onclick='askOnderweg(${idQ})' title="Markeer onderweg" aria-label="Markeer onderweg">Onderweg</button>`
       : '';
     const pinHtml = (() => {
       const pin =
@@ -9861,16 +9996,14 @@ function renderApptCard(a, i) {
       if (noteStripped.toLowerCase() === String(jobDescDisplay || '').trim().toLowerCase()) return '';
       return `<div class="appt-notes appt-wm-notes">● ${escapeHtml(noteStripped)}</div>`;
     })();
-    const jerryIconStrip = !layoutV2
-      ? `<div class="appt-actions__icons appt-wm-jerry-icons">
+    const appointmentIconStrip = `<div class="appt-actions__icons appt-wm-jerry-icons">
             ${a.phone ? `<a class="icon-btn appt-action-icon" href="tel:${a.phone}" title="Bellen">${APPT_ACTION_SVG.phone}</a>` : ''}
             ${a.mapsLink ? `<a class="icon-btn appt-action-icon" href="${a.mapsLink}" target="_blank" rel="noopener noreferrer" title="Maps">${APPT_ACTION_SVG.map}</a>` : ''}
             <button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">${APPT_ACTION_SVG.pencil}</button>
             ${a.ghlUrl ? `<a class="icon-btn appt-action-icon" href="${a.ghlUrl}"${a.ghlAppUrl ? ` data-ghl-app="${escapeHtml(a.ghlAppUrl)}" onclick="return hkOpenGhlContact(event,this)"` : ''} target="_blank" rel="noopener noreferrer" title="Open in GHL">${APPT_ACTION_SVG.link}</a>` : ''}
             ${isDone ? `<button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentDetailsModal(${idQ})' title="Bekijk details">${APPT_ACTION_SVG.eye}</button>` : ''}
             <button type="button" class="icon-btn appt-action-icon" onclick='deleteAppt(${idQ})' title="Verwijderen">${APPT_ACTION_SVG.close}</button>
-            </div>`
-      : '';
+            </div>`;
     const wmCore = layoutV2
       ? `
       <div class="appt-inner appt-inner--wm">
@@ -9884,8 +10017,8 @@ function renderApptCard(a, i) {
                 ${pinHtml}
               </div>
               <div class="appt-wm-head-aside">
+                ${appointmentIconStrip}
                 ${priceHeader}
-                ${jerryIconStrip}
               </div>
             </div>
             <div class="appt-desc appt-wm-desc">${jobDescDisplay}</div>
@@ -9920,14 +10053,7 @@ function renderApptCard(a, i) {
             ${a.fullAddressLine ? `<span class="appt-address">${a.fullAddressLine}</span>` : ''}
           </div>
           <div class="appt-actions">
-            <div class="appt-actions__icons">
-            ${a.phone ? `<a class="icon-btn appt-action-icon" href="tel:${a.phone}" title="Bellen">${APPT_ACTION_SVG.phone}</a>` : ''}
-            ${a.mapsLink ? `<a class="icon-btn appt-action-icon" href="${a.mapsLink}" target="_blank" rel="noopener noreferrer" title="Maps">${APPT_ACTION_SVG.map}</a>` : ''}
-            <button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentEditModal(${idQ})' title="Bewerk afspraak">${APPT_ACTION_SVG.pencil}</button>
-            ${a.ghlUrl ? `<a class="icon-btn appt-action-icon" href="${a.ghlUrl}"${a.ghlAppUrl ? ` data-ghl-app="${escapeHtml(a.ghlAppUrl)}" onclick="return hkOpenGhlContact(event,this)"` : ''} target="_blank" rel="noopener noreferrer" title="Open in GHL">${APPT_ACTION_SVG.link}</a>` : ''}
-            ${isDone ? `<button type="button" class="icon-btn appt-action-icon" onclick='openAppointmentDetailsModal(${idQ})' title="Bekijk details">${APPT_ACTION_SVG.eye}</button>` : ''}
-            <button type="button" class="icon-btn appt-action-icon" onclick='deleteAppt(${idQ})' title="Verwijderen">${APPT_ACTION_SVG.close}</button>
-            </div>
+            ${appointmentIconStrip}
             <div class="appt-actions__mobile">
               <button type="button" class="icon-btn appt-action-icon appt-actions__menu-btn" id="mob-menu-btn-${domId}" aria-label="Meer acties" aria-expanded="false" aria-haspopup="true" aria-controls="mob-menu-${domId}" onclick="toggleMobileApptActionMenu(event,'${domId}')">${APPT_MOBILE_MENU_KEBAB_SVG}</button>
               <div class="appt-actions__dropdown" id="mob-menu-${domId}" role="menu" aria-labelledby="mob-menu-btn-${domId}">${mobileMenuRows.join('')}</div>
@@ -10771,6 +10897,127 @@ function initRouteDrag(list) {
       });
     });
   });
+}
+
+/** Interval (ms) voor stille planner-sync op de actieve dag. Later eventueel via env/config. */
+const PLANNER_AUTO_REFRESH_MS = 30000;
+/** Minimale tijd tussen focus/visibility-refresh en vorige auto-refresh. */
+const PLANNER_FOCUS_REFRESH_MIN_MS = 10000;
+
+let plannerAutoRefreshTimerId = null;
+let plannerLastBackgroundRefreshAt = 0;
+let __hkPlannerAutoRefreshListenersBound = false;
+
+function hkPlannerAutoRefreshDebug(tag, payload) {
+  try {
+    if (localStorage.getItem('hk_debug_status_sync') !== '1') return;
+    console.info(tag, JSON.stringify(payload || {}));
+  } catch (_) {}
+}
+
+function plannerModalOverlayBlocksAutoRefresh() {
+  try {
+    const loginOv = document.getElementById('loginOverlay');
+    if (loginOv && !loginOv.classList.contains('hidden')) return true;
+  } catch (_) {}
+  try {
+    if (document.querySelector('.modal-overlay.visible')) return true;
+  } catch (_) {}
+  try {
+    if (touchPriceOverlayState && touchPriceOverlayState.open) return true;
+  } catch (_) {}
+  return false;
+}
+
+function plannerRouteDragBlocksAutoRefresh() {
+  try {
+    return !!(
+      document.querySelector('.route-item.dragging') || document.querySelector('.routes-stop-row.is-dragging')
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
+function plannerRouteSaveBlocksAutoRefresh() {
+  return !!(
+    window.HKPlannerRoute &&
+    typeof window.HKPlannerRoute.isSaveRouteMutationInFlight === 'function' &&
+    window.HKPlannerRoute.isSaveRouteMutationInFlight()
+  );
+}
+
+function plannerPriceDebounceBlocksAutoRefresh() {
+  return !!(
+    window.HKPlannerPricing &&
+    typeof window.HKPlannerPricing.hasPendingDebouncedPersist === 'function' &&
+    window.HKPlannerPricing.hasPendingDebouncedPersist()
+  );
+}
+
+async function plannerTryBackgroundRefresh(reason) {
+  const inflight =
+    typeof window.HKPlannerLoad?.getLoadAppointmentsInflight === 'function'
+      ? window.HKPlannerLoad.getLoadAppointmentsInflight()
+      : 0;
+  if (inflight > 0) {
+    hkPlannerAutoRefreshDebug('PLANNER_AUTO_REFRESH_SKIP', { reason, why: 'loadAppointments_inflight' });
+    return;
+  }
+  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+    hkPlannerAutoRefreshDebug('PLANNER_AUTO_REFRESH_SKIP', { reason, why: 'document_hidden' });
+    return;
+  }
+  if (plannerModalOverlayBlocksAutoRefresh()) {
+    hkPlannerAutoRefreshDebug('PLANNER_AUTO_REFRESH_SKIP', { reason, why: 'modal_or_touch_price_open' });
+    return;
+  }
+  if (plannerRouteDragBlocksAutoRefresh()) {
+    hkPlannerAutoRefreshDebug('PLANNER_AUTO_REFRESH_SKIP', { reason, why: 'route_drag_active' });
+    return;
+  }
+  if (plannerRouteSaveBlocksAutoRefresh()) {
+    hkPlannerAutoRefreshDebug('PLANNER_AUTO_REFRESH_SKIP', { reason, why: 'saveRouteTimes_inflight' });
+    return;
+  }
+  if (plannerPriceDebounceBlocksAutoRefresh()) {
+    hkPlannerAutoRefreshDebug('PLANNER_AUTO_REFRESH_SKIP', { reason, why: 'price_lines_debounce_pending' });
+    return;
+  }
+  const now = Date.now();
+  if (
+    (reason === 'focus' || reason === 'visibility') &&
+    now - plannerLastBackgroundRefreshAt < PLANNER_FOCUS_REFRESH_MIN_MS
+  ) {
+    hkPlannerAutoRefreshDebug('PLANNER_AUTO_REFRESH_SKIP', {
+      reason,
+      why: 'throttle_focus_visibility',
+      msSinceLast: now - plannerLastBackgroundRefreshAt,
+    });
+    return;
+  }
+  plannerLastBackgroundRefreshAt = now;
+  hkPlannerAutoRefreshDebug('PLANNER_AUTO_REFRESH_START', { reason });
+  try {
+    await loadAppointments(currentDate, { plannerLoadQuiet: true });
+    hkPlannerAutoRefreshDebug('PLANNER_AUTO_REFRESH_DONE', { reason });
+  } catch (e) {
+    hkPlannerAutoRefreshDebug('PLANNER_AUTO_REFRESH_DONE', { reason, error: String(e?.message || e) });
+  }
+}
+
+function startPlannerAppointmentAutoRefresh() {
+  if (typeof window.HKPlannerLoad?.loadAppointments !== 'function') return;
+  if (plannerAutoRefreshTimerId) clearInterval(plannerAutoRefreshTimerId);
+  plannerAutoRefreshTimerId = setInterval(() => {
+    void plannerTryBackgroundRefresh('interval');
+  }, PLANNER_AUTO_REFRESH_MS);
+  if (__hkPlannerAutoRefreshListenersBound) return;
+  __hkPlannerAutoRefreshListenersBound = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void plannerTryBackgroundRefresh('visibility');
+  });
+  window.addEventListener('focus', () => void plannerTryBackgroundRefresh('focus'));
 }
 
 function scrollToCard(id) {
