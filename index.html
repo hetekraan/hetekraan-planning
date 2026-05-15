@@ -38,6 +38,7 @@ window.HKPlannerAutoRefresh = {
 <script src="/app/planner-confirm-done-klaar-gate.js"></script>
 <script src="/app/planner-actions.js"></script>
 <script src="/app/planner-route.js"></script>
+<script src="/app/planner-next-eta.js"></script>
 <script src="/app/planner-scheduling.js"></script>
 <script src="/app/planner-admin.js"></script>
 <script src="/app/planner-proposals.js"></script>
@@ -4923,6 +4924,11 @@ window.HKPlannerAutoRefresh = {
     border: 1px solid rgba(59, 130, 246, 0.22);
     color: #1d4ed8;
   }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--eta-sent {
+    background: rgba(63, 125, 74, 0.14);
+    color: var(--hk-good, #3f7d4a);
+    border: 1px solid rgba(63, 125, 74, 0.35);
+  }
   body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--onderweg {
     background: rgba(251, 191, 36, 0.16);
     border: 1px solid rgba(245, 158, 11, 0.45);
@@ -7126,7 +7132,19 @@ window.HKPlannerAutoRefresh = {
   </div>
 </div>
 
-<!-- ONDERWEG BEVESTIGING POPUP -->
+<!-- ONDERWEG NA KLAAR: volgende klant ETA-prompt (niet dismissable) -->
+<div class="modal-overlay" id="nextEtaPromptOverlay" aria-hidden="true">
+  <div class="modal" style="max-width:360px" role="dialog" aria-modal="true" aria-labelledby="nextEtaPromptTitle">
+    <div class="modal-title" id="nextEtaPromptTitle">Onderweg?</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5" id="nextEtaPromptSubtitle"></div>
+    <div class="modal-actions" style="flex-direction:column;gap:8px">
+      <button type="button" class="btn-save" id="nextEtaPromptConfirmBtn" style="width:100%;padding:10px" onclick="confirmNextEtaPromptSend()">Ja, stuur ETA</button>
+      <button type="button" class="btn-cancel" style="width:100%;padding:10px;text-align:center" onclick="dismissNextEtaPrompt()">Niet nu</button>
+    </div>
+  </div>
+</div>
+
+<!-- ONDERWEG BEVESTIGING POPUP (legacy handmatig) -->
 <div class="modal-overlay" id="onderwegOverlay">
   <div class="modal" style="max-width:340px">
     <div class="modal-title" id="onderwegTitle">Onderweg?</div>
@@ -8102,6 +8120,10 @@ function createPlannerCtx(merge = {}) {
     clearLastPartitionedRoutePlan: (dateStr) => clearLastPartitionedRoutePlan(dateStr),
     logRouteOrder,
     refreshMorningMessageSettings,
+    markEtaSentForContact,
+    getEtaSentMetaForContact,
+    showNextEtaPrompt,
+    dismissNextEtaPrompt,
     ...merge,
     getPlannerDebugMeta: () => ({
       remoteAppVersion:
@@ -8228,6 +8250,10 @@ function localDraftRouteOrderKey(dateStr) {
 
 /** Centrale always-live route-state zoals opgehaald via `getAppointments`. */
 const liveRouteStateByDate = new Map();
+/** @type {{ afterContactId: string, nextContact: object|null, etaTime: string|null, calcFailed?: boolean }|null} */
+let pendingNextEtaPrompt = null;
+/** dateStr → Record<contactId, { eta: string, sentAt: number }> */
+const etaSentMetaByDate = new Map();
 const lastSeenRouteStateRevisionByDate = new Map();
 const routeRevisionFollowupTimerByDate = new Map();
 const routeUiStatusByDate = new Map();
@@ -8249,9 +8275,51 @@ function getLiveRouteState(dateStr) {
   return hit && typeof hit === 'object' ? hit : null;
 }
 
+function syncEtaSentMetaFromRouteState(dateStr, routeState) {
+  const ds = String(dateStr || '').trim();
+  if (!ds || !routeState || typeof routeState !== 'object') return;
+  const raw = routeState.etaSentByContactId && typeof routeState.etaSentByContactId === 'object'
+    ? routeState.etaSentByContactId
+    : {};
+  const bucket = {};
+  for (const [cid, val] of Object.entries(raw)) {
+    const id = String(cid || '').trim();
+    const eta = normalizeTimeStr(val && typeof val === 'object' ? val.eta : val);
+    if (!id || !eta) continue;
+    const sentAt = Number(val && typeof val === 'object' ? val.sentAt : 0);
+    bucket[id] = { eta, sentAt: Number.isFinite(sentAt) && sentAt > 0 ? sentAt : Date.now() };
+  }
+  etaSentMetaByDate.set(ds, bucket);
+}
+
+function getEtaSentMetaForContact(contactId, dateStr) {
+  const ds = String(dateStr || getDateStr(currentDate) || '').trim();
+  const cid = String(contactId || '').trim();
+  if (!ds || !cid) return null;
+  const bucket = etaSentMetaByDate.get(ds);
+  return bucket && bucket[cid] ? bucket[cid] : null;
+}
+
+function markEtaSentForContact(contactId, eta, sentAt) {
+  const ds = getDateStr(currentDate);
+  const cid = String(contactId || '').trim();
+  const etaNorm = normalizeTimeStr(eta);
+  if (!cid || !etaNorm) return;
+  const bucket = { ...(etaSentMetaByDate.get(ds) || {}) };
+  bucket[cid] = { eta: etaNorm, sentAt: Number(sentAt) > 0 ? sentAt : Date.now() };
+  etaSentMetaByDate.set(ds, bucket);
+  const appt = appointments.find((a) => String(a.contactId) === cid);
+  if (appt && String(appt.status || '') !== 'klaar') {
+    appt.status = 'onderweg';
+    appt.timeSlot = etaNorm;
+    appt.estimated = true;
+  }
+}
+
 function setLiveRouteState(dateStr, routeState) {
   const ds = String(dateStr || '').trim();
   if (!ds) return;
+  syncEtaSentMetaFromRouteState(ds, routeState);
   if (!routeState || typeof routeState !== 'object') {
     liveRouteStateByDate.delete(ds);
     return;
@@ -8545,6 +8613,11 @@ function applyRouteSnapshot(dateStr) {
   const violations = state.violationsByContactId && typeof state.violationsByContactId === 'object'
     ? state.violationsByContactId
     : {};
+  const etaSent =
+    state.etaSentByContactId && typeof state.etaSentByContactId === 'object'
+      ? state.etaSentByContactId
+      : {};
+  syncEtaSentMetaFromRouteState(ds, state);
   appointments.forEach((a) => {
     const cid = a?.contactId ? String(a.contactId) : '';
     if (!cid || a.status === 'klaar') return;
@@ -8552,6 +8625,15 @@ function applyRouteSnapshot(dateStr) {
     if (eta) {
       a.timeSlot = eta;
       a.estimated = true;
+    }
+    const sent = etaSent[cid];
+    if (sent) {
+      const sentEta = normalizeTimeStr(sent.eta || sent);
+      if (sentEta) {
+        a.timeSlot = sentEta;
+        a.status = 'onderweg';
+        a.estimated = true;
+      }
     }
     a.violation = Boolean(violations[cid]);
   });
@@ -10014,9 +10096,18 @@ function renderApptCard(a, i) {
       const zeroAttr = total <= 0 ? ' data-zero="1"' : '';
       return `<span class="appt-price appt-wm-price" id="appt-price-${domId}"${zeroAttr}>${txt}</span>`;
     })();
+    const etaSentMeta = a.contactId ? getEtaSentMetaForContact(a.contactId, getDateStr(currentDate)) : null;
     let pillHtml = '';
     if (isDone) {
       pillHtml = `<span class="appt-wm-pill appt-wm-pill--klaar">${wmPillCheck}Klaar · Gefactureerd</span>`;
+    } else if (etaSentMeta) {
+      const sentClock = etaSentMeta.sentAt
+        ? new Date(etaSentMeta.sentAt).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
+        : '';
+      const tip = sentClock
+        ? `ETA ${etaSentMeta.eta} verstuurd om ${sentClock}`
+        : `ETA ${etaSentMeta.eta} verstuurd`;
+      pillHtml = `<span class="appt-wm-pill appt-wm-pill--eta-sent" title="${escapeHtml(tip)}">${wmPillClock}ETA verstuurd</span>`;
     } else if (isOnderweg) {
       pillHtml = `<span class="appt-wm-pill appt-wm-pill--onderweg">${wmPillClock}Onderweg</span>`;
     } else {
@@ -10028,7 +10119,7 @@ function renderApptCard(a, i) {
     const primaryCta = !isDone
       ? isOnderweg
         ? `<button type="button" class="btn-done appt-wm-btn appt-wm-btn--klaar ${isOnderweg ? 'active' : ''}" onclick='${useTouchPriceOverlay ? `togglePrijs(event, ${idQ})` : `scrollToPrijs(${idQ})`}' title="Naar prijs en afronden" aria-label="Markeer klaar">${wmBtnCheck} Klaar</button>`
-        : `<button type="button" class="btn-done appt-wm-btn appt-wm-btn--onderweg-actie" onclick='askOnderweg(${idQ})' title="Markeer onderweg" aria-label="Markeer onderweg">Onderweg</button>`
+        : `<button type="button" class="btn-done appt-wm-btn appt-wm-btn--onderweg-actie" onclick='sendOnderwegEtaDirect(${idQ})' title="Stuur ETA naar klant" aria-label="Stuur ETA">Onderweg</button>`
       : '';
     const pinHtml = (() => {
       const pin =
@@ -10141,7 +10232,7 @@ function renderApptCard(a, i) {
               <div class="appt-footer-cta-row">
                 <button type="button" class="btn-prijs ${(barVisible&&!isOnderweg)||touchOverlayForCard?'active':''}" onclick='togglePrijs(event, ${idQ})' title="Prijsoverzicht bekijken" style="touch-action:manipulation">Prijs</button>
                 ${!isDone ? `
-                <button type="button" class="btn-done ${isOnderweg?'active':''}" onclick='${isOnderweg ? (useTouchPriceOverlay ? `togglePrijs(event, ${idQ})` : `scrollToPrijs(${idQ})`) : `askOnderweg(${idQ})`}' title="${isOnderweg ? 'Naar prijs en afronden' : 'Markeer onderweg'}">Onderweg</button>
+                <button type="button" class="btn-done ${isOnderweg?'active':''}" onclick='${isOnderweg ? (useTouchPriceOverlay ? `togglePrijs(event, ${idQ})` : `scrollToPrijs(${idQ})`) : `sendOnderwegEtaDirect(${idQ})`}' title="${isOnderweg ? 'Naar prijs en afronden' : 'Stuur ETA naar klant'}">Onderweg</button>
                 ` : ''}
               </div>
             </div>
@@ -11481,16 +11572,88 @@ function togglePrijs(evt, id) {
   );
 }
 
+function showNextEtaPrompt(payload) {
+  pendingNextEtaPrompt = payload && typeof payload === 'object' ? payload : null;
+  const overlay = document.getElementById('nextEtaPromptOverlay');
+  const titleEl = document.getElementById('nextEtaPromptTitle');
+  const subEl = document.getElementById('nextEtaPromptSubtitle');
+  const btn = document.getElementById('nextEtaPromptConfirmBtn');
+  if (!overlay || !titleEl || !subEl) return;
+  const next = pendingNextEtaPrompt?.nextContact;
+  const name = next?.name ? String(next.name) : 'volgende klant';
+  const calcFailed = !!pendingNextEtaPrompt?.calcFailed;
+  const etaTime = normalizeTimeStr(pendingNextEtaPrompt?.etaTime);
+  if (calcFailed || !etaTime) {
+    titleEl.textContent = `Onderweg naar ${name}?`;
+    subEl.textContent = 'ETA kon niet worden berekend. Je kunt later op Onderweg drukken op de kaart.';
+  } else {
+    titleEl.textContent = `Onderweg naar ${name}?`;
+    subEl.innerHTML = `Verwachte ETA: <strong style="color:var(--yellow);font-size:15px">${escapeHtml(etaTime)}</strong>`;
+  }
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = 'Ja, stuur ETA';
+  }
+  overlay.classList.add('visible');
+  overlay.setAttribute('aria-hidden', 'false');
+}
+
+function dismissNextEtaPrompt() {
+  pendingNextEtaPrompt = null;
+  const overlay = document.getElementById('nextEtaPromptOverlay');
+  if (overlay) {
+    overlay.classList.remove('visible');
+    overlay.setAttribute('aria-hidden', 'true');
+  }
+}
+
+async function confirmNextEtaPromptSend() {
+  const pending = pendingNextEtaPrompt;
+  if (!pending?.nextContact?.contactId && !pending?.nextContact?.id) {
+    dismissNextEtaPrompt();
+    return;
+  }
+  const nextContactId = String(pending.nextContact.contactId || pending.nextContact.id);
+  const afterContactId = String(pending.afterContactId || '');
+  const eta = normalizeTimeStr(pending.etaTime);
+  const btn = document.getElementById('nextEtaPromptConfirmBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Bezig…';
+  }
+  const ctx = createPlannerCtx();
+  showToast('⏳ ETA versturen…', 'loading');
+  const out = window.HKPlannerNextEta?.sendNextEtaForContact
+    ? await window.HKPlannerNextEta.sendNextEtaForContact(ctx, {
+        currentContactId: afterContactId,
+        nextContactId,
+        eta: eta || '',
+      })
+    : { ok: false };
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = 'Ja, stuur ETA';
+  }
+  dismissNextEtaPrompt();
+  if (!out?.ok) {
+    showToast(out?.code === 'STALE_CONTACT_ID' ? 'Route gewijzigd — herlaad de dag' : 'ETA versturen mislukt', 'info');
+    return;
+  }
+  showToast(`📱 ETA verstuurd (${out.sentEta})`, 'success');
+  render();
+}
+
+async function sendOnderwegEtaDirect(id) {
+  const ctx = createPlannerCtx();
+  if (!window.HKPlannerNextEta?.sendOnderwegEtaForAppointment) {
+    showToast('Onderweg-module niet geladen', 'info');
+    return;
+  }
+  await window.HKPlannerNextEta.sendOnderwegEtaForAppointment(ctx, id);
+}
+
 function askOnderweg(id) {
-  const a = appointments.find(x => String(x.id) === String(id));
-  if (!a) return;
-  runPriceActionTelemetry(id, 'onderweg', 'card', () => ({ renderScope: 'card' }), 'askOnderweg');
-  _onderwegId = id;
-  document.getElementById('onderwegTitle').textContent = `Onderweg naar ${a.name}?`;
-  document.getElementById('onderwegText').innerHTML =
-    `Zal ik een WhatsApp sturen met de verwachte aankomsttijd?<br><br>` +
-    `<strong style="color:var(--yellow);font-size:15px">ETA: ${a.timeSlot}</strong>`;
-  document.getElementById('onderwegOverlay').classList.add('visible');
+  sendOnderwegEtaDirect(id);
 }
 
 function closeOnderwegModal() {

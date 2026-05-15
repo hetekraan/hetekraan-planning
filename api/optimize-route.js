@@ -269,7 +269,7 @@ async function optimizeSubsetMatrix({
   return { order, etas, legInfo, travel };
 }
 
-async function travelMinutesOneLeg(key, fromAddr, toAddr) {
+export async function travelMinutesOneLeg(key, fromAddr, toAddr) {
   const travel = await fetchDistanceMatrixTravelMinutes(key, [fromAddr, toAddr]);
   if (!travel || !travel[0]) return null;
   return travel[0][1];

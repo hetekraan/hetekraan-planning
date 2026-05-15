@@ -360,9 +360,14 @@
             'info'
           );
         }
+        if (global.HKPlannerNextEta?.maybeShowNextEtaPromptAfterKlaar) {
+          await global.HKPlannerNextEta.maybeShowNextEtaPromptAfterKlaar(ctx, a);
+        }
       } catch (e) {
         logConfirm('confirm_done_reload_skipped', { message: e && e.message ? String(e.message) : String(e) });
       }
+    } else if (global.HKPlannerNextEta?.maybeShowNextEtaPromptAfterKlaar) {
+      await global.HKPlannerNextEta.maybeShowNextEtaPromptAfterKlaar(ctx, a);
     }
     requestAnimationFrame(() => {
       const card = document.getElementById('card-' + appointmentDomSafeId(id));
