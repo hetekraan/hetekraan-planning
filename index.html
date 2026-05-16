@@ -8405,7 +8405,16 @@ function syncLiveRouteState(dateStr, routeState) {
   setLiveRouteState(ds, routeState && typeof routeState === 'object' ? routeState : null);
   if (routeState && typeof routeState === 'object') {
     lastSeenRouteStateRevisionByDate.set(ds, nextRev);
-    if (prevRev !== undefined && nextRev > prevRev) scheduleRouteRevisionFollowupRefresh(ds);
+    if (String(routeState.source || '') === 'send_next_eta') {
+      applyRouteSnapshot(ds);
+    }
+    if (
+      prevRev !== undefined &&
+      nextRev > prevRev &&
+      String(routeState.source || '') !== 'send_next_eta'
+    ) {
+      scheduleRouteRevisionFollowupRefresh(ds);
+    }
     logRouteOrder('route_live_state_loaded', {
       routeDate: ds,
       sourceOfTruth: 'server_route_live_state',
@@ -8653,42 +8662,42 @@ function applyRouteSnapshot(dateStr) {
   return true;
 }
 
-/** Routestops in dezelfde volgorde als je handmatig hebt gezet (of anders op tijd). */
+/** Routestops in dezelfde volgorde als orderContactIds (geen hersorteren op ETA-tijd). */
 function getRouteStopsForSidebar() {
   const dateStr = getDateStr(currentDate);
   const active = appointments.filter((a) => a?.fullAddressLine && a?.status !== 'klaar');
-  const base = [...active].sort(
+  const state = getLiveRouteState(dateStr);
+  const order = Array.isArray(state?.orderContactIds)
+    ? state.orderContactIds.map((x) => String(x || '').trim()).filter(Boolean)
+    : [];
+  const byContact = Object.fromEntries(
+    active.filter((a) => a?.contactId).map((a) => [String(a.contactId), a])
+  );
+  if (order.length) {
+    const ordered = [];
+    const used = new Set();
+    for (const contactId of order) {
+      const key = String(contactId || '').trim();
+      if (!key || used.has(key)) continue;
+      const hit = byContact[key];
+      if (!hit) continue;
+      ordered.push(hit);
+      used.add(key);
+    }
+    for (const a of active) {
+      const key = a?.contactId ? String(a.contactId) : '';
+      if (!key || used.has(key)) continue;
+      ordered.push(a);
+      used.add(key);
+    }
+    return ordered;
+  }
+  return [...active].sort(
     (a, b) =>
       (a?.dayPart ?? 0) - (b?.dayPart ?? 0) ||
       (a?.startMs ?? 0) - (b?.startMs ?? 0) ||
       String(a?.timeSlot || '').localeCompare(String(b?.timeSlot || ''))
   );
-  const state = getLiveRouteState(dateStr);
-  const order = Array.isArray(state?.orderContactIds)
-    ? state.orderContactIds.map((x) => String(x || '').trim()).filter(Boolean)
-    : [];
-  if (!order.length) {
-    return base;
-  }
-  const byContact = Object.fromEntries(base.filter((a) => a?.contactId).map((a) => [String(a.contactId), a]));
-  const used = new Set();
-  const ordered = [];
-  for (const contactId of order) {
-    const key = String(contactId || '').trim();
-    if (!key || used.has(key)) continue;
-    const hit = byContact[key];
-    if (!hit) continue;
-    ordered.push(hit);
-    used.add(key);
-  }
-  for (const a of base) {
-    const key = a?.contactId ? String(a.contactId) : '';
-    if (!key || !used.has(key)) {
-      ordered.push(a);
-      if (key) used.add(key);
-    }
-  }
-  return ordered;
 }
 
 function updateRouteLocalUi() {
@@ -10116,10 +10125,13 @@ function renderApptCard(a, i) {
         pillHtml += ` <span class="appt-wm-pill appt-wm-pill--garantie">Garantie</span>`;
       }
     }
+    const onderwegBtnActive = isOnderweg || !!etaSentMeta;
     const primaryCta = !isDone
-      ? isOnderweg
-        ? `<button type="button" class="btn-done appt-wm-btn appt-wm-btn--klaar ${isOnderweg ? 'active' : ''}" onclick='${useTouchPriceOverlay ? `togglePrijs(event, ${idQ})` : `scrollToPrijs(${idQ})`}' title="Naar prijs en afronden" aria-label="Markeer klaar">${wmBtnCheck} Klaar</button>`
-        : `<button type="button" class="btn-done appt-wm-btn appt-wm-btn--onderweg-actie" onclick='sendOnderwegEtaDirect(${idQ})' title="Stuur ETA naar klant" aria-label="Stuur ETA">Onderweg</button>`
+      ? `<button type="button" class="btn-done appt-wm-btn appt-wm-btn--onderweg-actie${onderwegBtnActive ? ' active' : ''}" onclick='sendOnderwegEtaDirect(${idQ})' title="${onderwegBtnActive ? 'ETA opnieuw versturen' : 'Stuur ETA naar klant'}" aria-label="Stuur ETA">Onderweg</button>${
+          isOnderweg
+            ? `<button type="button" class="btn-done appt-wm-btn appt-wm-btn--klaar active" onclick='${useTouchPriceOverlay ? `togglePrijs(event, ${idQ})` : `scrollToPrijs(${idQ})`}' title="Naar prijs en afronden" aria-label="Markeer klaar">${wmBtnCheck} Klaar</button>`
+            : ''
+        }`
       : '';
     const pinHtml = (() => {
       const pin =
@@ -10232,7 +10244,7 @@ function renderApptCard(a, i) {
               <div class="appt-footer-cta-row">
                 <button type="button" class="btn-prijs ${(barVisible&&!isOnderweg)||touchOverlayForCard?'active':''}" onclick='togglePrijs(event, ${idQ})' title="Prijsoverzicht bekijken" style="touch-action:manipulation">Prijs</button>
                 ${!isDone ? `
-                <button type="button" class="btn-done ${isOnderweg?'active':''}" onclick='${isOnderweg ? (useTouchPriceOverlay ? `togglePrijs(event, ${idQ})` : `scrollToPrijs(${idQ})`) : `sendOnderwegEtaDirect(${idQ})`}' title="${isOnderweg ? 'Naar prijs en afronden' : 'Stuur ETA naar klant'}">Onderweg</button>
+                <button type="button" class="btn-done appt-wm-btn--onderweg-actie${isOnderweg || etaSentMeta ? ' active' : ''}" onclick='sendOnderwegEtaDirect(${idQ})' title="${isOnderweg || etaSentMeta ? 'ETA opnieuw versturen' : 'Stuur ETA naar klant'}">Onderweg</button>
                 ` : ''}
               </div>
             </div>
@@ -11639,7 +11651,9 @@ async function confirmNextEtaPromptSend() {
     showToast(out?.code === 'STALE_CONTACT_ID' ? 'Route gewijzigd — herlaad de dag' : 'ETA versturen mislukt', 'info');
     return;
   }
+  const dateStr = getDateStr(currentDate);
   showToast(`📱 ETA verstuurd (${out.sentEta})`, 'success');
+  if (dateStr) applyRouteSnapshot(dateStr);
   render();
 }
 

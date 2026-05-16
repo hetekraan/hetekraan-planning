@@ -127,6 +127,35 @@ test('send-next-eta happy path', async () => {
   assert.equal(res.body.routeState.etaSentByContactId.c2.eta, '10:45');
 });
 
+test('send-next-eta preserves orderContactIds', async () => {
+  const initialOrder = ['c1', 'c2', 'c3'];
+  const handler = createSendNextEtaHandler(
+    deps(
+      liveRoute({
+        orderContactIds: initialOrder,
+        etasByContactId: { c1: '09:00', c2: '10:30', c3: '14:00' },
+      })
+    )
+  );
+  const res = makeRes();
+  await handler(
+    {
+      method: 'POST',
+      body: {
+        locationId: 'loc1',
+        dateStr: '2026-05-20',
+        expectedRevision: 3,
+        currentContactId: 'c2',
+        nextContactId: 'c3',
+        eta: '08:15',
+      },
+    },
+    res
+  );
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.body.routeState.orderContactIds, initialOrder);
+});
+
 test('send-next-eta stale contact', async () => {
   const handler = createSendNextEtaHandler({
     ...deps(),

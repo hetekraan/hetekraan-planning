@@ -121,6 +121,10 @@
     const idx = order.indexOf(String(a.contactId));
     if (idx > 0) currentContactId = order[idx - 1];
     const eta = cleanString(a.timeSlot);
+    const wasOnderweg =
+      String(a.status || '').toLowerCase() === 'onderweg' ||
+      (typeof ctx.getEtaSentMetaForContact === 'function' &&
+        ctx.getEtaSentMetaForContact(a.contactId, dateStr));
     ctx.showToast('⏳ ETA versturen…', 'loading');
     const out = await sendNextEtaForContact(ctx, {
       currentContactId,
@@ -136,7 +140,13 @@
       );
       return out;
     }
-    ctx.showToast(`📱 ETA verstuurd (${out.sentEta})`, 'success');
+    ctx.showToast(
+      wasOnderweg
+        ? `📱 ETA opnieuw verstuurd (${out.sentEta})`
+        : `📱 ETA verstuurd (${out.sentEta})`,
+      'success'
+    );
+    if (typeof ctx.applyRouteSnapshot === 'function') ctx.applyRouteSnapshot(dateStr);
     if (typeof ctx.render === 'function') ctx.render();
     return out;
   }
