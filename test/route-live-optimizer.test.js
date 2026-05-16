@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   activeRouteAppointments,
+  mergeRouteOrderPreservingStatus,
+  preservedActiveOrderFromRouteState,
   triggerLiveRouteRecalculation,
 } from '../lib/route-live-optimizer.js';
 
@@ -75,6 +77,49 @@ test('triggerLiveRouteRecalculation writes auto optimized live route', async () 
   assert.equal(calls.write[0].expectedRevision, 3);
   assert.equal(calls.write[0].source, 'auto_optimize');
   assert.equal(calls.write[0].updatedBy, 'daan');
+  assert.deepEqual(out.routeState.orderContactIds, ['c1', 'c2']);
+});
+
+test('preservedActiveOrderFromRouteState keeps relative order when one is klaar', () => {
+  const order = preservedActiveOrderFromRouteState(
+    routeState({ orderContactIds: ['c2', 'c1', 'klaar-1'] }),
+    [{ contactId: 'c1', status: 'ingepland' }]
+  );
+  assert.deepEqual(order, ['c1']);
+});
+
+test('mergeRouteOrderPreservingStatus keeps klaar contacts in place', () => {
+  const order = mergeRouteOrderPreservingStatus(
+    routeState({ orderContactIds: ['c2', 'c1'] }),
+    [{ contactId: 'c1', status: 'ingepland' }]
+  );
+  assert.deepEqual(order, ['c2', 'c1']);
+});
+
+test('triggerLiveRouteRecalculation preserves order after completeAppointment', async () => {
+  const initial = routeState({ orderContactIds: ['c2', 'c1'] });
+  const rows = [
+    { contactId: 'c2', status: 'klaar', fullAddressLine: 'B', timeSlot: '09:00' },
+    { contactId: 'c1', status: 'ingepland', fullAddressLine: 'A', timeSlot: '10:00' },
+  ];
+  const out = await triggerLiveRouteRecalculation({
+    locationId: 'loc-1',
+    dateStr: '2026-05-20',
+    appointments: rows,
+    reason: 'completeAppointment',
+    deps: {
+      ensureRouteLiveState: async () => ({ ok: true, routeState: initial }),
+      optimizeRoute: async ({ appointments: activeRows }) => ({
+        orderContactIds: activeRows.map((a) => a.contactId).reverse(),
+        etasByContactId: { c1: '11:00' },
+      }),
+      setRouteLiveState: async (_loc, _date, payload) => ({
+        ok: true,
+        routeState: { ...payload, revision: 4 },
+      }),
+    },
+  });
+  assert.equal(out.ok, true);
   assert.deepEqual(out.routeState.orderContactIds, ['c2', 'c1']);
 });
 

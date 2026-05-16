@@ -8187,9 +8187,33 @@ function activeRouteContactIdsMorningFirst() {
     .filter(Boolean);
 }
 
+/** Nummering volgt orderContactIds (incl. klaar/onderweg) — status wijzigt de volgorde niet. */
+function assignRouteStopsFromLiveOrder() {
+  const dateStr = getDateStr(currentDate);
+  const state = getLiveRouteState(dateStr);
+  const order = Array.isArray(state?.orderContactIds)
+    ? state.orderContactIds.map((x) => String(x || '').trim()).filter(Boolean)
+    : [];
+  if (!order.length) return false;
+  const byContact = Object.fromEntries(
+    appointments.filter((a) => a?.contactId).map((a) => [String(a.contactId), a])
+  );
+  let n = 1;
+  for (const cid of order) {
+    const a = byContact[cid];
+    if (a && !a.isCalBlock) a.routeStop = n++;
+  }
+  appointments.forEach((a) => {
+    if (a.isCalBlock) a.routeStop = null;
+    else if (a.routeStop == null) a.routeStop = n++;
+  });
+  return true;
+}
+
 /** Routevolgorde #1–7: eerst alle ochtend (sidebar + rest op starttijd), daarna alle middag — middag nooit #1 als er ochtend is. */
 function assignRouteStops() {
   if (!appointments.length) return;
+  if (assignRouteStopsFromLiveOrder()) return;
   appointments.forEach((a) => {
     if (a.isCalBlock) a.routeStop = null;
   });
@@ -8313,6 +8337,7 @@ function markEtaSentForContact(contactId, eta, sentAt) {
     appt.status = 'onderweg';
     appt.timeSlot = etaNorm;
     appt.estimated = true;
+    appt.priceVisible = false;
   }
 }
 
@@ -10024,7 +10049,7 @@ function renderApptCard(a, i) {
     const useTouchPriceOverlay = plannerUsesTouchPriceOverlay();
     const isViolation = !!a.violation;
     const touchOverlayForCard = useTouchPriceOverlay && isTouchPriceOverlayOpenFor(a.id);
-    const barVisible = !useTouchPriceOverlay && (isOnderweg || !!a.priceVisible);
+    const barVisible = !useTouchPriceOverlay && !!a.priceVisible;
     const routeYmdPlanner = getDateStr(currentDate);
     const lastServiceInputVal = String(a.lastService || '').trim() || routeYmdPlanner;
 
@@ -10127,11 +10152,7 @@ function renderApptCard(a, i) {
     }
     const onderwegBtnActive = isOnderweg || !!etaSentMeta;
     const primaryCta = !isDone
-      ? `<button type="button" class="btn-done appt-wm-btn appt-wm-btn--onderweg-actie${onderwegBtnActive ? ' active' : ''}" onclick='sendOnderwegEtaDirect(${idQ})' title="${onderwegBtnActive ? 'ETA opnieuw versturen' : 'Stuur ETA naar klant'}" aria-label="Stuur ETA">Onderweg</button>${
-          isOnderweg
-            ? `<button type="button" class="btn-done appt-wm-btn appt-wm-btn--klaar active" onclick='${useTouchPriceOverlay ? `togglePrijs(event, ${idQ})` : `scrollToPrijs(${idQ})`}' title="Naar prijs en afronden" aria-label="Markeer klaar">${wmBtnCheck} Klaar</button>`
-            : ''
-        }`
+      ? `<button type="button" class="btn-done appt-wm-btn appt-wm-btn--onderweg-actie${onderwegBtnActive ? ' active' : ''}" onclick='sendOnderwegEtaDirect(${idQ})' title="${onderwegBtnActive ? 'ETA opnieuw versturen' : 'Stuur ETA naar klant'}" aria-label="Stuur ETA">Onderweg</button>`
       : '';
     const pinHtml = (() => {
       const pin =
@@ -11516,11 +11537,10 @@ function syncAppointmentPriceBarDom(a) {
   const bar = document.getElementById('bar-' + domId);
   const card = document.getElementById('card-' + domId);
   if (!bar || !card) return false;
-  const isOnderweg = a.status === 'onderweg';
-  const barVisible = isOnderweg || !!a.priceVisible;
+  const barVisible = !!a.priceVisible;
   bar.classList.toggle('visible', barVisible);
   const btnPrijs = card.querySelector('.btn-prijs');
-  if (btnPrijs) btnPrijs.classList.toggle('active', barVisible && !isOnderweg);
+  if (btnPrijs) btnPrijs.classList.toggle('active', barVisible);
   return true;
 }
 
@@ -11741,25 +11761,7 @@ function onderwegJeenBericht() {
 }
 
 function toggleOnderweg(id) {
-  // Wordt alleen nog aangeroepen voor "✓ Klaar?" (isOnderweg → klaar flow)
-  const a = appointments.find(x => String(x.id) === String(id));
-  if (!a) return;
-  if (a.status === 'onderweg') {
-    // Klaar knop → open complete bar als die al niet open is
-    a.priceVisible = false;
-    runPriceActionTelemetry(
-      id,
-      'other',
-      'full render',
-      () => {
-        render();
-        if (!plannerIsMobileViewport639()) setTimeout(() => scrollToPrijs(id), 80);
-        return { renderScope: 'full render' };
-      },
-      'toggleOnderweg',
-      { usedScrollIntoView: !plannerIsMobileViewport639(), functionName: 'toggleOnderweg' }
-    );
-  }
+  sendOnderwegEtaDirect(id);
 }
 
 function scrollToPrijs(id) {
