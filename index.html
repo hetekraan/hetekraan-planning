@@ -437,8 +437,6 @@ window.HKPlannerAutoRefresh = {
     border-color: rgba(0, 212, 170, 0.45) !important;
     border-left: 2px solid rgba(0, 212, 170, 0.65) !important;
   }
-  .appt-card.onderweg { border-color: rgba(74, 158, 255, 0.42); }
-
   .appt-number {
     position: absolute;
     top: 8px;
@@ -4726,11 +4724,6 @@ window.HKPlannerAutoRefresh = {
   body:not(.user-jerry) .appt-card--layout-v2.appt-card--todo {
     border-left: 3px solid rgba(142, 134, 124, 0.35);
   }
-  body:not(.user-jerry) .appt-card--layout-v2.onderweg {
-    border-color: rgba(217, 119, 6, 0.42);
-    border-left: 3px solid rgba(245, 158, 11, 0.72);
-    background: linear-gradient(180deg, rgba(255, 251, 235, 0.55) 0%, var(--surface) 52%);
-  }
   body:not(.user-jerry) .appt-card--layout-v2.done {
     border-left: 3px solid rgba(16, 185, 129, 0.55);
     opacity: 1;
@@ -8276,8 +8269,6 @@ function localDraftRouteOrderKey(dateStr) {
 const liveRouteStateByDate = new Map();
 /** @type {{ afterContactId: string, nextContact: object|null, etaTime: string|null, calcFailed?: boolean }|null} */
 let pendingNextEtaPrompt = null;
-/** dateStr → Record<contactId, { eta: string, sentAt: number }> */
-const etaSentMetaByDate = new Map();
 const lastSeenRouteStateRevisionByDate = new Map();
 const routeRevisionFollowupTimerByDate = new Map();
 const routeUiStatusByDate = new Map();
@@ -8299,29 +8290,18 @@ function getLiveRouteState(dateStr) {
   return hit && typeof hit === 'object' ? hit : null;
 }
 
-function syncEtaSentMetaFromRouteState(dateStr, routeState) {
-  const ds = String(dateStr || '').trim();
-  if (!ds || !routeState || typeof routeState !== 'object') return;
-  const raw = routeState.etaSentByContactId && typeof routeState.etaSentByContactId === 'object'
-    ? routeState.etaSentByContactId
-    : {};
-  const bucket = {};
-  for (const [cid, val] of Object.entries(raw)) {
-    const id = String(cid || '').trim();
-    const eta = normalizeTimeStr(val && typeof val === 'object' ? val.eta : val);
-    if (!id || !eta) continue;
-    const sentAt = Number(val && typeof val === 'object' ? val.sentAt : 0);
-    bucket[id] = { eta, sentAt: Number.isFinite(sentAt) && sentAt > 0 ? sentAt : Date.now() };
-  }
-  etaSentMetaByDate.set(ds, bucket);
-}
-
 function getEtaSentMetaForContact(contactId, dateStr) {
   const ds = String(dateStr || getDateStr(currentDate) || '').trim();
   const cid = String(contactId || '').trim();
   if (!ds || !cid) return null;
-  const bucket = etaSentMetaByDate.get(ds);
-  return bucket && bucket[cid] ? bucket[cid] : null;
+  const state = getLiveRouteState(ds);
+  if (!state?.etaSentByContactId || typeof state.etaSentByContactId !== 'object') return null;
+  const raw = state.etaSentByContactId[cid];
+  if (!raw) return null;
+  const eta = normalizeTimeStr(raw && typeof raw === 'object' ? raw.eta : raw);
+  if (!eta) return null;
+  const sentAt = Number(raw && typeof raw === 'object' ? raw.sentAt : 0);
+  return { eta, sentAt: Number.isFinite(sentAt) && sentAt > 0 ? sentAt : Date.now() };
 }
 
 function markEtaSentForContact(contactId, eta, sentAt) {
@@ -8329,9 +8309,18 @@ function markEtaSentForContact(contactId, eta, sentAt) {
   const cid = String(contactId || '').trim();
   const etaNorm = normalizeTimeStr(eta);
   if (!cid || !etaNorm) return;
-  const bucket = { ...(etaSentMetaByDate.get(ds) || {}) };
-  bucket[cid] = { eta: etaNorm, sentAt: Number(sentAt) > 0 ? sentAt : Date.now() };
-  etaSentMetaByDate.set(ds, bucket);
+  const state = getLiveRouteState(ds);
+  if (state) {
+    setLiveRouteState(ds, {
+      ...state,
+      etaSentByContactId: {
+        ...(state.etaSentByContactId && typeof state.etaSentByContactId === 'object'
+          ? state.etaSentByContactId
+          : {}),
+        [cid]: { eta: etaNorm, sentAt: Number(sentAt) > 0 ? sentAt : Date.now() },
+      },
+    });
+  }
   const appt = appointments.find((a) => String(a.contactId) === cid);
   if (appt && String(appt.status || '') !== 'klaar') {
     appt.status = 'onderweg';
@@ -8344,7 +8333,6 @@ function markEtaSentForContact(contactId, eta, sentAt) {
 function setLiveRouteState(dateStr, routeState) {
   const ds = String(dateStr || '').trim();
   if (!ds) return;
-  syncEtaSentMetaFromRouteState(ds, routeState);
   if (!routeState || typeof routeState !== 'object') {
     liveRouteStateByDate.delete(ds);
     return;
@@ -8651,7 +8639,6 @@ function applyRouteSnapshot(dateStr) {
     state.etaSentByContactId && typeof state.etaSentByContactId === 'object'
       ? state.etaSentByContactId
       : {};
-  syncEtaSentMetaFromRouteState(ds, state);
   appointments.forEach((a) => {
     const cid = a?.contactId ? String(a.contactId) : '';
     if (!cid || a.status === 'klaar') return;
@@ -10274,7 +10261,7 @@ function renderApptCard(a, i) {
       </div>`;
     const v2Class = layoutV2 ? ' appt-card--layout-v2' : '';
     return `
-    <div class="appt-card${v2Class} ${isDone?'done':''} ${isOnderweg?'onderweg':''} ${!isDone && !isOnderweg ? 'appt-card--todo' : ''} ${isViolation?'violation':''}" id="card-${domId}">
+    <div class="appt-card${v2Class} ${isDone?'done':''} ${!isDone ? 'appt-card--todo' : ''} ${isViolation?'violation':''}" id="card-${domId}">
       ${wmCore}
       ${useTouchPriceOverlay ? '' : `
       <div class="complete-bar ${barVisible?'visible':''}" id="bar-${domId}">

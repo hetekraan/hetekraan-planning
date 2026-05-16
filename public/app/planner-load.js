@@ -110,9 +110,6 @@
         if (typeof ctx.setPlannerCustomerDayFull === 'function') {
           ctx.setPlannerCustomerDayFull(!!data.customerDayFull, !!data.customerDayFullStoreConfigured);
         }
-        if (typeof syncLiveRouteState === 'function') {
-          syncLiveRouteState(dateStr, data.routeState || null);
-        }
         const appTpl = typeof getGhlIosContactAppUrlTemplate === 'function' ? getGhlIosContactAppUrlTemplate() : '';
         setAppointments(
           rows.map((a) => {
@@ -130,6 +127,9 @@
             };
           })
         );
+        if (typeof syncLiveRouteState === 'function') {
+          syncLiveRouteState(dateStr, data.routeState || null);
+        }
         const appts = getAppointmentsRef();
         appts.forEach((a) => {
           if (!a || a.isCalBlock) return;
