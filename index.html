@@ -9268,6 +9268,15 @@ function scrollToKlaarConfirm(id) {
   }
 }
 
+/** Centreer actieve dag in weekstrip zonder scrollIntoView (voorkomt window smooth-scroll). */
+function centerPlannerWeekStripActiveDay(stripEl) {
+  if (!stripEl) return;
+  const active = stripEl.querySelector('.planner-week-day.is-active');
+  if (!active) return;
+  const target = active.offsetLeft + active.offsetWidth / 2 - stripEl.clientWidth / 2;
+  stripEl.scrollLeft = Math.max(0, target);
+}
+
 function renderPlannerWeekStrip() {
   const el = document.getElementById('plannerWeekStrip');
   if (!el) return;
@@ -9305,11 +9314,7 @@ function renderPlannerWeekStrip() {
   updatePlannerMonthLabel();
   syncPlannerDatePickerValue();
   requestAnimationFrame(() => {
-    el.querySelector('.planner-week-day.is-active')?.scrollIntoView({
-      inline: 'center',
-      block: 'nearest',
-      behavior: 'smooth',
-    });
+    centerPlannerWeekStripActiveDay(el);
   });
 }
 
