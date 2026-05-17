@@ -7690,6 +7690,11 @@ let plannerSidebarView = initialPlannerState.view || 'today';
 let plannerProductsSubView = 'Kranen';
 let plannerProductsMenuExpanded = false;
 
+function plannerViewNeedsLiveAppointments() {
+  const v = String(plannerSidebarView || '').trim();
+  return v === 'today' || v === 'routes';
+}
+
 function syncModalInternalFixedControls() {
   const typeEl = document.getElementById(
     'modalInternalFixedType');
@@ -9120,6 +9125,7 @@ function startPlannerAppointmentAutoRefresh() {
 
 function restartPlannerAppointmentAutoRefresh() {
   stopPlannerAppointmentAutoRefresh();
+  if (!plannerViewNeedsLiveAppointments()) return;
   startPlannerAppointmentAutoRefresh();
 }
 
@@ -9384,6 +9390,7 @@ function switchSidebarView(view, event, opts = {}) {
   if (window.matchMedia('(min-width: 1180px)').matches) {
     Object.entries(panelMap).forEach(([k, el]) => el?.classList.toggle('tab-hidden', k !== plannerSidebarView));
     if (plannerSidebarView === 'analytics') window.HKPlannerAnalytics?.render?.();
+    if (plannerViewNeedsLiveAppointments()) void loadAppointments(currentDate);
     if (plannerSidebarView === 'prices') {
       const label = document.getElementById('productsCategoryLabel');
       if (label) label.textContent = plannerProductsSubView;
@@ -10783,7 +10790,7 @@ function renderRoute(routeStops) {
 
   list.innerHTML = body;
 
-  void refreshMorningMessageSettings();
+  if (plannerSidebarView === 'routes') void refreshMorningMessageSettings();
   initRouteDrag(list);
   window.HKPlannerRouteMaps?.renderRouteMap?.({
     apiKey: HK_GOOGLE_MAPS_API_KEY,
@@ -12517,7 +12524,8 @@ function checkLogin() {
     setCookieVal,
     getStoredSession,
     render,
-    loadAppointments: () => loadAppointments(currentDate),
+    loadAppointments: () =>
+      plannerViewNeedsLiveAppointments() ? loadAppointments(currentDate) : Promise.resolve(),
     clearLoginState,
   });
 }
@@ -12537,7 +12545,8 @@ async function doLogin() {
     sessionKey: HK_SESSION_KEY,
     setCookieVal,
     render,
-    loadAppointments: () => loadAppointments(currentDate),
+    loadAppointments: () =>
+      plannerViewNeedsLiveAppointments() ? loadAppointments(currentDate) : Promise.resolve(),
   });
 }
 
@@ -12636,7 +12645,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   wireMorningMessageAutoToggle();
   checkLogin();
-  startPlannerAppointmentAutoRefresh();
+  if (plannerViewNeedsLiveAppointments()) startPlannerAppointmentAutoRefresh();
 });
 </script>
 
