@@ -515,24 +515,32 @@ function buildAnalyticsFromAppointments(appointments = []) {
       };
     });
   const categoryCostFactor = { installatie: 0.58, reparatie: 0.62, onderhoud: 0.55, onbekend: 0.6 };
+  const dayMap = {};
   for (const a of clients) {
     const date = eventYmdFromStartMs({ startTime: a.startMs });
     if (!date) continue;
+    const jobType = String(a.jobType || 'onbekend').toLowerCase();
+    const total = calcAppointmentTotal(a);
+    const factor = Number(categoryCostFactor[jobType] ?? categoryCostFactor.onbekend);
+    const margin = total - total * factor;
+    if (!dayMap[date]) dayMap[date] = { day: date, omzet: 0, marge: 0, installatie: 0, reparatie: 0, onderhoud: 0 };
+    dayMap[date].omzet = Math.round((dayMap[date].omzet + total) * 100) / 100;
+    dayMap[date].marge = Math.round((dayMap[date].marge + margin) * 100) / 100;
+    if (jobType === 'installatie' || jobType === 'reparatie' || jobType === 'onderhoud') {
+      dayMap[date][jobType] = Math.round((Number(dayMap[date][jobType]) + total) * 100) / 100;
+    }
     const d = new Date(`${date}T12:00:00Z`);
     const day = d.getUTCDay() || 7;
     d.setUTCDate(d.getUTCDate() - (day - 1));
     const wk = `${d.getUTCFullYear()}-W${String(Math.ceil((((d - new Date(Date.UTC(d.getUTCFullYear(), 0, 1))) / 86400000) + 1) / 7)).padStart(2, '0')}`;
-    const jobType = String(a.jobType || 'onbekend').toLowerCase();
     if (!weekMap[wk]) weekMap[wk] = { week: wk, omzet: 0, marge: 0, installatie: 0, reparatie: 0, onderhoud: 0 };
-    const total = calcAppointmentTotal(a);
-    const factor = Number(categoryCostFactor[jobType] ?? categoryCostFactor.onbekend);
-    const margin = total - total * factor;
     weekMap[wk].omzet = Math.round((weekMap[wk].omzet + total) * 100) / 100;
     weekMap[wk].marge = Math.round((weekMap[wk].marge + margin) * 100) / 100;
     if (jobType === 'installatie' || jobType === 'reparatie' || jobType === 'onderhoud') {
       weekMap[wk][jobType] = Math.round((Number(weekMap[wk][jobType]) + total) * 100) / 100;
     }
   }
+  const omzetByDay = Object.values(dayMap).sort((a, b) => String(a.day).localeCompare(String(b.day)));
   const omzetByWeek = Object.values(weekMap).sort((a, b) => String(a.week).localeCompare(String(b.week)));
   const uniqueByContact = new Set(clients.map((a) => String(a.contactId || '').trim()).filter(Boolean));
   const repeatByContact = new Map();
@@ -552,6 +560,7 @@ function buildAnalyticsFromAppointments(appointments = []) {
       openstaandTeFactureren,
     },
     jobTypeVerdeling: Object.values(byType).sort((a, b) => b.omzet - a.omzet),
+    omzetByDay,
     omzetByWeek,
     recentAppointments,
     repeatCustomersPct: repeatPct,
@@ -674,6 +683,133 @@ function isPlannerFeedResultCacheUsable(payload) {
   return source === ANALYTICS_SOURCE && version === ANALYTICS_VERSION;
 }
 
+async function loadMappedAppointmentsForRange(range) {
+  const locId = ghlLocationIdFromEnv();
+  const calId = ghlCalendarIdFromEnv();
+  const plannerNotitiesFieldId = await resolvePlannerNotitiesFieldId();
+  const plannerInternalFixedStartFieldId = await resolvePlannerInternalFixedStartFieldId();
+
+  let ghlCalls = 0;
+  let usedContactCache = false;
+  const calRes = await fetchCalendarEventsRange({
+    locationId: locId,
+    calendarId: calId,
+    startMs: range.startMs,
+    endMs: range.endMs,
+    apiKey: GHL_API_KEY,
+  });
+  ghlCalls += Number(calRes.calls || 0);
+  const events = Array.isArray(calRes.events) ? calRes.events : [];
+  markBlockLikeOnCalendarEvents(events);
+
+  ghlCalls += 1;
+  const blockSlotUserId = await resolveBlockSlotAssignedUserId(GHL_BASE, GHL_API_KEY, locId, calId);
+  const blockedAsEvents = await fetchBlockedSlotsAsEvents(GHL_BASE, {
+    locationId: locId,
+    calendarId: calId,
+    startMs: range.startMs,
+    endMs: range.endMs,
+    apiKey: GHL_API_KEY,
+    assignedUserId: blockSlotUserId,
+  });
+  if (blockedAsEvents.length) events.push(...blockedAsEvents);
+
+  for (let d = range.startDate; d && d <= range.endDate; d = addAmsterdamCalendarDays(d, 1)) {
+    const synthetic = await cachedListConfirmedSyntheticEventsForDate(d).catch(() => []);
+    for (const ev of synthetic) {
+      const cid = String(ev.contactId || ev.contact_id || '').trim();
+      if (!cid) continue;
+      events.push({ ...ev, id: `hk-b1:${cid}:${d}`, _hkBlockReservationSynthetic: true });
+    }
+  }
+
+  const uniqueCids = [
+    ...new Set(
+      events
+        .map((e) => String(e.contactId || e.contact_id || '').trim())
+        .filter(Boolean)
+    ),
+  ];
+
+  const contactMap = {};
+  await Promise.all(
+    uniqueCids.map(async (cid) => {
+      const out = await fetchContactById(cid).catch(() => ({ contact: null, fromCache: false, calls: 0 }));
+      ghlCalls += Number(out.calls || 0);
+      if (out.fromCache) usedContactCache = true;
+      if (out.contact) contactMap[cid] = out.contact;
+    })
+  );
+
+  for (const e of events) {
+    const cid = String(e.contactId || e.contact_id || '').trim();
+    if (!cid || !contactMap[cid]) continue;
+    const contact = contactMap[cid];
+    e.contact = contact;
+    e.contactId = contact.id || cid;
+    const canonStreetHouse = getField(contact, BOOKING_FORM_FIELD_IDS.straat_huisnummer);
+    const canonPostcode = getField(contact, BOOKING_FORM_FIELD_IDS.postcode);
+    const canonWoonplaats = getField(contact, BOOKING_FORM_FIELD_IDS.woonplaats);
+    const splitCanon = splitAddressLineToStraatHuis(canonStreetHouse);
+    const straat = splitCanon.straatnaam || '';
+    const huisnr = splitCanon.huisnummer || '';
+    const postcode = canonPostcode || String(contact.postalCode || '').replace(/\s+/g, ' ').trim();
+    const woonplaats = canonWoonplaats || contact.city || '';
+    const canonical = readCanonicalAddressLine(contact);
+    if (straat || huisnr || postcode || woonplaats) {
+      e.parsedStraatnaam = straat;
+      e.parsedHuisnummer = huisnr;
+      e.parsedPostcode = postcode;
+      e.parsedWoonplaats = woonplaats;
+    } else if (canonical) {
+      e.parsedStraatnaam = canonical;
+      e.parsedHuisnummer = '';
+      e.parsedPostcode = '';
+      e.parsedWoonplaats = '';
+    }
+    const canonWerkzaamheden = getField(contact, BOOKING_FORM_FIELD_IDS.probleemomschrijving);
+    e.parsedJobType = getField(contact, BOOKING_FORM_FIELD_IDS.type_onderhoud) || '';
+    e.parsedWork = canonWerkzaamheden || getField(contact, FIELD_IDS.probleemomschrijving) || e.title;
+    e.parsedPrice = getField(contact, BOOKING_FORM_FIELD_IDS.prijs_totaal) || getField(contact, FIELD_IDS.prijs);
+    e.parsedNotes = (plannerNotitiesFieldId ? getField(contact, plannerNotitiesFieldId) : '') || getField(contact, FIELD_IDS.opmerkingen);
+    e.parsedTimeWindow = getField(contact, BOOKING_FORM_FIELD_IDS.tijdslot) || getField(contact, FIELD_IDS.tijdafspraak) || null;
+    e.parsedPaymentStatus = getField(contact, BOOKING_FORM_FIELD_IDS.betaal_status) || '';
+    const rawInternalFixed = plannerInternalFixedStartFieldId
+      ? getField(contact, plannerInternalFixedStartFieldId, 'planner_internal_fixed_start')
+      : '';
+    const parsedInternalFixed = normalizeInternalFixedPinFromBody(rawInternalFixed);
+    e.internalFixedPin = parsedInternalFixed;
+    e.internalFixedStartTime = parsedInternalFixed?.time || '';
+    const canonPrijsRegels = getField(contact, BOOKING_FORM_FIELD_IDS.prijs_regels);
+    let parsedPrijsRegels = parseStructuredPriceRulesString(canonPrijsRegels);
+    if (!parsedPrijsRegels.length) parsedPrijsRegels = parseStructuredPriceRulesString(getField(contact, FIELD_IDS.prijs_regels));
+    e.parsedExtras = parsedPrijsRegels;
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  for (const ev of events) {
+    const id = canonicalGhlEventId(ev) || String(ev.id || '');
+    const key = id || `${eventStartMsGhl(ev)}:${String(ev.contactId || '')}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(ev);
+  }
+
+  const appointments = deduped.map((ev, i) => {
+    const ymd = eventYmdFromStartMs(ev) || range.endDate;
+    return mapEnrichedGhlEventToAppointment(ev, i, ymd);
+  });
+
+  return {
+    appointments,
+    ghlCalls,
+    uniqueContacts: uniqueCids.length,
+    usedContactCache,
+    dayCount: daysInclusive(range.startDate, range.endDate),
+  };
+}
+
 async function runAnalyticsFromPlannerFeed(rangeInput) {
   const range = rangeInput;
   const locId = ghlLocationIdFromEnv();
@@ -685,57 +821,7 @@ async function runAnalyticsFromPlannerFeed(rangeInput) {
     apiKey: GHL_API_KEY,
     locationId: locId,
   });
-  const appointments = [];
-  let ghaCalls = 0;
-  let uniqueContacts = 0;
-  let dayCount = 0;
-  for (let d = range.startDate; d && d <= range.endDate; d = addAmsterdamCalendarDays(d, 1)) {
-    const dayOut = await loadPlannerAppointmentsSource(
-      {
-        date: d,
-        locId,
-        calId,
-        apiKey: GHL_API_KEY,
-        baseUrl: GHL_BASE,
-        plannerNotitiesFieldId,
-        plannerInternalFixedStartFieldId,
-        invoicePartyFieldIdsForPlanner,
-        traceLastEditedContactId: null,
-      },
-      {
-        amsterdamCalendarDayBoundsMs,
-        eventStartMsGhl,
-        eventEndMsGhl,
-        getEventStartDayAmsterdam,
-        canonicalGhlEventId,
-        resolveBlockSlotAssignedUserId,
-        fetchWithRetry,
-        amsterdamDayReadCacheGet,
-        amsterdamDayReadCacheSet,
-        amsterdamDayReadCacheKeyCalendarEvents,
-        amsterdamDayReadCacheKeyBlockedSlots,
-        fetchBlockedSlotsAsEvents,
-        markBlockLikeOnCalendarEvents,
-        cachedListConfirmedSyntheticEventsForDate,
-        getField,
-        BOOKING_FORM_FIELD_IDS,
-        FIELD_IDS,
-        splitAddressLineToStraatHuis,
-        readCanonicalAddressLine,
-        logCanonicalAddressRead,
-        SLOT_LABEL_MORNING_NL,
-        SLOT_LABEL_AFTERNOON_NL,
-        normalizeInternalFixedPinFromBody,
-        parseStructuredPriceRulesString,
-        readInvoicePartyField,
-        mapEnrichedGhlEventToAppointment,
-      }
-    );
-    appointments.push(...dayOut.appointments);
-    ghaCalls += Number(dayOut?.gaPerf?.unique_contact_fetches || 0);
-    uniqueContacts += Number(dayOut?.uniqueCids?.length || 0);
-    dayCount += 1;
-  }
+  const { appointments, ghlCalls: ghaCalls, uniqueContacts, dayCount } = await loadMappedAppointmentsForRange(range);
   const analytics = buildAnalyticsFromAppointments(appointments);
   const recentSortStats = analytics?.recentSortStats || {};
   const analyticsPayload = { ...analytics };
@@ -885,126 +971,8 @@ async function runAnalyticsFromPlannerFeed(rangeInput) {
 }
 
 async function runAnalytics(rangeInput) {
-  const locId = ghlLocationIdFromEnv();
-  const calId = ghlCalendarIdFromEnv();
   const range = rangeInput;
-  const plannerNotitiesFieldId = await resolvePlannerNotitiesFieldId();
-  const plannerInternalFixedStartFieldId = await resolvePlannerInternalFixedStartFieldId();
-
-  let ghlCalls = 0;
-  let usedContactCache = false;
-  const calRes = await fetchCalendarEventsRange({
-    locationId: locId,
-    calendarId: calId,
-    startMs: range.startMs,
-    endMs: range.endMs,
-    apiKey: GHL_API_KEY,
-  });
-  ghlCalls += Number(calRes.calls || 0);
-  const events = Array.isArray(calRes.events) ? calRes.events : [];
-  markBlockLikeOnCalendarEvents(events);
-
-  // Helper gebruikt intern meerdere GHL-calls; we tellen deze als 1 logical blocked-slots fetch.
-  ghlCalls += 1;
-  const blockSlotUserId = await resolveBlockSlotAssignedUserId(GHL_BASE, GHL_API_KEY, locId, calId);
-  const blockedAsEvents = await fetchBlockedSlotsAsEvents(GHL_BASE, {
-    locationId: locId,
-    calendarId: calId,
-    startMs: range.startMs,
-    endMs: range.endMs,
-    apiKey: GHL_API_KEY,
-    assignedUserId: blockSlotUserId,
-  });
-  if (blockedAsEvents.length) events.push(...blockedAsEvents);
-
-  // Keep synthetic block reservations in dataset, then filter them out in KPI step.
-  for (let d = range.startDate; d && d <= range.endDate; d = addAmsterdamCalendarDays(d, 1)) {
-    const synthetic = await cachedListConfirmedSyntheticEventsForDate(d).catch(() => []);
-    for (const ev of synthetic) {
-      const cid = String(ev.contactId || ev.contact_id || '').trim();
-      if (!cid) continue;
-      events.push({ ...ev, id: `hk-b1:${cid}:${d}`, _hkBlockReservationSynthetic: true });
-    }
-  }
-
-  const uniqueCids = [
-    ...new Set(
-      events
-        .map((e) => String(e.contactId || e.contact_id || '').trim())
-        .filter(Boolean)
-    ),
-  ];
-
-  const contactMap = {};
-  await Promise.all(
-    uniqueCids.map(async (cid) => {
-      const out = await fetchContactById(cid).catch(() => ({ contact: null, fromCache: false, calls: 0 }));
-      ghlCalls += Number(out.calls || 0);
-      if (out.fromCache) usedContactCache = true;
-      if (out.contact) contactMap[cid] = out.contact;
-    })
-  );
-
-  for (const e of events) {
-    const cid = String(e.contactId || e.contact_id || '').trim();
-    if (!cid || !contactMap[cid]) continue;
-    const contact = contactMap[cid];
-    e.contact = contact;
-    e.contactId = contact.id || cid;
-    const canonStreetHouse = getField(contact, BOOKING_FORM_FIELD_IDS.straat_huisnummer);
-    const canonPostcode = getField(contact, BOOKING_FORM_FIELD_IDS.postcode);
-    const canonWoonplaats = getField(contact, BOOKING_FORM_FIELD_IDS.woonplaats);
-    const splitCanon = splitAddressLineToStraatHuis(canonStreetHouse);
-    const straat = splitCanon.straatnaam || '';
-    const huisnr = splitCanon.huisnummer || '';
-    const postcode = canonPostcode || String(contact.postalCode || '').replace(/\s+/g, ' ').trim();
-    const woonplaats = canonWoonplaats || contact.city || '';
-    const canonical = readCanonicalAddressLine(contact);
-    if (straat || huisnr || postcode || woonplaats) {
-      e.parsedStraatnaam = straat;
-      e.parsedHuisnummer = huisnr;
-      e.parsedPostcode = postcode;
-      e.parsedWoonplaats = woonplaats;
-    } else if (canonical) {
-      e.parsedStraatnaam = canonical;
-      e.parsedHuisnummer = '';
-      e.parsedPostcode = '';
-      e.parsedWoonplaats = '';
-    }
-    const canonWerkzaamheden = getField(contact, BOOKING_FORM_FIELD_IDS.probleemomschrijving);
-    e.parsedJobType = getField(contact, BOOKING_FORM_FIELD_IDS.type_onderhoud) || '';
-    e.parsedWork = canonWerkzaamheden || getField(contact, FIELD_IDS.probleemomschrijving) || e.title;
-    e.parsedPrice = getField(contact, BOOKING_FORM_FIELD_IDS.prijs_totaal) || getField(contact, FIELD_IDS.prijs);
-    e.parsedNotes = (plannerNotitiesFieldId ? getField(contact, plannerNotitiesFieldId) : '') || getField(contact, FIELD_IDS.opmerkingen);
-    e.parsedTimeWindow = getField(contact, BOOKING_FORM_FIELD_IDS.tijdslot) || getField(contact, FIELD_IDS.tijdafspraak) || null;
-    e.parsedPaymentStatus = getField(contact, BOOKING_FORM_FIELD_IDS.betaal_status) || '';
-    const rawInternalFixed = plannerInternalFixedStartFieldId
-      ? getField(contact, plannerInternalFixedStartFieldId, 'planner_internal_fixed_start')
-      : '';
-    const parsedInternalFixed = normalizeInternalFixedPinFromBody(rawInternalFixed);
-    e.internalFixedPin = parsedInternalFixed;
-    e.internalFixedStartTime = parsedInternalFixed?.time || '';
-    const canonPrijsRegels = getField(contact, BOOKING_FORM_FIELD_IDS.prijs_regels);
-    let parsedPrijsRegels = parseStructuredPriceRulesString(canonPrijsRegels);
-    if (!parsedPrijsRegels.length) parsedPrijsRegels = parseStructuredPriceRulesString(getField(contact, FIELD_IDS.prijs_regels));
-    e.parsedExtras = parsedPrijsRegels;
-  }
-
-  const deduped = [];
-  const seen = new Set();
-  for (const ev of events) {
-    const id = canonicalGhlEventId(ev) || String(ev.id || '');
-    const key = id || `${eventStartMsGhl(ev)}:${String(ev.contactId || '')}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    deduped.push(ev);
-  }
-
-  const appointments = deduped.map((ev, i) => {
-    const ymd = eventYmdFromStartMs(ev) || range.endDate;
-    return mapEnrichedGhlEventToAppointment(ev, i, ymd);
-  });
-
+  const { appointments, ghlCalls, uniqueContacts, usedContactCache } = await loadMappedAppointmentsForRange(range);
   const analytics = buildAnalyticsFromAppointments(appointments);
   return {
     period: range.period,
@@ -1013,7 +981,7 @@ async function runAnalytics(rangeInput) {
     ...analytics,
     meta: {
       ghlCalls,
-      uniqueContacts: uniqueCids.length,
+      uniqueContacts,
       cacheHit: usedContactCache ? 'contacts' : 'none',
       period: range.period,
       generatedAt: new Date().toISOString(),
