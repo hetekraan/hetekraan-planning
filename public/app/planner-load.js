@@ -249,33 +249,33 @@
         return;
       }
       applyRouteSnapshot(dateStr);
-      const panelBefore = document.getElementById('panelAfspraken');
-      const scrollTopBefore = panelBefore ? panelBefore.scrollTop : null;
+      const preserveScroll = ctx.plannerPreserveScroll === true;
+      const refreshReason =
+        ctx.plannerRefreshReason != null ? String(ctx.plannerRefreshReason) : '';
+      const panel = document.getElementById('panelAfspraken');
+      const savedPanelScrollTop = preserveScroll && panel ? panel.scrollTop : null;
+      const savedWindowScrollY =
+        preserveScroll && typeof window !== 'undefined' ? window.scrollY : null;
       render();
-      const pollingRefresh = ctx.plannerPollingRefresh === true;
-      const hasScrollFn = typeof ctx.scrollToFirstActiveAppointment === 'function';
+      if (preserveScroll) {
+        if (panel && savedPanelScrollTop != null) {
+          panel.scrollTop = savedPanelScrollTop;
+        }
+        if (typeof window !== 'undefined' && savedWindowScrollY != null) {
+          window.scrollTo(0, savedWindowScrollY);
+        }
+      }
       console.log('[scroll-debug] loadAppointments post-render', {
         dateStr,
         quietLoad,
-        pollingRefresh,
-        hasScrollFn,
-        panelId: panelBefore?.id || null,
-        panelScrollTopBefore: scrollTopBefore,
-        panelScrollTopAfterRender: panelBefore ? panelBefore.scrollTop : null,
-        windowScrollY: typeof window !== 'undefined' ? window.scrollY : null,
+        preserveScroll,
+        refreshReason,
+        panelId: panel?.id || null,
+        savedPanelScrollTop,
+        savedWindowScrollY,
+        panelScrollTopAfterRestore: panel ? panel.scrollTop : null,
+        windowScrollYAfterRestore: typeof window !== 'undefined' ? window.scrollY : null,
       });
-      if (pollingRefresh && hasScrollFn) {
-        console.log('[scroll-debug] scroll attempt — calling scrollToFirstActiveAppointment');
-        ctx.scrollToFirstActiveAppointment();
-        console.log('[scroll-debug] scroll attempt done', {
-          panelScrollTopAfterScroll: panelBefore ? panelBefore.scrollTop : null,
-          windowScrollY: typeof window !== 'undefined' ? window.scrollY : null,
-        });
-      } else {
-        console.log('[scroll-debug] scroll skipped', {
-          why: !pollingRefresh ? 'not_polling_refresh' : 'no_scroll_fn',
-        });
-      }
     } finally {
       loadAppointmentsInflight = Math.max(0, loadAppointmentsInflight - 1);
     }

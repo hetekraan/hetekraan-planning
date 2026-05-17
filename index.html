@@ -9101,7 +9101,8 @@ function startPlannerAppointmentAutoRefresh() {
     loadQuiet: (reason) =>
       loadAppointments(currentDate, {
         plannerLoadQuiet: true,
-        plannerPollingRefresh: reason === 'interval',
+        plannerPreserveScroll: reason === 'interval' || reason === 'visibility',
+        plannerRefreshReason: reason,
       }),
     getInflight: () =>
       typeof window.HKPlannerLoad?.getLoadAppointmentsInflight === 'function'
