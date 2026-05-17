@@ -25,6 +25,70 @@
     } catch (_) {}
   }
 
+  /** Tijdelijk: traceer wanneer scroll na restore weer naar 0 springt. */
+  function trackScrollAfterRestore(refreshReason) {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    const panel = document.getElementById('panelAfspraken');
+    const snapshot = () => ({
+      refreshReason: refreshReason != null ? String(refreshReason) : '',
+      windowScrollY: window.scrollY,
+      panelScrollTop: panel ? panel.scrollTop : null,
+    });
+
+    const logAt = (label) => {
+      console.log(`[scroll-debug] ${label}`, snapshot());
+    };
+
+    logAt('after restore (immediate)');
+
+    requestAnimationFrame(() => logAt('after raf 1'));
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => logAt('after raf 2'));
+    });
+
+    setTimeout(() => logAt('after 50ms'), 50);
+    setTimeout(() => logAt('after 200ms'), 200);
+    setTimeout(() => logAt('after 1s'), 1000);
+
+    const onScroll = () => {
+      const stack = new Error().stack || '';
+      console.log('[scroll-debug] scroll-event', {
+        ...snapshot(),
+        stack: stack.split('\n').slice(0, 5),
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    setTimeout(() => {
+      window.removeEventListener('scroll', onScroll);
+      console.log('[scroll-debug] scroll listener stopped (2s)');
+    }, 2000);
+
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        const t = m.target;
+        const tagName = t && t.tagName ? String(t.tagName) : '';
+        const id = t && t.id ? String(t.id) : '';
+        console.log('[scroll-debug] mutation', {
+          type: m.type,
+          targetTag: tagName,
+          targetId: id,
+          addedNodes: m.addedNodes ? m.addedNodes.length : 0,
+          removedNodes: m.removedNodes ? m.removedNodes.length : 0,
+        });
+      }
+    });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['style', 'class'],
+    });
+    setTimeout(() => {
+      observer.disconnect();
+      console.log('[scroll-debug] mutation observer stopped (2s)');
+    }, 2000);
+  }
+
   async function loadAppointments(ctx, date) {
     loadAppointmentsInflight++;
     try {
@@ -276,6 +340,9 @@
         panelScrollTopAfterRestore: panel ? panel.scrollTop : null,
         windowScrollYAfterRestore: typeof window !== 'undefined' ? window.scrollY : null,
       });
+      if (preserveScroll) {
+        trackScrollAfterRestore(refreshReason);
+      }
     } finally {
       loadAppointmentsInflight = Math.max(0, loadAppointmentsInflight - 1);
     }
