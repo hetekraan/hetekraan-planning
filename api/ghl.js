@@ -84,6 +84,7 @@ import {
   setRouteLock,
 } from '../lib/route-lock-store.js';
 import { ensureRouteLiveState } from '../lib/route-live-store.js';
+import { routeOrderViolatesMorningBeforeAfternoon } from '../lib/route-day-part-order.js';
 import { triggerLiveRouteRecalculation } from '../lib/route-live-optimizer.js';
 import { runMorningMessagesForDay } from '../lib/morning-message-run.js';
 import { sendMorningMessagesBatch } from '../lib/morning-message-send.js';
@@ -1424,6 +1425,26 @@ export default async function handler(req, res) {
         try {
           const live = await ensureRouteLiveState(locId, date, appointments);
           if (live?.ok) routeState = live.routeState || null;
+          if (
+            routeState &&
+            routeOrderViolatesMorningBeforeAfternoon(routeState.orderContactIds, appointments)
+          ) {
+            console.info(
+              '[getAppointments] route_day_part_order_repair',
+              JSON.stringify({
+                dateStr: date,
+                revision: routeState.revision ?? null,
+                orderContactIds: routeState.orderContactIds || [],
+              })
+            );
+            const repaired = await triggerLiveRouteRecalculationForDate(
+              locId,
+              date,
+              'day_part_order_repair',
+              { updatedBy: 'getAppointments' }
+            );
+            if (repaired?.ok && repaired.routeState) routeState = repaired.routeState;
+          }
         } catch (liveErr) {
           console.warn('[getAppointments] routeLiveState:', liveErr?.message || liveErr);
         }
