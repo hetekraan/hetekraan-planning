@@ -74,7 +74,6 @@ export function createPlannerAutoRefreshController(deps) {
     lastRefreshAt = now;
     debug('PLANNER_AUTO_REFRESH_START', { reason });
     try {
-      console.log('[scroll-debug] auto-refresh tryBackgroundRefresh', { reason });
       await deps.loadQuiet(reason);
       debug('PLANNER_AUTO_REFRESH_DONE', { reason });
     } catch (e) {
