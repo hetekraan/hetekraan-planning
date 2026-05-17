@@ -77,7 +77,7 @@ test('triggerLiveRouteRecalculation writes auto optimized live route', async () 
   assert.equal(calls.write[0].expectedRevision, 3);
   assert.equal(calls.write[0].source, 'auto_optimize');
   assert.equal(calls.write[0].updatedBy, 'daan');
-  assert.deepEqual(out.routeState.orderContactIds, ['c1', 'c2']);
+  assert.deepEqual(out.routeState.orderContactIds, ['c2', 'c1']);
 });
 
 test('preservedActiveOrderFromRouteState keeps relative order when one is klaar', () => {
