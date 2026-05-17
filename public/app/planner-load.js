@@ -249,9 +249,32 @@
         return;
       }
       applyRouteSnapshot(dateStr);
+      const panelBefore = document.getElementById('panelAfspraken');
+      const scrollTopBefore = panelBefore ? panelBefore.scrollTop : null;
       render();
-      if (ctx.plannerPollingRefresh === true && typeof ctx.scrollToFirstActiveAppointment === 'function') {
+      const pollingRefresh = ctx.plannerPollingRefresh === true;
+      const hasScrollFn = typeof ctx.scrollToFirstActiveAppointment === 'function';
+      console.log('[scroll-debug] loadAppointments post-render', {
+        dateStr,
+        quietLoad,
+        pollingRefresh,
+        hasScrollFn,
+        panelId: panelBefore?.id || null,
+        panelScrollTopBefore: scrollTopBefore,
+        panelScrollTopAfterRender: panelBefore ? panelBefore.scrollTop : null,
+        windowScrollY: typeof window !== 'undefined' ? window.scrollY : null,
+      });
+      if (pollingRefresh && hasScrollFn) {
+        console.log('[scroll-debug] scroll attempt — calling scrollToFirstActiveAppointment');
         ctx.scrollToFirstActiveAppointment();
+        console.log('[scroll-debug] scroll attempt done', {
+          panelScrollTopAfterScroll: panelBefore ? panelBefore.scrollTop : null,
+          windowScrollY: typeof window !== 'undefined' ? window.scrollY : null,
+        });
+      } else {
+        console.log('[scroll-debug] scroll skipped', {
+          why: !pollingRefresh ? 'not_polling_refresh' : 'no_scroll_fn',
+        });
       }
     } finally {
       loadAppointmentsInflight = Math.max(0, loadAppointmentsInflight - 1);

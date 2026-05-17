@@ -11183,14 +11183,48 @@ function scrollToCard(id) {
 
 /** Na polling-refresh: scroll naar eerste niet-klaar afspraak (niet pagina-top). */
 function scrollToFirstActiveAppointment() {
+  const panel = document.getElementById('panelAfspraken');
+  const snapshot = appointments.map((a) => ({
+    id: a?.id,
+    contactId: a?.contactId,
+    status: a?.status,
+    routeStop: a?.routeStop,
+    isCalBlock: !!a?.isCalBlock,
+  }));
+  console.log('[scroll-debug] scrollToFirstActiveAppointment appointments', snapshot);
   const active = appointments
     .filter((a) => a && !a.isCalBlock && String(a.status || '').toLowerCase() !== 'klaar')
     .sort((a, b) => (a.routeStop ?? 99) - (b.routeStop ?? 99));
   const first = active[0];
-  if (!first?.id) return;
-  const el = document.getElementById('card-' + appointmentDomSafeId(first.id));
-  if (!el) return;
+  console.log('[scroll-debug] first active candidate', {
+    countActive: active.length,
+    firstId: first?.id ?? null,
+    firstStatus: first?.status ?? null,
+    firstRouteStop: first?.routeStop ?? null,
+  });
+  if (!first?.id) {
+    console.log('[scroll-debug] scroll aborted — no active appointment with id');
+    return;
+  }
+  const domId = 'card-' + appointmentDomSafeId(first.id);
+  const el = document.getElementById(domId);
+  console.log('[scroll-debug] DOM lookup', {
+    domId,
+    elementFound: !!el,
+    panelScrollTop: panel ? panel.scrollTop : null,
+    elementOffsetTop: el && panel ? el.offsetTop : null,
+  });
+  if (!el) {
+    console.log('[scroll-debug] scroll aborted — card element not in DOM');
+    return;
+  }
   el.scrollIntoView({ block: 'start', behavior: 'auto' });
+  console.log('[scroll-debug] scrollIntoView called', {
+    block: 'start',
+    behavior: 'auto',
+    panelScrollTopAfter: panel ? panel.scrollTop : null,
+    windowScrollY: window.scrollY,
+  });
 }
 
 function cancelOnderweg(id) {

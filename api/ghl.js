@@ -4202,6 +4202,13 @@ export default async function handler(req, res) {
         const locationId = bodyLoc || locConfigured;
         const updatedBy = String(req.body?.updatedBy || req.body?.by || 'manual').trim() || 'manual';
 
+        console.log('[morning-debug] sendMorningMessages request', {
+          dateStr,
+          locationId,
+          updatedBy,
+          hasLegacyAppointmentsArray: Array.isArray(req.body?.appointments),
+        });
+
         if (dateStr && locationId) {
           const out = await runMorningMessagesForDay({
             locationId,
@@ -4217,6 +4224,13 @@ export default async function handler(req, res) {
               geplandeAankomstFieldId: FIELD_IDS.geplande_aankomst,
               fetchFn: fetchWithRetry,
             },
+          });
+          console.log('[morning-debug] sendMorningMessages result', {
+            dateStr,
+            ok: out.ok,
+            skipped: out.skipped,
+            code: out.code,
+            sent: out.sent,
           });
           if (out.skipped && out.code === 'NO_INGEPLAND') {
             return res.status(200).json({ success: true, sent: 0, skipped: true, code: out.code });
