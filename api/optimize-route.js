@@ -269,7 +269,7 @@ async function optimizeSubsetMatrix({
   return { order, etas, legInfo, travel };
 }
 
-async function travelMinutesOneLeg(key, fromAddr, toAddr) {
+export async function travelMinutesOneLeg(key, fromAddr, toAddr) {
   const travel = await fetchDistanceMatrixTravelMinutes(key, [fromAddr, toAddr]);
   if (!travel || !travel[0]) return null;
   return travel[0][1];
@@ -619,8 +619,14 @@ async function handlePartitionedDay(res, key, appointments, returnToDepot) {
   const morningOrigIndices = [];
   const afternoonOrigIndices = [];
   for (let i = 0; i < n; i++) {
-    if (Number(appointments[i]?.dayPart) === 0) morningOrigIndices.push(i);
-    else afternoonOrigIndices.push(i);
+    const dp = Number(appointments[i]?.dayPart);
+    if (dp === 0) morningOrigIndices.push(i);
+    else if (dp === 1) afternoonOrigIndices.push(i);
+    else {
+      const tw = parseTimeWindow(appointments[i]?.timeWindow);
+      if (tw && tw.start >= AFTERNOON_BLOCK.start) afternoonOrigIndices.push(i);
+      else morningOrigIndices.push(i);
+    }
   }
 
   const pinMsgs = validateInternalPinsPartitioned(appointments, morningOrigIndices, afternoonOrigIndices);

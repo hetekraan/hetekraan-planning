@@ -110,9 +110,6 @@
         if (typeof ctx.setPlannerCustomerDayFull === 'function') {
           ctx.setPlannerCustomerDayFull(!!data.customerDayFull, !!data.customerDayFullStoreConfigured);
         }
-        if (typeof syncLiveRouteState === 'function') {
-          syncLiveRouteState(dateStr, data.routeState || null);
-        }
         const appTpl = typeof getGhlIosContactAppUrlTemplate === 'function' ? getGhlIosContactAppUrlTemplate() : '';
         setAppointments(
           rows.map((a) => {
@@ -130,6 +127,9 @@
             };
           })
         );
+        if (typeof syncLiveRouteState === 'function') {
+          syncLiveRouteState(dateStr, data.routeState || null);
+        }
         const appts = getAppointmentsRef();
         appts.forEach((a) => {
           if (!a || a.isCalBlock) return;
@@ -249,7 +249,20 @@
         return;
       }
       applyRouteSnapshot(dateStr);
+      const preserveScroll = ctx.plannerPreserveScroll === true;
+      const panel = document.getElementById('panelAfspraken');
+      const savedPanelScrollTop = preserveScroll && panel ? panel.scrollTop : null;
+      const savedWindowScrollY =
+        preserveScroll && typeof window !== 'undefined' ? window.scrollY : null;
       render();
+      if (preserveScroll) {
+        if (panel && savedPanelScrollTop != null) {
+          panel.scrollTop = savedPanelScrollTop;
+        }
+        if (typeof window !== 'undefined' && savedWindowScrollY != null) {
+          window.scrollTo(0, savedWindowScrollY);
+        }
+      }
     } finally {
       loadAppointmentsInflight = Math.max(0, loadAppointmentsInflight - 1);
     }

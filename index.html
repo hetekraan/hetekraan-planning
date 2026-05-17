@@ -38,6 +38,7 @@ window.HKPlannerAutoRefresh = {
 <script src="/app/planner-confirm-done-klaar-gate.js"></script>
 <script src="/app/planner-actions.js"></script>
 <script src="/app/planner-route.js"></script>
+<script src="/app/planner-next-eta.js"></script>
 <script src="/app/planner-scheduling.js"></script>
 <script src="/app/planner-admin.js"></script>
 <script src="/app/planner-proposals.js"></script>
@@ -436,8 +437,6 @@ window.HKPlannerAutoRefresh = {
     border-color: rgba(0, 212, 170, 0.45) !important;
     border-left: 2px solid rgba(0, 212, 170, 0.65) !important;
   }
-  .appt-card.onderweg { border-color: rgba(74, 158, 255, 0.42); }
-
   .appt-number {
     position: absolute;
     top: 8px;
@@ -4725,11 +4724,6 @@ window.HKPlannerAutoRefresh = {
   body:not(.user-jerry) .appt-card--layout-v2.appt-card--todo {
     border-left: 3px solid rgba(142, 134, 124, 0.35);
   }
-  body:not(.user-jerry) .appt-card--layout-v2.onderweg {
-    border-color: rgba(217, 119, 6, 0.42);
-    border-left: 3px solid rgba(245, 158, 11, 0.72);
-    background: linear-gradient(180deg, rgba(255, 251, 235, 0.55) 0%, var(--surface) 52%);
-  }
   body:not(.user-jerry) .appt-card--layout-v2.done {
     border-left: 3px solid rgba(16, 185, 129, 0.55);
     opacity: 1;
@@ -4922,6 +4916,11 @@ window.HKPlannerAutoRefresh = {
     background: rgba(59, 130, 246, 0.08);
     border: 1px solid rgba(59, 130, 246, 0.22);
     color: #1d4ed8;
+  }
+  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--eta-sent {
+    background: rgba(63, 125, 74, 0.14);
+    color: var(--hk-good, #3f7d4a);
+    border: 1px solid rgba(63, 125, 74, 0.35);
   }
   body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--onderweg {
     background: rgba(251, 191, 36, 0.16);
@@ -6038,6 +6037,43 @@ window.HKPlannerAutoRefresh = {
     border-color: var(--accent);
   }
   .routes-actions-stack .btn-maps,
+  .routes-morning-auto {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+    font-size: 13px;
+    line-height: 1.35;
+  }
+  .routes-morning-auto__label {
+    flex: 1;
+    color: var(--text);
+  }
+  .routes-morning-auto__hint {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 11px;
+    cursor: help;
+    flex-shrink: 0;
+  }
+  .routes-morning-sent-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--accent2);
+    white-space: nowrap;
+  }
   .routes-actions-stack .btn-morning,
   .routes-actions-stack .route-reset-link {
     width: 100%;
@@ -6876,6 +6912,17 @@ window.HKPlannerAutoRefresh = {
         <div id="routeMap" aria-label="Routekaart"></div>
         <div class="routes-summary" id="routeSummary" aria-live="polite"></div>
         <div class="routes-actions-stack">
+          <div class="routes-morning-auto" id="routesMorningAutoWrap">
+            <label class="routes-morning-auto__label" for="routesMorningAutoToggle">
+              Ochtendmelding automatisch versturen om 8:00
+            </label>
+            <span
+              class="routes-morning-auto__hint"
+              title="Als uit: geen automatische verzending op deze dag. Je kunt nog handmatig sturen via de knop hieronder."
+              aria-label="Uitleg automatische ochtendmelding"
+            >i</span>
+            <input type="checkbox" id="routesMorningAutoToggle" checked aria-label="Automatische ochtendmelding om 8:00" />
+          </div>
           <button type="button" class="today-btn today-btn--dark btn-optimize" id="btnOptimize" onclick="optimizeRoute()" title="Bereken de live route opnieuw. Handmatige pins en vaste tijden blijven behouden.">Heroptimaliseer route</button>
           <button type="button" class="today-btn today-btn--ghost" id="btnRouteRetry" onclick="routeRetryClick()" style="display:none">Verbinding traag, opnieuw proberen?</button>
           <a class="btn-maps" href="#" onclick="openMaps(event)">Open volledige route in Maps</a>
@@ -7078,7 +7125,19 @@ window.HKPlannerAutoRefresh = {
   </div>
 </div>
 
-<!-- ONDERWEG BEVESTIGING POPUP -->
+<!-- ONDERWEG NA KLAAR: volgende klant ETA-prompt (niet dismissable) -->
+<div class="modal-overlay" id="nextEtaPromptOverlay" aria-hidden="true">
+  <div class="modal" style="max-width:360px" role="dialog" aria-modal="true" aria-labelledby="nextEtaPromptTitle">
+    <div class="modal-title" id="nextEtaPromptTitle">Onderweg?</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5" id="nextEtaPromptSubtitle"></div>
+    <div class="modal-actions" style="flex-direction:column;gap:8px">
+      <button type="button" class="btn-save" id="nextEtaPromptConfirmBtn" style="width:100%;padding:10px" onclick="confirmNextEtaPromptSend()">Ja, stuur ETA</button>
+      <button type="button" class="btn-cancel" style="width:100%;padding:10px;text-align:center" onclick="dismissNextEtaPrompt()">Niet nu</button>
+    </div>
+  </div>
+</div>
+
+<!-- ONDERWEG BEVESTIGING POPUP (legacy handmatig) -->
 <div class="modal-overlay" id="onderwegOverlay">
   <div class="modal" style="max-width:340px">
     <div class="modal-title" id="onderwegTitle">Onderweg?</div>
@@ -8001,6 +8060,7 @@ function createPlannerCtx(merge = {}) {
     clearDashBlockedDate,
     applyRouteSnapshot,
     render,
+    scrollToFirstActiveAppointment,
     setAppointments: (arr) => {
       appointments = arr;
     },
@@ -8053,6 +8113,11 @@ function createPlannerCtx(merge = {}) {
     setLastPartitionedRoutePlan: (dateStr, plan) => setLastPartitionedRoutePlan(dateStr, plan),
     clearLastPartitionedRoutePlan: (dateStr) => clearLastPartitionedRoutePlan(dateStr),
     logRouteOrder,
+    refreshMorningMessageSettings,
+    markEtaSentForContact,
+    getEtaSentMetaForContact,
+    showNextEtaPrompt,
+    dismissNextEtaPrompt,
     ...merge,
     getPlannerDebugMeta: () => ({
       remoteAppVersion:
@@ -8116,9 +8181,33 @@ function activeRouteContactIdsMorningFirst() {
     .filter(Boolean);
 }
 
+/** Nummering volgt orderContactIds (incl. klaar/onderweg) — status wijzigt de volgorde niet. */
+function assignRouteStopsFromLiveOrder() {
+  const dateStr = getDateStr(currentDate);
+  const state = getLiveRouteState(dateStr);
+  const order = Array.isArray(state?.orderContactIds)
+    ? state.orderContactIds.map((x) => String(x || '').trim()).filter(Boolean)
+    : [];
+  if (!order.length) return false;
+  const byContact = Object.fromEntries(
+    appointments.filter((a) => a?.contactId).map((a) => [String(a.contactId), a])
+  );
+  let n = 1;
+  for (const cid of order) {
+    const a = byContact[cid];
+    if (a && !a.isCalBlock) a.routeStop = n++;
+  }
+  appointments.forEach((a) => {
+    if (a.isCalBlock) a.routeStop = null;
+    else if (a.routeStop == null) a.routeStop = n++;
+  });
+  return true;
+}
+
 /** Routevolgorde #1–7: eerst alle ochtend (sidebar + rest op starttijd), daarna alle middag — middag nooit #1 als er ochtend is. */
 function assignRouteStops() {
   if (!appointments.length) return;
+  if (assignRouteStopsFromLiveOrder()) return;
   appointments.forEach((a) => {
     if (a.isCalBlock) a.routeStop = null;
   });
@@ -8179,6 +8268,8 @@ function localDraftRouteOrderKey(dateStr) {
 
 /** Centrale always-live route-state zoals opgehaald via `getAppointments`. */
 const liveRouteStateByDate = new Map();
+/** @type {{ afterContactId: string, nextContact: object|null, etaTime: string|null, calcFailed?: boolean }|null} */
+let pendingNextEtaPrompt = null;
 const lastSeenRouteStateRevisionByDate = new Map();
 const routeRevisionFollowupTimerByDate = new Map();
 const routeUiStatusByDate = new Map();
@@ -8198,6 +8289,46 @@ function getLiveRouteState(dateStr) {
   if (!ds) return null;
   const hit = liveRouteStateByDate.get(ds);
   return hit && typeof hit === 'object' ? hit : null;
+}
+
+function getEtaSentMetaForContact(contactId, dateStr) {
+  const ds = String(dateStr || getDateStr(currentDate) || '').trim();
+  const cid = String(contactId || '').trim();
+  if (!ds || !cid) return null;
+  const state = getLiveRouteState(ds);
+  if (!state?.etaSentByContactId || typeof state.etaSentByContactId !== 'object') return null;
+  const raw = state.etaSentByContactId[cid];
+  if (!raw) return null;
+  const eta = normalizeTimeStr(raw && typeof raw === 'object' ? raw.eta : raw);
+  if (!eta) return null;
+  const sentAt = Number(raw && typeof raw === 'object' ? raw.sentAt : 0);
+  return { eta, sentAt: Number.isFinite(sentAt) && sentAt > 0 ? sentAt : Date.now() };
+}
+
+function markEtaSentForContact(contactId, eta, sentAt) {
+  const ds = getDateStr(currentDate);
+  const cid = String(contactId || '').trim();
+  const etaNorm = normalizeTimeStr(eta);
+  if (!cid || !etaNorm) return;
+  const state = getLiveRouteState(ds);
+  if (state) {
+    setLiveRouteState(ds, {
+      ...state,
+      etaSentByContactId: {
+        ...(state.etaSentByContactId && typeof state.etaSentByContactId === 'object'
+          ? state.etaSentByContactId
+          : {}),
+        [cid]: { eta: etaNorm, sentAt: Number(sentAt) > 0 ? sentAt : Date.now() },
+      },
+    });
+  }
+  const appt = appointments.find((a) => String(a.contactId) === cid);
+  if (appt && String(appt.status || '') !== 'klaar') {
+    appt.status = 'onderweg';
+    appt.timeSlot = etaNorm;
+    appt.estimated = true;
+    appt.priceVisible = false;
+  }
 }
 
 function setLiveRouteState(dateStr, routeState) {
@@ -8288,7 +8419,16 @@ function syncLiveRouteState(dateStr, routeState) {
   setLiveRouteState(ds, routeState && typeof routeState === 'object' ? routeState : null);
   if (routeState && typeof routeState === 'object') {
     lastSeenRouteStateRevisionByDate.set(ds, nextRev);
-    if (prevRev !== undefined && nextRev > prevRev) scheduleRouteRevisionFollowupRefresh(ds);
+    if (String(routeState.source || '') === 'send_next_eta') {
+      applyRouteSnapshot(ds);
+    }
+    if (
+      prevRev !== undefined &&
+      nextRev > prevRev &&
+      String(routeState.source || '') !== 'send_next_eta'
+    ) {
+      scheduleRouteRevisionFollowupRefresh(ds);
+    }
     logRouteOrder('route_live_state_loaded', {
       routeDate: ds,
       sourceOfTruth: 'server_route_live_state',
@@ -8496,6 +8636,10 @@ function applyRouteSnapshot(dateStr) {
   const violations = state.violationsByContactId && typeof state.violationsByContactId === 'object'
     ? state.violationsByContactId
     : {};
+  const etaSent =
+    state.etaSentByContactId && typeof state.etaSentByContactId === 'object'
+      ? state.etaSentByContactId
+      : {};
   appointments.forEach((a) => {
     const cid = a?.contactId ? String(a.contactId) : '';
     if (!cid || a.status === 'klaar') return;
@@ -8503,6 +8647,15 @@ function applyRouteSnapshot(dateStr) {
     if (eta) {
       a.timeSlot = eta;
       a.estimated = true;
+    }
+    const sent = etaSent[cid];
+    if (sent) {
+      const sentEta = normalizeTimeStr(sent.eta || sent);
+      if (sentEta) {
+        a.timeSlot = sentEta;
+        a.status = 'onderweg';
+        a.estimated = true;
+      }
     }
     a.violation = Boolean(violations[cid]);
   });
@@ -8522,42 +8675,42 @@ function applyRouteSnapshot(dateStr) {
   return true;
 }
 
-/** Routestops in dezelfde volgorde als je handmatig hebt gezet (of anders op tijd). */
+/** Routestops in dezelfde volgorde als orderContactIds (geen hersorteren op ETA-tijd). */
 function getRouteStopsForSidebar() {
   const dateStr = getDateStr(currentDate);
   const active = appointments.filter((a) => a?.fullAddressLine && a?.status !== 'klaar');
-  const base = [...active].sort(
+  const state = getLiveRouteState(dateStr);
+  const order = Array.isArray(state?.orderContactIds)
+    ? state.orderContactIds.map((x) => String(x || '').trim()).filter(Boolean)
+    : [];
+  const byContact = Object.fromEntries(
+    active.filter((a) => a?.contactId).map((a) => [String(a.contactId), a])
+  );
+  if (order.length) {
+    const ordered = [];
+    const used = new Set();
+    for (const contactId of order) {
+      const key = String(contactId || '').trim();
+      if (!key || used.has(key)) continue;
+      const hit = byContact[key];
+      if (!hit) continue;
+      ordered.push(hit);
+      used.add(key);
+    }
+    for (const a of active) {
+      const key = a?.contactId ? String(a.contactId) : '';
+      if (!key || used.has(key)) continue;
+      ordered.push(a);
+      used.add(key);
+    }
+    return ordered;
+  }
+  return [...active].sort(
     (a, b) =>
       (a?.dayPart ?? 0) - (b?.dayPart ?? 0) ||
       (a?.startMs ?? 0) - (b?.startMs ?? 0) ||
       String(a?.timeSlot || '').localeCompare(String(b?.timeSlot || ''))
   );
-  const state = getLiveRouteState(dateStr);
-  const order = Array.isArray(state?.orderContactIds)
-    ? state.orderContactIds.map((x) => String(x || '').trim()).filter(Boolean)
-    : [];
-  if (!order.length) {
-    return base;
-  }
-  const byContact = Object.fromEntries(base.filter((a) => a?.contactId).map((a) => [String(a.contactId), a]));
-  const used = new Set();
-  const ordered = [];
-  for (const contactId of order) {
-    const key = String(contactId || '').trim();
-    if (!key || used.has(key)) continue;
-    const hit = byContact[key];
-    if (!hit) continue;
-    ordered.push(hit);
-    used.add(key);
-  }
-  for (const a of base) {
-    const key = a?.contactId ? String(a.contactId) : '';
-    if (!key || !used.has(key)) {
-      ordered.push(a);
-      if (key) used.add(key);
-    }
-  }
-  return ordered;
 }
 
 function updateRouteLocalUi() {
@@ -8945,7 +9098,12 @@ function startPlannerAppointmentAutoRefresh() {
   plannerAutoRefreshCtl = window.HKPlannerAutoRefresh.createPlannerAutoRefreshController({
     intervalMs: window.HKPlannerAutoRefresh.PLANNER_AUTO_REFRESH_MS,
     focusMinMs: window.HKPlannerAutoRefresh.PLANNER_FOCUS_REFRESH_MIN_MS,
-    loadQuiet: () => loadAppointments(currentDate, { plannerLoadQuiet: true }),
+    loadQuiet: (reason) =>
+      loadAppointments(currentDate, {
+        plannerLoadQuiet: true,
+        plannerPreserveScroll: reason === 'interval' || reason === 'visibility',
+        plannerRefreshReason: reason,
+      }),
     getInflight: () =>
       typeof window.HKPlannerLoad?.getLoadAppointmentsInflight === 'function'
         ? window.HKPlannerLoad.getLoadAppointmentsInflight()
@@ -9082,6 +9240,7 @@ function goToDateStr(ymd, source = 'go_to_date') {
   setCurrentDateAndRefreshUi(nextDate);
   logPlannerDateNav('ui_synced', { source, dateStr });
   return loadAppointments(currentDate).then(() => {
+    void refreshMorningMessageSettings();
     try {
       const inp = document.getElementById('plannerDesktopSearchInput');
       if (plannerDesktopRemoteSearchEnabled() && String(inp?.value ?? '').trim().length >= 2) {
@@ -9107,6 +9266,15 @@ function scrollToKlaarConfirm(id) {
       document.querySelector('#card-' + domId + ' .btn-confirm')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 200);
   }
+}
+
+/** Centreer actieve dag in weekstrip zonder scrollIntoView (voorkomt window smooth-scroll). */
+function centerPlannerWeekStripActiveDay(stripEl) {
+  if (!stripEl) return;
+  const active = stripEl.querySelector('.planner-week-day.is-active');
+  if (!active) return;
+  const target = active.offsetLeft + active.offsetWidth / 2 - stripEl.clientWidth / 2;
+  stripEl.scrollLeft = Math.max(0, target);
 }
 
 function renderPlannerWeekStrip() {
@@ -9146,11 +9314,7 @@ function renderPlannerWeekStrip() {
   updatePlannerMonthLabel();
   syncPlannerDatePickerValue();
   requestAnimationFrame(() => {
-    el.querySelector('.planner-week-day.is-active')?.scrollIntoView({
-      inline: 'center',
-      block: 'nearest',
-      behavior: 'smooth',
-    });
+    centerPlannerWeekStripActiveDay(el);
   });
 }
 
@@ -9883,7 +10047,7 @@ function renderApptCard(a, i) {
     const useTouchPriceOverlay = plannerUsesTouchPriceOverlay();
     const isViolation = !!a.violation;
     const touchOverlayForCard = useTouchPriceOverlay && isTouchPriceOverlayOpenFor(a.id);
-    const barVisible = !useTouchPriceOverlay && (isOnderweg || !!a.priceVisible);
+    const barVisible = !useTouchPriceOverlay && !!a.priceVisible;
     const routeYmdPlanner = getDateStr(currentDate);
     const lastServiceInputVal = String(a.lastService || '').trim() || routeYmdPlanner;
 
@@ -9964,9 +10128,18 @@ function renderApptCard(a, i) {
       const zeroAttr = total <= 0 ? ' data-zero="1"' : '';
       return `<span class="appt-price appt-wm-price" id="appt-price-${domId}"${zeroAttr}>${txt}</span>`;
     })();
+    const etaSentMeta = a.contactId ? getEtaSentMetaForContact(a.contactId, getDateStr(currentDate)) : null;
     let pillHtml = '';
     if (isDone) {
       pillHtml = `<span class="appt-wm-pill appt-wm-pill--klaar">${wmPillCheck}Klaar · Gefactureerd</span>`;
+    } else if (etaSentMeta) {
+      const sentClock = etaSentMeta.sentAt
+        ? new Date(etaSentMeta.sentAt).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
+        : '';
+      const tip = sentClock
+        ? `ETA ${etaSentMeta.eta} verstuurd om ${sentClock}`
+        : `ETA ${etaSentMeta.eta} verstuurd`;
+      pillHtml = `<span class="appt-wm-pill appt-wm-pill--eta-sent" title="${escapeHtml(tip)}">${wmPillClock}ETA verstuurd</span>`;
     } else if (isOnderweg) {
       pillHtml = `<span class="appt-wm-pill appt-wm-pill--onderweg">${wmPillClock}Onderweg</span>`;
     } else {
@@ -9975,10 +10148,9 @@ function renderApptCard(a, i) {
         pillHtml += ` <span class="appt-wm-pill appt-wm-pill--garantie">Garantie</span>`;
       }
     }
+    const onderwegBtnActive = isOnderweg || !!etaSentMeta;
     const primaryCta = !isDone
-      ? isOnderweg
-        ? `<button type="button" class="btn-done appt-wm-btn appt-wm-btn--klaar ${isOnderweg ? 'active' : ''}" onclick='${useTouchPriceOverlay ? `togglePrijs(event, ${idQ})` : `scrollToPrijs(${idQ})`}' title="Naar prijs en afronden" aria-label="Markeer klaar">${wmBtnCheck} Klaar</button>`
-        : `<button type="button" class="btn-done appt-wm-btn appt-wm-btn--onderweg-actie" onclick='askOnderweg(${idQ})' title="Markeer onderweg" aria-label="Markeer onderweg">Onderweg</button>`
+      ? `<button type="button" class="btn-done appt-wm-btn appt-wm-btn--onderweg-actie${onderwegBtnActive ? ' active' : ''}" onclick='sendOnderwegEtaDirect(${idQ})' title="${onderwegBtnActive ? 'ETA opnieuw versturen' : 'Stuur ETA naar klant'}" aria-label="Stuur ETA">Onderweg</button>`
       : '';
     const pinHtml = (() => {
       const pin =
@@ -10091,7 +10263,7 @@ function renderApptCard(a, i) {
               <div class="appt-footer-cta-row">
                 <button type="button" class="btn-prijs ${(barVisible&&!isOnderweg)||touchOverlayForCard?'active':''}" onclick='togglePrijs(event, ${idQ})' title="Prijsoverzicht bekijken" style="touch-action:manipulation">Prijs</button>
                 ${!isDone ? `
-                <button type="button" class="btn-done ${isOnderweg?'active':''}" onclick='${isOnderweg ? (useTouchPriceOverlay ? `togglePrijs(event, ${idQ})` : `scrollToPrijs(${idQ})`) : `askOnderweg(${idQ})`}' title="${isOnderweg ? 'Naar prijs en afronden' : 'Markeer onderweg'}">Onderweg</button>
+                <button type="button" class="btn-done appt-wm-btn--onderweg-actie${isOnderweg || etaSentMeta ? ' active' : ''}" onclick='sendOnderwegEtaDirect(${idQ})' title="${isOnderweg || etaSentMeta ? 'ETA opnieuw versturen' : 'Stuur ETA naar klant'}">Onderweg</button>
                 ` : ''}
               </div>
             </div>
@@ -10100,7 +10272,7 @@ function renderApptCard(a, i) {
       </div>`;
     const v2Class = layoutV2 ? ' appt-card--layout-v2' : '';
     return `
-    <div class="appt-card${v2Class} ${isDone?'done':''} ${isOnderweg?'onderweg':''} ${!isDone && !isOnderweg ? 'appt-card--todo' : ''} ${isViolation?'violation':''}" id="card-${domId}">
+    <div class="appt-card${v2Class} ${isDone?'done':''} ${!isDone ? 'appt-card--todo' : ''} ${isViolation?'violation':''}" id="card-${domId}">
       ${wmCore}
       ${useTouchPriceOverlay ? '' : `
       <div class="complete-bar ${barVisible?'visible':''}" id="bar-${domId}">
@@ -10536,6 +10708,7 @@ function renderRouteItemHtml(a) {
   const manualPinHtml = manualPin
     ? `<button type="button" class="route-pin-pill" title="Vastgezet door handmatige volgorde" onclick='event.stopPropagation(); unpinRouteContact(${JSON.stringify(cid)})'>Pin losmaken</button>`
     : '';
+  const morningSentHtml = cid ? morningMessageSentBadgeHtml(cid) : '';
   return `
     <div class="route-item ${a.status === 'klaar' ? 'done' : ''} ${a.violation ? 'has-violation' : ''}"
          draggable="true"
@@ -10551,7 +10724,7 @@ function renderRouteItemHtml(a) {
         </div>
         <div class="route-sub-row">
           <span class="route-addr">${shortAddr || '—'}</span>
-          <span class="route-sub-row__pills">${jobLbl ? `<span class="route-job-pill">${jobLbl}</span>` : `<span class="route-day-pill">${dayChip}</span>`}${manualPinHtml}${pinHtml}</span>
+          <span class="route-sub-row__pills">${jobLbl ? `<span class="route-job-pill">${jobLbl}</span>` : `<span class="route-day-pill">${dayChip}</span>`}${morningSentHtml}${manualPinHtml}${pinHtml}</span>
         </div>
       </div>
     </div>`;
@@ -10620,6 +10793,7 @@ function renderRoute(routeStops) {
 
   list.innerHTML = body;
 
+  void refreshMorningMessageSettings();
   initRouteDrag(list);
   window.HKPlannerRouteMaps?.renderRouteMap?.({
     apiKey: HK_GOOGLE_MAPS_API_KEY,
@@ -10707,6 +10881,116 @@ let _dragSrcId = null;
 let routeReorderDebounceTimer = null;
 let routeWriteSlowTimer = null;
 let pendingRouteWrite = null;
+let morningMessageSettingsCache = null;
+let morningMessageSettingsDateStr = '';
+
+function formatMorningSentClock(ts) {
+  const n = Number(ts);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  try {
+    return new Intl.DateTimeFormat('nl-NL', {
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'Europe/Amsterdam',
+    }).format(new Date(n));
+  } catch (_) {
+    return '';
+  }
+}
+
+function getMorningMessageSettingsForUi() {
+  return morningMessageSettingsCache && typeof morningMessageSettingsCache === 'object'
+    ? morningMessageSettingsCache
+    : { enabled: true, lastSentAt: null, lastSentContactIds: [], lastSentWindowsByContactId: {} };
+}
+
+function morningMessageSentBadgeHtml(contactId) {
+  const settings = getMorningMessageSettingsForUi();
+  if (!settings.lastSentAt) return '';
+  const ids = Array.isArray(settings.lastSentContactIds) ? settings.lastSentContactIds : [];
+  if (!ids.includes(String(contactId))) return '';
+  const win =
+    settings.lastSentWindowsByContactId && settings.lastSentWindowsByContactId[contactId]
+      ? settings.lastSentWindowsByContactId[contactId]
+      : null;
+  const clock = formatMorningSentClock(settings.lastSentAt) || '08:00';
+  const windowLabel = win?.windowPhrase
+    ? String(win.windowPhrase)
+    : win
+      ? win.timeFrom === win.timeTo
+        ? win.plannedValue || win.timeFrom
+        : `${win.timeFrom || ''}–${win.timeTo || ''}`
+      : '';
+  const tip = windowLabel
+    ? `Verzonden om ${clock} · venster ${windowLabel}`
+    : `Verzonden om ${clock}`;
+  return `<span class="routes-morning-sent-pill" title="${tip.replace(/"/g, '&quot;')}">📱 ${clock}</span>`;
+}
+
+async function refreshMorningMessageSettings() {
+  const dateStr = getDateStr(currentDate);
+  const locationId = GHL_LOCATION_ID_PUBLIC || '';
+  if (!locationId || !dateStr) return;
+  try {
+    const res = await fetch(
+      `/api/morning-message-settings?locationId=${encodeURIComponent(locationId)}&date=${encodeURIComponent(dateStr)}`,
+      { cache: 'no-store', headers: { 'X-HK-Auth': hkAuthHeader() } }
+    );
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data?.settings) {
+      morningMessageSettingsCache = data.settings;
+      morningMessageSettingsDateStr = dateStr;
+    }
+  } catch (_) {}
+  syncMorningMessageAutoToggleUi();
+}
+
+function syncMorningMessageAutoToggleUi() {
+  const inp = document.getElementById('routesMorningAutoToggle');
+  if (!inp) return;
+  const settings = getMorningMessageSettingsForUi();
+  inp.checked = settings.enabled !== false;
+}
+
+async function onMorningMessageAutoToggleChange() {
+  const inp = document.getElementById('routesMorningAutoToggle');
+  if (!inp) return;
+  const dateStr = getDateStr(currentDate);
+  const locationId = GHL_LOCATION_ID_PUBLIC || '';
+  if (!locationId || !dateStr) return;
+  const enabled = !!inp.checked;
+  try {
+    const res = await fetch('/api/morning-message-settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
+      body: JSON.stringify({
+        locationId,
+        dateStr,
+        enabled,
+        updatedBy: readPlannerUsernameRaw() || 'planner',
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showToast(data?.error || 'Kon instelling niet opslaan', 'info');
+      inp.checked = !enabled;
+      return;
+    }
+    morningMessageSettingsCache = data.settings || { enabled };
+    morningMessageSettingsDateStr = dateStr;
+    showToast(enabled ? 'Automatische ochtendmelding aan' : 'Automatische ochtendmelding uit voor deze dag', 'success');
+  } catch (_) {
+    inp.checked = !enabled;
+    showToast('Kon instelling niet opslaan', 'info');
+  }
+}
+
+function wireMorningMessageAutoToggle() {
+  const inp = document.getElementById('routesMorningAutoToggle');
+  if (!inp || inp.dataset.hkWired === '1') return;
+  inp.dataset.hkWired = '1';
+  inp.addEventListener('change', () => void onMorningMessageAutoToggleChange());
+}
 
 function routeContactIdsFromStops(stops) {
   return (Array.isArray(stops) ? stops : [])
@@ -10901,6 +11185,18 @@ function initRouteDrag(list) {
 
 function scrollToCard(id) {
   document.getElementById('card-' + appointmentDomSafeId(id))?.scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+/** Na polling-refresh: scroll naar eerste niet-klaar afspraak (niet pagina-top). */
+function scrollToFirstActiveAppointment() {
+  const active = appointments
+    .filter((a) => a && !a.isCalBlock && String(a.status || '').toLowerCase() !== 'klaar')
+    .sort((a, b) => (a.routeStop ?? 99) - (b.routeStop ?? 99));
+  const first = active[0];
+  if (!first?.id) return;
+  const el = document.getElementById('card-' + appointmentDomSafeId(first.id));
+  if (!el) return;
+  el.scrollIntoView({ block: 'start', behavior: 'auto' });
 }
 
 function cancelOnderweg(id) {
@@ -11251,11 +11547,10 @@ function syncAppointmentPriceBarDom(a) {
   const bar = document.getElementById('bar-' + domId);
   const card = document.getElementById('card-' + domId);
   if (!bar || !card) return false;
-  const isOnderweg = a.status === 'onderweg';
-  const barVisible = isOnderweg || !!a.priceVisible;
+  const barVisible = !!a.priceVisible;
   bar.classList.toggle('visible', barVisible);
   const btnPrijs = card.querySelector('.btn-prijs');
-  if (btnPrijs) btnPrijs.classList.toggle('active', barVisible && !isOnderweg);
+  if (btnPrijs) btnPrijs.classList.toggle('active', barVisible);
   return true;
 }
 
@@ -11319,16 +11614,90 @@ function togglePrijs(evt, id) {
   );
 }
 
+function showNextEtaPrompt(payload) {
+  pendingNextEtaPrompt = payload && typeof payload === 'object' ? payload : null;
+  const overlay = document.getElementById('nextEtaPromptOverlay');
+  const titleEl = document.getElementById('nextEtaPromptTitle');
+  const subEl = document.getElementById('nextEtaPromptSubtitle');
+  const btn = document.getElementById('nextEtaPromptConfirmBtn');
+  if (!overlay || !titleEl || !subEl) return;
+  const next = pendingNextEtaPrompt?.nextContact;
+  const name = next?.name ? String(next.name) : 'volgende klant';
+  const calcFailed = !!pendingNextEtaPrompt?.calcFailed;
+  const etaTime = normalizeTimeStr(pendingNextEtaPrompt?.etaTime);
+  if (calcFailed || !etaTime) {
+    titleEl.textContent = `Onderweg naar ${name}?`;
+    subEl.textContent = 'ETA kon niet worden berekend. Je kunt later op Onderweg drukken op de kaart.';
+  } else {
+    titleEl.textContent = `Onderweg naar ${name}?`;
+    subEl.innerHTML = `Verwachte ETA: <strong style="color:var(--yellow);font-size:15px">${escapeHtml(etaTime)}</strong>`;
+  }
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = 'Ja, stuur ETA';
+  }
+  overlay.classList.add('visible');
+  overlay.setAttribute('aria-hidden', 'false');
+}
+
+function dismissNextEtaPrompt() {
+  pendingNextEtaPrompt = null;
+  const overlay = document.getElementById('nextEtaPromptOverlay');
+  if (overlay) {
+    overlay.classList.remove('visible');
+    overlay.setAttribute('aria-hidden', 'true');
+  }
+}
+
+async function confirmNextEtaPromptSend() {
+  const pending = pendingNextEtaPrompt;
+  if (!pending?.nextContact?.contactId && !pending?.nextContact?.id) {
+    dismissNextEtaPrompt();
+    return;
+  }
+  const nextContactId = String(pending.nextContact.contactId || pending.nextContact.id);
+  const afterContactId = String(pending.afterContactId || '');
+  const eta = normalizeTimeStr(pending.etaTime);
+  const btn = document.getElementById('nextEtaPromptConfirmBtn');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Bezig…';
+  }
+  const ctx = createPlannerCtx();
+  showToast('⏳ ETA versturen…', 'loading');
+  const out = window.HKPlannerNextEta?.sendNextEtaForContact
+    ? await window.HKPlannerNextEta.sendNextEtaForContact(ctx, {
+        currentContactId: afterContactId,
+        nextContactId,
+        eta: eta || '',
+      })
+    : { ok: false };
+  if (btn) {
+    btn.disabled = false;
+    btn.textContent = 'Ja, stuur ETA';
+  }
+  dismissNextEtaPrompt();
+  if (!out?.ok) {
+    showToast(out?.code === 'STALE_CONTACT_ID' ? 'Route gewijzigd — herlaad de dag' : 'ETA versturen mislukt', 'info');
+    return;
+  }
+  const dateStr = getDateStr(currentDate);
+  showToast(`📱 ETA verstuurd (${out.sentEta})`, 'success');
+  if (dateStr) applyRouteSnapshot(dateStr);
+  render();
+}
+
+async function sendOnderwegEtaDirect(id) {
+  const ctx = createPlannerCtx();
+  if (!window.HKPlannerNextEta?.sendOnderwegEtaForAppointment) {
+    showToast('Onderweg-module niet geladen', 'info');
+    return;
+  }
+  await window.HKPlannerNextEta.sendOnderwegEtaForAppointment(ctx, id);
+}
+
 function askOnderweg(id) {
-  const a = appointments.find(x => String(x.id) === String(id));
-  if (!a) return;
-  runPriceActionTelemetry(id, 'onderweg', 'card', () => ({ renderScope: 'card' }), 'askOnderweg');
-  _onderwegId = id;
-  document.getElementById('onderwegTitle').textContent = `Onderweg naar ${a.name}?`;
-  document.getElementById('onderwegText').innerHTML =
-    `Zal ik een WhatsApp sturen met de verwachte aankomsttijd?<br><br>` +
-    `<strong style="color:var(--yellow);font-size:15px">ETA: ${a.timeSlot}</strong>`;
-  document.getElementById('onderwegOverlay').classList.add('visible');
+  sendOnderwegEtaDirect(id);
 }
 
 function closeOnderwegModal() {
@@ -11402,25 +11771,7 @@ function onderwegJeenBericht() {
 }
 
 function toggleOnderweg(id) {
-  // Wordt alleen nog aangeroepen voor "✓ Klaar?" (isOnderweg → klaar flow)
-  const a = appointments.find(x => String(x.id) === String(id));
-  if (!a) return;
-  if (a.status === 'onderweg') {
-    // Klaar knop → open complete bar als die al niet open is
-    a.priceVisible = false;
-    runPriceActionTelemetry(
-      id,
-      'other',
-      'full render',
-      () => {
-        render();
-        if (!plannerIsMobileViewport639()) setTimeout(() => scrollToPrijs(id), 80);
-        return { renderScope: 'full render' };
-      },
-      'toggleOnderweg',
-      { usedScrollIntoView: !plannerIsMobileViewport639(), functionName: 'toggleOnderweg' }
-    );
-  }
+  sendOnderwegEtaDirect(id);
 }
 
 function scrollToPrijs(id) {
@@ -12293,6 +12644,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btn && btn.contains(e.target)) return;
     collapseGlobalSearchDock();
   });
+  wireMorningMessageAutoToggle();
   checkLogin();
   startPlannerAppointmentAutoRefresh();
 });

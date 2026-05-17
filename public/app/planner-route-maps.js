@@ -167,16 +167,22 @@
             const appt = ordered[i];
             if (!leg?.end_location || !appt) continue;
             const rs = appt.routeStop;
-            const label =
+            const labelText =
               rs != null && String(rs).trim() !== '' && Number.isFinite(Number(rs)) ? String(rs) : String(i + 1);
             stopMarkers.push(
               new google.maps.Marker({
                 position: leg.end_location,
                 map,
-                label,
+                zIndex: 1000 + i,
+                label: {
+                  text: labelText,
+                  color: '#ffffff',
+                  fontWeight: 'bold',
+                  fontSize: '17px',
+                },
                 icon: {
                   path: google.maps.SymbolPath.CIRCLE,
-                  scale: 11,
+                  scale: 14,
                   fillColor: '#111111',
                   fillOpacity: 1,
                   strokeWeight: 2,
