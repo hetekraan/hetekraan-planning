@@ -8,7 +8,7 @@ import { ghlDurationMinutesForType, normalizeWorkType } from '../lib/booking-blo
 import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { sendErrorNotification } from '../lib/notify.js';
-import { pulseContactTag } from '../lib/ghl-tag.js';
+import { addContactTag, pulseContactTag } from '../lib/ghl-tag.js';
 import { signSessionToken, parseUsers, verifySessionToken } from '../lib/session.js';
 import { getOrCreateRequestId, logEvent } from '../lib/observability.js';
 import { applySecurityHeaders, enforceSimpleRateLimit } from '../lib/http-security.js';
@@ -3908,7 +3908,7 @@ export default async function handler(req, res) {
           });
         }
         await new Promise((r) => setTimeout(r, 400));
-        const tagPulseOk = await pulseContactTag(contactId, etaTag, '[ghl sendETA]');
+        const tagPulseOk = await addContactTag(contactId, etaTag, '[ghl sendETA]');
         if (!tagPulseOk) {
           return res.status(502).json({
             error: 'ETA wel opgeslagen, maar workflow-tag niet gezet — controleer tagnaam in GHL en env GHL_ETA_WORKFLOW_TAG',

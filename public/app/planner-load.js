@@ -250,6 +250,9 @@
       }
       applyRouteSnapshot(dateStr);
       render();
+      if (ctx.plannerPollingRefresh === true && typeof ctx.scrollToFirstActiveAppointment === 'function') {
+        ctx.scrollToFirstActiveAppointment();
+      }
     } finally {
       loadAppointmentsInflight = Math.max(0, loadAppointmentsInflight - 1);
     }

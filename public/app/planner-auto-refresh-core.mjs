@@ -74,7 +74,7 @@ export function createPlannerAutoRefreshController(deps) {
     lastRefreshAt = now;
     debug('PLANNER_AUTO_REFRESH_START', { reason });
     try {
-      await deps.loadQuiet();
+      await deps.loadQuiet(reason);
       debug('PLANNER_AUTO_REFRESH_DONE', { reason });
     } catch (e) {
       debug('PLANNER_AUTO_REFRESH_DONE', { reason, error: String(e?.message || e) });

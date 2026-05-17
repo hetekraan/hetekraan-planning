@@ -8060,6 +8060,7 @@ function createPlannerCtx(merge = {}) {
     clearDashBlockedDate,
     applyRouteSnapshot,
     render,
+    scrollToFirstActiveAppointment,
     setAppointments: (arr) => {
       appointments = arr;
     },
@@ -9097,7 +9098,11 @@ function startPlannerAppointmentAutoRefresh() {
   plannerAutoRefreshCtl = window.HKPlannerAutoRefresh.createPlannerAutoRefreshController({
     intervalMs: window.HKPlannerAutoRefresh.PLANNER_AUTO_REFRESH_MS,
     focusMinMs: window.HKPlannerAutoRefresh.PLANNER_FOCUS_REFRESH_MIN_MS,
-    loadQuiet: () => loadAppointments(currentDate, { plannerLoadQuiet: true }),
+    loadQuiet: (reason) =>
+      loadAppointments(currentDate, {
+        plannerLoadQuiet: true,
+        plannerPollingRefresh: reason === 'interval',
+      }),
     getInflight: () =>
       typeof window.HKPlannerLoad?.getLoadAppointmentsInflight === 'function'
         ? window.HKPlannerLoad.getLoadAppointmentsInflight()
@@ -11174,6 +11179,18 @@ function initRouteDrag(list) {
 
 function scrollToCard(id) {
   document.getElementById('card-' + appointmentDomSafeId(id))?.scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+/** Na polling-refresh: scroll naar eerste niet-klaar afspraak (niet pagina-top). */
+function scrollToFirstActiveAppointment() {
+  const active = appointments
+    .filter((a) => a && !a.isCalBlock && String(a.status || '').toLowerCase() !== 'klaar')
+    .sort((a, b) => (a.routeStop ?? 99) - (b.routeStop ?? 99));
+  const first = active[0];
+  if (!first?.id) return;
+  const el = document.getElementById('card-' + appointmentDomSafeId(first.id));
+  if (!el) return;
+  el.scrollIntoView({ block: 'start', behavior: 'auto' });
 }
 
 function cancelOnderweg(id) {

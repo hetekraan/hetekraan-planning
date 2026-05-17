@@ -9,12 +9,14 @@ import {
 test('interval tick calls quiet load when visible', async () => {
   let now = 1000;
   let loadCalls = 0;
+  let lastReason = '';
   const intervals = [];
   const ctl = createPlannerAutoRefreshController({
     intervalMs: PLANNER_AUTO_REFRESH_MS,
     focusMinMs: PLANNER_FOCUS_REFRESH_MIN_MS,
-    loadQuiet: async () => {
+    loadQuiet: async (reason) => {
       loadCalls += 1;
+      lastReason = reason;
     },
     isDocumentVisible: () => true,
     setIntervalFn: (fn, ms) => {
@@ -29,6 +31,7 @@ test('interval tick calls quiet load when visible', async () => {
   assert.equal(intervals.length, 1);
   await intervals[0]();
   assert.equal(loadCalls, 1);
+  assert.equal(lastReason, 'interval');
   ctl.stop();
 });
 
