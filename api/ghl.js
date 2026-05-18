@@ -66,6 +66,7 @@ import {
   amsterdamDayReadCacheKeyCalendarEvents,
   amsterdamDayReadCacheSet,
   cachedListConfirmedSyntheticEventsForDate,
+  cachedListPendingSyntheticEventsForDate,
   invalidateAmsterdamDayGhlReadCachesForDate,
   invalidateRedisSyntheticsCacheForDate,
 } from '../lib/amsterdam-day-read-cache.js';
@@ -1196,6 +1197,7 @@ async function loadPlannerAppointmentsForDate(date, options = {}) {
       fetchBlockedSlotsAsEvents,
       markBlockLikeOnCalendarEvents,
       cachedListConfirmedSyntheticEventsForDate,
+      cachedListPendingSyntheticEventsForDate,
       getField,
       BOOKING_FORM_FIELD_IDS,
       FIELD_IDS,

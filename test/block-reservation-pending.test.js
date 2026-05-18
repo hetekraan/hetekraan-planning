@@ -7,6 +7,7 @@ import {
   reservationToSyntheticCalendarEvent,
 } from '../lib/block-reservation-store.js';
 import { blockAllowsNewCustomerBooking, customerMaxForBlock } from '../lib/booking-blocks.js';
+import { activeRouteAppointments } from '../lib/route-live-optimizer.js';
 
 test('pending synthetic event is flagged for planner', () => {
   const ev = reservationToSyntheticCalendarEvent({
@@ -82,4 +83,15 @@ test('pending synthetic counts toward block capacity', () => {
     );
   }
   assert.equal(blockAllowsNewCustomerBooking('morning', events, 'onderhoud'), false);
+});
+
+test('activeRouteAppointments excludes pending bookings', () => {
+  const rows = [
+    { contactId: 'c1', status: 'ingepland', isPendingBooking: true },
+    { contactId: 'c2', status: 'ingepland', isPendingBooking: false },
+    { contactId: 'c3', status: 'klaar', isPendingBooking: false },
+  ];
+  const active = activeRouteAppointments(rows);
+  assert.equal(active.length, 1);
+  assert.equal(active[0].contactId, 'c2');
 });
