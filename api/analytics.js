@@ -13,15 +13,7 @@ import { logCanonicalAddressRead, readCanonicalAddressLine, splitAddressLineToSt
 import { resolveContactCustomFieldId } from '../lib/ghl-custom-fields.js';
 import { addAmsterdamCalendarDays, formatYyyyMmDdInAmsterdam, amsterdamCalendarDayBoundsMs } from '../lib/amsterdam-calendar-day.js';
 import { SLOT_LABEL_AFTERNOON_NL, SLOT_LABEL_MORNING_NL } from '../lib/planning-work-hours.js';
-import {
-  amsterdamDayReadCacheGet,
-  amsterdamDayReadCacheKeyBlockedSlots,
-  amsterdamDayReadCacheKeyCalendarEvents,
-  amsterdamDayReadCacheSet,
-  cachedListConfirmedSyntheticEventsForDate,
-} from '../lib/amsterdam-day-read-cache.js';
-import { readInvoicePartyField, resolveInvoicePartyFieldIds } from '../lib/invoice-party-ghl.js';
-import { loadPlannerAppointmentsSource } from '../lib/planner-appointments-source.js';
+import { cachedListConfirmedSyntheticEventsForDate } from '../lib/amsterdam-day-read-cache.js';
 import { buildPriceMaps, calcAppointmentTotal, computeAppointmentAnalytics } from '../lib/planner-appointment-totals.js';
 import { fetchWithRetry } from '../lib/retry.js';
 import { listPrices } from '../lib/prices-store.js';
@@ -32,10 +24,11 @@ import {
 
 const GHL_API_KEY = process.env.GHL_API_KEY;
 const GHL_BASE = 'https://services.leadconnectorhq.com';
-const RESULT_CACHE_TTL_SEC = 30 * 60;
+const RESULT_CACHE_TTL_SEC = 5 * 60;
+const RECENT_CREATED_LOOKBACK_DAYS = 45;
 const CONTACT_CACHE_TTL_SEC = 24 * 60 * 60;
 const ANALYTICS_SOURCE = 'planner_feed';
-const ANALYTICS_VERSION = 'planner_feed_v4';
+const ANALYTICS_VERSION = 'planner_feed_v5';
 const DEFAULT_VAT_FACTOR = 1.21;
 
 const FIELD_IDS = {
@@ -67,13 +60,37 @@ function contactCacheKey(contactId) {
   return `${redisPrefix()}hk:analytics:contact:${String(contactId || '').trim()}`;
 }
 
-function resultCacheKeyFromRange(range) {
+function resultCacheKeyFromRange(range, locationId) {
+  const loc = String(locationId || ghlLocationIdFromEnv() || '').trim() || 'default';
   const start = String(range?.startDate || '').trim();
   const end = String(range?.endDate || '').trim();
   if (start && end) {
-    return `${redisPrefix()}analytics:${start}:${end}:${ANALYTICS_VERSION}`;
+    return `${redisPrefix()}hk:analytics:${loc}:${start}:${end}:${ANALYTICS_VERSION}`;
   }
-  return `${redisPrefix()}analytics:${String(range?.key || '').trim() || 'unknown'}:${ANALYTICS_VERSION}`;
+  return `${redisPrefix()}hk:analytics:${loc}:${String(range?.key || '').trim() || 'unknown'}:${ANALYTICS_VERSION}`;
+}
+
+function plannerRangeFromDates(startDate, endDate) {
+  const startBounds = amsterdamCalendarDayBoundsMs(startDate);
+  const endBounds = amsterdamCalendarDayBoundsMs(endDate);
+  return {
+    startDate,
+    endDate,
+    startMs: startBounds?.startMs,
+    endMs: endBounds?.endMs,
+  };
+}
+
+function appointmentServiceDateYmd(appointment) {
+  return appointment?.date || eventYmdFromStartMs({ startTime: appointment?.startMs }) || '';
+}
+
+function filterAppointmentsInDateRange(appointments, startDate, endDate) {
+  return (Array.isArray(appointments) ? appointments : []).filter((a) => {
+    if (a?.isCalBlock) return false;
+    const d = appointmentServiceDateYmd(a);
+    return d && d >= startDate && d <= endDate;
+  });
 }
 
 function ensureAuth(req) {
@@ -587,61 +604,9 @@ function summarizeMarginReliability(breakdownRows = []) {
   };
 }
 
-async function loadRecentCreatedAppointments({ locId, calId, plannerNotitiesFieldId, plannerInternalFixedStartFieldId, invoicePartyFieldIdsForPlanner }) {
-  const collected = [];
-  const today = formatYyyyMmDdInAmsterdam(new Date());
-  const maxDaysBack = 45;
-  for (let i = 0; i < maxDaysBack; i += 1) {
-    const d = addAmsterdamCalendarDays(today, -i);
-    const dayOut = await loadPlannerAppointmentsSource(
-      {
-        date: d,
-        locId,
-        calId,
-        apiKey: GHL_API_KEY,
-        baseUrl: GHL_BASE,
-        plannerNotitiesFieldId,
-        plannerInternalFixedStartFieldId,
-        invoicePartyFieldIdsForPlanner,
-        traceLastEditedContactId: null,
-      },
-      {
-        amsterdamCalendarDayBoundsMs,
-        eventStartMsGhl,
-        eventEndMsGhl,
-        getEventStartDayAmsterdam,
-        canonicalGhlEventId,
-        resolveBlockSlotAssignedUserId,
-        fetchWithRetry,
-        amsterdamDayReadCacheGet,
-        amsterdamDayReadCacheSet,
-        amsterdamDayReadCacheKeyCalendarEvents,
-        amsterdamDayReadCacheKeyBlockedSlots,
-        fetchBlockedSlotsAsEvents,
-        markBlockLikeOnCalendarEvents,
-        cachedListConfirmedSyntheticEventsForDate,
-        getField,
-        BOOKING_FORM_FIELD_IDS,
-        FIELD_IDS,
-        splitAddressLineToStraatHuis,
-        readCanonicalAddressLine,
-        logCanonicalAddressRead,
-        SLOT_LABEL_MORNING_NL,
-        SLOT_LABEL_AFTERNOON_NL,
-        normalizeInternalFixedPinFromBody,
-        parseStructuredPriceRulesString,
-        readInvoicePartyField,
-        mapEnrichedGhlEventToAppointment,
-      }
-    );
-    const dayAppointments = Array.isArray(dayOut?.appointments) ? dayOut.appointments : [];
-    for (const a of dayAppointments) {
-      if (a?.isCalBlock) continue;
-      collected.push(a);
-    }
-    if (collected.length >= 120) break;
-  }
-  return collected
+function buildRecentCreatedAppointmentsFromAll(appointments) {
+  return (Array.isArray(appointments) ? appointments : [])
+    .filter((a) => !a?.isCalBlock)
     .sort((a, b) => appointmentCreatedMs(b) - appointmentCreatedMs(a))
     .slice(0, 10)
     .map((a) => ({
@@ -656,10 +621,57 @@ async function loadRecentCreatedAppointments({ locId, calId, plannerNotitiesFiel
     }));
 }
 
-async function readResultCache(range) {
+async function loadAppointmentsForPlannerAnalytics(range) {
+  const today = formatYyyyMmDdInAmsterdam(new Date());
+  const lookbackStart = addAmsterdamCalendarDays(today, -(RECENT_CREATED_LOOKBACK_DAYS - 1));
+  const lookbackEnd = today;
+  const lookbackRange = plannerRangeFromDates(lookbackStart, lookbackEnd);
+
+  if (range.startDate >= lookbackStart && range.endDate <= lookbackEnd) {
+    const out = await loadMappedAppointmentsForRange(lookbackRange);
+    return {
+      kpiAppointments: filterAppointmentsInDateRange(out.appointments, range.startDate, range.endDate),
+      recentSourceAppointments: out.appointments,
+      ghlCalls: out.ghlCalls,
+      uniqueContacts: out.uniqueContacts,
+      usedContactCache: out.usedContactCache,
+      dayCount: out.dayCount,
+    };
+  }
+
+  if (range.endDate < lookbackStart || range.startDate > lookbackEnd) {
+    const [kpiOut, recentOut] = await Promise.all([
+      loadMappedAppointmentsForRange(range),
+      loadMappedAppointmentsForRange(lookbackRange),
+    ]);
+    return {
+      kpiAppointments: kpiOut.appointments,
+      recentSourceAppointments: recentOut.appointments,
+      ghlCalls: Number(kpiOut.ghlCalls || 0) + Number(recentOut.ghlCalls || 0),
+      uniqueContacts: Math.max(Number(kpiOut.uniqueContacts || 0), Number(recentOut.uniqueContacts || 0)),
+      usedContactCache: Boolean(kpiOut.usedContactCache || recentOut.usedContactCache),
+      dayCount: kpiOut.dayCount,
+    };
+  }
+
+  const unifiedStart = range.startDate < lookbackStart ? range.startDate : lookbackStart;
+  const unifiedEnd = range.endDate > lookbackEnd ? range.endDate : lookbackEnd;
+  const unifiedRange = plannerRangeFromDates(unifiedStart, unifiedEnd);
+  const out = await loadMappedAppointmentsForRange(unifiedRange);
+  return {
+    kpiAppointments: filterAppointmentsInDateRange(out.appointments, range.startDate, range.endDate),
+    recentSourceAppointments: filterAppointmentsInDateRange(out.appointments, lookbackStart, lookbackEnd),
+    ghlCalls: out.ghlCalls,
+    uniqueContacts: out.uniqueContacts,
+    usedContactCache: out.usedContactCache,
+    dayCount: daysInclusive(range.startDate, range.endDate),
+  };
+}
+
+async function readResultCache(range, locationId) {
   const redis = getRedis();
   if (!redis) return null;
-  const raw = await redis.get(resultCacheKeyFromRange(range));
+  const raw = await redis.get(resultCacheKeyFromRange(range, locationId));
   if (!raw) return null;
   if (typeof raw === 'object') return raw;
   try {
@@ -669,10 +681,10 @@ async function readResultCache(range) {
   }
 }
 
-async function writeResultCache(range, payload) {
+async function writeResultCache(range, payload, locationId) {
   const redis = getRedis();
   if (!redis) return;
-  await redis.set(resultCacheKeyFromRange(range), JSON.stringify(payload), { ex: RESULT_CACHE_TTL_SEC });
+  await redis.set(resultCacheKeyFromRange(range, locationId), JSON.stringify(payload), { ex: RESULT_CACHE_TTL_SEC });
 }
 
 function isPlannerFeedResultCacheUsable(payload) {
@@ -714,8 +726,16 @@ async function loadMappedAppointmentsForRange(range) {
   });
   if (blockedAsEvents.length) events.push(...blockedAsEvents);
 
+  const dayDates = [];
   for (let d = range.startDate; d && d <= range.endDate; d = addAmsterdamCalendarDays(d, 1)) {
-    const synthetic = await cachedListConfirmedSyntheticEventsForDate(d).catch(() => []);
+    dayDates.push(d);
+  }
+  const syntheticByDay = await Promise.all(
+    dayDates.map((d) => cachedListConfirmedSyntheticEventsForDate(d).catch(() => []))
+  );
+  for (let i = 0; i < dayDates.length; i += 1) {
+    const d = dayDates[i];
+    const synthetic = syntheticByDay[i] || [];
     for (const ev of synthetic) {
       const cid = String(ev.contactId || ev.contact_id || '').trim();
       if (!cid) continue;
@@ -813,20 +833,19 @@ async function loadMappedAppointmentsForRange(range) {
 async function runAnalyticsFromPlannerFeed(rangeInput) {
   const range = rangeInput;
   const locId = ghlLocationIdFromEnv();
-  const calId = ghlCalendarIdFromEnv();
-  const plannerNotitiesFieldId = await resolvePlannerNotitiesFieldId();
-  const plannerInternalFixedStartFieldId = await resolvePlannerInternalFixedStartFieldId();
-  const invoicePartyFieldIdsForPlanner = await resolveInvoicePartyFieldIds({
-    baseUrl: GHL_BASE,
-    apiKey: GHL_API_KEY,
-    locationId: locId,
-  });
-  const { appointments, ghlCalls: ghaCalls, uniqueContacts, dayCount } = await loadMappedAppointmentsForRange(range);
-  const analytics = buildAnalyticsFromAppointments(appointments);
+  const {
+    kpiAppointments,
+    recentSourceAppointments,
+    ghlCalls: ghaCalls,
+    uniqueContacts,
+    dayCount,
+    usedContactCache,
+  } = await loadAppointmentsForPlannerAnalytics(range);
+  const analytics = buildAnalyticsFromAppointments(kpiAppointments);
   const recentSortStats = analytics?.recentSortStats || {};
   const analyticsPayload = { ...analytics };
   delete analyticsPayload.recentSortStats;
-  const clients = appointments.filter((a) => !a.isCalBlock);
+  const clients = kpiAppointments.filter((a) => !a.isCalBlock);
   const cachedAppointmentRows = await listAnalyticsAppointmentsByDateRange(range.startDate, range.endDate).catch(() => []);
   const cachedByAppointmentId = new Map();
   for (const row of Array.isArray(cachedAppointmentRows) ? cachedAppointmentRows : []) {
@@ -917,17 +936,11 @@ async function runAnalyticsFromPlannerFeed(rangeInput) {
   let recentCreatedAppointments = [];
   let recentCreatedAppointmentsError = '';
   try {
-    recentCreatedAppointments = await loadRecentCreatedAppointments({
-      locId,
-      calId,
-      plannerNotitiesFieldId,
-      plannerInternalFixedStartFieldId,
-      invoicePartyFieldIdsForPlanner,
-    });
+    recentCreatedAppointments = buildRecentCreatedAppointmentsFromAll(recentSourceAppointments);
   } catch (err) {
     recentCreatedAppointments = [];
     recentCreatedAppointmentsError = String(err?.message || err || '').slice(0, 220);
-    console.warn('[analytics] recentCreatedAppointments_load_failed', {
+    console.warn('[analytics] recentCreatedAppointments_build_failed', {
       message: recentCreatedAppointmentsError,
       range: `${range.startDate}..${range.endDate}`,
     });
@@ -945,7 +958,7 @@ async function runAnalyticsFromPlannerFeed(rangeInput) {
     meta: {
       ghlCalls: ghaCalls,
       uniqueContacts,
-      cacheHit: 'none',
+      cacheHit: usedContactCache ? 'contacts' : 'none',
       period: range.period,
       generatedAt: new Date().toISOString(),
       analytics_source: ANALYTICS_SOURCE,
@@ -1032,7 +1045,8 @@ export default async function handler(req, res) {
       })
     );
 
-    const cacheHit = await readResultCache(range);
+    const locId = locConfigured;
+    const cacheHit = await readResultCache(range, locId);
     const cacheUsable = isPlannerFeedResultCacheUsable(cacheHit);
     if (cacheUsable) {
       return res.status(200).json({
@@ -1049,10 +1063,10 @@ export default async function handler(req, res) {
 
     try {
       const payload = await runAnalyticsFromPlannerFeed(range);
-      await writeResultCache(range, payload);
+      await writeResultCache(range, payload, locId);
       return res.status(200).json({ ok: true, source: 'live', ...payload });
     } catch (err) {
-      const fallback = await readResultCache(range);
+      const fallback = await readResultCache(range, locId);
       const fallbackUsable = isPlannerFeedResultCacheUsable(fallback);
       if (fallbackUsable) {
         return res.status(200).json({
