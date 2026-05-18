@@ -6869,11 +6869,13 @@ window.HKPlannerAutoRefresh = {
       word-break: break-word;
     }
     body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-customer {
-      font-size: 15px !important;
+      font-size: clamp(17px, 2.2vw, 20px) !important;
+      line-height: 1.4 !important;
     }
     body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-desc,
     body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-notes {
-      font-size: 16px !important;
+      font-size: clamp(17px, 2.1vw, 19px) !important;
+      line-height: 1.45 !important;
       white-space: normal !important;
       overflow: visible !important;
       text-overflow: unset !important;
@@ -6884,6 +6886,26 @@ window.HKPlannerAutoRefresh = {
     body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill {
       font-size: 13px !important;
       padding: 5px 12px !important;
+    }
+    /* Werktype-kleuren (desktop staat in min-width 1180px; veld-tablets missen die band) */
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill--type-onderhoud {
+      background: #e5f4ec !important;
+      color: #0f7a4b !important;
+      border-color: #cde8d8 !important;
+    }
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill--type-installatie {
+      background: #fbf0d4 !important;
+      color: #a66a00 !important;
+      border-color: #f0dfb1 !important;
+    }
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill--type-reparatie {
+      background: #fbe9dd !important;
+      color: #a02f08 !important;
+      border-color: #f3d7c4 !important;
+    }
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-actions-mobile,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-actions-slot {
+      display: none !important;
     }
     body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-cta-row {
       width: auto !important;
@@ -6899,8 +6921,18 @@ window.HKPlannerAutoRefresh = {
       white-space: nowrap;
     }
     body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-jerry-icons .icon-btn.appt-action-icon {
-      --appt-action-icon-size: 52px;
-      --appt-action-icon-radius: 14px;
+      --appt-action-icon-size: 40px;
+      --appt-action-icon-radius: 11px;
+      width: 40px !important;
+      min-width: 40px !important;
+      max-width: 40px !important;
+      height: 40px !important;
+      min-height: 40px !important;
+      padding: 0 !important;
+    }
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-jerry-icons .icon-btn.appt-action-icon .appt-action-svg {
+      width: 17px !important;
+      height: 17px !important;
     }
   }
 
