@@ -6851,8 +6851,26 @@ window.HKPlannerAutoRefresh = {
       background: rgba(220, 74, 26, 0.12) !important;
       color: #a02f08 !important;
     }
-    body.user-jerry .complete-bar .price-total-row span:last-child {
-      font-size: clamp(36px, 9vw, 52px) !important;
+    /* Prijs-popup (touch overlay): buiten .complete-bar → eigen total-regels */
+    body.user-jerry.ipad-field-vp .touch-price-overlay .price-total-row,
+    body.user-jerry.ipad-field-vp .complete-bar .price-total-row {
+      font-size: 18px !important;
+      padding-top: 16px !important;
+      margin-top: 14px !important;
+      gap: 16px;
+    }
+    body.user-jerry.ipad-field-vp .touch-price-overlay .price-total-row > span:first-child,
+    body.user-jerry.ipad-field-vp .complete-bar .price-total-row > span:first-child {
+      font-size: 18px !important;
+      font-weight: 600 !important;
+      letter-spacing: 0.02em;
+    }
+    body.user-jerry.ipad-field-vp .touch-price-overlay .price-total-row span:last-child,
+    body.user-jerry.ipad-field-vp .complete-bar .price-total-row span:last-child {
+      font-size: clamp(28px, 6.5vw, 40px) !important;
+      font-weight: 700 !important;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
     }
     body.user-jerry.ipad-field-vp .appt-card--layout-v2 {
       display: block !important;
