@@ -24,11 +24,9 @@
   let analyticsData = null;
   let previousData = null;
   let analyticsMeta = null;
-  let cashflowRows = [];
   let inventoryRows = [];
   const sectionState = {
     analytics: { loading: false, error: '' },
-    cashflow: { loading: false, error: '' },
     inventory: { loading: false, error: '' },
   };
   const kpiState = Object.fromEntries(
@@ -438,6 +436,29 @@
     const m = analyticsMeta || {};
     el.textContent = `debug · period=${m.period || '-'} · ghlCalls=${m.ghlCalls ?? '-'} · uniqueContacts=${m.uniqueContacts ?? '-'} · cacheHit=${m.cacheHit || '-'} · generatedAt=${m.generatedAt || '-'}`;
   }
+  function trendRowsForChart(data) {
+    const days = rangeDaysFromAnalyticsData(data);
+    const byDay = Array.isArray(data?.omzetByDay) ? data.omzetByDay : [];
+    if (days > 0 && days <= 62 && byDay.length) {
+      return { rows: byDay, labelKey: 'day' };
+    }
+    return {
+      rows: Array.isArray(data?.omzetByWeek) ? data.omzetByWeek : [],
+      labelKey: 'week',
+    };
+  }
+  function formatTrendLabel(row, labelKey) {
+    if (labelKey === 'day') {
+      const raw = String(row?.day || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+      return new Date(`${raw}T12:00:00Z`).toLocaleDateString('nl-NL', {
+        day: 'numeric',
+        month: 'short',
+        timeZone: 'UTC',
+      });
+    }
+    return String(row?.week || '');
+  }
   function renderRevenueMarginSection() {
     const meta = document.getElementById('analyticsRevenueMarginMeta');
     if (sectionState.analytics.error) {
@@ -445,13 +466,13 @@
       paintCanvasMessage('analyticsRevenueMarginChart', sectionState.analytics.error);
       return;
     }
-    const rows = Array.isArray(analyticsData?.omzetByWeek) ? analyticsData.omzetByWeek : [];
+    const { rows, labelKey } = trendRowsForChart(analyticsData);
     const omzet = Number(analyticsData?.kpis?.totaleOmzet || 0);
     const marge = rows.reduce((sum, x) => sum + Number(x?.marge || 0), 0);
     const margePct = omzet > 0 ? (marge / omzet) * 100 : 0;
     if (meta) meta.textContent = `${fmtEuro(omzet)} omzet · ${fmtPct(margePct)} marge`;
     drawChart('analyticsRevenueMarginChart', 'line', {
-      labels: rows.map((x) => x.week),
+      labels: rows.map((x) => formatTrendLabel(x, labelKey)),
       datasets: [
         { label: 'Omzet', data: rows.map((x) => Number(x.omzet || 0)), borderColor: '#dc4a1a', backgroundColor: 'rgba(220,74,26,.1)', tension: 0.3 },
         { label: 'Marge', data: rows.map((x) => Number(x.marge || 0)), borderColor: '#0f7a4b', backgroundColor: 'rgba(15,122,75,.1)', tension: 0.3 },
@@ -485,29 +506,6 @@
     }
     paintCanvasMessage('analyticsTrafficChart', 'Niet gekoppeld. Koppel GA4 om sessies te tonen.');
     renderTrafficFunnelPlaceholder('');
-  }
-  function renderCashflowSection() {
-    const meta = document.getElementById('analyticsCashflowMeta');
-    if (sectionState.cashflow.error) {
-      if (meta) meta.textContent = 'Kon cashflow niet laden';
-      paintCanvasMessage('analyticsCashflowChart', sectionState.cashflow.error);
-      const openTable = document.getElementById('analyticsOpenInvoicesTable');
-      if (openTable) openTable.innerHTML = `<tbody><tr><td style="color:var(--reparatie)">${escHtml(sectionState.cashflow.error)}</td></tr></tbody>`;
-      return;
-    }
-    const netTotal = cashflowRows.reduce((sum, x) => sum + Number(x?.netto || 0), 0);
-    if (meta) meta.textContent = `Netto trend: ${fmtEuro(netTotal)}`;
-    drawChart('analyticsCashflowChart', 'bar', {
-      labels: cashflowRows.map((x) => x.maand),
-      datasets: [
-        { label: 'Inkomsten', data: cashflowRows.map((x) => Number(x.inkomsten || 0)), backgroundColor: 'rgba(15,122,75,.75)' },
-        { label: 'Kosten', data: cashflowRows.map((x) => Number(x.kosten || 0)), backgroundColor: 'rgba(220,74,26,.65)' },
-        { type: 'line', label: 'Netto', data: cashflowRows.map((x) => Number(x.netto || 0)), borderColor: '#111827', yAxisID: 'y' },
-      ],
-    });
-    const openTable = document.getElementById('analyticsOpenInvoicesTable');
-    if (!openTable) return;
-    openTable.innerHTML = `<tbody><tr><td colspan="3" style="padding:14px;font-size:13px;color:var(--ink-soft);line-height:1.45;border:none"><strong style="color:var(--text)">Openstaande facturen (detail)</strong> — nog niet gekoppeld. De cashflow-grafiek hierboven gebruikt wel Moneybird op maandniveau wanneer de API beschikbaar is.</td></tr></tbody>`;
   }
   function renderInventorySection() {
     const el = document.getElementById('analyticsInventoryTable');
@@ -656,6 +654,24 @@
     if (repeat) repeat.textContent = fmtPct(analyticsData?.repeatCustomersPct || 0);
   }
 
+  let periodFiltersWired = false;
+  function wirePeriodFiltersOnce() {
+    const el = document.getElementById('analyticsPeriodFilters');
+    if (!el || periodFiltersWired) return;
+    periodFiltersWired = true;
+    el.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-period]');
+      if (!btn) return;
+      const next = btn.getAttribute('data-period') || 'today';
+      if (next === 'custom') {
+        openCustomRangePicker();
+        return;
+      }
+      period = normalizeLegacyAnalyticsPeriodKey(next);
+      renderPeriodFilters();
+      void loadAllSections();
+    });
+  }
   function renderPeriodFilters() {
     const el = document.getElementById('analyticsPeriodFilters');
     if (!el) return;
@@ -668,18 +684,7 @@
       ['custom', 'Aangepast'],
     ];
     el.innerHTML = opts.map(([id, label]) => `<button type="button" class="chip-btn ${period === id ? 'is-active' : ''}" data-period="${id}">${label}</button>`).join('');
-    el.querySelectorAll('[data-period]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const next = btn.getAttribute('data-period') || 'today';
-        if (next === 'custom') {
-          openCustomRangePicker();
-          return;
-        }
-        period = normalizeLegacyAnalyticsPeriodKey(next);
-        renderPeriodFilters();
-        void loadAllSections();
-      });
-    });
+    wirePeriodFiltersOnce();
   }
 
   function selectDraftDate(ymd) {
@@ -912,19 +917,6 @@
     renderRecentCreatedAppointments();
     renderMarginBreakdownSection();
   }
-  async function loadCashflowSection() {
-    sectionState.cashflow = { loading: true, error: '' };
-    try {
-      const res = await fetch('/api/cashflow', { cache: 'no-store', headers: { 'X-HK-Auth': authHeader() } });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data?.ok === false) throw new Error(data?.error || data?.detail || `Cashflow fout (${res.status})`);
-      cashflowRows = Array.isArray(data?.items) ? data.items : [];
-      sectionState.cashflow = { loading: false, error: '' };
-    } catch (err) {
-      sectionState.cashflow = { loading: false, error: String(err?.message || err) };
-    }
-    renderCashflowSection();
-  }
   async function loadInventorySection() {
     sectionState.inventory = { loading: true, error: '' };
     renderInventorySection();
@@ -939,14 +931,20 @@
     }
     renderInventorySection();
   }
+  let loadAllSectionsPromise = null;
   async function loadAllSections() {
-    await ensureChartJs().catch(() => {});
-    await Promise.all([loadAnalyticsSection(), loadCashflowSection(), loadInventorySection()]);
-    renderRevenueMarginSection();
-    renderAdSpendSection();
-    renderTrafficSection();
-    renderCashflowSection();
-    renderOperationalSection();
+    if (loadAllSectionsPromise) return loadAllSectionsPromise;
+    loadAllSectionsPromise = (async () => {
+      await ensureChartJs().catch(() => {});
+      await Promise.all([loadAnalyticsSection(), loadInventorySection()]);
+      renderRevenueMarginSection();
+      renderAdSpendSection();
+      renderTrafficSection();
+      renderOperationalSection();
+    })().finally(() => {
+      loadAllSectionsPromise = null;
+    });
+    return loadAllSectionsPromise;
   }
   function render() {
     if (!bootstrapped) {
