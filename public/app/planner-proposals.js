@@ -108,6 +108,9 @@
         );
         window.open(`https://wa.me/${cleanPhone}?text=${msg}`, '_blank');
       }
+      if (typeof ctx.loadAppointments === 'function') {
+        await ctx.loadAppointments(proposalDateStr || date);
+      }
       ctx.closeModal();
     } catch (e) {
       ctx.showToast(`Fout: ${e.message}`, 'info');
