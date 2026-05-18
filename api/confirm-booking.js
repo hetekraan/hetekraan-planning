@@ -696,7 +696,7 @@ export default async function handler(req, res) {
   }
 
   const type = normalizeWorkType(typeRaw || getCf(contactSnap, FIELD_IDS.type_onderhoud));
-  const isV2 = Number(bookingData.tokenSchemaVersion) === 2;
+  const isV2 = Number(bookingData.tokenSchemaVersion) >= 2;
   const phoneForPut = firstValidNlMobile(phoneRaw, phone, contactSnap?.phone);
 
   // TEMP DEBUG — verwijder na productie-verificatie (welke confirm-branch draait er?)
