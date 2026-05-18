@@ -41,8 +41,10 @@ import {
 import {
   cachedFetchBlockedSlotsAsEvents,
   cachedFetchCalendarEventsForDay,
-  cachedListConfirmedSyntheticEventsForDate,
+  cachedListActiveSyntheticEventsForDate,
+  invalidateRedisSyntheticsCacheForDate,
 } from '../lib/amsterdam-day-read-cache.js';
+import { createPendingReservation } from '../lib/block-reservation-store.js';
 import { ghlCalendarIdFromEnv, ghlLocationIdFromEnv } from '../lib/ghl-env-ids.js';
 import {
   buildProposalScanSchedule,
@@ -161,7 +163,7 @@ async function validateSelectedInviteSlots({
     let resvSynthetic = [];
     try {
       const tR = Date.now();
-      resvSynthetic = await cachedListConfirmedSyntheticEventsForDate(dateStr);
+      resvSynthetic = await cachedListActiveSyntheticEventsForDate(dateStr);
       if (perf) perf.redis_synthetic_sum_ms += Date.now() - tR;
     } catch (e) {
       console.warn('[send-booking-invite] block reservations:', e?.message || e);
@@ -436,7 +438,7 @@ async function pickBlockInviteOffers(workType, timings, proposalConstraints = nu
     let resvSynthetic = [];
     try {
       const tR = Date.now();
-      resvSynthetic = await cachedListConfirmedSyntheticEventsForDate(dateStr);
+      resvSynthetic = await cachedListActiveSyntheticEventsForDate(dateStr);
       if (perf) perf.redis_synthetic_sum_ms += Date.now() - tR;
     } catch (e) {
       console.warn('[send-booking-invite] block reservations:', e?.message || e);
@@ -1002,6 +1004,46 @@ export default async function handler(req, res) {
   const emailForToken =
     inviteEmailNorm || normalizeCanonicalGhlEmail(String(contact.email || '').trim());
 
+  const proposalSlot = slots[0];
+  const proposalDateStr = String(proposalSlot?.dateStr || '').trim();
+  const proposalBlock =
+    proposalSlot?.block === 'afternoon' || proposalSlot?.block === 'morning' ? proposalSlot.block : '';
+
+  let pendingReservationId = '';
+  if (proposalDateStr && proposalBlock) {
+    try {
+      const pendingOut = await createPendingReservation({
+        contactId,
+        dateStr: proposalDateStr,
+        block: proposalBlock,
+        workType,
+        locationId: GHL_LOCATION_ID,
+        metadata: { source: 'send-booking-invite' },
+      });
+      if (pendingOut.ok) {
+        pendingReservationId = String(pendingOut.reservation?.id || '').trim();
+        invalidateRedisSyntheticsCacheForDate(proposalDateStr);
+        console.log('[send-booking-invite] pending_reservation', {
+          contactId,
+          dateStr: proposalDateStr,
+          block: proposalBlock,
+          reservationId: pendingReservationId,
+          overwritten: pendingOut.overwritten === true,
+        });
+      } else if (pendingOut.code === 'ALREADY_CONFIRMED') {
+        return res.status(409).json({
+          success: false,
+          error: 'Er staat al een bevestigde afspraak voor deze klant op deze dag.',
+          code: 'ALREADY_CONFIRMED',
+        });
+      } else {
+        console.warn('[send-booking-invite] pending_reservation_skipped', pendingOut);
+      }
+    } catch (pendingErr) {
+      console.warn('[send-booking-invite] pending_reservation_failed', pendingErr?.message || pendingErr);
+    }
+  }
+
   const bookingData = {
     contactId,
     name,
@@ -1010,7 +1052,8 @@ export default async function handler(req, res) {
     address,
     type: workType,
     inviteIssuedAt: Date.now(),
-    tokenSchemaVersion: 2,
+    tokenSchemaVersion: 3,
+    ...(pendingReservationId ? { reservationId: pendingReservationId } : {}),
     intakeData: {
       minStartDate: intakeMinStartDate || '',
       ...(customerUnavailability ? { customerUnavailability } : {}),
@@ -1092,6 +1135,13 @@ export default async function handler(req, res) {
     boekingsvoorstel_optie_1: `${capitalize(slot1.dateLabel)} tussen ${slot1.timeLabel}`,
     boekingsvoorstel_optie_2: slot2 ? `${capitalize(slot2.dateLabel)} tussen ${slot2.timeLabel}` : '',
     boekingsvoorstel_status: 'sent',
+    ...(proposalDateStr && proposalBlock
+      ? {
+          boeking_bevestigd_datum: proposalDateStr,
+          boeking_bevestigd_dagdeel: proposalBlock,
+          boeking_bevestigd_status: 'pending',
+        }
+      : {}),
   };
   const bookingCanon = appendBookingCanonFields(customFields, canonValues);
   const allCustomFields = bookingCanon.customFields;
