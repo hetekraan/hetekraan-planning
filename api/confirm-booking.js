@@ -19,7 +19,8 @@ import { maxCustomerAppointmentsPerDay } from '../lib/calendar-customer-cap.js';
 import {
   cachedFetchBlockedSlotsAsEvents,
   cachedFetchCalendarEventsForDay,
-  cachedListConfirmedSyntheticEventsForDate,
+  cachedListActiveSyntheticEventsForDate,
+  invalidateRedisSyntheticsCacheForDate,
 } from '../lib/amsterdam-day-read-cache.js';
 import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
@@ -777,12 +778,17 @@ export default async function handler(req, res) {
     let synthetics = [];
     const tRedisSyn0 = Date.now();
     try {
-      synthetics = await cachedListConfirmedSyntheticEventsForDate(date);
+      synthetics = await cachedListActiveSyntheticEventsForDate(date);
     } catch (synErr) {
-      console.error('[confirm-booking] listConfirmedSyntheticEventsForDate:', synErr?.message || synErr);
+      console.error('[confirm-booking] listActiveSyntheticEventsForDate:', synErr?.message || synErr);
     }
     perf.redis_synthetic_read_ms = Date.now() - tRedisSyn0;
-    const eventsForCapacity = merged.concat(Array.isArray(synthetics) ? synthetics : []);
+    const contactIdNorm = String(contactId || '').trim();
+    const syntheticsForCapacity = (Array.isArray(synthetics) ? synthetics : []).filter((e) => {
+      const cid = String(e.contactId || e.contact_id || '').trim();
+      return !contactIdNorm || cid !== contactIdNorm;
+    });
+    const eventsForCapacity = merged.concat(syntheticsForCapacity);
     releaseDebugNoopConfirm(' v2 capacity_events', {
       mergedLen: merged.length,
       syntheticLen: Array.isArray(synthetics) ? synthetics.length : 0,
@@ -883,6 +889,9 @@ export default async function handler(req, res) {
         block,
         workType: type,
       });
+      if (resv?.ok) {
+        invalidateRedisSyntheticsCacheForDate(date);
+      }
     } catch (e) {
       perf.redis_reservation_write_ms = Date.now() - tResv0;
       releaseDebugNoopConfirm(' v2 reservation_create threw:', e?.message || e, e?.stack);
