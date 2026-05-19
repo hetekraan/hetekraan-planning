@@ -45,6 +45,7 @@ import {
   invalidateRedisSyntheticsCacheForDate,
 } from '../lib/amsterdam-day-read-cache.js';
 import { createPendingReservation } from '../lib/block-reservation-store.js';
+import { pulsePendingBookingTag } from '../lib/ghl-tag.js';
 import { ghlCalendarIdFromEnv, ghlLocationIdFromEnv } from '../lib/ghl-env-ids.js';
 import {
   buildProposalScanSchedule,
@@ -1162,6 +1163,7 @@ export default async function handler(req, res) {
     fieldsPut: false,
     tagRemove: false,
     tagAdd: false,
+    pendingTagPulseOk: null,
     phoneSyncedToE164,
     tokenClearPutOk: null,
   };
@@ -1256,6 +1258,17 @@ export default async function handler(req, res) {
     console.log('[send-booking-invite] BOOKING_ADD_TAG=false — alleen custom fields (workflow op Boekings token)');
   }
   perf.ghl_tag_ops_ms = Date.now() - tTag0;
+
+  if (pendingReservationId && diag.fieldsPut) {
+    const tPendingTag0 = Date.now();
+    diag.pendingTagPulseOk = await pulsePendingBookingTag(contactId, '[send-booking-invite] pending');
+    perf.ghl_pending_tag_pulse_ms = Date.now() - tPendingTag0;
+    if (diag.pendingTagPulseOk) {
+      console.log('[send-booking-invite] Tag-puls voor pending workflow:', 'niet-bevestigd');
+    } else {
+      console.error('[send-booking-invite] Tag-puls mislukt (pending):', 'niet-bevestigd');
+    }
+  }
 
   const phoneOk = /^\+31[1-9]\d{8}$/.test(effectivePhone || '');
   const workflowReady = diag.fieldsPut && (addBookingTag ? diag.tagAdd : true);

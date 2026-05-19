@@ -25,7 +25,7 @@ import {
 import { amsterdamWallTimeToDate } from '../lib/amsterdam-wall-time.js';
 import { normalizeNlPhone } from '../lib/ghl-phone.js';
 import { fetchWithRetry } from '../lib/retry.js';
-import { pulseContactTag } from '../lib/ghl-tag.js';
+import { pulseContactTag, removePendingBookingTag } from '../lib/ghl-tag.js';
 import { verifyBookingToken } from '../lib/session.js';
 import { getOrCreateRequestId, logEvent } from '../lib/observability.js';
 import { applySecurityHeaders, enforceSimpleRateLimit } from '../lib/http-security.js';
@@ -1033,6 +1033,13 @@ export default async function handler(req, res) {
     });
     logDiagGhlContactPutResult('v2_B1', contactId, putResB1.status, true, null, cAfter);
 
+    const pendingTagRemovedB1 = await removePendingBookingTag(contactId, '[confirm-booking] B1');
+    if (pendingTagRemovedB1) {
+      console.log('[confirm-booking] Tag verwijderd (B1):', 'niet-bevestigd');
+    } else {
+      console.warn('[confirm-booking] Tag verwijderen mislukt of niet aanwezig (B1):', 'niet-bevestigd');
+    }
+
     await syncConfirmedBookingToSupabase({
       source: 'confirm-booking',
       externalBookingId: String(resv?.reservation?.id || '').trim() || null,
@@ -1543,6 +1550,13 @@ export default async function handler(req, res) {
               'Controleer GHL API-scopes (o.a. calendars/events.write), GHL_CALENDAR_ID, en zet eventueel GHL_APPOINTMENT_ASSIGNED_USER_ID.',
           }),
     });
+  }
+
+  const pendingTagRemovedV1 = await removePendingBookingTag(contactId, '[confirm-booking]');
+  if (pendingTagRemovedV1) {
+    console.log('[confirm-booking] Tag verwijderd:', 'niet-bevestigd');
+  } else {
+    console.warn('[confirm-booking] Tag verwijderen mislukt of niet aanwezig:', 'niet-bevestigd');
   }
 
   const dateFormatted = new Date(`${date}T12:00:00+01:00`).toLocaleDateString('nl-NL', {
