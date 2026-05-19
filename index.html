@@ -4981,6 +4981,17 @@ window.HKPlannerAutoRefresh = {
     border: 1px solid rgba(245, 158, 11, 0.45);
     color: #b45309;
   }
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--niet-bevestigd,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill--niet-bevestigd {
+    background: rgba(220, 50, 50, 0.12);
+    border: 1px solid rgba(220, 50, 50, 0.35);
+    color: #c62828;
+  }
+    body:not(.user-jerry) .appt-card.appt-card--pending,
+    body.user-jerry.ipad-field-vp .appt-card.appt-card--pending {
+    border-color: rgba(220, 50, 50, 0.45);
+    box-shadow: 0 0 0 1px rgba(220, 50, 50, 0.08);
+  }
     body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--klaar,
     body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill--klaar {
     background: rgba(16, 185, 129, 0.12);
@@ -10327,6 +10338,7 @@ function renderApptCard(a, i) {
     }
 
     const isDone = a.status === 'klaar';
+    const isPendingBooking = !!a.isPendingBooking;
     const isOnderweg = a.status === 'onderweg';
     const useTouchPriceOverlay = plannerUsesTouchPriceOverlay();
     const isViolation = !!a.violation;
@@ -10415,6 +10427,8 @@ function renderApptCard(a, i) {
     let pillHtml = '';
     if (isDone) {
       pillHtml = `<span class="appt-wm-pill appt-wm-pill--klaar">${wmPillCheck}Klaar · Gefactureerd</span>`;
+    } else if (isPendingBooking) {
+      pillHtml = `<span class="appt-wm-pill appt-wm-pill--niet-bevestigd">Niet bevestigd</span>`;
     } else if (etaSentMeta) {
       const sentClock = etaSentMeta.sentAt
         ? new Date(etaSentMeta.sentAt).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
@@ -10554,8 +10568,9 @@ function renderApptCard(a, i) {
         </div>
       </div>`;
     const v2Class = layoutV2 ? ' appt-card--layout-v2' : '';
+    const pendingClass = isPendingBooking ? ' appt-card--pending' : '';
     return `
-    <div class="appt-card${v2Class} ${isDone?'done':''} ${!isDone ? 'appt-card--todo' : ''} ${isViolation?'violation':''}" id="card-${domId}">
+    <div class="appt-card${v2Class}${pendingClass} ${isDone?'done':''} ${!isDone ? 'appt-card--todo' : ''} ${isViolation?'violation':''}" id="card-${domId}">
       ${wmCore}
       ${useTouchPriceOverlay ? '' : `
       <div class="complete-bar ${barVisible?'visible':''}" id="bar-${domId}">
