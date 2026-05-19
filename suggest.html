@@ -160,6 +160,22 @@
       font-size: 16px;
       line-height: 1;
     }
+    .btn-add-extra {
+      background: #f3efe8;
+      border: 1px solid #e6dccf;
+      color: #0f7a4b;
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      font-size: 20px;
+      font-weight: 600;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .btn-add-extra:hover {
+      border-color: #0f7a4b;
+      background: #e5f4ec;
+    }
     .field-help {
       margin-top: 6px;
       font-size: 11px;
@@ -435,6 +451,11 @@
       <div class="catalog-v1-results" id="suggestCatalogResults"></div>
     </div>
     <div id="suggestCatalogLines" style="margin-top:8px"></div>
+    <div class="add-extra-row suggest-quick-price-row" style="display:flex;gap:6px;align-items:center;margin-top:8px">
+      <input class="field-input" type="text" id="suggestQuickDesc" placeholder="Snel: omschrijving" style="flex:1;min-width:0">
+      <input class="field-input suggest-quick-price-amt" type="text" id="suggestQuickPrice" placeholder="€" inputmode="decimal" style="width:88px;flex-shrink:0">
+      <button type="button" class="btn-add-extra suggest-btn-add-extra" id="suggestQuickAddBtn" title="Regel toevoegen (ingevuld)">+</button>
+    </div>
   </div>
   <div class="field-row">
     <label class="field-label">Totaalprijs</label>
@@ -776,6 +797,14 @@
       .join('');
   }
 
+  function suggestEscapeAttr(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
   function renderSuggestPriceLines() {
     const el = document.getElementById('suggestCatalogLines');
     if (!el) return;
@@ -785,10 +814,33 @@
     }
     el.innerHTML = suggestPriceLines
       .map(
-        (row, idx) =>
-          `<div class="catalog-v1-line"><span>${row.desc} — €${euroDisplay(row.price)}</span><button type="button" data-remove-line="${idx}" aria-label="Verwijder prijsregel">✕</button></div>`
+        (row, idx) => `
+          <div class="catalog-v1-line suggest-price-line-edit" style="flex-wrap:wrap;align-items:center">
+            <input class="field-input" type="text" value="${suggestEscapeAttr(row.desc)}" data-line-desc="${idx}" style="flex:1;min-width:120px" aria-label="Omschrijving prijsregel">
+            <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+              <span style="font-size:13px;color:#6b625a">€</span>
+              <input class="field-input" type="text" inputmode="decimal" value="${Number.isFinite(Number(row.price)) ? row.price : ''}" data-line-price="${idx}" style="width:88px" aria-label="Bedrag prijsregel">
+              <button type="button" data-remove-line="${idx}" aria-label="Verwijder prijsregel">✕</button>
+            </div>
+          </div>`
       )
       .join('');
+  }
+
+  function addSuggestQuickPriceLine() {
+    if (!window.HKPlannerCatalogV1?.tryAddQuickPriceLine) return;
+    window.HKPlannerCatalogV1.tryAddQuickPriceLine(
+      suggestPriceLines,
+      document.getElementById('suggestQuickDesc'),
+      document.getElementById('suggestQuickPrice'),
+      {
+        toast: (msg) => showToast(msg, 'info'),
+        onAdded: () => {
+          renderSuggestPriceLines();
+          updatePriceTotalUi();
+        },
+      }
+    );
   }
 
   async function onSuggestCatalogSearchInput() {
@@ -1201,6 +1253,38 @@
         suggestPriceLines.splice(idx, 1);
         renderSuggestPriceLines();
         updatePriceTotalUi();
+      });
+      linesWrap.addEventListener('input', (ev) => {
+        const descInput = ev.target?.closest?.('[data-line-desc]');
+        const priceInput = ev.target?.closest?.('[data-line-price]');
+        if (descInput) {
+          const idx = Number(descInput.getAttribute('data-line-desc'));
+          if (Number.isInteger(idx) && suggestPriceLines[idx]) {
+            suggestPriceLines[idx].desc = descInput.value;
+          }
+          return;
+        }
+        if (priceInput) {
+          const idx = Number(priceInput.getAttribute('data-line-price'));
+          if (!Number.isInteger(idx) || !suggestPriceLines[idx]) return;
+          const priceRaw = String(priceInput.value ?? '').trim().replace(',', '.');
+          const price = parseFloat(priceRaw);
+          if (!Number.isNaN(price)) {
+            suggestPriceLines[idx].price = Math.round(price * 100) / 100;
+            updatePriceTotalUi();
+          }
+        }
+      });
+    }
+    const suggestQuickAddBtn = document.getElementById('suggestQuickAddBtn');
+    if (suggestQuickAddBtn) suggestQuickAddBtn.addEventListener('click', addSuggestQuickPriceLine);
+    const suggestQuickPrice = document.getElementById('suggestQuickPrice');
+    if (suggestQuickPrice) {
+      suggestQuickPrice.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          addSuggestQuickPriceLine();
+        }
       });
     }
     renderSuggestPriceLines();
