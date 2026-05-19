@@ -2309,12 +2309,26 @@ window.HKPlannerAutoRefresh = {
     justify-content: space-between;
     align-items: center;
     font-family: var(--font-body);
-    font-size: 12px;
-    font-weight: 500;
+    font-size: 18px;
+    font-weight: 600;
     color: var(--accent2);
     border-top: 1px solid var(--border);
-    padding-top: 6px;
-    margin-top: 4px;
+    padding-top: 12px;
+    margin-top: 8px;
+    gap: 12px;
+  }
+  .touch-price-overlay .price-total-row > span:first-child,
+  .complete-bar .price-total-row > span:first-child {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .touch-price-overlay .price-total-row span:last-child,
+  .complete-bar .price-total-row span:last-child {
+    font-size: clamp(28px, 6.5vw, 40px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
   }
 
   ::-webkit-scrollbar { width: 4px; }
@@ -10104,6 +10118,17 @@ function addTouchOverlayQuickExtra(id) {
   const sid = appointmentDomSafeId(id);
   const descEl = document.getElementById(`extra-desc-${sid}`);
   const priceEl = document.getElementById(`extra-price-${sid}`);
+  if (window.HKPlannerCatalogV1?.parseQuickPriceLineFromInputs) {
+    const row = window.HKPlannerCatalogV1.parseQuickPriceLineFromInputs(descEl, priceEl);
+    if (!row) {
+      showToast('Vul omschrijving én bedrag in', 'info');
+      return;
+    }
+    if (!Array.isArray(touchPriceOverlayState.draft.extras)) touchPriceOverlayState.draft.extras = [];
+    touchPriceOverlayState.draft.extras.push(row);
+    mountTouchPriceOverlay(id);
+    return;
+  }
   const desc = descEl?.value?.trim();
   const priceRaw = String(priceEl?.value ?? '').trim().replace(',', '.');
   const price = parseFloat(priceRaw);
@@ -12332,9 +12357,28 @@ function addExtra(id) {
   const a = appointments.find(x => String(x.id) === String(id));
   if (!a) return;
   const sid = appointmentDomSafeId(id);
-  const descEl   = document.getElementById(`extra-desc-${sid}`);
-  const priceEl  = document.getElementById(`extra-price-${sid}`);
-  const desc  = descEl?.value?.trim();
+  const descEl = document.getElementById(`extra-desc-${sid}`);
+  const priceEl = document.getElementById(`extra-price-${sid}`);
+  if (window.HKPlannerCatalogV1?.parseQuickPriceLineFromInputs) {
+    const row = window.HKPlannerCatalogV1.parseQuickPriceLineFromInputs(descEl, priceEl);
+    if (!row) {
+      showToast('Vul omschrijving én bedrag in', 'info');
+      return;
+    }
+    if (isTouchPriceOverlayOpenFor(id) && touchPriceOverlayState.draft) {
+      if (!Array.isArray(touchPriceOverlayState.draft.extras)) touchPriceOverlayState.draft.extras = [];
+      touchPriceOverlayState.draft.extras.push(row);
+      mountTouchPriceOverlay(id);
+      return;
+    }
+    if (!Array.isArray(a.extras)) a.extras = [];
+    a.extras.push(row);
+    if (descEl) descEl.value = '';
+    if (priceEl) priceEl.value = '';
+    remountPriceSectionWithEditorScrollLogging(id, 'addExtra');
+    return;
+  }
+  const desc = descEl?.value?.trim();
   const priceRaw = String(priceEl?.value ?? '').trim().replace(',', '.');
   const price = parseFloat(priceRaw);
   if (!desc || isNaN(price) || price === 0) {
