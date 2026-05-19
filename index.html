@@ -2309,12 +2309,26 @@ window.HKPlannerAutoRefresh = {
     justify-content: space-between;
     align-items: center;
     font-family: var(--font-body);
-    font-size: 12px;
-    font-weight: 500;
+    font-size: 18px;
+    font-weight: 600;
     color: var(--accent2);
     border-top: 1px solid var(--border);
-    padding-top: 6px;
-    margin-top: 4px;
+    padding-top: 12px;
+    margin-top: 8px;
+    gap: 12px;
+  }
+  .touch-price-overlay .price-total-row > span:first-child,
+  .complete-bar .price-total-row > span:first-child {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .touch-price-overlay .price-total-row span:last-child,
+  .complete-bar .price-total-row span:last-child {
+    font-size: clamp(28px, 6.5vw, 40px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
   }
 
   ::-webkit-scrollbar { width: 4px; }
@@ -4702,43 +4716,52 @@ window.HKPlannerAutoRefresh = {
     padding: 14px 16px 16px;
   }
 
-  /* WM layout v2: afspraakkaart (alleen niet-Jerry; planner blijft vanilla) */
-  body:not(.user-jerry) .appt-card--layout-v2 {
+  /* WM layout v2: afspraakkaart (niet-Jerry; Jerry op veld-tablets via body.ipad-field-vp) */
+    body:not(.user-jerry) .appt-card--layout-v2,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 {
     border-radius: var(--wm-radius-md);
     margin-bottom: var(--wm-gap-3);
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
     overflow: visible;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-actions-mobile {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-actions-mobile,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-actions-mobile {
     position: relative;
     z-index: 4;
   }
-  body:not(.user-jerry) .appt-card--layout-v2:hover {
+    body:not(.user-jerry) .appt-card--layout-v2:hover,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2:hover {
     transform: none;
     border-color: rgba(142, 134, 124, 0.38);
     box-shadow: 0 6px 20px rgba(36, 32, 28, 0.06);
   }
-  body:not(.user-jerry) .appt-card--layout-v2.done::after {
+    body:not(.user-jerry) .appt-card--layout-v2.done::after,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2.done::after {
     display: none;
   }
-  body:not(.user-jerry) .appt-card--layout-v2.appt-card--todo {
+    body:not(.user-jerry) .appt-card--layout-v2.appt-card--todo,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2.appt-card--todo {
     border-left: 3px solid rgba(142, 134, 124, 0.35);
   }
-  body:not(.user-jerry) .appt-card--layout-v2.done {
+    body:not(.user-jerry) .appt-card--layout-v2.done,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2.done {
     border-left: 3px solid rgba(16, 185, 129, 0.55);
     opacity: 1;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-inner--wm {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-inner--wm,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-inner--wm {
     padding: 16px 18px 16px 16px;
     gap: 0;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-layout {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-layout,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-layout {
     display: grid;
     grid-template-columns: 36px minmax(0, 1fr);
     column-gap: 10px;
     align-items: start;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-num {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-num,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-num {
     position: static;
     padding-top: 2px;
     font-size: 15px;
@@ -4747,76 +4770,90 @@ window.HKPlannerAutoRefresh = {
     text-align: center;
     line-height: 1.2;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-main {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-main,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-main {
     min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 6px;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-header {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-header,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
     gap: 12px;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-head-text {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-head-text,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-head-text {
     flex: 1;
     min-width: 0;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-address {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-address,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-address {
     font-size: clamp(14px, 1.4vw, 16px);
     font-weight: 700;
     color: #3d3833;
     line-height: 1.3;
     letter-spacing: -0.02em;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-customer {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-customer,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-customer {
     margin-top: 4px;
     font-size: 12.5px;
     font-weight: 500;
     color: #8e867c;
     line-height: 1.35;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .route-pin-badge {
+    body:not(.user-jerry) .appt-card--layout-v2 .route-pin-badge,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .route-pin-badge {
     display: inline-block;
     margin-top: 6px;
     font-size: 11px;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-head-aside {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-head-aside,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-head-aside {
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
     gap: 6px;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-price {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-price,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-price {
     font-size: 17px;
     font-weight: 700;
     color: #645c52;
     letter-spacing: -0.02em;
   }
-  body:not(.user-jerry) .appt-card--layout-v2.done .appt-wm-price {
+    body:not(.user-jerry) .appt-card--layout-v2.done .appt-wm-price,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2.done .appt-wm-price {
     color: rgba(100, 92, 82, 0.65);
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-desc {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-desc,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-desc {
     font-size: 12.5px;
     line-height: 1.45;
     color: #8e867c;
     margin-top: 4px;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-meta {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-meta,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-meta {
     margin-top: 4px;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-notes {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-notes,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-notes {
     margin-top: 6px;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-rule {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-rule,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-rule {
     height: 1px;
     background: var(--border);
     margin: 10px 0 4px;
     border: 0;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-footer {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-footer,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-footer {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -4825,25 +4862,29 @@ window.HKPlannerAutoRefresh = {
     margin-top: 0;
     border-top: none;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-footer-left {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-footer-left,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-footer-left {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 6px;
     min-width: 0;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-footer-right {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-footer-right,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-footer-right {
     margin-left: auto;
     display: flex;
     align-items: center;
     justify-content: flex-end;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-cta-wrap {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-cta-wrap,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-cta-wrap {
     width: auto;
     max-width: none;
     margin-left: 0;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-cta-row {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-cta-row,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-cta-row {
     display: flex;
     align-items: center;
     flex-wrap: nowrap;
@@ -4852,7 +4893,8 @@ window.HKPlannerAutoRefresh = {
     max-width: none;
     margin-left: 0;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-btn {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-btn,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -4860,10 +4902,12 @@ window.HKPlannerAutoRefresh = {
     font-weight: 600;
     -webkit-font-smoothing: antialiased;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-btn-ic {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-btn-ic,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-btn-ic {
     flex-shrink: 0;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-btn--onderweg-actie {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-btn--onderweg-actie,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-btn--onderweg-actie {
     min-height: 36px;
     padding: 0 12px;
     border-radius: var(--wm-radius-sm);
@@ -4872,12 +4916,14 @@ window.HKPlannerAutoRefresh = {
     color: #645c52;
     box-shadow: none;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-btn--onderweg-actie:hover {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-btn--onderweg-actie:hover,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-btn--onderweg-actie:hover {
     color: var(--text);
     border-color: #d9d2c5;
     background: #fdfbf8;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-btn--klaar {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-btn--klaar,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-btn--klaar {
     min-height: 36px;
     padding: 0 12px;
     border-radius: var(--wm-radius-sm);
@@ -4885,14 +4931,17 @@ window.HKPlannerAutoRefresh = {
     background: rgba(16, 185, 129, 0.1);
     color: #047857;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-btn--klaar:hover {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-btn--klaar:hover,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-btn--klaar:hover {
     background: rgba(16, 185, 129, 0.16);
   }
-  body:not(.user-jerry) .appt-card--layout-v2.done .appt-wm-btn--prijs {
+    body:not(.user-jerry) .appt-card--layout-v2.done .appt-wm-btn--prijs,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2.done .appt-wm-btn--prijs {
     border-color: rgba(16, 185, 129, 0.42);
     background: rgba(255, 255, 255, 0.65);
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill {
     display: inline-flex;
     align-items: center;
     gap: 5px;
@@ -4903,46 +4952,56 @@ window.HKPlannerAutoRefresh = {
     letter-spacing: 0.02em;
     line-height: 1.3;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill-ic {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill-ic,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill-ic {
     flex-shrink: 0;
     opacity: 0.85;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--type {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--type,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill--type {
     background: rgba(142, 134, 124, 0.12);
     border: 1px solid rgba(142, 134, 124, 0.2);
     color: #645c52;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--garantie {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--garantie,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill--garantie {
     background: rgba(59, 130, 246, 0.08);
     border: 1px solid rgba(59, 130, 246, 0.22);
     color: #1d4ed8;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--eta-sent {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--eta-sent,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill--eta-sent {
     background: rgba(63, 125, 74, 0.14);
     color: var(--hk-good, #3f7d4a);
     border: 1px solid rgba(63, 125, 74, 0.35);
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--onderweg {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--onderweg,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill--onderweg {
     background: rgba(251, 191, 36, 0.16);
     border: 1px solid rgba(245, 158, 11, 0.45);
     color: #b45309;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--niet-bevestigd {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--niet-bevestigd,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill--niet-bevestigd {
     background: rgba(220, 50, 50, 0.12);
     border: 1px solid rgba(220, 50, 50, 0.35);
     color: #c62828;
   }
-  body:not(.user-jerry) .appt-card.appt-card--pending {
+    body:not(.user-jerry) .appt-card.appt-card--pending,
+    body.user-jerry.ipad-field-vp .appt-card.appt-card--pending {
     border-color: rgba(220, 50, 50, 0.45);
     box-shadow: 0 0 0 1px rgba(220, 50, 50, 0.08);
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--klaar {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--klaar,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill--klaar {
     background: rgba(16, 185, 129, 0.12);
     border: 1px solid rgba(16, 185, 129, 0.4);
     color: #047857;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--moneybird,
-  body:not(.user-jerry) .appt-card--layout-v2 a.appt-wm-pill--moneybird {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--moneybird,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill--moneybird,
+    body:not(.user-jerry) .appt-card--layout-v2 a.appt-wm-pill--moneybird,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 a.appt-wm-pill--moneybird {
     background: rgba(142, 134, 124, 0.08);
     border: 1px solid rgba(142, 134, 124, 0.22);
     color: #8e867c;
@@ -4950,53 +5009,65 @@ window.HKPlannerAutoRefresh = {
     text-decoration: none;
     cursor: pointer;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 a.appt-wm-pill--moneybird:hover {
+    body:not(.user-jerry) .appt-card--layout-v2 a.appt-wm-pill--moneybird:hover,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 a.appt-wm-pill--moneybird:hover {
     border-color: rgba(142, 134, 124, 0.35);
     color: #645c52;
     background: rgba(142, 134, 124, 0.12);
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--moneybird--text {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--moneybird--text,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill--moneybird--text {
     cursor: default;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-actions-slot {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-actions-slot,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-actions-slot {
     margin: 0;
     overflow: visible;
   }
-  body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-menu-btn {
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-menu-btn,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-menu-btn {
     border-radius: var(--wm-radius-sm);
     background: rgba(255, 255, 255, 0.55);
     border: 1px solid var(--border);
   }
   @media (min-width: 640px) {
-    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-actions-mobile {
+        body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-actions-mobile,
+        body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-actions-mobile {
       display: block !important;
     }
   }
   @media (max-width: 1179px) {
-    body:not(.user-jerry) .appt-card--layout-v2 {
+        body:not(.user-jerry) .appt-card--layout-v2,
+        body.user-jerry.ipad-field-vp .appt-card--layout-v2 {
       display: block !important;
     }
-    body:not(.user-jerry) .appt-card--layout-v2 > .complete-bar {
+        body:not(.user-jerry) .appt-card--layout-v2 > .complete-bar,
+        body.user-jerry.ipad-field-vp .appt-card--layout-v2 > .complete-bar {
       grid-column: auto !important;
       grid-row: auto !important;
     }
   }
   @media (max-width: 639px) {
-    body:not(.user-jerry) .appt-card--layout-v2 .appt-footer-actions-touch,
-    body:not(.user-jerry) .appt-card--layout-v2 .appt-footer-cta-row {
+        body:not(.user-jerry) .appt-card--layout-v2 .appt-footer-actions-touch,
+        body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-footer-actions-touch,
+        body:not(.user-jerry) .appt-card--layout-v2 .appt-footer-cta-row,
+        body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-footer-cta-row {
       max-width: none !important;
       width: 100% !important;
       margin-left: 0 !important;
     }
-    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-footer {
+        body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-footer,
+        body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-footer {
       flex-direction: column;
       align-items: stretch;
     }
-    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-footer-right {
+        body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-footer-right,
+        body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-footer-right {
       margin-left: 0;
       width: 100%;
     }
-    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-cta-row {
+        body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-cta-row,
+        body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-cta-row {
       justify-content: flex-end;
       flex-wrap: wrap;
     }
@@ -6685,18 +6756,22 @@ window.HKPlannerAutoRefresh = {
     body:not(.user-jerry) #panelAfspraken > .today-kpi-grid {
       padding: 10px 18px !important;
     }
-    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-head-aside {
+        body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-head-aside,
+        body.user-jerry.ipad-field-vp #panelAfspraken .appt-card--layout-v2 .appt-wm-head-aside {
       gap: 8px;
     }
-    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-jerry-icons {
+        body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-jerry-icons,
+        body.user-jerry.ipad-field-vp #panelAfspraken .appt-card--layout-v2 .appt-wm-jerry-icons {
       display: flex;
       justify-content: flex-end;
       gap: 6px;
     }
-    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-actions-slot {
+        body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-actions-slot,
+        body.user-jerry.ipad-field-vp #panelAfspraken .appt-card--layout-v2 .appt-wm-actions-slot {
       display: none;
     }
-    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-jerry-icons .icon-btn.appt-action-icon {
+        body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-jerry-icons .icon-btn.appt-action-icon,
+        body.user-jerry.ipad-field-vp #panelAfspraken .appt-card--layout-v2 .appt-wm-jerry-icons .icon-btn.appt-action-icon {
       --appt-action-icon-size: 34px;
       --appt-action-icon-radius: 8px;
       width: var(--appt-action-icon-size);
@@ -6709,28 +6784,35 @@ window.HKPlannerAutoRefresh = {
       border-color: var(--appt-action-icon-border);
       color: var(--appt-action-icon-fg);
     }
-    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-jerry-icons .icon-btn.appt-action-icon .appt-action-svg {
+        body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-jerry-icons .icon-btn.appt-action-icon .appt-action-svg,
+        body.user-jerry.ipad-field-vp #panelAfspraken .appt-card--layout-v2 .appt-wm-jerry-icons .icon-btn.appt-action-icon .appt-action-svg {
       width: 16px;
       height: 16px;
       stroke: currentColor;
     }
-    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-jerry-icons .icon-btn.appt-action-icon:hover {
+        body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-jerry-icons .icon-btn.appt-action-icon:hover,
+        body.user-jerry.ipad-field-vp #panelAfspraken .appt-card--layout-v2 .appt-wm-jerry-icons .icon-btn.appt-action-icon:hover {
       background: var(--appt-action-icon-bg-hover);
       border-color: var(--appt-action-icon-border-hover);
       color: var(--appt-action-icon-fg-hover);
     }
-    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-cta-row {
+        body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-cta-row,
+        body.user-jerry.ipad-field-vp #panelAfspraken .appt-card--layout-v2 .appt-wm-cta-row {
       gap: 8px;
     }
-    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-btn--prijs,
-    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-btn--onderweg-actie,
-    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-btn--klaar {
+        body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-btn--prijs,
+        body.user-jerry.ipad-field-vp #panelAfspraken .appt-card--layout-v2 .appt-wm-btn--prijs,
+        body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-btn--onderweg-actie,
+        body.user-jerry.ipad-field-vp #panelAfspraken .appt-card--layout-v2 .appt-wm-btn--onderweg-actie,
+        body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-btn--klaar,
+        body.user-jerry.ipad-field-vp #panelAfspraken .appt-card--layout-v2 .appt-wm-btn--klaar {
       min-height: 38px;
       padding: 0 14px;
       border-radius: 10px;
       font-size: 12.5px;
     }
-    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-pill--type {
+        body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-pill--type,
+        body.user-jerry.ipad-field-vp #panelAfspraken .appt-card--layout-v2 .appt-wm-pill--type {
       padding: 4px 10px;
       border-radius: 999px;
       font-size: 11px;
@@ -6738,21 +6820,189 @@ window.HKPlannerAutoRefresh = {
       letter-spacing: 0.02em;
       text-transform: lowercase;
     }
-    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-pill--type-onderhoud {
+        body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-pill--type-onderhoud,
+        body.user-jerry.ipad-field-vp #panelAfspraken .appt-card--layout-v2 .appt-wm-pill--type-onderhoud {
       background: #e5f4ec;
       color: #0f7a4b;
       border-color: #cde8d8;
     }
-    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-pill--type-installatie {
+        body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-pill--type-installatie,
+        body.user-jerry.ipad-field-vp #panelAfspraken .appt-card--layout-v2 .appt-wm-pill--type-installatie {
       background: #fbf0d4;
       color: #a66a00;
       border-color: #f0dfb1;
     }
-    body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-pill--type-reparatie {
+        body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-pill--type-reparatie,
+        body.user-jerry.ipad-field-vp #panelAfspraken .appt-card--layout-v2 .appt-wm-pill--type-reparatie {
       background: #fbe9dd;
       color: #a02f08;
       border-color: #f3d7c4;
     }
+  }
+
+  /* Jerry veld-tablets: iPad Mini 6 + iPad 9 (excl. iPhone, desktop, iPad Air/Pro) */
+  @media only screen and (min-width: 720px) and (max-width: 820px) and (min-height: 1050px) and (max-height: 1179px),
+    only screen and (min-width: 1050px) and (max-width: 1160px) and (max-height: 820px) {
+    body.user-jerry {
+      font-size: 23px;
+    }
+    body.user-jerry .stat-val {
+      font-size: clamp(32px, 5vw, 42px) !important;
+    }
+    body.user-jerry .stat-label {
+      font-size: 13px !important;
+    }
+    body.user-jerry .planning-section-title {
+      font-size: clamp(22px, 3vw, 26px) !important;
+    }
+    body.user-jerry .section-title {
+      font-size: 14px !important;
+    }
+    body.user-jerry .mobile-tab {
+      font-size: 12px !important;
+      min-height: 52px !important;
+      letter-spacing: 0.05em;
+    }
+    body.user-jerry .mobile-bottom-nav {
+      background: #f3efe8 !important;
+      border-top: 1px solid #e0d9ce !important;
+      backdrop-filter: none !important;
+      box-shadow: 0 -1px 0 rgba(61, 56, 51, 0.06);
+    }
+    body.user-jerry .mobile-bottom-nav .mobile-tab {
+      color: #4a443c !important;
+    }
+    body.user-jerry .mobile-bottom-nav .mobile-tab.active {
+      background: rgba(220, 74, 26, 0.12) !important;
+      color: #a02f08 !important;
+    }
+    /* Prijs-popup (touch overlay): buiten .complete-bar → eigen total-regels */
+    body.user-jerry.ipad-field-vp .touch-price-overlay .price-total-row,
+    body.user-jerry.ipad-field-vp .complete-bar .price-total-row {
+      font-size: 18px !important;
+      padding-top: 16px !important;
+      margin-top: 14px !important;
+      gap: 16px;
+    }
+    body.user-jerry.ipad-field-vp .touch-price-overlay .price-total-row > span:first-child,
+    body.user-jerry.ipad-field-vp .complete-bar .price-total-row > span:first-child {
+      font-size: 18px !important;
+      font-weight: 600 !important;
+      letter-spacing: 0.02em;
+    }
+    body.user-jerry.ipad-field-vp .touch-price-overlay .price-total-row span:last-child,
+    body.user-jerry.ipad-field-vp .complete-bar .price-total-row span:last-child {
+      font-size: clamp(28px, 6.5vw, 40px) !important;
+      font-weight: 700 !important;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+    }
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 {
+      display: block !important;
+    }
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-inner--wm {
+      padding: 16px 18px 16px 16px !important;
+    }
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-address {
+      font-size: clamp(18px, 2.4vw, 22px) !important;
+      line-height: 1.32 !important;
+      white-space: normal !important;
+      overflow: visible !important;
+      text-overflow: unset !important;
+      word-break: break-word;
+    }
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-customer {
+      font-size: clamp(17px, 2.2vw, 20px) !important;
+      line-height: 1.4 !important;
+    }
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-desc,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-notes {
+      font-size: clamp(17px, 2.1vw, 19px) !important;
+      line-height: 1.45 !important;
+      white-space: normal !important;
+      overflow: visible !important;
+      text-overflow: unset !important;
+    }
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-num {
+      font-size: 18px !important;
+    }
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill {
+      font-size: 13px !important;
+      padding: 5px 12px !important;
+    }
+    /* Werktype-kleuren (desktop staat in min-width 1180px; veld-tablets missen die band) */
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill--type-onderhoud {
+      background: #e5f4ec !important;
+      color: #0f7a4b !important;
+      border-color: #cde8d8 !important;
+    }
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill--type-installatie {
+      background: #fbf0d4 !important;
+      color: #a66a00 !important;
+      border-color: #f0dfb1 !important;
+    }
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill--type-reparatie {
+      background: #fbe9dd !important;
+      color: #a02f08 !important;
+      border-color: #f3d7c4 !important;
+    }
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-actions-mobile,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-actions-slot {
+      display: none !important;
+    }
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-cta-row {
+      width: auto !important;
+      max-width: none !important;
+      flex-wrap: nowrap !important;
+    }
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-btn--prijs,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-btn--onderweg-actie {
+      min-height: 48px !important;
+      padding: 0 16px !important;
+      font-size: 17px !important;
+      min-width: 5.5em;
+      white-space: nowrap;
+    }
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-jerry-icons .icon-btn.appt-action-icon {
+      --appt-action-icon-size: 40px;
+      --appt-action-icon-radius: 11px;
+      width: 40px !important;
+      min-width: 40px !important;
+      max-width: 40px !important;
+      height: 40px !important;
+      min-height: 40px !important;
+      padding: 0 !important;
+    }
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-jerry-icons .icon-btn.appt-action-icon .appt-action-svg {
+      width: 17px !important;
+      height: 17px !important;
+    }
+  }
+
+  /* v2: wrap long address/description (overrides warm-minimal .appt-desc nowrap/ellipsis) */
+  .appt-card--layout-v2 {
+    overflow: visible;
+    height: auto;
+    min-height: 0;
+  }
+  .appt-card--layout-v2 .appt-inner--wm,
+  .appt-card--layout-v2 .appt-wm-layout,
+  .appt-card--layout-v2 .appt-wm-main,
+  .appt-card--layout-v2 .appt-wm-head-text {
+    overflow: visible;
+    min-width: 0;
+  }
+  .appt-card--layout-v2 .appt-wm-address,
+  .appt-card--layout-v2 .appt-wm-customer,
+  .appt-card--layout-v2 .appt-wm-desc,
+  .appt-card--layout-v2 .appt-wm-notes {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    max-height: none;
+    height: auto;
   }
 
 </style>
@@ -8902,6 +9152,7 @@ function applyUiScalePref() {
   document.body.classList.toggle('ui-scale-large', on);
   document.body.classList.toggle('jerry-mode', on);
   document.body.classList.toggle('user-jerry', jerryAccount);
+  syncIpadFieldTabletViewportClass();
   logJerryUiDiag();
 }
 
@@ -9878,6 +10129,17 @@ function addTouchOverlayQuickExtra(id) {
   const sid = appointmentDomSafeId(id);
   const descEl = document.getElementById(`extra-desc-${sid}`);
   const priceEl = document.getElementById(`extra-price-${sid}`);
+  if (window.HKPlannerCatalogV1?.parseQuickPriceLineFromInputs) {
+    const row = window.HKPlannerCatalogV1.parseQuickPriceLineFromInputs(descEl, priceEl);
+    if (!row) {
+      showToast('Vul omschrijving én bedrag in', 'info');
+      return;
+    }
+    if (!Array.isArray(touchPriceOverlayState.draft.extras)) touchPriceOverlayState.draft.extras = [];
+    touchPriceOverlayState.draft.extras.push(row);
+    mountTouchPriceOverlay(id);
+    return;
+  }
   const desc = descEl?.value?.trim();
   const priceRaw = String(priceEl?.value ?? '').trim().replace(',', '.');
   const price = parseFloat(priceRaw);
@@ -10000,6 +10262,33 @@ function remountPriceSectionWithEditorScrollLogging(id, actionType) {
   );
 }
 
+/** iPad Mini 6 + iPad 9th gen field tablets (excl. iPhone, desktop, iPad Air 820×1180). */
+function isIpadFieldTabletViewport() {
+  if (typeof window === 'undefined') return false;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const portrait = w >= 720 && w <= 820 && h >= 1050 && h < 1180;
+  const landscape = w >= 1050 && w <= 1160 && h <= 820;
+  return portrait || landscape;
+}
+
+/** WM v2 cards: default accounts + Jerry on field tablets only (see renderApptCard layoutV2). */
+function shouldUseApptLayoutV2() {
+  if (typeof document === 'undefined' || !document.body) return true;
+  if (!document.body.classList.contains('user-jerry')) return true;
+  return isIpadFieldTabletViewport();
+}
+
+let _ipadFieldTabletVpClassOn = null;
+function syncIpadFieldTabletViewportClass() {
+  if (typeof document === 'undefined' || !document.body) return false;
+  const on = document.body.classList.contains('user-jerry') && isIpadFieldTabletViewport();
+  if (_ipadFieldTabletVpClassOn === on) return false;
+  _ipadFieldTabletVpClassOn = on;
+  document.body.classList.toggle('ipad-field-vp', on);
+  return true;
+}
+
 function renderApptCard(a, i) {
     const domId = appointmentDomSafeId(a.id);
     const idQ = JSON.stringify(a.id);
@@ -10110,8 +10399,7 @@ function renderApptCard(a, i) {
       `<button type="button" role="menuitem" class="appt-actions__menu-item appt-wm-menu-item" onclick="closeMobileApptActionMenus();openAppointmentEditModal(${idQ})">✏️ Bewerken</button>`,
       `<button type="button" role="menuitem" class="appt-actions__menu-item appt-actions__menu-item--danger appt-wm-menu-item" onclick="closeMobileApptActionMenus();deleteAppt(${idQ})">✕ Verwijderen</button>`
     );
-    const layoutV2 =
-      typeof document !== 'undefined' && document.body && !document.body.classList.contains('user-jerry');
+    const layoutV2 = shouldUseApptLayoutV2();
     const wmPillClock =
       '<svg class="appt-wm-pill-ic" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
     const wmPillCheck =
@@ -12084,9 +12372,28 @@ function addExtra(id) {
   const a = appointments.find(x => String(x.id) === String(id));
   if (!a) return;
   const sid = appointmentDomSafeId(id);
-  const descEl   = document.getElementById(`extra-desc-${sid}`);
-  const priceEl  = document.getElementById(`extra-price-${sid}`);
-  const desc  = descEl?.value?.trim();
+  const descEl = document.getElementById(`extra-desc-${sid}`);
+  const priceEl = document.getElementById(`extra-price-${sid}`);
+  if (window.HKPlannerCatalogV1?.parseQuickPriceLineFromInputs) {
+    const row = window.HKPlannerCatalogV1.parseQuickPriceLineFromInputs(descEl, priceEl);
+    if (!row) {
+      showToast('Vul omschrijving én bedrag in', 'info');
+      return;
+    }
+    if (isTouchPriceOverlayOpenFor(id) && touchPriceOverlayState.draft) {
+      if (!Array.isArray(touchPriceOverlayState.draft.extras)) touchPriceOverlayState.draft.extras = [];
+      touchPriceOverlayState.draft.extras.push(row);
+      mountTouchPriceOverlay(id);
+      return;
+    }
+    if (!Array.isArray(a.extras)) a.extras = [];
+    a.extras.push(row);
+    if (descEl) descEl.value = '';
+    if (priceEl) priceEl.value = '';
+    remountPriceSectionWithEditorScrollLogging(id, 'addExtra');
+    return;
+  }
+  const desc = descEl?.value?.trim();
   const priceRaw = String(priceEl?.value ?? '').trim().replace(',', '.');
   const price = parseFloat(priceRaw);
   if (!desc || isNaN(price) || price === 0) {
@@ -12609,6 +12916,15 @@ document.addEventListener('DOMContentLoaded', () => {
     else mqMobileCard.addListener(onMqMobileCard);
     if (mqTouchPriceOverlay.addEventListener) mqTouchPriceOverlay.addEventListener('change', onMqTouchPriceOverlay);
     else mqTouchPriceOverlay.addListener(onMqTouchPriceOverlay);
+
+    syncIpadFieldTabletViewportClass();
+    let ipadFieldTabletResizeTimer = null;
+    window.addEventListener('resize', () => {
+      clearTimeout(ipadFieldTabletResizeTimer);
+      ipadFieldTabletResizeTimer = setTimeout(() => {
+        if (syncIpadFieldTabletViewportClass() && typeof render === 'function') render();
+      }, 150);
+    });
   } catch (_) {}
 
   document.addEventListener(

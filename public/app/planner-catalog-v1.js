@@ -217,6 +217,33 @@
     return catalogItems.find((x) => String(x.id) === String(itemId));
   }
 
+  /** Zelfde validatie als prijs-popup “Snel: omschrijving” + € + +. */
+  function parseQuickPriceLineFromInputs(descEl, priceEl) {
+    const desc = descEl?.value?.trim();
+    const priceRaw = String(priceEl?.value ?? '')
+      .trim()
+      .replace(',', '.');
+    const price = parseFloat(priceRaw);
+    if (!desc || Number.isNaN(price) || price === 0) return null;
+    return { desc, price: Math.round(price * 100) / 100 };
+  }
+
+  function tryAddQuickPriceLine(lines, descEl, priceEl, opts) {
+    const target = Array.isArray(lines) ? lines : null;
+    if (!target) return false;
+    const row = parseQuickPriceLineFromInputs(descEl, priceEl);
+    if (!row) {
+      const toastFn = opts && typeof opts.toast === 'function' ? opts.toast : null;
+      if (toastFn) toastFn('Vul omschrijving én bedrag in', 'info');
+      return false;
+    }
+    target.push(row);
+    if (descEl) descEl.value = '';
+    if (priceEl) priceEl.value = '';
+    if (opts && typeof opts.onAdded === 'function') opts.onAdded(row);
+    return true;
+  }
+
   function removeModalLine(idx) {
     if (idx < 0 || idx >= modalLines.length) return;
     modalLines.splice(idx, 1);
@@ -361,6 +388,8 @@
     init,
     ensureLoaded,
     search,
+    parseQuickPriceLineFromInputs,
+    tryAddQuickPriceLine,
     onModalSearchInput,
     addModalCatalogItem,
     removeModalLine,
