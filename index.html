@@ -6954,6 +6954,32 @@ window.HKPlannerAutoRefresh = {
     }
   }
 
+  /* v2: wrap long address/description (overrides warm-minimal .appt-desc nowrap/ellipsis) */
+  .appt-card--layout-v2 {
+    overflow: visible;
+    height: auto;
+    min-height: 0;
+  }
+  .appt-card--layout-v2 .appt-inner--wm,
+  .appt-card--layout-v2 .appt-wm-layout,
+  .appt-card--layout-v2 .appt-wm-main,
+  .appt-card--layout-v2 .appt-wm-head-text {
+    overflow: visible;
+    min-width: 0;
+  }
+  .appt-card--layout-v2 .appt-wm-address,
+  .appt-card--layout-v2 .appt-wm-customer,
+  .appt-card--layout-v2 .appt-wm-desc,
+  .appt-card--layout-v2 .appt-wm-notes {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    max-height: none;
+    height: auto;
+  }
+
 </style>
 </head>
 <body>
