@@ -244,6 +244,13 @@
       if (skipMsg) showToast(skipMsg, 'info');
     }
 
+    if (mb && mb.warning === 'email_invalid') {
+      showToast(
+        'Factuur als concept aangemaakt. Email-adres onbereikbaar — verstuur handmatig vanuit Moneybird',
+        'warning'
+      );
+    }
+
     try {
       console.info(
         '[planner] price_lines_persisted_after_complete',
@@ -417,7 +424,7 @@
     if (invoiceRetryInFlightByApptId.has(key)) return;
     invoiceRetryInFlightByApptId.add(key);
     const btn = btnEl && typeof btnEl === 'object' ? btnEl : null;
-    const prevTitle = btn?.title || 'Factuur opnieuw verzenden';
+    const prevTitle = btn?.title || 'Factuur opnieuw versturen';
     if (btn) {
       btn.disabled = true;
       btn.title = 'Factuur retry bezig...';
@@ -425,7 +432,7 @@
       btn.style.opacity = '0.6';
       btn.style.cursor = 'progress';
     }
-    showToast('⏳ Factuur opnieuw verzenden...', 'loading');
+    showToast('⏳ Factuur opnieuw versturen...', 'loading');
     try {
       if (global.HKPlannerPricing?.flushDebouncedPersistPriceLines) {
         await global.HKPlannerPricing.flushDebouncedPersistPriceLines({
@@ -452,18 +459,20 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        showToast(data.error || `Factuur kon niet verzonden worden (${res.status})`, 'info');
+        const detail = data?.detail != null ? String(data.detail).trim() : '';
+        const base = data?.error || `Factuur kon niet worden verstuurd (${res.status})`;
+        showToast(detail ? `${base}\n${detail.slice(0, 220)}` : base, 'info');
         return;
       }
       const action = String(data?.actionTaken || '').trim();
       if (action === 'created_and_sent_email') {
-        showToast('Factuur aangemaakt en verzonden', 'success');
+        showToast('Factuur opnieuw verstuurd', 'success');
       } else if (action === 'reused_and_sent_email') {
-        showToast('Bestaande factuur opnieuw verzonden', 'success');
+        showToast('Factuur opnieuw verstuurd', 'success');
       } else if (action === 'already_sent_noop') {
         showToast('Factuur bestond al en was al verzonden', 'info');
       } else if (action === 'concept_updated_and_sent') {
-        showToast('Conceptfactuur bijgewerkt en verzonden', 'success');
+        showToast('Factuur opnieuw verstuurd', 'success');
       } else if (action === 'blocked_sent_price_mismatch') {
         showToast('Retry geblokkeerd: prijs wijkt af van verzonden factuur', 'info');
       } else if (action === 'missing_email') {
@@ -477,7 +486,8 @@
       }
       await loadAppointments(getCurrentDate());
     } catch (e) {
-      showToast('Factuur kon niet verzonden worden', 'info');
+      const em = e && e.message ? String(e.message) : String(e);
+      showToast(`Factuur opnieuw versturen mislukt${em ? `: ${em.slice(0, 200)}` : ''}`, 'info');
     } finally {
       invoiceRetryInFlightByApptId.delete(key);
       if (btn) {

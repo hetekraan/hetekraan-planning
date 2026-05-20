@@ -2160,6 +2160,10 @@ window.HKPlannerAutoRefresh = {
   }
   .toast.info { border-color: var(--blue); }
   .toast.loading { border-color: var(--accent); }
+  .toast.warning {
+    border-color: #f59e0b;
+    color: #f59e0b;
+  }
 
   /* Voorkomt scroll-anchoring jumps op iOS/Safari bij DOM-wissel in de kaartenlijst */
   #apptList {
@@ -7993,6 +7997,14 @@ function extractMoneybirdUrlFromPlannerText(text) {
   return m2 ? m2[1].trim().replace(/[,;)\]}>'"]+$/, '') : '';
 }
 
+/** Zelfde regel als lib/moneybird-planner-invoice-marker.js — voor retry-knop. */
+function hasMoneybirdPlannerInvoiceUrlInNotes(notes, jobDescription) {
+  const raw = `${String(notes || '')}\n${String(jobDescription || '')}`;
+  const block = raw.match(/\[moneybird\][^\n\r]*/i);
+  if (!block) return false;
+  return /\burl=https?:\/\//i.test(block[0]);
+}
+
 function plannerDesktopRemoteSearchEnabled() {
   try {
     if (document.body?.classList?.contains('user-jerry')) return false;
@@ -8379,6 +8391,8 @@ function createPlannerCtx(merge = {}) {
       visibilityState:
         typeof document !== 'undefined' && document.visibilityState ? String(document.visibilityState) : '',
     }),
+    snapshotPriceEditingStateForQuietPlannerLoad,
+    restorePriceEditingStateAfterQuietLoad,
   };
 }
 window.createPlannerCtx = createPlannerCtx;
@@ -9916,6 +9930,66 @@ function clonePriceLinesForDraft(lines) {
   }));
 }
 
+function snapshotPriceEditingStateForQuietPlannerLoad() {
+  const inlineById = Object.create(null);
+  try {
+    for (const a of appointments) {
+      if (!a || a.isCalBlock) continue;
+      const sid = a.id != null ? String(a.id) : '';
+      if (!sid || !a.priceVisible) continue;
+      inlineById[sid] = {
+        extras: clonePriceLinesForDraft(a.extras),
+        price: a.price,
+        review: !!a.review,
+        lastService: a.lastService,
+        priceVisible: true,
+      };
+    }
+  } catch (_) {}
+  let touch = null;
+  try {
+    if (touchPriceOverlayState.open && touchPriceOverlayState.appointmentId != null && touchPriceOverlayState.draft) {
+      touch = {
+        appointmentId: String(touchPriceOverlayState.appointmentId),
+        draft: {
+          review: !!touchPriceOverlayState.draft.review,
+          lastService: touchPriceOverlayState.draft.lastService,
+          extras: clonePriceLinesForDraft(touchPriceOverlayState.draft.extras),
+        },
+      };
+    }
+  } catch (_) {}
+  return { inlineById, touch };
+}
+
+function restorePriceEditingStateAfterQuietLoad(rows, snap) {
+  if (!snap || !Array.isArray(rows)) return rows;
+  return rows.map((a) => {
+    if (!a || a.isCalBlock) return a;
+    const sid = String(a.id);
+    const inline = snap.inlineById ? snap.inlineById[sid] : null;
+    if (inline) {
+      return {
+        ...a,
+        extras: clonePriceLinesForDraft(inline.extras),
+        price: inline.price,
+        review: inline.review,
+        lastService: inline.lastService,
+        priceVisible: true,
+      };
+    }
+    if (snap.touch && snap.touch.appointmentId === sid && snap.touch.draft) {
+      return {
+        ...a,
+        extras: clonePriceLinesForDraft(snap.touch.draft.extras),
+        review: snap.touch.draft.review,
+        lastService: snap.touch.draft.lastService,
+      };
+    }
+    return a;
+  });
+}
+
 function isTouchPriceOverlayOpenFor(id) {
   return touchPriceOverlayState.open && String(touchPriceOverlayState.appointmentId) === String(id);
 }
@@ -9987,7 +10061,7 @@ function buildTouchPriceOverlayInnerHtml(a, draft) {
     </div>
     <div class="complete-row" style="justify-content:flex-end;gap:8px;flex-wrap:wrap">
       ${isOnderweg && !isDone ? `<button type="button" class="btn-cancel" onclick='cancelOnderweg(${idQ})'>✕ Annuleer onderweg</button>` : ''}
-      ${isDone ? `<button type="button" class="btn-cancel" onclick='retryInvoiceForDone(${idQ}, this)'>Factuur opnieuw verzenden</button>` : ''}
+      ${isDone && hasMoneybirdPlannerInvoiceUrlInNotes(a.notes, a.jobDescription) ? `<button type="button" class="btn-cancel" onclick='retryInvoiceForDone(${idQ}, this)'>Factuur opnieuw versturen</button>` : ''}
       ${!isDone ? `<button type="button" class="btn-confirm" onclick='confirmDone(${idQ})'>✓ Bevestig klaar</button>` : ''}
     </div>
   `;
@@ -10049,6 +10123,15 @@ function cancelTouchPriceOverlay() {
   try {
     console.info('[planner] touch_price_overlay_cancelled', JSON.stringify({ appointmentId: id != null ? String(id) : null, reason }));
   } catch (_) {}
+}
+
+function resyncTouchPriceOverlayDomAfterPlannerRender() {
+  if (!touchPriceOverlayState.open || touchPriceOverlayState.appointmentId == null) return;
+  if (!plannerUsesTouchPriceOverlay()) return;
+  const overlay = document.getElementById('touchPriceOverlay');
+  if (!overlay) return;
+  overlay.classList.add('visible');
+  mountTouchPriceOverlay(touchPriceOverlayState.appointmentId);
 }
 
 async function saveTouchPriceOverlay() {
@@ -10199,11 +10282,11 @@ function buildAppointmentPriceSectionInnerHtml(a) {
             <span id="price-total-amt-${domId}">€${euroDisplay(calcTotalPrice(a))}</span>
           </div>
           ${
-            isDone
+            isDone && hasMoneybirdPlannerInvoiceUrlInNotes(a.notes, a.jobDescription)
               ? `
           <div class="complete-row" style="justify-content:flex-end;margin-top:6px">
-            <button type="button" class="btn-cancel" onclick='retryInvoiceForDone(${idQ}, this)' title="Factuur opnieuw verzenden">
-              Factuur opnieuw verzenden
+            <button type="button" class="btn-cancel" onclick='retryInvoiceForDone(${idQ}, this)' title="Factuur opnieuw versturen">
+              Factuur opnieuw versturen
             </button>
           </div>`
               : ''
@@ -10366,6 +10449,10 @@ function renderApptCard(a, i) {
         ? `<a class="appt-wm-pill appt-wm-pill--moneybird" href="${escapeHtml(mbUrl)}" target="_blank" rel="noopener noreferrer">Factuur via Moneybird</a>`
         : `<span class="appt-wm-pill appt-wm-pill--moneybird appt-wm-pill--moneybird--text">Factuur via Moneybird</span>`
       : '';
+    const retryInvoiceWmBtnHtml =
+      isDone && hasMoneybirdPlannerInvoiceUrlInNotes(a.notes, a.jobDescription)
+        ? `<button type="button" class="btn-cancel appt-wm-retry-invoice" style="margin-top:4px" onclick='retryInvoiceForDone(${idQ}, this)'>Factuur opnieuw versturen</button>`
+        : '';
     const jobDescDisplay = stripMoneybirdPlannerMarkers(String(a.jobDescription || ''));
     const noteStripped = stripMoneybirdPlannerMarkers(String(a.notes || '').trim());
 
@@ -10393,6 +10480,11 @@ function renderApptCard(a, i) {
     if (isDone) {
       mobileMenuRows.push(
         `<button type="button" role="menuitem" class="appt-actions__menu-item" onclick="closeMobileApptActionMenus();openAppointmentDetailsModal(${idQ})">Bekijk details</button>`
+      );
+    }
+    if (isDone && hasMoneybirdPlannerInvoiceUrlInNotes(a.notes, a.jobDescription)) {
+      mobileMenuRows.push(
+        `<button type="button" role="menuitem" class="appt-actions__menu-item appt-wm-menu-item" onclick="closeMobileApptActionMenus();retryInvoiceForDone(${idQ}, this)">Factuur opnieuw versturen</button>`
       );
     }
     mobileMenuRows.push(
@@ -10495,7 +10587,7 @@ function renderApptCard(a, i) {
             ${notesHtml}
             <div class="appt-wm-rule" role="separator"></div>
             <div class="appt-footer appt-wm-footer">
-              <div class="appt-wm-footer-left">${pillHtml}${moneybirdPillHtml}</div>
+              <div class="appt-wm-footer-left" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">${pillHtml}${moneybirdPillHtml}${retryInvoiceWmBtnHtml}</div>
               <div class="appt-footer-right appt-wm-footer-right">
                 <div class="appt-footer-actions-touch appt-wm-cta-wrap">
                   <div class="appt-footer-cta-row appt-wm-cta-row">
@@ -10794,6 +10886,15 @@ function render() {
   updateRoutePanelChrome(routeStops);
   renderPlannerWeekStrip();
   renderRoutesWeekStrip();
+  if (plannerUsesTouchPriceOverlay()) {
+    resyncTouchPriceOverlayDomAfterPlannerRender();
+  } else {
+    for (const a of appointments) {
+      if (!a || a.isCalBlock || !a.priceVisible) continue;
+      mountAppointmentPriceSection(a.id);
+      syncAppointmentPriceBarDom(a);
+    }
+  }
 }
 
 function formatRoutePanelTitle(d) {
