@@ -100,6 +100,11 @@ import {
 import { resolveContactCustomFieldId } from '../lib/ghl-custom-fields.js';
 import { getOrCreateMoneybirdPayTokenMapping } from '../lib/moneybird-pay-token-store.js';
 import {
+  moneybirdContactCreateFailureResult,
+  moneybirdExceptionResult,
+  moneybirdInvoiceNotCreatedResult,
+} from '../lib/moneybird-complete-errors.js';
+import {
   appendInvoicePartyWritesToCustomFields,
   buildInvoicePartyFromContact,
   formatMoneybirdInvoiceMetadataSuffix,
@@ -2215,7 +2220,7 @@ export default async function handler(req, res) {
                       appointmentId: String(appointmentId || ''),
                       reason: mbContact?.reason || 'missing_contact',
                     });
-                    moneybirdResult = { skipped: true, reason: mbContact?.reason || 'missing_contact' };
+                    moneybirdResult = moneybirdContactCreateFailureResult(mbContact);
                   } else {
                     console.info(mbContact.created ? '[moneybird] contact aangemaakt' : '[moneybird] contact gematcht', {
                       contactId,
@@ -2431,7 +2436,7 @@ export default async function handler(req, res) {
                         }, 'warn');
                       }
                     } else {
-                      moneybirdResult = { skipped: true, reason: created?.reason || 'invoice_not_created' };
+                      moneybirdResult = moneybirdInvoiceNotCreatedResult(created);
                     }
                   }
                 }
@@ -2448,14 +2453,20 @@ export default async function handler(req, res) {
               status: err?.status,
               details: err?.details,
             });
+            if (!moneybirdResult || moneybirdResult.created !== true) {
+              moneybirdResult = moneybirdExceptionResult(err);
+            }
           }
         }
 
         const tagErrors = [];
-        const tagOk = await addTag(contactId, 'factuur-versturen').catch((e) => {
-          tagErrors.push(e.message);
-          return false;
-        });
+        let tagOk = true;
+        if (moneybirdResult?.created === true) {
+          tagOk = await addTag(contactId, 'factuur-versturen').catch((e) => {
+            tagErrors.push(e.message);
+            return false;
+          });
+        }
         const reviewAutomation = await ensureReviewMailTagOnComplete({
           contactId,
           appointmentId: appointmentId || null,

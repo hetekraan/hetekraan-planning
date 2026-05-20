@@ -62,7 +62,7 @@ async function runCompleteAppointmentScenario({ sendReview, contactFetch, expect
   global.fetch = async (url, options = {}) => {
     const method = String(options?.method || 'GET').toUpperCase();
     const u = String(url);
-    calls.push({ url: u, method });
+    calls.push({ url: u, method, body: options?.body });
 
     if (u.endsWith('/contacts/c-1') && method === 'PUT') {
       return makeJsonResponse(200, { success: true });
@@ -114,11 +114,22 @@ async function runCompleteAppointmentScenario({ sendReview, contactFetch, expect
     assert.equal(Boolean(res.body?.success), true);
     assert.ok(res.body && Object.prototype.hasOwnProperty.call(res.body, 'reviewAutomation'));
 
-    const reviewTagCalls = calls.filter(
-      (c) => c.url.endsWith('/contacts/c-1/tags') && c.method === 'POST'
-    );
-    const reviewTagPosted = reviewTagCalls.length > 1;
+    const postedTagNames = [];
+    for (const c of calls) {
+      if (!c.url.endsWith('/contacts/c-1/tags') || c.method !== 'POST') continue;
+      try {
+        const payload = JSON.parse(String(c.body || '{}'));
+        const tags = Array.isArray(payload?.tags) ? payload.tags : [];
+        postedTagNames.push(...tags);
+      } catch {
+        /* ignore */
+      }
+    }
+    const reviewTagPosted = postedTagNames.includes('review_mail_versturen');
     assert.equal(reviewTagPosted, expectReviewTagPost);
+
+    const factuurTagPosted = postedTagNames.includes('factuur-versturen');
+    assert.equal(factuurTagPosted, false);
 
     return { body: res.body, calls };
   } finally {
