@@ -6,6 +6,7 @@ import {
   pulseContactTag,
   removePendingBookingTag,
 } from '../lib/ghl-tag.js';
+import { shouldPulseNietBevestigdTagForInviteSlots } from '../api/send-booking-invite.js';
 
 function tagCallsFromFetch(fetchFn) {
   const calls = [];
@@ -23,6 +24,25 @@ function tagCallsFromFetch(fetchFn) {
   };
   return { calls, fetchFn: wrapped };
 }
+
+test('invite policy: 1-slot offer → gate allows niet-bevestigd tag pulse', () => {
+  assert.equal(shouldPulseNietBevestigdTagForInviteSlots([{ dateStr: '2026-05-20', block: 'morning' }]), true);
+});
+
+test('invite policy: 2-slot offer → gate blocks niet-bevestigd tag (token workflow only)', () => {
+  assert.equal(
+    shouldPulseNietBevestigdTagForInviteSlots([
+      { dateStr: '2026-05-20', block: 'morning' },
+      { dateStr: '2026-05-21', block: 'afternoon' },
+    ]),
+    false
+  );
+});
+
+test('invite policy: zero slots → gate blocks tag', () => {
+  assert.equal(shouldPulseNietBevestigdTagForInviteSlots([]), false);
+  assert.equal(shouldPulseNietBevestigdTagForInviteSlots(null), false);
+});
 
 test('invite: pulsePendingBookingTag adds niet-bevestigd (delete then post)', async () => {
   const { calls, fetchFn } = tagCallsFromFetch();
