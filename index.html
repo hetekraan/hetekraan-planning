@@ -7010,6 +7010,56 @@ window.HKPlannerAutoRefresh = {
     height: auto;
   }
 
+  /*
+   * iPhone sprint (daan, ≤639px): header-knoppen, ⋮-menu, Prijs in menu voor klaar.
+   * iPad/desktop ongewijzigd (body:not(.user-jerry) + max-width 639px).
+   */
+  @media (max-width: 639px) {
+    body:not(.user-jerry) #panelAfspraken > .today-page-header {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+    }
+    body:not(.user-jerry) #panelAfspraken .today-page-header .appointments-header-actions {
+      flex-direction: column;
+      align-items: stretch;
+      flex-wrap: nowrap;
+      width: 100%;
+      gap: 8px;
+    }
+    body:not(.user-jerry) #panelAfspraken .today-page-header .appointments-header-actions .today-btn {
+      width: 100%;
+      justify-content: center;
+      min-height: 44px;
+      box-sizing: border-box;
+    }
+    body:not(.user-jerry) .appt-card--layout-v2,
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-inner--wm,
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-footer,
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-footer-right,
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-footer-actions-touch,
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-cta-row,
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-actions-slot,
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-actions-mobile {
+      overflow: visible;
+    }
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-actions-slot {
+      display: flex !important;
+      flex-shrink: 0;
+      align-items: center;
+    }
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-actions__dropdown.is-open {
+      z-index: 120;
+    }
+    body:not(.user-jerry) .appt-card--layout-v2.done .appt-wm-btn--prijs {
+      display: none !important;
+    }
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-cta-row {
+      flex-wrap: nowrap;
+      justify-content: flex-end;
+    }
+  }
+
 </style>
 </head>
 <body>
@@ -9869,6 +9919,7 @@ const touchPriceOverlayState = {
   draft: null,
   scrollYBeforeOpen: 0,
 };
+let mobileApptMenuIgnoreCloseUntil = 0;
 
 /** Sluit alle ⋯-actiemenu’s op afspraakkaarten (mobiel + layout v2 desktop). */
 function closeMobileApptActionMenus() {
@@ -9881,20 +9932,15 @@ function closeMobileApptActionMenus() {
 
 function toggleMobileApptActionMenu(ev, domId) {
   if (ev) {
-    ev.preventDefault();
     ev.stopPropagation();
   }
   const dd = document.getElementById('mob-menu-' + domId);
-  const card = dd?.closest('.appt-card');
-  const layoutV2Card = card?.classList.contains('appt-card--layout-v2');
-  const narrowMobile =
-    window.matchMedia && window.matchMedia('(max-width: 639px)').matches;
-  if (!layoutV2Card && !narrowMobile) return;
   const btn = dd?.closest('.appt-actions__mobile')?.querySelector('.appt-actions__menu-btn');
   if (!dd || !btn) return;
   const willOpen = !dd.classList.contains('is-open');
   closeMobileApptActionMenus();
   if (willOpen) {
+    mobileApptMenuIgnoreCloseUntil = Date.now() + 450;
     dd.classList.add('is-open');
     btn.setAttribute('aria-expanded', 'true');
     try {
@@ -10478,8 +10524,13 @@ function renderApptCard(a, i) {
         `<button type="button" role="menuitem" class="appt-actions__menu-item appt-wm-menu-item" onclick="closeMobileApptActionMenus();retryInvoiceForDone(${idQ}, this)">Factuur opnieuw versturen</button>`
       );
     }
+    if (isDone) {
+      mobileMenuRows.push(
+        `<button type="button" role="menuitem" class="appt-actions__menu-item appt-wm-menu-item appt-wm-menu-item--prijs" onclick="closeMobileApptActionMenus();togglePrijs(event, ${idQ})">Prijs</button>`
+      );
+    }
     mobileMenuRows.push(
-      `<button type="button" role="menuitem" class="appt-actions__menu-item appt-wm-menu-item" onclick="closeMobileApptActionMenus();openAppointmentEditModal(${idQ})">✏️ Bewerken</button>`,
+      `<button type="button" role="menuitem" class="appt-actions__menu-item appt-wm-menu-item" onclick="closeMobileApptActionMenus();openAppointmentEditModal(${idQ})">Bewerken</button>`,
       `<button type="button" role="menuitem" class="appt-actions__menu-item appt-actions__menu-item--danger appt-wm-menu-item" onclick="closeMobileApptActionMenus();deleteAppt(${idQ})">✕ Verwijderen</button>`
     );
     const layoutV2 = shouldUseApptLayoutV2();
@@ -13019,14 +13070,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   } catch (_) {}
 
-  document.addEventListener(
-    'click',
-    (e) => {
-      if (e.target.closest?.('.appt-actions__mobile')) return;
-      closeMobileApptActionMenus();
-    },
-    true
-  );
+  document.addEventListener('click', (e) => {
+    if (Date.now() < mobileApptMenuIgnoreCloseUntil) return;
+    if (e.target.closest?.('.appt-actions__mobile')) return;
+    closeMobileApptActionMenus();
+  });
 
   const lp = document.getElementById('loginPass');
   if (lp) lp.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
