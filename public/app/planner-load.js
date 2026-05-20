@@ -111,8 +111,11 @@
           ctx.setPlannerCustomerDayFull(!!data.customerDayFull, !!data.customerDayFullStoreConfigured);
         }
         const appTpl = typeof getGhlIosContactAppUrlTemplate === 'function' ? getGhlIosContactAppUrlTemplate() : '';
-        setAppointments(
-          rows.map((a) => {
+        const snap =
+          quietLoad && typeof ctx.snapshotPriceEditingStateForQuietPlannerLoad === 'function'
+            ? ctx.snapshotPriceEditingStateForQuietPlannerLoad()
+            : null;
+        let mappedRows = rows.map((a) => {
             const web = a.contactId && getGhlBaseUrl() ? `${getGhlBaseUrl()}/${a.contactId}` : '';
             const app =
               appTpl && a.contactId
@@ -125,8 +128,11 @@
               review: false,
               priceVisible: false,
             };
-          })
-        );
+          });
+        if (snap && typeof ctx.restorePriceEditingStateAfterQuietLoad === 'function') {
+          mappedRows = ctx.restorePriceEditingStateAfterQuietLoad(mappedRows, snap);
+        }
+        setAppointments(mappedRows);
         if (typeof syncLiveRouteState === 'function') {
           syncLiveRouteState(dateStr, data.routeState || null);
         }

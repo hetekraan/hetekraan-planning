@@ -2265,6 +2265,7 @@ export default async function handler(req, res) {
                         invoiceUrlSource,
                         invoiceNumber,
                         reference,
+                        ...(mbContact?.usedEmailFallback ? { warning: 'email_invalid' } : {}),
                       };
                       logMb('invoice_created', {
                         invoiceId,
