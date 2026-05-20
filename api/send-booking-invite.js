@@ -693,6 +693,15 @@ function parseRequestBody(req) {
   return b && typeof b === 'object' ? b : {};
 }
 
+/**
+ * GHL-tag `niet-bevestigd`: alleen bij één aangeboden slot (planner “Stuur boekingslink”).
+ * Bij twee opties (suggest) triggert alleen de bestaande Boekings-token-workflow — voorkomt dubbele WhatsApp.
+ * @param {unknown} slots — `slots` uit de invite-handler (max. 2 na normalisatie).
+ */
+export function shouldPulseNietBevestigdTagForInviteSlots(slots) {
+  return Array.isArray(slots) && slots.length === 1;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -1259,7 +1268,7 @@ export default async function handler(req, res) {
   }
   perf.ghl_tag_ops_ms = Date.now() - tTag0;
 
-  if (pendingReservationId && diag.fieldsPut) {
+  if (pendingReservationId && diag.fieldsPut && shouldPulseNietBevestigdTagForInviteSlots(slots)) {
     const tPendingTag0 = Date.now();
     diag.pendingTagPulseOk = await pulsePendingBookingTag(contactId, '[send-booking-invite] pending');
     perf.ghl_pending_tag_pulse_ms = Date.now() - tPendingTag0;
