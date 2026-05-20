@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 
 import {
   buildStructuredAddressFromContact,
+  isMoneybirdEmailDomainUnreachableFailure,
   planMoneybirdContactSyncPatch,
 } from '../lib/moneybird.js';
+import { hasMoneybirdPlannerInvoiceUrlInNotes } from '../lib/moneybird-planner-invoice-marker.js';
 
 test('create contact: losse postcode en plaats blijven gestructureerd', () => {
   const out = buildStructuredAddressFromContact({
@@ -76,6 +78,54 @@ test('bedrijfsfactuur met factuur adresvelden normaliseert correct', () => {
   assert.equal(out.zipcode, '1507 AA');
   assert.equal(out.city, 'Zaandam');
   assert.equal(out.country, 'Netherlands');
+});
+
+test('422 + email_domain_unreachable → contact-create fallbackable', () => {
+  assert.equal(
+    isMoneybirdEmailDomainUnreachableFailure({
+      status: 422,
+      message: 'POST /contacts.json (status 422): {"error":"email_domain_unreachable"}',
+      details: {},
+    }),
+    true
+  );
+});
+
+test('422 + send_invoices_to_email cannot receive → fallbackable', () => {
+  assert.equal(
+    isMoneybirdEmailDomainUnreachableFailure({
+      status: 422,
+      message: 'Unprocessable Entity',
+      details: { error: 'send_invoices_to_email includes a domain which cannot receive emails' },
+    }),
+    true
+  );
+});
+
+test('500 + email_domain_unreachable in tekst → niet fallbackable', () => {
+  assert.equal(
+    isMoneybirdEmailDomainUnreachableFailure({
+      status: 500,
+      message: 'email_domain_unreachable',
+      details: '',
+    }),
+    false
+  );
+});
+
+test('planner: marker + https url op regel → retry-knop predicate true', () => {
+  assert.equal(
+    hasMoneybirdPlannerInvoiceUrlInNotes('x', '[moneybird] url=https://in.moneybird.com/123 ref=y'),
+    true
+  );
+});
+
+test('planner: alleen url zonder [moneybird] → false', () => {
+  assert.equal(hasMoneybirdPlannerInvoiceUrlInNotes('', 'url=https://x.nl/y'), false);
+});
+
+test('planner: marker zonder url= → false', () => {
+  assert.equal(hasMoneybirdPlannerInvoiceUrlInNotes('[moneybird] ref=1', ''), false);
 });
 
 test('particulier met normaal adres blijft bruikbaar zonder parsing', () => {
