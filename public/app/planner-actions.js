@@ -211,6 +211,7 @@
       (mb.created === true ||
         invoiceIdStr !== '' ||
         mb.skipped === true ||
+        mb.error === true ||
         tokenStr !== '');
     console.log(
       '[planner] completeAppointment_response',
@@ -230,7 +231,15 @@
       })
     );
 
-    if (mb && mb.skipped === true) {
+    if (mb && mb.error === true) {
+      const em = mb.errorMessage != null ? String(mb.errorMessage).trim() : '';
+      showToast(
+        em
+          ? `Klaar opgeslagen, maar factuur niet aangemaakt: ${em}`
+          : 'Klaar opgeslagen, maar factuur niet aangemaakt.',
+        'info'
+      );
+    } else if (mb && mb.skipped === true) {
       const r = mb.reason != null ? String(mb.reason).trim() : '';
       logConfirm('moneybird_skipped_reason', {
         reason: r || null,
