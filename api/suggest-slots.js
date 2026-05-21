@@ -26,7 +26,7 @@ import {
 import {
   cachedFetchBlockedSlotsAsEvents,
   cachedFetchCalendarEventsForDay,
-  cachedListConfirmedSyntheticEventsForDate,
+  cachedListActiveSyntheticEventsForDate,
 } from '../lib/amsterdam-day-read-cache.js';
 import {
   isValidPlainEmail,
@@ -633,7 +633,7 @@ export default async function handler(req, res) {
           let resvSynthetic = [];
           try {
             const tRedis = Date.now();
-            resvSynthetic = await cachedListConfirmedSyntheticEventsForDate(dateStr);
+            resvSynthetic = await cachedListActiveSyntheticEventsForDate(dateStr);
             perf.redis_synthetic_sum_ms += Date.now() - tRedis;
           } catch (e) {
             console.warn('[suggest-slots] block reservations:', e?.message || e);
@@ -684,7 +684,7 @@ export default async function handler(req, res) {
           (async () => {
             try {
               const tRedis = Date.now();
-              const r = await cachedListConfirmedSyntheticEventsForDate(dateStr);
+              const r = await cachedListActiveSyntheticEventsForDate(dateStr);
               perf.redis_synthetic_sum_ms += Date.now() - tRedis;
               return r;
             } catch (e) {

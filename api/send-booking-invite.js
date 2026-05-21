@@ -65,6 +65,14 @@ const PROPOSAL_CLUSTERING_FIRST = String(process.env.PROPOSAL_CLUSTERING_FIRST |
 
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+function logCapacityBypassPlanner(endpoint, reason) {
+  try {
+    console.info('[booking] capacity_bypass_planner', JSON.stringify({ endpoint, reason }));
+  } catch (_) {}
+}
+
+const INVITE_CAPACITY_OPTIONS = { enforceCapacity: false };
+
 function mergeMinStartDateIntoProposalConstraints(existing, minStartDate) {
   const merged = existing && typeof existing === 'object' ? { ...existing } : {};
   const min = String(minStartDate || '').trim();
@@ -118,6 +126,7 @@ async function validateSelectedInviteSlots({
   address,
   resolvedContactId,
 }) {
+  logCapacityBypassPlanner('send-booking-invite', 'validateSelectedInviteSlots');
   const eventCache = new Map();
 
   async function loadMergedCalendarDayEvents(dateStr) {
@@ -237,6 +246,7 @@ async function validateSelectedInviteSlots({
       workType,
       events,
       dayBlocked: false,
+      options: INVITE_CAPACITY_OPTIONS,
     });
     if (perf) perf.evaluate_block_offer_sum_ms += Date.now() - tEv;
     if (!evaluation.eligible) {
@@ -376,6 +386,7 @@ function tryBuildSlotsFromBookingLinkResume(selectedNormalized, resumeSlotsRaw) 
  * @param {Record<string, unknown> | null | undefined} proposalConstraints — geparsed; null = geen filter
  */
 async function pickBlockInviteOffers(workType, timings, proposalConstraints = null, address = '', resolvedContactId = '') {
+  logCapacityBypassPlanner('send-booking-invite', 'pickBlockInviteOffers');
   const perf = timings || null;
   if (!GHL_API_KEY) return [];
   const calId = ghlCalendarIdFromEnv();
@@ -521,6 +532,7 @@ async function pickBlockInviteOffers(workType, timings, proposalConstraints = nu
         workType,
         events: eventsForCapacity,
         dayBlocked: false,
+        options: INVITE_CAPACITY_OPTIONS,
       });
       if (perf) perf.evaluate_block_offer_sum_ms += Date.now() - tEv;
       if (!evaluation.eligible) {
@@ -656,6 +668,7 @@ async function pickBlockInviteOffers(workType, timings, proposalConstraints = nu
         workType,
         events,
         dayBlocked: false,
+        options: INVITE_CAPACITY_OPTIONS,
       });
       if (perf) perf.evaluate_block_offer_sum_ms += Date.now() - tEv2;
       if (evaluation.eligible) picked.push(c);
