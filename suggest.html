@@ -894,6 +894,34 @@
     return `${String(s.dateStr || '').trim()}|${String(s.block || '').trim()}`;
   }
 
+  /** Zelfde formaat als server blockOfferKey (YYYY-MM-DD_morning|afternoon). */
+  function blockOfferKeyFromSuggestion(s) {
+    const dateStr = String(s?.dateStr || '').trim();
+    const block = String(s?.block || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
+    if (block !== 'morning' && block !== 'afternoon') return null;
+    return `${dateStr}_${block}`;
+  }
+
+  function buildExcludedOfferKeysFromSlots(slots) {
+    const keys = [];
+    const seen = new Set();
+    for (const s of Array.isArray(slots) ? slots : []) {
+      const k = blockOfferKeyFromSuggestion(s);
+      if (!k || seen.has(k)) continue;
+      seen.add(k);
+      keys.push(k);
+    }
+    return keys;
+  }
+
+  function mergeExcludedOfferKeysIntoConstraints(constraints, keys) {
+    if (!keys.length) return constraints;
+    const base = constraints && typeof constraints === 'object' ? { ...constraints } : {};
+    const merged = [...new Set([...(base.excludedOfferKeys || []), ...keys])];
+    return { ...base, excludedOfferKeys: merged };
+  }
+
   function getSlotsForBooking() {
     return (Array.isArray(loadedSlots) ? loadedSlots : []).filter((s) => !hiddenSlotKeys.has(slotKeyFromSuggestion(s)));
   }
@@ -1342,7 +1370,15 @@
     }
 
     const mode = document.getElementById('hkSuggestConstraintMode')?.value || 'auto';
-    const proposalConstraints = buildSuggestProposalConstraintsFromUI();
+    const wasRecalc = suggestCalculatedOnce;
+    const prevExcludeKeys =
+      wasRecalc && Array.isArray(loadedSlots) && loadedSlots.length
+        ? buildExcludedOfferKeysFromSlots(loadedSlots)
+        : [];
+    let proposalConstraints = buildSuggestProposalConstraintsFromUI();
+    if (prevExcludeKeys.length) {
+      proposalConstraints = mergeExcludedOfferKeysIntoConstraints(proposalConstraints, prevExcludeKeys);
+    }
     const hasWeekdays = document.querySelectorAll('.hk-suggest-dow:checked').length > 0;
     const specificDates = parseUiSpecificDates();
     const hasSpecificDates = specificDates.length > 0;
@@ -1433,11 +1469,19 @@
       }
 
       if (!data.success || !data.suggestions?.length) {
-        showError(
-          'Geen tijdsloten beschikbaar',
-          'Er zijn geen vrije dagdelen (volgens de planningregels) in de komende week op werkdagen. Controleer de agenda of probeer later opnieuw.',
-          { keepResultPreview: true }
-        );
+        if (wasRecalc && prevExcludeKeys.length) {
+          showError(
+            'Geen andere opties beschikbaar',
+            'Geen andere opties beschikbaar. Probeer andere voorkeuren of vernieuw later.',
+            { keepResultPreview: true }
+          );
+        } else {
+          showError(
+            'Geen tijdsloten beschikbaar',
+            'Er zijn geen vrije dagdelen (volgens de planningregels) in de komende week op werkdagen. Controleer de agenda of probeer later opnieuw.',
+            { keepResultPreview: true }
+          );
+        }
         return;
       }
 

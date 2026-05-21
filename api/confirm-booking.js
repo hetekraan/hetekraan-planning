@@ -9,13 +9,7 @@ import {
   amsterdamCalendarDayBoundsMs,
   hourInAmsterdam,
 } from '../lib/amsterdam-calendar-day.js';
-import {
-  blockAllowsNewCustomerBooking,
-  customerMaxForBlock,
-  ghlDurationMinutesForType,
-  normalizeWorkType,
-} from '../lib/booking-blocks.js';
-import { maxCustomerAppointmentsPerDay } from '../lib/calendar-customer-cap.js';
+import { ghlDurationMinutesForType, normalizeWorkType } from '../lib/booking-blocks.js';
 import {
   cachedFetchBlockedSlotsAsEvents,
   cachedFetchCalendarEventsForDay,
@@ -448,6 +442,14 @@ function acquireBookingLock(key) {
 function releaseBookingLock(key) {
   _pendingBookings.delete(key);
 }
+
+function logCapacityBypassPlanner(endpoint, reason) {
+  try {
+    console.info('[booking] capacity_bypass_planner', JSON.stringify({ endpoint, reason }));
+  } catch (_) {}
+}
+
+const CONFIRM_CAPACITY_OPTIONS = { enforceCapacity: false };
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function syncConfirmedBookingToSupabase(input) {
@@ -831,6 +833,7 @@ export default async function handler(req, res) {
     }
 
     releaseDebugNoopConfirm(' v2 before_evaluateBlockOffer', { date, block, type });
+    logCapacityBypassPlanner('confirm-booking', 'v2_B1');
     const tEval0 = Date.now();
     const evaluation = evaluateBlockOffer({
       dateStr: date,
@@ -838,6 +841,7 @@ export default async function handler(req, res) {
       workType: type,
       events: eventsForCapacity,
       dayBlocked: false,
+      options: CONFIRM_CAPACITY_OPTIONS,
     });
     perf.evaluate_block_offer_ms = Date.now() - tEval0;
     releaseDebugNoopConfirm(' v2 after_evaluateBlockOffer', {
@@ -847,36 +851,15 @@ export default async function handler(req, res) {
     if (!evaluation.eligible) {
       releaseBookingLock(lockKey);
       const reason = evaluation.reason;
-      if (reason === BLOCK_REASON.DAY_CAP) {
-        const maxD = evaluation.state.maxPerDay;
-        return res.status(409).json({
-          error:
-            `Er staan al ${maxD} klant-afspraken op deze dag in de agenda. Online boeken is niet meer mogelijk; neem contact op of kies een andere dag. Handmatig kun je in GHL nog een extra afspraak toevoegen.`,
-          code: 'DAY_CAP_REACHED',
-          dayCount: evaluation.state.dayCustomerCount,
-          maxPerDay: maxD,
-        });
-      }
-      if (reason === BLOCK_REASON.BLOCK_CAPACITY) {
-        const maxB = customerMaxForBlock(block);
-        const blokNaam =
-          block === 'morning'
-            ? `ochtend (${SLOT_LABEL_MORNING_NL})`
-            : `middag (${SLOT_LABEL_AFTERNOON_NL})`;
-        return res.status(409).json({
-          error: `Dit tijdslot past niet meer: in de ${blokNaam} zitten al ${maxB} klant-afspraken of er is onvoldoende geplande tijd over voor dit werk. Kies een andere optie of bel ons.`,
-          code: 'BLOCK_FULL',
-          maxPerBlock: maxB,
-        });
-      }
       if (reason === BLOCK_REASON.INVALID_INPUT) {
-        releaseBookingLock(lockKey);
         return res.status(400).json({ error: 'Ongeldige boekingskeuze. Vraag een nieuwe link aan.' });
       }
-      return res.status(409).json({
-        error: 'Deze optie is niet meer beschikbaar. Kies een andere dag of neem contact op.',
-        code: 'BLOCK_FULL',
-      });
+      if (reason === BLOCK_REASON.DAY_BLOCKED) {
+        return res.status(409).json({
+          error: 'Deze dag is niet beschikbaar voor online boeken (agenda geblokkeerd). Kies een andere dag of neem contact op.',
+          code: 'DAY_BLOCKED',
+        });
+      }
     }
 
     releaseDebugNoopConfirm(' v2 before_reservation_create');
@@ -1186,43 +1169,7 @@ export default async function handler(req, res) {
   markBlockLikeOnCalendarEvents(eventsForDay);
   const customerEvents = eventsForDay.filter((e) => !e._hkGhlBlockSlot);
 
-  const dayCap = maxCustomerAppointmentsPerDay();
-  const dayCount = customerEvents.length;
-  if (dayCount >= dayCap) {
-    releaseBookingLock(lockKey);
-    return res.status(409).json({
-      error:
-        `Er staan al ${dayCap} klant-afspraken op deze dag in de agenda. Online boeken is niet meer mogelijk; neem contact op of kies een andere dag. Handmatig kun je in GHL nog een extra afspraak toevoegen.`,
-      code: 'DAY_CAP_REACHED',
-      dayCount,
-      maxPerDay: dayCap,
-    });
-  }
-
-  const inMorning = (e) => {
-    const raw = eventStartRawForBooking(e);
-    if (raw == null) return false;
-    return hourInAmsterdam(raw) < DAYPART_SPLIT_HOUR;
-  };
-  const inAfternoon = (e) => {
-    const raw = eventStartRawForBooking(e);
-    if (raw == null) return false;
-    return hourInAmsterdam(raw) >= DAYPART_SPLIT_HOUR;
-  };
-  const blockEvents = customerEvents.filter((e) => (block === 'morning' ? inMorning(e) : inAfternoon(e)));
-  if (!blockAllowsNewCustomerBooking(block, blockEvents, type)) {
-    const maxB = customerMaxForBlock(block);
-    const blokNaam =
-      block === 'morning'
-        ? `ochtend (${SLOT_LABEL_MORNING_NL})`
-        : `middag (${SLOT_LABEL_AFTERNOON_NL})`;
-    releaseBookingLock(lockKey);
-    return res.status(409).json({
-      error: `Dit tijdslot past niet meer: in de ${blokNaam} zitten al ${maxB} klant-afspraken of er is onvoldoende geplande tijd over voor dit werk. Kies een andere optie of bel ons.`,
-      code: 'BLOCK_FULL',
-      maxPerBlock: maxB,
-    });
-  }
+  logCapacityBypassPlanner('confirm-booking', 'v1_timed_appt');
 
   // Laag 2: GHL duplicate-check — beschermt bij concurrent requests op verschillende instances.
   const alreadyBooked = customerEvents.find((e) => {
