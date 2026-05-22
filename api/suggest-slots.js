@@ -53,6 +53,7 @@ import { geocode, geocodeEvents } from '../lib/geo-utils.js';
 import { fetchWithRetry } from '../lib/retry.js';
 const GHL_API_KEY = process.env.GHL_API_KEY;
 const PROPOSAL_CLUSTERING_FIRST = String(process.env.PROPOSAL_CLUSTERING_FIRST || '').toLowerCase() === 'true';
+const PROPOSAL_RANKING_LEGACY = String(process.env.PROPOSAL_RANKING_LEGACY || '').toLowerCase() === 'true';
 
 function sleepMs(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -75,8 +76,8 @@ async function ghlFetchWith429Backoff(url, headers, max429Attempts = 6) {
 }
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 
-/** 3 weken vooruit (21 dagen). */
-const FREE_SLOTS_DAYS = 21;
+/** ~2 weken vooruit (14 kalenderdagen ≈ 10 werkdagen). */
+const FREE_SLOTS_DAYS = 14;
 
 const FIELD_IDS = {
   type_onderhoud: 'EXSQmlt7BqkXJMs8F3Qk',
@@ -959,14 +960,17 @@ export default async function handler(req, res) {
       candidates,
       nowDateStr: startDate,
       enableClusteringFirst: PROPOSAL_CLUSTERING_FIRST,
-      horizonDays: 14,
+      enableLegacyRanking: PROPOSAL_RANKING_LEGACY,
+      spoedMode,
+      horizonDays: FREE_SLOTS_DAYS,
       tierAMinutes: 15,
       tierBMinutes: 25,
       kmPerMinute: 0.9,
     });
     const rankedCandidates = ranking.ranked;
     console.log('[suggest-slots][proposal_ranking]', {
-      mode: PROPOSAL_CLUSTERING_FIRST ? 'clustering_first' : 'legacy',
+      mode: ranking.mode,
+      spoedMode,
       ...ranking.telemetry,
     });
 

@@ -59,6 +59,7 @@ const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_BASE        = 'https://services.leadconnectorhq.com';
 const PROPOSAL_CLUSTERING_FIRST = String(process.env.PROPOSAL_CLUSTERING_FIRST || '').toLowerCase() === 'true';
+const PROPOSAL_RANKING_LEGACY = String(process.env.PROPOSAL_RANKING_LEGACY || '').toLowerCase() === 'true';
 
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -283,7 +284,8 @@ function publicBaseUrl() {
   if (fromEnv) return fromEnv.replace(/\/$/, '');
   return 'https://planning.hetekraan.nl';
 }
-const DAYS_AHEAD      = 21;
+/** Zelfde horizon als suggest-slots (~10 werkdagen). */
+const DAYS_AHEAD      = 14;
 
 const FIELD_IDS = {
   type_onderhoud: 'EXSQmlt7BqkXJMs8F3Qk',
@@ -372,7 +374,14 @@ function tryBuildSlotsFromBookingLinkResume(selectedNormalized, resumeSlotsRaw) 
  * Tot 2 opties `dateStr` + `block`, zelfde regels als api/suggest-slots (block-capacity-offers + merged kalender).
  * @param {Record<string, unknown> | null | undefined} proposalConstraints — geparsed; null = geen filter
  */
-async function pickBlockInviteOffers(workType, timings, proposalConstraints = null, address = '', resolvedContactId = '') {
+async function pickBlockInviteOffers(
+  workType,
+  timings,
+  proposalConstraints = null,
+  address = '',
+  resolvedContactId = '',
+  spoedMode = false
+) {
   const perf = timings || null;
   if (!GHL_API_KEY) return [];
   const calId = ghlCalendarIdFromEnv();
@@ -499,11 +508,15 @@ async function pickBlockInviteOffers(workType, timings, proposalConstraints = nu
 
     for (const block of blocksToTry) {
       if (!proposalConstraintsPassCandidate(cursor, block, proposalConstraints)) continue;
-      const geoCheck = isGeoValid(newCoord, {
-        morning: morningCoords,
-        afternoon: afternoonCoords,
-        targetBlock: block,
-      });
+      const geoCheck = isGeoValid(
+        newCoord,
+        {
+          morning: morningCoords,
+          afternoon: afternoonCoords,
+          targetBlock: block,
+        },
+        spoedMode
+      );
       if (!geoCheck.valid) {
         console.info(
           `[geo-gate] Skipped ${cursor} ${block} for contact ${resolvedContactId || 'unknown'}: ` +
@@ -573,25 +586,23 @@ async function pickBlockInviteOffers(workType, timings, proposalConstraints = nu
     return [];
   }
 
-  let rankedCandidates = candidates;
-  if (PROPOSAL_CLUSTERING_FIRST) {
-    const ranking = rankProposalCandidates({
-      candidates,
-      nowDateStr: startDate,
-      enableClusteringFirst: true,
-      horizonDays: 14,
-      tierAMinutes: 15,
-      tierBMinutes: 25,
-      kmPerMinute: 0.9,
-    });
-    rankedCandidates = ranking.ranked;
-    console.log('[send-booking-invite][proposal_ranking]', {
-      mode: 'clustering_first',
-      ...ranking.telemetry,
-    });
-  } else {
-    rankedCandidates = [...candidates].sort((a, b) => (a.legacyScore ?? 0) - (b.legacyScore ?? 0));
-  }
+  const ranking = rankProposalCandidates({
+    candidates,
+    nowDateStr: startDate,
+    enableClusteringFirst: PROPOSAL_CLUSTERING_FIRST,
+    enableLegacyRanking: PROPOSAL_RANKING_LEGACY,
+    spoedMode,
+    horizonDays: DAYS_AHEAD,
+    tierAMinutes: 15,
+    tierBMinutes: 25,
+    kmPerMinute: 0.9,
+  });
+  const rankedCandidates = ranking.ranked;
+  console.log('[send-booking-invite][proposal_ranking]', {
+    mode: ranking.mode,
+    spoedMode,
+    ...ranking.telemetry,
+  });
   candidates.length = 0;
   candidates.push(...rankedCandidates);
   if (candidates.length === 0) {
@@ -915,6 +926,7 @@ export default async function handler(req, res) {
     proposalConstraintsRaw,
     intakeMinStartDate
   );
+  const spoedMode = body?.spoedMode === true || body?.spoed === true;
 
   let slots = [];
 
@@ -975,7 +987,14 @@ export default async function handler(req, res) {
   } else {
     perf.invite_path = 'pick_block_invite_offers';
     const tPick0 = Date.now();
-    slots = await pickBlockInviteOffers(workType, perf, proposalConstraints, address, contactId);
+    slots = await pickBlockInviteOffers(
+      workType,
+      perf,
+      proposalConstraints,
+      address,
+      contactId,
+      spoedMode
+    );
     perf.pick_block_wall_ms = Date.now() - tPick0;
   }
   if (slots.length === 0) {
