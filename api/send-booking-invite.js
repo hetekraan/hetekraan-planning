@@ -726,6 +726,36 @@ export function shouldPulseNietBevestigdTagForInviteSlots(slots) {
   return Array.isArray(slots) && slots.length === 1;
 }
 
+/** Pending Redis + GHL bevestigd-velden: alleen bij precies één aangeboden slot (zelfde gate als tag). */
+export function shouldCreatePendingReservationForInviteSlots(slots) {
+  return shouldPulseNietBevestigdTagForInviteSlots(slots);
+}
+
+/**
+ * Canon `boeking_bevestigd_*` voor invite — alleen 1-slot (geen pending CF bij 2 opties).
+ * @param {unknown} slots
+ * @param {string} proposalDateStr
+ * @param {'morning'|'afternoon'|''} proposalBlock
+ */
+export function invitePendingCanonExtras(slots, proposalDateStr, proposalBlock) {
+  if (!shouldCreatePendingReservationForInviteSlots(slots)) return {};
+  const dateStr = String(proposalDateStr || '').trim();
+  const block =
+    proposalBlock === 'afternoon' || proposalBlock === 'morning' ? proposalBlock : '';
+  if (!dateStr || !block) return {};
+  return {
+    boeking_bevestigd_datum: dateStr,
+    boeking_bevestigd_dagdeel: block,
+    boeking_bevestigd_status: 'pending',
+  };
+}
+
+/** Token `reservationId` — alleen wanneer pending reservation is aangemaakt (1-slot). */
+export function inviteTokenReservationFields(pendingReservationId) {
+  const id = String(pendingReservationId ?? '').trim();
+  return id ? { reservationId: id } : {};
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -1052,7 +1082,16 @@ export default async function handler(req, res) {
     proposalSlot?.block === 'afternoon' || proposalSlot?.block === 'morning' ? proposalSlot.block : '';
 
   let pendingReservationId = '';
-  if (proposalDateStr && proposalBlock) {
+  const shouldCreatePending = shouldCreatePendingReservationForInviteSlots(slots);
+  if (!shouldCreatePending && proposalDateStr && proposalBlock) {
+    console.log('[booking] pending_reservation_skipped_multi_slot', {
+      contactId,
+      slotCount: slots.length,
+      proposalDateStr,
+      proposalBlock,
+    });
+  }
+  if (shouldCreatePending && proposalDateStr && proposalBlock) {
     try {
       const pendingOut = await createPendingReservation({
         contactId,
@@ -1095,7 +1134,7 @@ export default async function handler(req, res) {
     type: workType,
     inviteIssuedAt: Date.now(),
     tokenSchemaVersion: 3,
-    ...(pendingReservationId ? { reservationId: pendingReservationId } : {}),
+    ...inviteTokenReservationFields(pendingReservationId),
     intakeData: {
       minStartDate: intakeMinStartDate || '',
       ...(customerUnavailability ? { customerUnavailability } : {}),
@@ -1177,13 +1216,7 @@ export default async function handler(req, res) {
     boekingsvoorstel_optie_1: `${capitalize(slot1.dateLabel)} tussen ${slot1.timeLabel}`,
     boekingsvoorstel_optie_2: slot2 ? `${capitalize(slot2.dateLabel)} tussen ${slot2.timeLabel}` : '',
     boekingsvoorstel_status: 'sent',
-    ...(proposalDateStr && proposalBlock
-      ? {
-          boeking_bevestigd_datum: proposalDateStr,
-          boeking_bevestigd_dagdeel: proposalBlock,
-          boeking_bevestigd_status: 'pending',
-        }
-      : {}),
+    ...invitePendingCanonExtras(slots, proposalDateStr, proposalBlock),
   };
   const bookingCanon = appendBookingCanonFields(customFields, canonValues);
   const allCustomFields = bookingCanon.customFields;
