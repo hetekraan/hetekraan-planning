@@ -191,9 +191,42 @@
       opacity: 0.85;
     }
     .confirm-btn:disabled {
-      opacity: 0.35;
+      opacity: 0.45;
+      background: #b8aea3;
+      color: #f7f2ec;
       cursor: not-allowed;
       transform: none;
+    }
+    .terms-row {
+      margin-top: 18px;
+      padding: 10px 12px;
+      border: 1px solid #e6dccf;
+      border-radius: 10px;
+      background: #fbf8f3;
+    }
+    .terms-label {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 14px;
+      line-height: 1.45;
+      color: #3b332c;
+      cursor: pointer;
+    }
+    .terms-checkbox {
+      margin-top: 2px;
+      width: 16px;
+      height: 16px;
+      accent-color: #dc4a1a;
+      flex-shrink: 0;
+    }
+    .terms-link {
+      color: #dc4a1a;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .terms-link:hover {
+      opacity: 0.85;
     }
 
     .note {
@@ -419,6 +452,21 @@
         <p class="email-hint" id="addressHint">Verplicht als we je adres nog niet hebben.</p>
       </div>
 
+      <div class="terms-row" id="termsRow">
+        <label class="terms-label" for="termsCheckbox">
+          <input type="checkbox" id="termsCheckbox" class="terms-checkbox" name="termsAccepted" />
+          <span>
+            Ik ga akkoord met de
+            <a
+              href="https://hetekraan.nl/algemene-voorwaarden/"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="terms-link"
+            >algemene voorwaarden</a>
+          </span>
+        </label>
+      </div>
+
       <button type="button" class="confirm-btn" id="confirmBtn" disabled style="display:block;width:100%;background-color:#dc4a1a;color:#fff;border:none;border-radius:10px;padding:12px;font-size:13px;font-weight:700;margin-top:20px;box-sizing:border-box;">
         Bevestig afspraak
       </button>
@@ -624,6 +672,7 @@
     function updateConfirmButtonState() {
       const emailEl = document.getElementById('bookingEmail');
       const phoneEl = document.getElementById('bookingPhone');
+      const termsCheckbox = document.getElementById('termsCheckbox');
       const needEmail = !knownEmailFromToken;
       const needPhone = bookingData && !hasMobileFromToken(bookingData.phone);
       const needAddress = !knownAddressFromToken;
@@ -636,7 +685,8 @@
         const s3 = String(document.getElementById('bookingCity').value || '').replace(/\s+/g, ' ').trim();
         addrOk = Boolean(s1 && s2 && s3);
       }
-      document.getElementById('confirmBtn').disabled = !selectedSlot || !emailOk || !phoneOk || !addrOk;
+      const termsOk = Boolean(termsCheckbox && termsCheckbox.checked);
+      document.getElementById('confirmBtn').disabled = !selectedSlot || !emailOk || !phoneOk || !addrOk || !termsOk;
     }
 
     function selectSlot(slotId, btn) {
@@ -676,6 +726,11 @@
 
     async function confirmBooking() {
       if (!selectedSlot) return;
+      const termsCheckbox = document.getElementById('termsCheckbox');
+      if (!termsCheckbox || termsCheckbox.checked !== true) {
+        termsCheckbox?.focus();
+        return;
+      }
       // Voorkom dubbele boeking bij snel dubbelklikken of herhaald klikken.
       if (_bookingInProgress) return;
 
@@ -726,7 +781,14 @@
 
       try {
         const confirmBody = knownAddressFromToken
-          ? { token, slotId: selectedSlot, email, phone, address: knownAddressFromToken }
+          ? {
+              token,
+              slotId: selectedSlot,
+              email,
+              phone,
+              address: knownAddressFromToken,
+              termsAccepted: termsCheckbox.checked,
+            }
           : {
               token,
               slotId: selectedSlot,
@@ -735,6 +797,7 @@
               addressStreetHouse: streetHouse,
               addressPostcode: postcode,
               addressCity: city,
+              termsAccepted: termsCheckbox.checked,
             };
         const res = await fetch('/api/confirm-booking', {
           method: 'POST',
@@ -771,7 +834,7 @@
           }
           if (data.code === 'DAY_BLOCKED') {
             _bookingInProgress = false;
-            if (confirmBtn) confirmBtn.disabled = !selectedSlot;
+            updateConfirmButtonState();
             showError(
               'Niet beschikbaar',
               data.error || 'Deze dag is niet meer beschikbaar. Vraag een nieuwe boekingslink aan of kies een andere dag.'
@@ -780,7 +843,7 @@
           }
           if (data.code === 'AGENDA_CHECK_FAILED') {
             _bookingInProgress = false;
-            if (confirmBtn) confirmBtn.disabled = !selectedSlot;
+            updateConfirmButtonState();
             showError(
               'Agenda tijdelijk niet bereikbaar',
               data.error || 'Probeer het zo opnieuw of neem contact op.'
@@ -791,13 +854,13 @@
           if (data.hint) msg += '\n\n' + String(data.hint);
           // Boeking mislukt → knop weer inschakelen zodat gebruiker opnieuw kan proberen.
           _bookingInProgress = false;
-          if (confirmBtn) confirmBtn.disabled = !selectedSlot;
+          updateConfirmButtonState();
           showError('Niet gelukt', msg);
         }
       } catch (e) {
         document.getElementById('loadingScreen').style.display = 'none';
         _bookingInProgress = false;
-        if (confirmBtn) confirmBtn.disabled = !selectedSlot;
+        updateConfirmButtonState();
         showError('Verbindingsfout', 'Controleer je internet en probeer opnieuw.');
       }
     }
@@ -836,6 +899,8 @@
       phoneEl.addEventListener('input', bump);
       phoneEl.addEventListener('change', bump);
       phoneEl.addEventListener('blur', bump);
+      const termsCheckbox = document.getElementById('termsCheckbox');
+      termsCheckbox.addEventListener('change', bump);
       ['bookingStreetHouse', 'bookingPostcode', 'bookingCity'].forEach((id) => {
         const el = document.getElementById(id);
         el.addEventListener('input', bump);
