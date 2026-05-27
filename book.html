@@ -382,7 +382,7 @@
           placeholder="naam@voorbeeld.nl"
           aria-describedby="emailHint"
         />
-        <p class="email-hint" id="emailHint">Verplicht voor facturatie als we je e-mail nog niet hebben. We slaan dit op in GHL.</p>
+        <p class="email-hint" id="emailHint">Verplicht voor facturatie als we je e-mail nog niet hebben.</p>
       </div>
 
       <div class="email-block" id="addressBlock" hidden>
@@ -416,7 +416,7 @@
           placeholder="Plaatsnaam"
           aria-describedby="addressHint"
         />
-        <p class="email-hint" id="addressHint">Verplicht als we je adres nog niet hebben. We slaan dit op in GHL.</p>
+        <p class="email-hint" id="addressHint">Verplicht als we je adres nog niet hebben.</p>
       </div>
 
       <button type="button" class="confirm-btn" id="confirmBtn" disabled style="display:block;width:100%;background-color:#dc4a1a;color:#fff;border:none;border-radius:10px;padding:12px;font-size:13px;font-weight:700;margin-top:20px;box-sizing:border-box;">
@@ -788,10 +788,7 @@
             return;
           }
           let msg = data.error || 'Er is een fout opgetreden. Neem contact met ons op.';
-          if (data.ghlSummary) msg += '\n\n' + String(data.ghlSummary);
-          if (data.ghlStatus != null) msg += '\n(HTTP ' + String(data.ghlStatus) + ')';
-          if (data.ghlBody) msg += '\n\n' + String(data.ghlBody);
-          else if (data.hint && !data.ghlSummary) msg += '\n\n' + String(data.hint);
+          if (data.hint) msg += '\n\n' + String(data.hint);
           // Boeking mislukt → knop weer inschakelen zodat gebruiker opnieuw kan proberen.
           _bookingInProgress = false;
           if (confirmBtn) confirmBtn.disabled = !selectedSlot;
