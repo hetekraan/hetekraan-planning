@@ -7,6 +7,7 @@
 import { logAvailability } from '../lib/availability-debug.js';
 import {
   amsterdamCalendarDayBoundsMs,
+  formatYyyyMmDdInAmsterdam,
   hourInAmsterdam,
 } from '../lib/amsterdam-calendar-day.js';
 import {
@@ -76,10 +77,13 @@ import {
 } from '../lib/booking-canon-fields.js';
 import { syncAppointmentToSupabase } from '../lib/planner-supabase-sync.js';
 import { cacheAppointmentAnalyticsFromPriceLines } from '../lib/analytics-appointments-write.js';
+import { resolveContactCustomFieldId } from '../lib/ghl-custom-fields.js';
 
 const GHL_API_KEY     = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID;
 const GHL_BASE        = 'https://services.leadconnectorhq.com';
+const TERMS_ACCEPTED_FIELD_KEY = 'algemene_voorwaarden_geaccepteerd_op';
+const TERMS_ACCEPTED_FIELD_ENV = 'GHL_FIELD_ID_ALGEMENE_VOORWAARDEN_GEACCEPTEERD_OP';
 
 function releaseDebugNoopConfirm() {}
 
@@ -270,6 +274,8 @@ function buildConfirmPutPayload({
   /** Optioneel: zelfde structuur als planner (catalog), max 50 regels */
   priceLines,
   totalPrice,
+  termsAcceptedFieldId,
+  termsAcceptedDateStr,
 }) {
   const putPayload = { email };
   let bookingCanonStreetHouse = '';
@@ -342,6 +348,13 @@ function buildConfirmPutPayload({
     value: bevestigingTemplate1,
     field_value: bevestigingTemplate1,
   });
+  if (termsAcceptedFieldId && termsAcceptedDateStr) {
+    putPayload.customFields.push({
+      id: termsAcceptedFieldId,
+      value: termsAcceptedDateStr,
+      field_value: termsAcceptedDateStr,
+    });
+  }
   const canonValues = {
     email,
     straat_huisnummer: bookingCanonStreetHouse,
@@ -447,6 +460,16 @@ function acquireBookingLock(key) {
 function releaseBookingLock(key) {
   _pendingBookings.delete(key);
 }
+
+/** Client checkbox `termsAccepted` — ook string/boolean uit directe POST. */
+function isTermsAccepted(value) {
+  if (value === true || value === 1) return true;
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase();
+    return v === 'true' || v === '1' || v === 'on' || v === 'yes';
+  }
+  return false;
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function syncConfirmedBookingToSupabase(input) {
@@ -517,6 +540,7 @@ export default async function handler(req, res) {
     addressCity,
     priceLines,
     totalPrice,
+    termsAccepted,
   } = body || {};
   const normalizedBookingPriceLines = normalizePriceLineItems(
     Array.isArray(priceLines) ? priceLines.slice(0, 50) : []
@@ -537,6 +561,10 @@ export default async function handler(req, res) {
     hasCatalogPriceLines: Array.isArray(priceLines) && priceLines.length > 0,
   });
   if (!token || !slotId) return res.status(400).json({ error: 'token en slotId zijn verplicht' });
+
+  if (!isTermsAccepted(termsAccepted)) {
+    return res.status(400).json({ error: 'Je moet akkoord gaan met de algemene voorwaarden' });
+  }
 
   const bookingData = verifyBookingToken(token);
   if (!bookingData) {
@@ -697,6 +725,33 @@ export default async function handler(req, res) {
   const type = normalizeWorkType(typeRaw || getCf(contactSnap, FIELD_IDS.type_onderhoud));
   const isV2 = Number(bookingData.tokenSchemaVersion) === 2;
   const phoneForPut = firstValidNlMobile(phoneRaw, phone, contactSnap?.phone);
+  const termsAcceptedDateStr = formatYyyyMmDdInAmsterdam(new Date()) || '';
+  let termsAcceptedFieldId = null;
+  try {
+    termsAcceptedFieldId = await resolveContactCustomFieldId({
+      baseUrl: GHL_BASE,
+      apiKey: GHL_API_KEY,
+      locationId: GHL_LOCATION_ID,
+      fieldKey: TERMS_ACCEPTED_FIELD_KEY,
+      objectType: 'contact',
+      envOverride: process.env[TERMS_ACCEPTED_FIELD_ENV],
+    });
+    if (!termsAcceptedFieldId) {
+      console.warn(
+        '[confirm-booking] terms_field_missing',
+        JSON.stringify({
+          fieldKey: TERMS_ACCEPTED_FIELD_KEY,
+          envOverrideKey: TERMS_ACCEPTED_FIELD_ENV,
+          hint: 'Maak dit contact custom field aan in GHL settings; booking gaat door zonder deze write.',
+        })
+      );
+    }
+  } catch (termsFieldErr) {
+    console.warn(
+      '[confirm-booking] terms_field_resolve_failed',
+      termsFieldErr?.message || termsFieldErr
+    );
+  }
 
   // TEMP DEBUG — verwijder na productie-verificatie (welke confirm-branch draait er?)
   releaseDebugNoopConfirm(' tokenSchemaVersion=', bookingData.tokenSchemaVersion ?? '(missing)');
@@ -952,6 +1007,8 @@ export default async function handler(req, res) {
       routeStopDay: routeStopDayV2,
       priceLines: normalizedBookingPriceLines,
       totalPrice: resolvedTotalAmount,
+      termsAcceptedFieldId,
+      termsAcceptedDateStr,
     });
     releaseDebugNoopConfirm(' v2 tijdafspraak_field', { value: bevestigingB1 });
 
@@ -1285,6 +1342,8 @@ export default async function handler(req, res) {
     routeStopDay,
     priceLines: normalizedBookingPriceLines,
     totalPrice: resolvedTotalAmount,
+    termsAcceptedFieldId,
+    termsAcceptedDateStr,
   });
 
   // Contact-PUT: 2021-07-28 — custom fields + native city/postalCode worden betrouwbaar gemerged (vs 2021-04-15).
