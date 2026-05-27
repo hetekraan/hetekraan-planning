@@ -845,7 +845,7 @@ export default async function handler(req, res) {
         const maxD = evaluation.state.maxPerDay;
         return res.status(409).json({
           error:
-            `Er staan al ${maxD} klant-afspraken op deze dag in de agenda. Online boeken is niet meer mogelijk; neem contact op of kies een andere dag. Handmatig kun je in GHL nog een extra afspraak toevoegen.`,
+            `Er staan al ${maxD} klant-afspraken op deze dag in de agenda. Online boeken is niet meer mogelijk; neem contact op of kies een andere dag.`,
           code: 'DAY_CAP_REACHED',
           dayCount: evaluation.state.dayCustomerCount,
           maxPerDay: maxD,
@@ -1002,7 +1002,7 @@ export default async function handler(req, res) {
         console.error('[confirm-booking] rollback na PUT-fout mislukt:', rbErr?.message || rbErr);
       }
       releaseBookingLock(lockKey);
-      return res.status(502).json({ error: 'Kon gegevens niet opslaan in GHL. Probeer het later opnieuw.' });
+      return res.status(502).json({ error: 'Kon je gegevens niet opslaan. Probeer het later opnieuw.' });
     }
     let ghlPutOkBodyB1 = null;
     try {
@@ -1176,7 +1176,7 @@ export default async function handler(req, res) {
     releaseBookingLock(lockKey);
     return res.status(409).json({
       error:
-        `Er staan al ${dayCap} klant-afspraken op deze dag in de agenda. Online boeken is niet meer mogelijk; neem contact op of kies een andere dag. Handmatig kun je in GHL nog een extra afspraak toevoegen.`,
+        `Er staan al ${dayCap} klant-afspraken op deze dag in de agenda. Online boeken is niet meer mogelijk; neem contact op of kies een andere dag.`,
       code: 'DAY_CAP_REACHED',
       dayCount,
       maxPerDay: dayCap,
@@ -1325,7 +1325,7 @@ export default async function handler(req, res) {
     });
     logDiagGhlContactPutResult('v1_timed_appt', contactId, putRes.status, false, errTxt, null);
     releaseBookingLock(lockKey);
-    return res.status(502).json({ error: 'Kon gegevens niet opslaan in GHL. Probeer het later opnieuw.' });
+    return res.status(502).json({ error: 'Kon je gegevens niet opslaan. Probeer het later opnieuw.' });
   }
 
   let ghlPutOkBodyV1 = null;
