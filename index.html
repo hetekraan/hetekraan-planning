@@ -47,6 +47,7 @@ window.HKPlannerAutoRefresh = {
 <script src="/app/planner-customers.js"></script>
 <script src="/app/planner-prices.js"></script>
 <script src="/app/planner-inventory.js"></script>
+<script src="/app/planner-buslijst.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -6175,6 +6176,80 @@ window.HKPlannerAutoRefresh = {
     background: var(--bg-card);
     padding: 14px 16px;
   }
+  .buslijst-week-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 12px 28px 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .buslijst-week-label {
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    min-width: 0;
+    text-align: center;
+  }
+  #panelBuslijst .panel-page-content {
+    gap: 20px;
+  }
+  .buslijst-day {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-card);
+    padding: 14px 16px 16px;
+  }
+  .buslijst-day-title {
+    margin: 0 0 10px;
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+  .buslijst-day-empty {
+    margin: 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .buslijst-group + .buslijst-group {
+    margin-top: 12px;
+  }
+  .buslijst-group-title {
+    margin: 0 0 6px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .buslijst-lines {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 4px;
+  }
+  .buslijst-line {
+    font-size: 14px;
+    line-height: 1.4;
+    color: var(--text);
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: var(--surface2, #f8f9fb);
+  }
+  .buslijst-status {
+    margin: 0;
+    font-size: 14px;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+  .buslijst-status--error {
+    color: var(--reparatie, #a02f08);
+  }
   .kpi-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -7060,6 +7135,7 @@ window.HKPlannerAutoRefresh = {
         <span class="planner-sidebar-count" id="sidebarCountToday">0</span>
       </a>
       <a href="#panelRoutes" class="planner-sidebar-item" data-sidebar-view="routes" onclick="return switchSidebarView('routes', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Routes</span></span></a>
+      <a href="#panelBuslijst" class="planner-sidebar-item" data-sidebar-view="buslijst" onclick="return switchSidebarView('buslijst', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Buslijst</span></span></a>
       <a href="#panelCustomers" class="planner-sidebar-item" data-sidebar-view="customers" onclick="return switchSidebarView('customers', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Klanten</span></span></a>
       <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-root="1" onclick="return toggleProductsCategoryMenu(event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Producten</span></span></a>
       <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-category="Kranen" onclick="return switchProductsCategory('Kranen', event)" hidden><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span style="padding-left:18px">Kranen</span></span></a>
@@ -7182,6 +7258,22 @@ window.HKPlannerAutoRefresh = {
           <button type="button" class="btn-morning" onclick="sendMorningMessages()">Stuur ochtendmeldingen</button>
         </div>
       </div>
+    </div>
+  </div>
+  <div class="appointments panel-page tab-hidden" id="panelBuslijst">
+    <div class="today-page-header">
+      <div class="today-page-heading">
+        <h1>Buslijst</h1>
+        <p>Producten per dag · maandag t/m vrijdag</p>
+      </div>
+    </div>
+    <div class="buslijst-week-nav" aria-label="Week navigatie buslijst">
+      <button type="button" class="planner-week-edge" id="buslijstWeekPrev" title="Vorige week">‹</button>
+      <div class="buslijst-week-label" id="buslijstWeekLabel">—</div>
+      <button type="button" class="planner-week-edge" id="buslijstWeekNext" title="Volgende week">›</button>
+    </div>
+    <div class="panel-page-content" id="buslijstContent" aria-live="polite">
+      <p class="buslijst-status">Buslijst laden…</p>
     </div>
   </div>
   <div class="appointments panel-page tab-hidden" id="panelCustomers">
@@ -7871,7 +7963,7 @@ function startPlannerVersionWatch() {
 }
 startPlannerVersionWatch();
 
-const PLANNER_URL_VIEWS = new Set(['today', 'routes', 'customers', 'analytics', 'prices', 'inventory']);
+const PLANNER_URL_VIEWS = new Set(['today', 'routes', 'buslijst', 'customers', 'analytics', 'prices', 'inventory']);
 
 function isValidPlannerDateStr(ymd) {
   const raw = String(ymd || '').trim();
@@ -7900,6 +7992,7 @@ function readPlannerStateFromUrl() {
     let view = PLANNER_URL_VIEWS.has(viewRaw) ? viewRaw : '';
     if (!view) {
       if (hash === '#panelroutes') view = 'routes';
+      else if (hash === '#panelbuslijst') view = 'buslijst';
       else if (hash === '#panelcustomers') view = 'customers';
       else if (hash === '#panelanalytics') view = 'analytics';
       else if (hash === '#panelprices') view = 'prices';
@@ -9600,7 +9693,7 @@ function renderRoutesWeekStrip() {
 
 function switchSidebarView(view, event, opts = {}) {
   if (event?.preventDefault) event.preventDefault();
-  const allowed = new Set(['today', 'routes', 'customers', 'analytics', 'prices', 'inventory']);
+  const allowed = new Set(['today', 'routes', 'buslijst', 'customers', 'analytics', 'prices', 'inventory']);
   const requested = allowed.has(view) ? view : 'today';
   const compact = window.matchMedia('(max-width: 1024px)').matches;
   const blockedOnCompact = requested === 'analytics' || requested === 'prices';
@@ -9634,6 +9727,7 @@ function switchSidebarView(view, event, opts = {}) {
   const panelMap = {
     today: document.getElementById('panelAfspraken'),
     routes: document.getElementById('panelRoutes'),
+    buslijst: document.getElementById('panelBuslijst'),
     customers: document.getElementById('panelCustomers'),
     analytics: document.getElementById('panelAnalytics'),
     prices: document.getElementById('panelPrices'),
@@ -9651,6 +9745,7 @@ function switchSidebarView(view, event, opts = {}) {
     }
     if (plannerSidebarView === 'customers') window.HKPlannerCustomers?.render?.();
     if (plannerSidebarView === 'inventory') window.HKPlannerInventory?.render?.();
+    if (plannerSidebarView === 'buslijst') window.HKPlannerBuslijst?.render?.();
   }
   return false;
 }
@@ -9687,6 +9782,7 @@ function wireDesktopWideLayout() {
       switchSidebarView(plannerSidebarView, null, { persist: false });
     } else {
       document.getElementById('panelRoutes')?.classList.add('tab-hidden');
+      document.getElementById('panelBuslijst')?.classList.add('tab-hidden');
       document.getElementById('panelCustomers')?.classList.add('tab-hidden');
       document.getElementById('panelAnalytics')?.classList.add('tab-hidden');
       document.getElementById('panelPrices')?.classList.add('tab-hidden');
