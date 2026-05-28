@@ -7,7 +7,7 @@
   let deleteOverlay = null;
   let createEscHandler = null;
   let deleteEscHandler = null;
-  const CATEGORY_OPTIONS = ['Kranen', 'Quookers', 'Serviceproducten'];
+  const CATEGORY_OPTIONS = ['Kranen', 'Quookers', 'Serviceproducten', 'Diensten'];
 
   function authHeader() {
     if (typeof global.hkAuthHeader === 'function') return global.hkAuthHeader();
