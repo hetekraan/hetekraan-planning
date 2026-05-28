@@ -1,4 +1,6 @@
 (function initPlannerInventory(global) {
+  const SHOW_INVENTORY_WARNINGS_UI = false; // true = gele waarschuwingenlijst boven voorraadtabel
+
   let items = [];
   let warnings = [];
   let isEditingInventory = false;
@@ -148,7 +150,9 @@
 
   async function render() {
     try {
-      await Promise.all([load(), loadWarnings()]);
+      const loads = [load()];
+      if (SHOW_INVENTORY_WARNINGS_UI) loads.push(loadWarnings());
+      await Promise.all(loads);
       if (isEditingInventory && !draftMinStockById.size) initializeDraftMinStocks();
       syncEditButtons();
       renderCategoryFilter();
@@ -177,6 +181,7 @@
   }
 
   function renderWarnings() {
+    if (!SHOW_INVENTORY_WARNINGS_UI) return;
     const el = ensureWarningsContainer();
     if (!el) return;
     if (!warnings.length) {
