@@ -7096,14 +7096,14 @@ window.HKPlannerAutoRefresh = {
 <div class="mobile-tabs mobile-bottom-nav" id="mobileTabs">
   <button class="mobile-tab active" id="tabAfspraken" onclick="switchMobileTab('afspraken')">● Afspraken</button>
   <button class="mobile-tab" id="tabRoute" onclick="switchMobileTab('route')">● Route</button>
-  <button class="mobile-tab" id="tabZoeken" onclick="focusGlobalSearch()">● Zoeken</button>
+  <button class="mobile-tab" id="tabBuslijst" onclick="switchMobileTab('buslijst')">▤ Buslijst</button>
   <button class="mobile-tab" id="tabMenu" onclick="toggleMobileMenu(true)">☰ Menu</button>
 </div>
 <div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="if(event.target===this)toggleMobileMenu(false)">
   <div class="mobile-menu-panel" role="dialog" aria-label="Menu" onclick="event.stopPropagation()">
     <div class="section-title mobile-menu-title">Menu</div>
     <button class="mobile-menu-item mobile-menu-item--primary" type="button" onclick="toggleMobileMenu(false);openModal()">+ Nieuwe afspraak</button>
-    <button class="mobile-menu-item" type="button" onclick="toggleMobileMenu(false);openDagopgave()">Dagopgave</button>
+    <button class="mobile-menu-item" type="button" onclick="toggleMobileMenu(false);focusGlobalSearch()">Zoeken</button>
     <button type="button" class="mobile-menu-item" id="btnBlockDayGhlMobile" onclick="toggleMobileMenu(false);onBlockDayButtonClick()" aria-label="Blokkeer of deblokkeer dag">
       <span class="btn-day-block-ic" aria-hidden="true">■</span> Blokkeer dag
     </button>
@@ -7197,7 +7197,6 @@ window.HKPlannerAutoRefresh = {
       </div>
     </div>
     <div class="appointments-header-util" style="display:none">
-      <button class="btn-dagopgave" onclick="openDagopgave()" title="Dagopgave voor Tellow">●</button>
       <button type="button" class="planner-app-icon-btn btn-day-block" id="btnBlockDayGhl" onclick="onBlockDayButtonClick()" aria-label="Blokkeer dag" title="Blokkeer of deblokkeer deze dag in GHL">
         <span class="btn-day-block-ic" aria-hidden="true">■</span>
       </button>
@@ -7539,23 +7538,6 @@ window.HKPlannerAutoRefresh = {
         <button class="btn-save" onclick="confirmReschedule()">↗ Verplaatsen</button>
       </div>
     </div>
-  </div>
-</div>
-
-<!-- DAGOPGAVE MODAL -->
-<div class="modal-overlay" id="dagopgaveOverlay" onclick="if(event.target===this)closeDagopgave()">
-  <div class="modal dagopgave-modal">
-    <div class="dagopgave-header">
-      <div>
-        <div class="modal-title" style="margin:0" id="dagopgaveTitle">Dagopgave</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px" id="dagopgaveSubtitle"></div>
-      </div>
-      <div class="dagopgave-header-actions">
-        <button class="btn-save" style="padding:8px 14px;font-size:12px;min-height:44px" onclick="printDagopgave()">🖨 Print</button>
-        <button class="btn-cancel" style="padding:8px 12px;min-height:44px" onclick="closeDagopgave()">✕</button>
-      </div>
-    </div>
-    <div id="dagopgaveBody"></div>
   </div>
 </div>
 
@@ -9124,27 +9106,37 @@ function setPlannerUiScale(mode) {
 function switchMobileTab(tab, opts = {}) {
   const afspraken = document.getElementById('panelAfspraken');
   const route     = document.getElementById('panelRoutes');
+  const buslijst  = document.getElementById('panelBuslijst');
   const tabA      = document.getElementById('tabAfspraken');
   const tabR      = document.getElementById('tabRoute');
-  const tabZ      = document.getElementById('tabZoeken');
+  const tabB      = document.getElementById('tabBuslijst');
   const tabM      = document.getElementById('tabMenu');
   if (!afspraken || !route) return;
-  if (tab === 'afspraken') {
-    afspraken.classList.remove('tab-hidden');
-    route.classList.add('tab-hidden');
-    tabA.classList.add('active');
-    tabR.classList.remove('active');
-    if (tabZ) tabZ.classList.remove('active');
-    if (tabM) tabM.classList.remove('active');
-    plannerSidebarView = 'today';
-  } else {
+  const clearActive = () => {
+    [tabA, tabR, tabB, tabM].forEach((t) => t && t.classList.remove('active'));
+  };
+  if (tab === 'route') {
     route.classList.remove('tab-hidden');
     afspraken.classList.add('tab-hidden');
-    tabR.classList.add('active');
-    tabA.classList.remove('active');
-    if (tabZ) tabZ.classList.remove('active');
-    if (tabM) tabM.classList.remove('active');
+    if (buslijst) buslijst.classList.add('tab-hidden');
+    clearActive();
+    if (tabR) tabR.classList.add('active');
     plannerSidebarView = 'routes';
+  } else if (tab === 'buslijst') {
+    if (buslijst) buslijst.classList.remove('tab-hidden');
+    afspraken.classList.add('tab-hidden');
+    route.classList.add('tab-hidden');
+    clearActive();
+    if (tabB) tabB.classList.add('active');
+    plannerSidebarView = 'buslijst';
+    window.HKPlannerBuslijst?.render?.();
+  } else {
+    afspraken.classList.remove('tab-hidden');
+    route.classList.add('tab-hidden');
+    if (buslijst) buslijst.classList.add('tab-hidden');
+    clearActive();
+    if (tabA) tabA.classList.add('active');
+    plannerSidebarView = 'today';
   }
   if (opts.persist !== false) {
     writePlannerStateToUrl({ date: getDateStr(currentDate), view: plannerSidebarView });
@@ -9160,16 +9152,8 @@ function focusGlobalSearch() {
     wrap.classList.add('global-search--open');
     wrap.setAttribute('aria-hidden', 'false');
   }
-  const input = document.getElementById('globalSearchInput');
   switchMobileTab('afspraken', { persist: false });
-  const tabZ = document.getElementById('tabZoeken');
-  const tabA = document.getElementById('tabAfspraken');
-  const tabR = document.getElementById('tabRoute');
-  const tabM = document.getElementById('tabMenu');
-  if (tabZ) tabZ.classList.add('active');
-  if (tabA) tabA.classList.remove('active');
-  if (tabR) tabR.classList.remove('active');
-  if (tabM) tabM.classList.remove('active');
+  const input = document.getElementById('globalSearchInput');
   if (input) input.focus();
 }
 
@@ -9178,7 +9162,7 @@ function toggleMobileMenu(open) {
   const tabM = document.getElementById('tabMenu');
   const tabA = document.getElementById('tabAfspraken');
   const tabR = document.getElementById('tabRoute');
-  const tabZ = document.getElementById('tabZoeken');
+  const tabB = document.getElementById('tabBuslijst');
   if (!overlay) return;
   const shouldOpen = typeof open === 'boolean' ? open : !overlay.classList.contains('visible');
   overlay.classList.toggle('visible', shouldOpen);
@@ -9186,12 +9170,15 @@ function toggleMobileMenu(open) {
   if (shouldOpen) {
     if (tabA) tabA.classList.remove('active');
     if (tabR) tabR.classList.remove('active');
-    if (tabZ) tabZ.classList.remove('active');
+    if (tabB) tabB.classList.remove('active');
   } else {
     const panelA = document.getElementById('panelAfspraken');
     const panelR = document.getElementById('panelRoutes');
+    const panelB = document.getElementById('panelBuslijst');
     if (panelR && !panelR.classList.contains('tab-hidden')) {
       if (tabR) tabR.classList.add('active');
+    } else if (panelB && !panelB.classList.contains('tab-hidden')) {
+      if (tabB) tabB.classList.add('active');
     } else if (panelA && !panelA.classList.contains('tab-hidden')) {
       if (tabA) tabA.classList.add('active');
     }
@@ -9246,131 +9233,6 @@ window.setPlannerUiScale = setPlannerUiScale;
 window.readUiScaleLarge = readUiScaleLarge;
 window.applyUiScalePref = applyUiScalePref;
 // ─────────────────────────────────────────────────────────────────────────────
-
-function openDagopgave() {
-  const klaar = appointments.filter(a => a.status === 'klaar');
-  const datum = currentDate.toLocaleDateString('nl-NL', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-    timeZone: 'Europe/Amsterdam',
-  });
-
-  document.getElementById('dagopgaveTitle').textContent = 'Dagopgave';
-  document.getElementById('dagopgaveSubtitle').textContent = datum + (klaar.length ? ` · ${klaar.length} klant${klaar.length !== 1 ? 'en' : ''}` : '');
-
-  let bodyHtml = '';
-  let grandTotal = 0;
-
-  if (klaar.length === 0) {
-    bodyHtml = '<div class="dagopgave-empty">Nog geen afgeronde afspraken vandaag.</div>';
-  } else {
-    for (const a of klaar) {
-      const total = calcTotalPrice(a);
-      grandTotal += total;
-      const hasLines =
-        (Number.isFinite(Number(a.price)) && Number(a.price) !== 0) || (a.extras || []).length > 0;
-
-      let linesHtml = '';
-      if (hasLines) {
-        linesHtml = '<div class="dagopgave-lines">';
-        if (Number.isFinite(Number(a.price)) && Number(a.price) !== 0 && (a.extras || []).length === 0) {
-          linesHtml += `<div class="dagopgave-line basis"><span>Werkzaamheden</span><span>€ ${a.price.toFixed(2).replace('.', ',')}</span></div>`;
-        } else if (Number.isFinite(Number(a.price)) && Number(a.price) !== 0) {
-          linesHtml += `<div class="dagopgave-line basis"><span>Basis</span><span>€ ${a.price.toFixed(2).replace('.', ',')}</span></div>`;
-        }
-        for (const ex of (a.extras || [])) {
-          linesHtml += `<div class="dagopgave-line"><span>${ex.desc || 'Extra'}</span><span>€ ${(ex.price || 0).toFixed(2).replace('.', ',')}</span></div>`;
-        }
-        linesHtml += '</div>';
-      }
-
-      bodyHtml += `
-        <div class="dagopgave-row">
-          <div class="dagopgave-row-header">
-            <span class="dagopgave-name">${a.name}</span>
-            <span class="dagopgave-total">${Number.isFinite(total) && total !== 0 ? '€ ' + total.toFixed(2).replace('.', ',') : '—'}</span>
-          </div>
-          <div class="dagopgave-meta">
-            ${a.fullAddressLine ? a.fullAddressLine + '<br>' : ''}
-            ${a.jobType ? a.jobType.charAt(0).toUpperCase() + a.jobType.slice(1) : ''}${a.jobDescription ? ' — ' + a.jobDescription : ''}
-            ${a.timeSlot ? '<br>Uitgevoerd om ' + a.timeSlot : ''}
-          </div>
-          ${linesHtml}
-        </div>`;
-    }
-
-    bodyHtml += `
-      <div class="dagopgave-grand">
-        <span>Totaal${klaar.length > 1 ? ' (' + klaar.length + ' klanten)' : ''}</span>
-        <span>€ ${grandTotal.toFixed(2).replace('.', ',')}</span>
-      </div>`;
-  }
-
-  document.getElementById('dagopgaveBody').innerHTML = bodyHtml;
-  document.getElementById('dagopgaveOverlay').classList.add('visible');
-}
-
-function closeDagopgave() {
-  document.getElementById('dagopgaveOverlay').classList.remove('visible');
-}
-
-function printDagopgave() {
-  const klaar = appointments.filter(a => a.status === 'klaar');
-  const datum = currentDate.toLocaleDateString('nl-NL', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-    timeZone: 'Europe/Amsterdam',
-  });
-
-  let grandTotal = 0;
-  let rowsHtml = '';
-
-  for (const a of klaar) {
-    const total = calcTotalPrice(a);
-    grandTotal += total;
-
-    let linesHtml = '';
-    if (Number.isFinite(Number(a.price)) && Number(a.price) !== 0 && (a.extras || []).length === 0) {
-      linesHtml += `<div class="po-line"><span>Werkzaamheden</span><span>€ ${a.price.toFixed(2).replace('.', ',')}</span></div>`;
-    } else if (Number.isFinite(Number(a.price)) && Number(a.price) !== 0) {
-      linesHtml += `<div class="po-line"><span>Basis</span><span>€ ${a.price.toFixed(2).replace('.', ',')}</span></div>`;
-    }
-    for (const ex of (a.extras || [])) {
-      linesHtml += `<div class="po-line"><span>${ex.desc || 'Extra'}</span><span>€ ${(ex.price || 0).toFixed(2).replace('.', ',')}</span></div>`;
-    }
-
-    rowsHtml += `
-      <div class="po-row">
-        <div class="po-row-header">
-          <span>${a.name}</span>
-          <span>${Number.isFinite(total) && total !== 0 ? '€ ' + total.toFixed(2).replace('.', ',') : '—'}</span>
-        </div>
-        <div class="po-meta">
-          ${a.fullAddressLine || ''}${a.fullAddressLine && (a.jobType || a.jobDescription) ? ' · ' : ''}${a.jobType ? a.jobType.charAt(0).toUpperCase() + a.jobType.slice(1) : ''}${a.jobDescription ? ' — ' + a.jobDescription : ''}
-          ${a.timeSlot ? ' · ' + a.timeSlot : ''}
-        </div>
-        ${linesHtml}
-      </div>`;
-  }
-
-  const printHtml = `
-    <div class="po-header">
-      <div class="po-title">Dagopgave Het Ekraan</div>
-      <div class="po-subtitle">${datum} · ${klaar.length} klant${klaar.length !== 1 ? 'en' : ''} · Voor invoer in Tellow</div>
-    </div>
-    ${klaar.length === 0 ? '<p style="color:#555;font-size:13px">Geen afgeronde afspraken.</p>' : rowsHtml}
-    ${klaar.length > 0 ? `<div class="po-grand"><span>Totaal</span><span>€ ${grandTotal.toFixed(2).replace('.', ',')}</span></div>` : ''}
-  `;
-
-  let area = document.getElementById('dagopgavePrintArea');
-  if (!area) {
-    area = document.createElement('div');
-    area.id = 'dagopgavePrintArea';
-    document.body.appendChild(area);
-  }
-  area.innerHTML = printHtml;
-  area.style.display = 'none'; // verborgen in normaal scherm, zichtbaar bij print
-
-  window.print();
-}
 
 async function loadAppointments(date, merge = {}) {
   if (!window.HKPlannerLoad?.loadAppointments) return;
@@ -9802,6 +9664,10 @@ function applyInitialPlannerViewFromUrl() {
   }
   if (plannerSidebarView === 'routes') {
     switchMobileTab('route', { persist: false });
+    return;
+  }
+  if (plannerSidebarView === 'buslijst') {
+    switchMobileTab('buslijst', { persist: false });
     return;
   }
   plannerSidebarView = 'today';
