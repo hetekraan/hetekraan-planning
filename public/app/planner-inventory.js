@@ -97,7 +97,7 @@
       groupedRows.push(
         ...rowsForGroup.map((x) => {
           const st = statusFor(x);
-          const label = st === 'out' ? 'Uitverkocht' : st === 'low' ? 'Laag' : 'OK';
+          const label = st === 'out' ? 'Uitverkocht' : st === 'low' ? 'Bestellen' : 'OK';
           const draftMin = Number(draftMinStockById.get(String(x.id || '')) ?? x.minStock ?? 0);
           const minCell = isEditingInventory
             ? `<input class="field-input" type="number" min="0" step="1" data-minstock-id="${x.id}" value="${Math.max(0, Math.floor(draftMin))}" style="max-width:92px">`

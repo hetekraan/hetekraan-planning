@@ -520,7 +520,7 @@
     }
     const rows = inventoryRows.filter((x) => Number(x.stock) <= 0 || Number(x.stock) < Number(x.minStock || 0));
     el.innerHTML = `<thead><tr><th>Naam</th><th>Categorie</th><th>Voorraad</th><th>Minimum</th><th>Status</th></tr></thead><tbody>${rows.map((r) => {
-      const st = Number(r.stock) <= 0 ? 'Uitverkocht' : 'Laag';
+      const st = Number(r.stock) <= 0 ? 'Uitverkocht' : 'Bestellen';
       return `<tr><td>${escHtml(r.name || '-')}</td><td>${escHtml(r.category || '-')}</td><td>${Number(r.stock || 0)}</td><td>${Number(r.minStock || 0)}</td><td>${st}</td></tr>`;
     }).join('')}</tbody>`;
   }
