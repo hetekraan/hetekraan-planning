@@ -250,6 +250,16 @@
     renderModalLines();
   }
 
+  function addModalQuickPriceLine(descEl, priceEl, opts) {
+    return tryAddQuickPriceLine(modalLines, descEl, priceEl, {
+      toast: opts?.toast,
+      onAdded: (row) => {
+        row.quantity = 1;
+        renderModalLines();
+      },
+    });
+  }
+
   function renderModalLines() {
     const el = document.getElementById('mCatalogLines');
     if (!el) return;
@@ -288,6 +298,10 @@
     if (search) search.value = '';
     const results = document.getElementById('mCatalogResults');
     if (results) results.innerHTML = '';
+    const quickDesc = document.getElementById('mQuickDesc');
+    if (quickDesc) quickDesc.value = '';
+    const quickPrice = document.getElementById('mQuickPrice');
+    if (quickPrice) quickPrice.value = '';
     closeModalDropdown('clear');
     renderModalLines();
   }
@@ -392,6 +406,7 @@
     tryAddQuickPriceLine,
     onModalSearchInput,
     addModalCatalogItem,
+    addModalQuickPriceLine,
     removeModalLine,
     clearModalCatalogLines,
     resetModal,

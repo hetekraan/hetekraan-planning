@@ -7796,6 +7796,11 @@ window.HKPlannerAutoRefresh = {
         <div class="catalog-v1-results" id="mCatalogResults"></div>
       </div>
       <div id="mCatalogLines" style="margin-top:8px"></div>
+      <div class="add-extra-row" style="display:flex;gap:6px;align-items:center;margin-top:8px">
+        <input class="form-input" type="text" id="mQuickDesc" placeholder="Snel: omschrijving" style="flex:1;min-width:0">
+        <input class="form-input" type="text" id="mQuickPrice" placeholder="€" inputmode="decimal" style="width:88px;flex-shrink:0" onkeydown="if(event.key==='Enter'){event.preventDefault();addModalQuickPriceLine();}">
+        <button type="button" class="btn-add-extra" id="mQuickAddBtn" title="Regel toevoegen (ingevuld)" onclick="addModalQuickPriceLine()">+</button>
+      </div>
     </details>
     <div class="form-row">
       <label class="form-label">Omschrijving</label>
@@ -12190,6 +12195,15 @@ function addModalCatalogItem(itemId) {
 function removeModalCatalogLine(idx) {
   if (!window.HKPlannerCatalogV1?.removeModalLine) return;
   return window.HKPlannerCatalogV1.removeModalLine(idx);
+}
+
+function addModalQuickPriceLine() {
+  if (!window.HKPlannerCatalogV1?.addModalQuickPriceLine) return;
+  return window.HKPlannerCatalogV1.addModalQuickPriceLine(
+    document.getElementById('mQuickDesc'),
+    document.getElementById('mQuickPrice'),
+    { toast: (msg) => showToast(msg, 'info') }
+  );
 }
 
 async function onCatalogSearchInput(id, query) {
