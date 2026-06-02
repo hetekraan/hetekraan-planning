@@ -148,6 +148,22 @@ function logDiagGhlContactPutResult(branch, contactId, httpStatus, ok, errBodySl
   });
 }
 
+function parseJsonMaybe(text) {
+  try {
+    return text ? JSON.parse(text) : null;
+  } catch {
+    return null;
+  }
+}
+
+function isDuplicatePhoneContactError(status, bodyText) {
+  if (Number(status) !== 400) return false;
+  const parsed = parseJsonMaybe(bodyText);
+  const matchingField = String(parsed?.meta?.matchingField || '').trim().toLowerCase();
+  const message = String(parsed?.message || bodyText || '').toLowerCase();
+  return matchingField === 'phone' || message.includes('duplicated contacts');
+}
+
 function getCf(contact, fieldId) {
   return getCfValue(contact, fieldId);
 }
@@ -1029,14 +1045,34 @@ export default async function handler(req, res) {
     });
     logDiagGhlContactPut('v2_B1', contactId, putPayloadB1);
     const tPutB10 = Date.now();
-    const putResB1 = await fetchWithRetry(putUrlB1, {
+    let putResB1 = await fetchWithRetry(putUrlB1, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', Version: '2021-07-28' },
       body: JSON.stringify(putPayloadB1),
     });
+    let duplicatePhoneRetryAttempted = false;
+    let duplicatePhoneFirstErrTxt = '';
+    if (!putResB1.ok) {
+      duplicatePhoneFirstErrTxt = await putResB1.text().catch(() => '');
+      if (isDuplicatePhoneContactError(putResB1.status, duplicatePhoneFirstErrTxt) && Object.prototype.hasOwnProperty.call(putPayloadB1, 'phone')) {
+        duplicatePhoneRetryAttempted = true;
+        const { phone: _ignoredPhone, ...putPayloadB1WithoutPhone } = putPayloadB1;
+        console.warn('[confirm-booking] contact PUT duplicate phone; retrying without phone (B1)', {
+          contactId,
+          status: putResB1.status,
+          body: duplicatePhoneFirstErrTxt.slice(0, 800),
+        });
+        putResB1 = await fetchWithRetry(putUrlB1, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${GHL_API_KEY}`, 'Content-Type': 'application/json', Version: '2021-07-28' },
+          body: JSON.stringify(putPayloadB1WithoutPhone),
+        });
+      }
+    }
     perf.ghl_contact_put_ms = Date.now() - tPutB10;
     if (!putResB1.ok) {
-      const errTxt = await putResB1.text().catch(() => '');
+      const retryErrTxt = duplicatePhoneRetryAttempted ? await putResB1.text().catch(() => '') : '';
+      const errTxt = retryErrTxt || duplicatePhoneFirstErrTxt || await putResB1.text().catch(() => '');
       const cf = putPayloadB1.customFields || [];
       const pickCf = (id) => {
         const row = cf.find((f) => f.id === id);
@@ -1045,13 +1081,15 @@ export default async function handler(req, res) {
       releaseDebugNoopConfirm(' v2 after_ghl_contact_put_failed', {
         status: putResB1.status,
         body: (errTxt || '').slice(0, 1200),
+        duplicatePhoneRetryAttempted,
+        duplicatePhoneFirstErr: duplicatePhoneFirstErrTxt ? duplicatePhoneFirstErrTxt.slice(0, 1200) : null,
         attemptedAddress1: putPayloadB1.address1,
         attemptedCfStraatnaam: pickCf(GHL_ADDR_CF_IDS.straatnaam),
         attemptedCfHuisnummer: pickCf(GHL_ADDR_CF_IDS.huisnummer),
         attemptedCfPostcode: pickCf(GHL_ADDR_CF_IDS.postcode),
         attemptedCfWoonplaats: pickCf(GHL_ADDR_CF_IDS.woonplaats),
       });
-      console.error('[confirm-booking] contact PUT (B1):', putResB1.status, errTxt);
+      console.error('[confirm-booking] contact PUT (B1):', putResB1.status, errTxt, { duplicatePhoneRetryAttempted });
       logDiagGhlContactPutResult('v2_B1', contactId, putResB1.status, false, errTxt, null);
       try {
         await rollbackConfirmedReservation(resv.reservation);
