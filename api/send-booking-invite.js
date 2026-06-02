@@ -289,6 +289,9 @@ const DAYS_AHEAD      = 14;
 
 const FIELD_IDS = {
   type_onderhoud: 'EXSQmlt7BqkXJMs8F3Qk',
+  probleemomschrijving: 'BBcbPCNA9Eu0Kyi4U1LN',
+  prijs: 'HGjlT6ofaBiMz3j2HsXL',
+  prijs_regels: 'gPjrUG2eH81PeALh8tVS',
 };
 
 function getField(contact, fieldId) {
@@ -1054,12 +1057,61 @@ export default async function handler(req, res) {
 
   if (bookingLinkOnly) {
     perf.invite_path = 'booking_link_only';
+    const copyLinkCustomFields = [];
+    if (intakeDesc) {
+      copyLinkCustomFields.push({ id: FIELD_IDS.probleemomschrijving, field_value: intakeDesc });
+    }
+    if (intakePriceRules.length > 0) {
+      copyLinkCustomFields.push({ id: FIELD_IDS.prijs_regels, field_value: JSON.stringify(intakePriceRules) });
+    }
+    if (intakePriceTotal !== null) {
+      copyLinkCustomFields.push({ id: FIELD_IDS.prijs, field_value: String(intakePriceTotal) });
+    }
+
+    const bookingCanonStreetHouse = [straat, huisnr].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    const bookingCanon = appendBookingCanonFields(copyLinkCustomFields, {
+      email: String(contact.email || inviteEmailNorm || '').trim(),
+      straat_huisnummer: bookingCanonStreetHouse,
+      postcode: postcode || '',
+      woonplaats: woonplaats || '',
+      type_onderhoud: workType,
+      probleemomschrijving: intakeDesc,
+      prijs_regels: intakePriceRulesSerialized,
+      prijs_totaal: intakePriceTotal,
+    });
+
+    const copyLinkPut = {
+      customFields: bookingCanon.customFields,
+      ...(inviteEmailNorm ? { email: inviteEmailNorm } : {}),
+    };
+    if (address && String(address).replace(/\s+/g, ' ').trim()) {
+      const { address1, customFields: addrCf } = buildCanonicalAddressWritePayload(address);
+      copyLinkPut.address1 = address1;
+      copyLinkPut.customFields = [...addrCf, ...bookingCanon.customFields];
+      logCanonicalAddressWrite('send-booking-invite_copy_link_put', { contactId, address1 });
+    }
+
+    const copyLinkFieldsRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${GHL_API_KEY}`,
+        'Content-Type': 'application/json',
+        Version: '2021-04-15',
+      },
+      body: JSON.stringify(copyLinkPut),
+    });
+    if (!copyLinkFieldsRes.ok) {
+      const t = await copyLinkFieldsRes.text().catch(() => '');
+      console.warn('[send-booking-invite] bookingLinkOnly intake PUT:', copyLinkFieldsRes.status, t.slice(0, 300));
+    }
+
     return res.status(200).json({
       success: true,
       bookingLinkOnly: true,
       bookingUrl,
       contactId,
       contactName: name,
+      intakeFieldsWritten: copyLinkFieldsRes.ok,
     });
   }
 
