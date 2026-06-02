@@ -119,6 +119,7 @@ import {
 import { listPrices } from '../lib/prices-store.js';
 import { loadPlannerAppointmentsSource } from '../lib/planner-appointments-source.js';
 import { cacheAppointmentAnalyticsFromPriceLines } from '../lib/analytics-appointments-write.js';
+import { writeAppointmentSnapshot } from '../lib/appointment-snapshots-store.js';
 import { searchPlannerAppointmentsGhl } from '../lib/planner-appointment-search-ghl.js';
 
 function releaseDebugNoopGhl() {}
@@ -1734,6 +1735,81 @@ export default async function handler(req, res) {
               writesDatumLaatsteOnderhoudId: (customFields || []).some((f) => String(f?.id || '') === datumCfId),
             })
           );
+        }
+
+        try {
+          let snapshotContact = null;
+          try {
+            const contactResForSnapshot = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
+              headers: {
+                Authorization: `Bearer ${GHL_API_KEY}`,
+                Version: '2021-04-15',
+              },
+            });
+            if (contactResForSnapshot.ok) {
+              const contactDataForSnapshot = await contactResForSnapshot.json().catch(() => ({}));
+              snapshotContact = contactDataForSnapshot?.contact || contactDataForSnapshot;
+            }
+          } catch (contactErr) {
+            console.warn('[appointment_snapshot] contact_fetch_failed', {
+              contactId,
+              appointmentId: appointmentId != null ? String(appointmentId) : null,
+              serviceDay,
+              message: contactErr?.message || String(contactErr),
+            });
+          }
+
+          const contactName = snapshotContact
+            ? [snapshotContact.firstName, snapshotContact.lastName].filter(Boolean).join(' ') ||
+              snapshotContact.name ||
+              ''
+            : '';
+          const snapshotOut = await writeAppointmentSnapshot({
+            contactId,
+            appointmentId: appointmentId != null ? String(appointmentId) : '',
+            serviceDay,
+            routeDate,
+            type,
+            appointmentDesc,
+            basePrice,
+            totalPrice: canonicalPrijsTotaal,
+            priceLines: extrasNorm,
+            sendReview: sendReview === true,
+            completedAt: new Date().toISOString(),
+            rawRequest: {
+              routeDate: routeDate != null ? String(routeDate) : null,
+              lastService: lastService != null ? String(lastService) : null,
+              extrasCount: extrasNorm.length,
+            },
+            contactSnapshot: snapshotContact
+              ? {
+                  name: contactName,
+                  firstName: snapshotContact.firstName || '',
+                  lastName: snapshotContact.lastName || '',
+                  email: snapshotContact.email || '',
+                  phone: snapshotContact.phone || '',
+                  address: readCanonicalAddressLine(snapshotContact) || snapshotContact.address1 || '',
+                  city: snapshotContact.city || '',
+                  postalCode: snapshotContact.postalCode || '',
+                }
+              : null,
+          });
+          console.info('[appointment_snapshot] write_result', {
+            ok: snapshotOut?.ok === true,
+            skipped: snapshotOut?.skipped === true,
+            reason: snapshotOut?.reason || null,
+            snapshotId: snapshotOut?.snapshot?.snapshot_id || null,
+            contactId,
+            appointmentId: appointmentId != null ? String(appointmentId) : null,
+            serviceDay,
+          });
+        } catch (snapshotErr) {
+          console.warn('[appointment_snapshot] write_failed', {
+            contactId,
+            appointmentId: appointmentId != null ? String(appointmentId) : null,
+            serviceDay,
+            message: snapshotErr?.message || String(snapshotErr),
+          });
         }
 
         let moneybirdResult = null;
