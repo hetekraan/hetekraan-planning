@@ -819,6 +819,35 @@
     });
   }
 
+  /** Opent het Nieuwe-afspraak modal met klantgegevens voor-ingevuld (vanuit Klanten-detail). */
+  function openForCustomer(customer = {}) {
+    const modalUi = global.HKPlannerModalUi;
+    if (!modalUi?.openModal) return;
+    modalUi.openModal();
+    const currentDateYmd =
+      typeof global.getDateStr === 'function' && typeof global.getCurrentDate === 'function'
+        ? global.getDateStr(global.getCurrentDate())
+        : '';
+    resetManualAppointmentForm({ dateYmd: currentDateYmd });
+    setModalUiMode('create');
+    const set = (id, v) => {
+      const el = document.getElementById(id);
+      if (el) el.value = v != null ? String(v) : '';
+    };
+    set('mName', customer.name);
+    set('mAddress', customer.address);
+    set('mPhone', customer.phone);
+    set('mEmail', customer.email);
+    set('mContactId', customer.contactId);
+    notifyInvoiceUiOpened({ mode: 'create', contactId: customer.contactId || null });
+    const focusEl = document.getElementById('mType') || document.getElementById('mDate');
+    if (focusEl && typeof focusEl.focus === 'function') {
+      try {
+        focusEl.focus();
+      } catch (_) {}
+    }
+  }
+
   global.HKPlannerManualAppointment = {
     saveModal,
     bindModalKeyboardSubmit,
@@ -828,6 +857,7 @@
     resetManualAppointmentForm,
     syncTotalPriceModeFromExisting,
     openForEdit,
+    openForCustomer,
     syncModalInvoiceFactuurFields,
     notifyInvoiceUiOpened,
   };
