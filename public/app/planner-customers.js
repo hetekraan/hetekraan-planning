@@ -307,20 +307,14 @@
   }
 
   async function editPlannedAppt(contactId, date) {
-    if (
-      typeof global.switchSidebarView !== 'function' ||
-      typeof global.goToDateStr !== 'function' ||
-      typeof global.openAppointmentEditModal !== 'function'
-    ) {
-      console.warn('[planner-customers] planner-bewerken niet beschikbaar');
+    if (typeof global.openAppointmentEditModalInline !== 'function') {
+      console.warn('[planner-customers] inline-bewerken niet beschikbaar');
       notify('Planner niet beschikbaar');
       return;
     }
     if (!contactId || !date) return;
-    closeDetail();
-    global.switchSidebarView('today', null);
-    await global.goToDateStr(date);
-    global.openAppointmentEditModal(`hk-b1:${contactId}:${date}`);
+    // Detail-panel blijft open op de achtergrond; modal opent erbovenop.
+    await global.openAppointmentEditModalInline(`hk-b1:${contactId}:${date}`, date);
   }
 
   function toggleAppt(btn) {
@@ -395,7 +389,7 @@
     input.addEventListener('input', onInput);
     results.addEventListener('click', onResultsClick);
     aside?.addEventListener('click', onDetailClick);
-    global.addEventListener('hk:customer-appointment-created', (e) => {
+    const refreshDetailOnEvent = (e) => {
       const cid = e?.detail?.contactId;
       const detailAside = document.getElementById('customerDetail');
       if (
@@ -405,7 +399,9 @@
       ) {
         void openDetail(cid);
       }
-    });
+    };
+    global.addEventListener('hk:customer-appointment-created', refreshDetailOnEvent);
+    global.addEventListener('hk:customer-appointment-updated', refreshDetailOnEvent);
     bound = true;
   }
 

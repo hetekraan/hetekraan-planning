@@ -646,6 +646,14 @@
             new CustomEvent('hk:customer-appointment-created', { detail: { contactId: refreshCid } })
           );
         }
+      } else {
+        // Inline-bewerken vanuit Klanten-detail: laat het detail-panel zich verversen.
+        const updatedCid = String(editMeta?.contactId || data.contactId || '').trim();
+        if (updatedCid) {
+          global.dispatchEvent(
+            new CustomEvent('hk:customer-appointment-updated', { detail: { contactId: updatedCid } })
+          );
+        }
       }
     } catch (e) {
       showToast(`⚠ Afspraak toevoegen mislukt: ${e.message || e}`, 'info');

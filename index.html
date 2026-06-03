@@ -12827,6 +12827,40 @@ function openAppointmentEditModal(apptId) {
   return window.HKPlannerManualAppointment.openForEdit(ctx, apptId);
 }
 
+/**
+ * Bewerk een planned-afspraak vanuit de Klanten-pagina zónder tab-switch:
+ * laadt de afspraken voor `dateStr` op de achtergrond (vult globale appointments[]),
+ * opent dan de modal met een ctx-override zodat openForEdit de juiste prevDate pakt.
+ * De globale currentDate wordt NIET vooraf gemuteerd; saveModal stemt de planner
+ * pas ná opslaan af op de bewerkte datum.
+ */
+async function openAppointmentEditModalInline(apptId, dateStr) {
+  const ymd = String(dateStr || '').trim();
+  if (!window.HKPlannerManualAppointment?.openForEdit || !window.createPlannerCtx) {
+    showToast('Afspraakmodule niet geladen', 'info');
+    return;
+  }
+  const parts = ymd.split('-').map((x) => parseInt(x, 10));
+  const targetDate =
+    parts.length === 3 && parts.every((n) => !Number.isNaN(n))
+      ? new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12, 0, 0))
+      : null;
+  if (!targetDate) {
+    showToast('Ongeldige datum voor bewerken', 'info');
+    return;
+  }
+  try {
+    await loadAppointments(targetDate);
+  } catch (err) {
+    console.warn('[planner] inline_edit_load_failed', err?.message || err);
+  }
+  if (!window.HKPlannerModalUi?.openModal) return;
+  window.HKPlannerModalUi.openModal();
+  const ctx = { ...window.createPlannerCtx(), getCurrentDate: () => targetDate };
+  return window.HKPlannerManualAppointment.openForEdit(ctx, apptId);
+}
+window.openAppointmentEditModalInline = openAppointmentEditModalInline;
+
 function closeDaanEditModal() {
   if (!window.HKPlannerAdmin?.closeDaanEditModal) return;
   return window.HKPlannerAdmin.closeDaanEditModal();
