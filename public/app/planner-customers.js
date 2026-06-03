@@ -161,7 +161,7 @@
     return `${toPlanning}${edit}`;
   }
 
-  function apptHtml(a, idx) {
+  function apptHtml(a) {
     const meta = statusMeta(a);
     const srcCls =
       a.source === 'legacy'
@@ -176,21 +176,19 @@
     const totalAttr = isProv ? ' title="Voorlopige prijs"' : '';
     const total =
       a.totalPrice != null ? `<span class="${totalCls}"${totalAttr}>${escHtml(euro(a.totalPrice))}</span>` : '';
-    const bodyId = `hk-appt-body-${idx}`;
     const descHtml = a.desc ? `<p class="hk-appt-desc">${escHtml(a.desc)}</p>` : '';
     const provNote = isProv
       ? '<p class="hk-appt-provisional-note">Voorlopige prijs — definitief na afronden.</p>'
       : '';
     const bodyCls = isProv ? 'hk-appt-body hk-appt-body--provisional' : 'hk-appt-body';
     return `<div class="hk-appt ${srcCls}">
-      <button type="button" class="hk-appt-head" data-action="toggle-appt" aria-expanded="false" aria-controls="${bodyId}">
+      <div class="hk-appt-head">
         <span class="hk-appt-status" title="${meta.label}" aria-label="${meta.label}">${meta.icon}</span>
         <span class="hk-appt-date">${escHtml(formatNlDate(a.date))}</span>
         <span class="hk-appt-type">${typePart}</span>${tag}
         ${total}
-        <span class="hk-appt-caret" aria-hidden="true">▾</span>
-      </button>
-      <div class="${bodyCls}" id="${bodyId}" role="region">
+      </div>
+      <div class="${bodyCls}">
         <div class="hk-appt-body-inner">
           ${descHtml || '<p class="hk-appt-desc hk-appt-desc--empty">Geen omschrijving</p>'}
           ${priceLinesHtml(a.priceLines)}
@@ -211,7 +209,7 @@
     if (c.phone) infoRows.push(`<div class="hk-detail-line">${escHtml(c.phone)}</div>`);
     if (c.email) infoRows.push(`<div class="hk-detail-line">${escHtml(c.email)}</div>`);
     const apptsHtml = appts.length
-      ? appts.map((a, i) => apptHtml(a, i)).join('')
+      ? appts.map(apptHtml).join('')
       : '<p class="hk-customers-status">Nog geen afspraken bekend.</p>';
     return `
       <div class="hk-detail-section">
@@ -317,22 +315,6 @@
     await global.openAppointmentEditModalInline(`hk-b1:${contactId}:${date}`, date);
   }
 
-  function toggleAppt(btn) {
-    const aside = document.getElementById('customerDetail');
-    const body = document.getElementById(btn.getAttribute('aria-controls'));
-    const willOpen = btn.getAttribute('aria-expanded') !== 'true';
-    // Accordion: sluit alle andere open panels.
-    aside?.querySelectorAll('[data-action="toggle-appt"][aria-expanded="true"]').forEach((b) => {
-      b.setAttribute('aria-expanded', 'false');
-      const bd = document.getElementById(b.getAttribute('aria-controls'));
-      if (bd) bd.classList.remove('is-open');
-    });
-    if (willOpen && body) {
-      btn.setAttribute('aria-expanded', 'true');
-      body.classList.add('is-open');
-    }
-  }
-
   function closeDetail() {
     const aside = document.getElementById('customerDetail');
     if (aside) {
@@ -353,11 +335,6 @@
   function onDetailClick(e) {
     if (e.target.closest('[data-action="customer-detail-close"]')) {
       closeDetail();
-      return;
-    }
-    const toggleBtn = e.target.closest('[data-action="toggle-appt"]');
-    if (toggleBtn) {
-      toggleAppt(toggleBtn);
       return;
     }
     const toPlanningBtn = e.target.closest('[data-action="appt-to-planning"]');
