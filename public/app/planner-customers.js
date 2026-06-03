@@ -24,6 +24,18 @@
       .replaceAll("'", '&#39;');
   }
 
+  function cleanAddress(addr) {
+    const s = String(addr || '').replace(/\s+/g, ' ').trim();
+    const pc = s.match(/\d{4}\s?[A-Za-z]{2}/);
+    if (!pc) return s;
+    const idx = s.indexOf(pc[0]);
+    const street = s.slice(0, idx).replace(/[,\s]+$/, '').trim();
+    const after = s.slice(idx + pc[0].length).replace(/^[,\s]+/, '');
+    const city = after.split(/,|\s\d{4}\s?[A-Za-z]{2}/)[0].trim();
+    const pcNorm = pc[0].toUpperCase().replace(/(\d{4})\s?([A-Za-z]{2})/, '$1 $2');
+    return [street, pcNorm, city].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+  }
+
   function formatNlDate(ymd) {
     const s = String(ymd || '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
@@ -69,7 +81,7 @@
     const cid = c.contactId ? escHtml(c.contactId) : '';
     return `<button type="button" class="hk-customer-card" data-action="open-customer" data-contact-id="${cid}">
       <div class="hk-customer-card-name">${escHtml(c.name || 'Onbekend')}</div>
-      <div class="hk-customer-card-address">${escHtml(c.address || '—')}</div>
+      <div class="hk-customer-card-address">${escHtml(cleanAddress(c.address) || '—')}</div>
       <div class="hk-customer-card-contact">${contactBits.join('') || '<span>—</span>'}</div>
       ${lastApptHtml(c.lastAppointment)}
     </button>`;
@@ -207,12 +219,10 @@
         throw new Error(data?.error || data?.detail || `Detail laden mislukt (${res.status})`);
       }
       const c = data.contact || {};
-      const cityLine = [c.postalCode, c.city].filter(Boolean).join(' ');
-      const fullAddress = [c.address, cityLine].filter(Boolean).join(', ');
       currentDetailCustomer = {
         contactId,
         name: c.name || '',
-        address: fullAddress,
+        address: cleanAddress(c.address),
         phone: c.phone || '',
         email: c.email || '',
       };
@@ -262,6 +272,17 @@
     input.addEventListener('input', onInput);
     results.addEventListener('click', onResultsClick);
     aside?.addEventListener('click', onDetailClick);
+    global.addEventListener('hk:customer-appointment-created', (e) => {
+      const cid = e?.detail?.contactId;
+      const detailAside = document.getElementById('customerDetail');
+      if (
+        cid &&
+        detailAside?.classList.contains('is-open') &&
+        currentDetailCustomer?.contactId === cid
+      ) {
+        void openDetail(cid);
+      }
+    });
     bound = true;
   }
 

@@ -4,6 +4,8 @@
   let totalPriceManualValue = null;
   let modalMode = 'create';
   let editingMeta = null;
+  /** Gezet door openForCustomer; triggert detail-refresh na succesvolle save (Klanten-flow). */
+  let createOriginContactId = null;
 
   function isDebugEnabled() {
     try {
@@ -331,6 +333,7 @@
     totalPriceManual = false;
     totalPriceManualValue = null;
     editingMeta = null;
+    createOriginContactId = null;
     setModalUiMode('create');
     const overlayReset = document.getElementById('modalOverlay');
     if (overlayReset) {
@@ -394,6 +397,7 @@
       closeModal,
     } = ctx;
     const modeAtSaveStart = modalMode;
+    const originCustomerContactId = createOriginContactId;
 
     const form = collectFormValues();
     const overlay = document.getElementById('modalOverlay');
@@ -635,6 +639,14 @@
         );
       }
       debug('reload_done', { routeDate: getDateStr(getCurrentDate()) });
+      if (modeAtSaveStart !== 'edit') {
+        const refreshCid = String(originCustomerContactId || data.contactId || '').trim();
+        if (refreshCid) {
+          global.dispatchEvent(
+            new CustomEvent('hk:customer-appointment-created', { detail: { contactId: refreshCid } })
+          );
+        }
+      }
     } catch (e) {
       showToast(`⚠ Afspraak toevoegen mislukt: ${e.message || e}`, 'info');
       debug('error', { message: String(e?.message || e) });
@@ -839,6 +851,7 @@
     set('mPhone', customer.phone);
     set('mEmail', customer.email);
     set('mContactId', customer.contactId);
+    createOriginContactId = customer.contactId ? String(customer.contactId) : null;
     notifyInvoiceUiOpened({ mode: 'create', contactId: customer.contactId || null });
     const focusEl = document.getElementById('mType') || document.getElementById('mDate');
     if (focusEl && typeof focusEl.focus === 'function') {
