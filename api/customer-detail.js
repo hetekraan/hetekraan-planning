@@ -15,6 +15,7 @@ import {
   getGhlContact,
   fetchSnapshotsForContact,
   readLegacyLastAppointment,
+  readPlannedEnrichment,
   getPlannedAppointments,
   buildContactInfo,
 } from '../lib/customer-directory.js';
@@ -57,9 +58,23 @@ export default async function handler(req, res) {
     // Prioriteit bij datum-collisie: snapshot > planned > legacy.
     const snapshotDates = new Set(snapshots.map((a) => a.date).filter(Boolean));
 
-    // Planned: snapshot wint bij collisie.
-    const plannedFiltered = planned.filter((p) => p.date && !snapshotDates.has(p.date));
+    // Planned: snapshot wint bij collisie. contactId meesturen voor de Bewerken-knop.
+    const plannedFiltered = planned
+      .filter((p) => p.date && !snapshotDates.has(p.date))
+      .map((p) => ({ ...p, contactId, desc: '' }));
     const plannedDates = new Set(plannedFiltered.map((p) => p.date));
+
+    // Booking-CF's zijn per-contact = laatste booking → alleen aan de meest recente
+    // planned-rij koppelen, met "voorlopige" caveat. Overige planned blijven prijsloos.
+    if (plannedFiltered.length) {
+      let recent = plannedFiltered[0];
+      for (const p of plannedFiltered) if (String(p.date) > String(recent.date)) recent = p;
+      const enrich = readPlannedEnrichment(contact);
+      recent.desc = enrich.desc || '';
+      recent.priceLines = enrich.priceLines || [];
+      recent.totalPrice = enrich.totalPrice ?? null;
+      recent.isProvisionalPrice = true;
+    }
 
     // Legacy: alleen verleden (Amsterdam) én niet gedekt door snapshot of planned.
     const legacy = readLegacyLastAppointment(contact);

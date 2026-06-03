@@ -148,7 +148,20 @@
     return `<ul class="hk-appt-lines">${items}</ul>`;
   }
 
-  function apptHtml(a) {
+  function actionsHtml(a) {
+    if (!a.date) return '';
+    const date = escHtml(a.date);
+    const toPlanning = `<button type="button" class="hk-btn hk-appt-action-btn" data-action="appt-to-planning" data-date="${date}">Naar planning</button>`;
+    const edit =
+      a.source === 'planned' && a.contactId
+        ? `<button type="button" class="hk-btn hk-btn-primary hk-appt-action-btn" data-action="appt-edit" data-contact-id="${escHtml(
+            a.contactId
+          )}" data-date="${date}">Bewerken</button>`
+        : '';
+    return `${toPlanning}${edit}`;
+  }
+
+  function apptHtml(a, idx) {
     const meta = statusMeta(a);
     const srcCls =
       a.source === 'legacy'
@@ -158,15 +171,33 @@
           : 'hk-appt--snapshot';
     const tag = a.source === 'legacy' ? '<span class="hk-customer-card-legacy-tag">legacy</span>' : '';
     const typePart = a.type ? escHtml(a.type) : '—';
-    const total = a.totalPrice != null ? `<span class="hk-appt-total">${escHtml(euro(a.totalPrice))}</span>` : '';
+    const isProv = a.isProvisionalPrice === true;
+    const totalCls = isProv ? 'hk-appt-total hk-appt-total--provisional' : 'hk-appt-total';
+    const totalAttr = isProv ? ' title="Voorlopige prijs"' : '';
+    const total =
+      a.totalPrice != null ? `<span class="${totalCls}"${totalAttr}>${escHtml(euro(a.totalPrice))}</span>` : '';
+    const bodyId = `hk-appt-body-${idx}`;
+    const descHtml = a.desc ? `<p class="hk-appt-desc">${escHtml(a.desc)}</p>` : '';
+    const provNote = isProv
+      ? '<p class="hk-appt-provisional-note">Voorlopige prijs — definitief na afronden.</p>'
+      : '';
+    const bodyCls = isProv ? 'hk-appt-body hk-appt-body--provisional' : 'hk-appt-body';
     return `<div class="hk-appt ${srcCls}">
-      <div class="hk-appt-head">
+      <button type="button" class="hk-appt-head" data-action="toggle-appt" aria-expanded="false" aria-controls="${bodyId}">
         <span class="hk-appt-status" title="${meta.label}" aria-label="${meta.label}">${meta.icon}</span>
         <span class="hk-appt-date">${escHtml(formatNlDate(a.date))}</span>
         <span class="hk-appt-type">${typePart}</span>${tag}
         ${total}
+        <span class="hk-appt-caret" aria-hidden="true">▾</span>
+      </button>
+      <div class="${bodyCls}" id="${bodyId}" role="region">
+        <div class="hk-appt-body-inner">
+          ${descHtml || '<p class="hk-appt-desc hk-appt-desc--empty">Geen omschrijving</p>'}
+          ${priceLinesHtml(a.priceLines)}
+          ${provNote}
+          <div class="hk-appt-actions">${actionsHtml(a)}</div>
+        </div>
       </div>
-      ${priceLinesHtml(a.priceLines)}
     </div>`;
   }
 
@@ -180,7 +211,7 @@
     if (c.phone) infoRows.push(`<div class="hk-detail-line">${escHtml(c.phone)}</div>`);
     if (c.email) infoRows.push(`<div class="hk-detail-line">${escHtml(c.email)}</div>`);
     const apptsHtml = appts.length
-      ? appts.map(apptHtml).join('')
+      ? appts.map((a, i) => apptHtml(a, i)).join('')
       : '<p class="hk-customers-status">Nog geen afspraken bekend.</p>';
     return `
       <div class="hk-detail-section">
@@ -259,6 +290,55 @@
     }
   }
 
+  function notify(msg) {
+    if (typeof global.showToast === 'function') global.showToast(msg, 'info');
+    else global.alert?.(msg);
+  }
+
+  function goToPlanning(date) {
+    if (typeof global.switchSidebarView !== 'function' || typeof global.goToDateStr !== 'function') {
+      console.warn('[planner-customers] planner-navigatie niet beschikbaar');
+      notify('Planner niet beschikbaar');
+      return;
+    }
+    closeDetail();
+    global.switchSidebarView('today', null);
+    global.goToDateStr(date);
+  }
+
+  async function editPlannedAppt(contactId, date) {
+    if (
+      typeof global.switchSidebarView !== 'function' ||
+      typeof global.goToDateStr !== 'function' ||
+      typeof global.openAppointmentEditModal !== 'function'
+    ) {
+      console.warn('[planner-customers] planner-bewerken niet beschikbaar');
+      notify('Planner niet beschikbaar');
+      return;
+    }
+    if (!contactId || !date) return;
+    closeDetail();
+    global.switchSidebarView('today', null);
+    await global.goToDateStr(date);
+    global.openAppointmentEditModal(`hk-b1:${contactId}:${date}`);
+  }
+
+  function toggleAppt(btn) {
+    const aside = document.getElementById('customerDetail');
+    const body = document.getElementById(btn.getAttribute('aria-controls'));
+    const willOpen = btn.getAttribute('aria-expanded') !== 'true';
+    // Accordion: sluit alle andere open panels.
+    aside?.querySelectorAll('[data-action="toggle-appt"][aria-expanded="true"]').forEach((b) => {
+      b.setAttribute('aria-expanded', 'false');
+      const bd = document.getElementById(b.getAttribute('aria-controls'));
+      if (bd) bd.classList.remove('is-open');
+    });
+    if (willOpen && body) {
+      btn.setAttribute('aria-expanded', 'true');
+      body.classList.add('is-open');
+    }
+  }
+
   function closeDetail() {
     const aside = document.getElementById('customerDetail');
     if (aside) {
@@ -279,6 +359,24 @@
   function onDetailClick(e) {
     if (e.target.closest('[data-action="customer-detail-close"]')) {
       closeDetail();
+      return;
+    }
+    const toggleBtn = e.target.closest('[data-action="toggle-appt"]');
+    if (toggleBtn) {
+      toggleAppt(toggleBtn);
+      return;
+    }
+    const toPlanningBtn = e.target.closest('[data-action="appt-to-planning"]');
+    if (toPlanningBtn) {
+      goToPlanning(toPlanningBtn.getAttribute('data-date') || '');
+      return;
+    }
+    const editBtn = e.target.closest('[data-action="appt-edit"]');
+    if (editBtn) {
+      void editPlannedAppt(
+        editBtn.getAttribute('data-contact-id') || '',
+        editBtn.getAttribute('data-date') || ''
+      );
       return;
     }
     if (e.target.closest('[data-action="customer-new-appointment"]')) {

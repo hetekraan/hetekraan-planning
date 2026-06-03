@@ -6372,12 +6372,43 @@ window.HKPlannerAutoRefresh = {
   }
   .hk-appt--legacy { background: var(--surface2); }
   .hk-appt--planned { border-color: var(--blue); }
-  .hk-appt-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .hk-appt-head {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    width: 100%; background: none; border: 0; padding: 0; margin: 0;
+    font: inherit; text-align: left; cursor: pointer; color: inherit;
+  }
+  .hk-appt-head:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 6px; }
   .hk-appt-status { font-size: 14px; line-height: 1; }
   .hk-appt-date { font-weight: 600; color: var(--text); font-size: 13px; }
   .hk-appt-type { font-size: 12px; color: var(--muted); text-transform: capitalize; }
   .hk-appt--planned .hk-appt-type { color: var(--blue); }
   .hk-appt-total { margin-left: auto; font-weight: 600; color: var(--text); font-size: 13px; }
+  .hk-appt-total--provisional { color: var(--muted); font-weight: 500; font-style: italic; }
+  .hk-appt-caret {
+    font-size: 11px; color: var(--muted); margin-left: 6px;
+    transition: transform 0.2s ease; flex: 0 0 auto;
+  }
+  .hk-appt-head[aria-expanded="true"] .hk-appt-caret { transform: rotate(180deg); }
+  .hk-appt-body {
+    max-height: 0; overflow: hidden;
+    transition: max-height 0.25s ease;
+  }
+  .hk-appt-body.is-open { max-height: 800px; }
+  .hk-appt-body-inner { padding-top: 10px; }
+  .hk-appt-desc { margin: 0 0 8px; font-size: 12px; color: var(--text); line-height: 1.4; }
+  .hk-appt-desc--empty { color: var(--muted); font-style: italic; }
+  .hk-appt-provisional-note { margin: 8px 0 0; font-size: 11px; color: var(--muted); font-style: italic; }
+  .hk-appt-body--provisional .hk-appt-body-inner {
+    background: var(--surface2); border-radius: 8px; padding: 10px;
+  }
+  .hk-appt-body--provisional .hk-appt-lines li { font-style: italic; }
+  .hk-appt-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .hk-appt-actions:empty { display: none; }
+  .hk-appt-action-btn { font-size: 12px; padding: 6px 12px; }
+  @media (max-width: 1179px) {
+    .hk-appt-actions { flex-direction: column; }
+    .hk-appt-action-btn { width: 100%; }
+  }
   .hk-appt-lines {
     list-style: none;
     margin: 8px 0 0;
