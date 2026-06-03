@@ -54,13 +54,24 @@ export default async function handler(req, res) {
       return res.status(404).json({ ok: false, error: 'Contact niet gevonden' });
     }
 
-    const appointments = [...snapshots];
-
-    // Legacy fallback: alleen tonen als de GHL-CF-datum nog niet als snapshot bestaat.
+    // Prioriteit bij datum-collisie: snapshot > planned > legacy.
     const snapshotDates = new Set(snapshots.map((a) => a.date).filter(Boolean));
+
+    // Planned: snapshot wint bij collisie.
+    const plannedFiltered = planned.filter((p) => p.date && !snapshotDates.has(p.date));
+    const plannedDates = new Set(plannedFiltered.map((p) => p.date));
+
+    // Legacy: alleen verleden (Amsterdam) én niet gedekt door snapshot of planned.
     const legacy = readLegacyLastAppointment(contact);
-    if (legacy && legacy.date && !snapshotDates.has(legacy.date)) {
-      appointments.push({
+    const legacyRows = [];
+    if (
+      legacy &&
+      legacy.date &&
+      legacy.date < todayYmd &&
+      !snapshotDates.has(legacy.date) &&
+      !plannedDates.has(legacy.date)
+    ) {
+      legacyRows.push({
         date: legacy.date,
         type: legacy.type,
         status: 'klaar',
@@ -70,14 +81,9 @@ export default async function handler(req, res) {
       });
     }
 
-    // Geplande (toekomst) toevoegen; dubbele datums met bestaande rows overslaan.
-    const existingDates = new Set(appointments.map((a) => a.date).filter(Boolean));
-    for (const p of planned) {
-      if (p.date && existingDates.has(p.date)) continue;
-      appointments.push(p);
-    }
-
-    appointments.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+    const appointments = [...snapshots, ...plannedFiltered, ...legacyRows].sort((a, b) =>
+      String(a.date || '').localeCompare(String(b.date || ''))
+    );
 
     return res.status(200).json({
       ok: true,

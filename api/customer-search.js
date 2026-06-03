@@ -12,6 +12,7 @@ import {
   searchGhlContacts,
   searchMoneybirdContacts,
   mergeDirectoryContacts,
+  resolveMoneybirdOnlyContactIds,
   fetchLatestSnapshotByContact,
   readLegacyLastAppointment,
 } from '../lib/customer-directory.js';
@@ -48,7 +49,10 @@ export default async function handler(req, res) {
       searchMoneybirdContacts(q),
     ]);
 
-    const merged = mergeDirectoryContacts(ghlCards, mbCards);
+    const merged = await resolveMoneybirdOnlyContactIds(
+      mergeDirectoryContacts(ghlCards, mbCards),
+      { locationId: locationId || ghlLocationIdFromEnv() }
+    );
 
     const contactIds = merged.map((m) => m.contactId).filter(Boolean);
     const latestByContact = await fetchLatestSnapshotByContact(contactIds);

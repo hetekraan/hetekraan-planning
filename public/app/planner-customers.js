@@ -4,6 +4,7 @@
   let debounceTimer = null;
   let bound = false;
   let currentDetailCustomer = null;
+  let lastResults = [];
 
   function authHeader() {
     if (typeof global.hkAuthHeader === 'function') return global.hkAuthHeader();
@@ -73,13 +74,13 @@
     return `<div class="${cls}">Laatste afspraak: ${escHtml(formatNlDate(last.date))}${typePart}${legacyTag}</div>`;
   }
 
-  function cardHtml(c) {
+  function cardHtml(c, idx) {
     const contactBits = [];
     if (c.phone) contactBits.push(`<span>${escHtml(c.phone)}</span>`);
     if (c.email) contactBits.push(`<span>${escHtml(c.email)}</span>`);
     if (c.hasMoneybird) contactBits.push('<span class="hk-customer-card-mb">MB</span>');
     const cid = c.contactId ? escHtml(c.contactId) : '';
-    return `<button type="button" class="hk-customer-card" data-action="open-customer" data-contact-id="${cid}">
+    return `<button type="button" class="hk-customer-card" data-action="open-customer" data-contact-id="${cid}" data-idx="${idx}">
       <div class="hk-customer-card-name">${escHtml(c.name || 'Onbekend')}</div>
       <div class="hk-customer-card-address">${escHtml(cleanAddress(c.address) || '—')}</div>
       <div class="hk-customer-card-contact">${contactBits.join('') || '<span>—</span>'}</div>
@@ -90,11 +91,12 @@
   function renderResults(list) {
     const el = resultsEl();
     if (!el) return;
-    if (!Array.isArray(list) || !list.length) {
+    lastResults = Array.isArray(list) ? list : [];
+    if (!lastResults.length) {
       renderStatus('Geen klanten gevonden.');
       return;
     }
-    el.innerHTML = list.map(cardHtml).join('');
+    el.innerHTML = lastResults.map((c, i) => cardHtml(c, i)).join('');
   }
 
   async function runSearch(q) {
@@ -192,7 +194,15 @@
       </div>`;
   }
 
-  async function openDetail(contactId) {
+  function moneybirdOnlyHtml() {
+    return (
+      '<p class="hk-customers-status">Deze klant staat alleen in Moneybird ' +
+      '(nog geen GHL-koppeling). Maak een nieuwe afspraak om de koppeling te leggen.</p>' +
+      '<button type="button" class="hk-detail-new-appt" data-action="customer-new-appointment">+ Nieuwe afspraak</button>'
+    );
+  }
+
+  async function openDetail(contactId, cardData) {
     const aside = document.getElementById('customerDetail');
     const body = document.getElementById('customerDetailBody');
     if (aside) {
@@ -201,6 +211,19 @@
     }
     if (!body) return;
     if (!contactId) {
+      // Moneybird-only klant zonder GHL-koppeling: nette melding + booking-knop
+      // (createAppointment maakt/koppelt het GHL-contact via de bestaande flow).
+      if (cardData && cardData.hasMoneybird) {
+        currentDetailCustomer = {
+          contactId: '',
+          name: cardData.name || '',
+          address: cleanAddress(cardData.address),
+          phone: cardData.phone || '',
+          email: cardData.email || '',
+        };
+        body.innerHTML = moneybirdOnlyHtml();
+        return;
+      }
       currentDetailCustomer = null;
       body.innerHTML =
         '<p class="hk-customers-status hk-customers-status--error">Geen GHL-contact gekoppeld aan deze klant.</p>';
@@ -247,7 +270,9 @@
   function onResultsClick(e) {
     const openBtn = e.target.closest('[data-action="open-customer"]');
     if (openBtn) {
-      openDetail(openBtn.getAttribute('data-contact-id') || '');
+      const idx = Number(openBtn.getAttribute('data-idx'));
+      const cardData = Number.isInteger(idx) ? lastResults[idx] : null;
+      openDetail(openBtn.getAttribute('data-contact-id') || '', cardData);
     }
   }
 
