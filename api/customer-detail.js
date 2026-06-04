@@ -92,6 +92,7 @@ export default async function handler(req, res) {
         status: 'klaar',
         totalPrice: legacy.totalPrice ?? null,
         priceLines: legacy.priceLines || [],
+        desc: legacy.desc || '',
         source: 'legacy',
       });
     }
