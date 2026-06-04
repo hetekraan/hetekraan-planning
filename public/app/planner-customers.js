@@ -5,6 +5,7 @@
   let bound = false;
   let currentDetailCustomer = null;
   let lastResults = [];
+  let lastDetailAppointments = [];
 
   function authHeader() {
     if (typeof global.hkAuthHeader === 'function') return global.hkAuthHeader();
@@ -152,12 +153,16 @@
     if (!a.date) return '';
     const date = escHtml(a.date);
     const toPlanning = `<button type="button" class="hk-btn hk-appt-action-btn" data-action="appt-to-planning" data-date="${date}">Naar planning</button>`;
-    const edit =
-      a.source === 'planned' && a.contactId
-        ? `<button type="button" class="hk-btn hk-btn-primary hk-appt-action-btn" data-action="appt-edit" data-contact-id="${escHtml(
-            a.contactId
-          )}" data-date="${date}">Bewerken</button>`
-        : '';
+    let edit = '';
+    if (a.source === 'planned' && a.contactId) {
+      edit = `<button type="button" class="hk-btn hk-btn-primary hk-appt-action-btn" data-action="appt-edit" data-contact-id="${escHtml(
+        a.contactId
+      )}" data-date="${date}">Bewerken</button>`;
+    } else if (a.source === 'snapshot' && a.snapshotId) {
+      edit = `<button type="button" class="hk-btn hk-btn-primary hk-appt-action-btn" data-action="appt-edit-snapshot" data-snapshot-id="${escHtml(
+        a.snapshotId
+      )}">Bewerken</button>`;
+    }
     return `${toPlanning}${edit}`;
   }
 
@@ -278,6 +283,7 @@
         phone: c.phone || '',
         email: c.email || '',
       };
+      lastDetailAppointments = Array.isArray(data.appointments) ? data.appointments : [];
       body.innerHTML = detailHtml(data);
     } catch (err) {
       if (seq !== detailSeq) return;
@@ -302,6 +308,20 @@
     closeDetail();
     global.switchSidebarView('today', null);
     global.goToDateStr(date);
+  }
+
+  function editSnapshot(snapshotId) {
+    if (!snapshotId || typeof global.HKPlannerCustomerSnapshotModal?.open !== 'function') {
+      notify('Snapshot-bewerken niet beschikbaar');
+      return;
+    }
+    const snap = lastDetailAppointments.find(
+      (a) => a.source === 'snapshot' && String(a.snapshotId) === String(snapshotId)
+    );
+    if (!snap) return;
+    global.HKPlannerCustomerSnapshotModal.open(snap, {
+      contactId: currentDetailCustomer?.contactId || '',
+    });
   }
 
   async function editPlannedAppt(contactId, date) {
@@ -350,6 +370,11 @@
       );
       return;
     }
+    const editSnapBtn = e.target.closest('[data-action="appt-edit-snapshot"]');
+    if (editSnapBtn) {
+      editSnapshot(editSnapBtn.getAttribute('data-snapshot-id') || '');
+      return;
+    }
     if (e.target.closest('[data-action="customer-new-appointment"]')) {
       if (currentDetailCustomer && global.HKPlannerManualAppointment?.openForCustomer) {
         global.HKPlannerManualAppointment.openForCustomer(currentDetailCustomer);
@@ -379,6 +404,7 @@
     };
     global.addEventListener('hk:customer-appointment-created', refreshDetailOnEvent);
     global.addEventListener('hk:customer-appointment-updated', refreshDetailOnEvent);
+    global.addEventListener('hk:customer-appointment-deleted', refreshDetailOnEvent);
     bound = true;
   }
 

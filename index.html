@@ -45,6 +45,7 @@ window.HKPlannerAutoRefresh = {
 <script src="/app/planner-proposals.js"></script>
 <script src="/app/planner-analytics.js"></script>
 <script src="/app/planner-customers.js"></script>
+<script src="/app/customer-snapshot-modal.js"></script>
 <script src="/app/planner-prices.js"></script>
 <script src="/app/planner-inventory.js"></script>
 <script src="/app/planner-buslijst.js"></script>
@@ -1818,6 +1819,55 @@ window.HKPlannerAutoRefresh = {
     touch-action: manipulation;
   }
   .btn-delete-appt:hover { background: rgba(255,80,80,0.2); }
+  .btn-delete {
+    background: #c0392b;
+    border: none;
+    color: #fff;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-family: var(--font-body);
+    font-weight: 500;
+    font-size: 13px;
+    cursor: pointer;
+    touch-action: manipulation;
+    margin-right: auto;
+  }
+  .btn-delete:hover { background: #a83224; }
+  .hk-snap-modal-overlay {
+    position: fixed; inset: 0; z-index: 1200;
+    background: rgba(0,0,0,0.45);
+    display: none; align-items: center; justify-content: center; padding: 16px;
+  }
+  .hk-snap-modal-overlay.is-open { display: flex; }
+  .hk-snap-modal {
+    background: var(--surface, #fff); color: var(--text, #111);
+    border-radius: 12px; width: 100%; max-width: 420px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.25); overflow: hidden;
+  }
+  .hk-snap-modal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+  }
+  .hk-snap-modal-head h3 { margin: 0; font-size: 15px; font-weight: 600; }
+  .hk-snap-close {
+    background: none; border: 0; font-size: 22px; line-height: 1;
+    cursor: pointer; color: var(--muted); padding: 0 4px;
+  }
+  .hk-snap-modal-body { padding: 16px; display: flex; flex-direction: column; gap: 6px; }
+  .hk-snap-modal-body .form-label { margin-top: 6px; }
+  .hk-snap-modal-body .form-select,
+  .hk-snap-modal-body .form-input {
+    width: 100%; box-sizing: border-box; padding: 8px 10px;
+    border: 1px solid var(--border); border-radius: 8px;
+    font-family: var(--font-body); font-size: 13px; background: #fff; color: var(--text);
+  }
+  .hk-snap-modal-body textarea.form-input { resize: vertical; min-height: 64px; }
+  .hk-snap-note { margin: 4px 0 0; font-size: 11px; color: var(--muted); font-style: italic; }
+  .modal-actions--snap {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 16px; border-top: 1px solid var(--border);
+  }
+  .modal-actions--snap .btn-cancel { margin-left: auto; }
 
   /* ── UI-schaal groot (class: body.ui-scale-large) — handmatig óf automatisch voor account "jerry" (zie applyUiScalePref) ─ */
 
@@ -8014,9 +8064,36 @@ window.HKPlannerAutoRefresh = {
       </div>
     </details>
     <div class="modal-actions">
+      <button class="btn-delete" id="btnModalDeleteAppt" onclick="deleteModalAppointment()" hidden>Verwijderen</button>
       <button class="btn-cancel" onclick="closeModal()">Annuleren</button>
       <button class="btn-send-link" onclick="sendBookingLink()" title="Stuur de klant een boekingslink via WhatsApp">Stuur boekingslink</button>
       <button class="btn-save" id="btnModalAddAppt" onclick="saveModal()">Toevoegen</button>
+    </div>
+  </div>
+</div>
+
+<!-- SNAPSHOT EDIT (lichtgewicht, Klanten-pagina) -->
+<div class="hk-snap-modal-overlay" id="hkSnapModalOverlay" aria-hidden="true">
+  <div class="hk-snap-modal" role="dialog" aria-modal="true" aria-labelledby="hkSnapModalTitle">
+    <div class="hk-snap-modal-head">
+      <h3 id="hkSnapModalTitle">Afgeronde afspraak bewerken</h3>
+      <button type="button" class="hk-snap-close" data-action="snap-close" aria-label="Sluiten">&times;</button>
+    </div>
+    <div class="hk-snap-modal-body">
+      <label class="form-label" for="hkSnapType">Type</label>
+      <select class="form-select" id="hkSnapType">
+        <option value="onderhoud">Onderhoud</option>
+        <option value="reparatie">Reparatie</option>
+        <option value="installatie">Installatie</option>
+      </select>
+      <label class="form-label" for="hkSnapDesc">Omschrijving</label>
+      <textarea class="form-input" id="hkSnapDesc" rows="3" placeholder="Probleemomschrijving / werkzaamheden"></textarea>
+      <p class="hk-snap-note">Financiële gegevens (prijs, regels, datum) zijn vergrendeld.</p>
+    </div>
+    <div class="modal-actions modal-actions--snap">
+      <button type="button" class="btn-delete" data-action="snap-delete">Verwijderen</button>
+      <button type="button" class="btn-cancel" data-action="snap-close">Annuleren</button>
+      <button type="button" class="btn-save" data-action="snap-save">Opslaan</button>
     </div>
   </div>
 </div>
@@ -12984,6 +13061,12 @@ async function saveModal() {
   if (!window.HKPlannerManualAppointment?.saveModal) return;
   const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
   return window.HKPlannerManualAppointment.saveModal(ctx);
+}
+
+async function deleteModalAppointment() {
+  if (!window.HKPlannerManualAppointment?.deleteModal) return;
+  const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
+  return window.HKPlannerManualAppointment.deleteModal(ctx);
 }
 
 function showToast(msg, type='info') {
