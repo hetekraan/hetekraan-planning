@@ -5,6 +5,7 @@
   let bound = false;
   let currentDetailCustomer = null;
   let lastResults = [];
+  let lastDetailAppointments = [];
 
   function authHeader() {
     if (typeof global.hkAuthHeader === 'function') return global.hkAuthHeader();
@@ -148,6 +149,23 @@
     return `<ul class="hk-appt-lines">${items}</ul>`;
   }
 
+  function actionsHtml(a) {
+    if (!a.date) return '';
+    const date = escHtml(a.date);
+    const toPlanning = `<button type="button" class="hk-btn hk-appt-action-btn" data-action="appt-to-planning" data-date="${date}">Naar planning</button>`;
+    let edit = '';
+    if (a.source === 'planned' && a.contactId) {
+      edit = `<button type="button" class="hk-btn hk-btn-primary hk-appt-action-btn" data-action="appt-edit" data-contact-id="${escHtml(
+        a.contactId
+      )}" data-date="${date}">Bewerken</button>`;
+    } else if (a.source === 'snapshot' && a.snapshotId) {
+      edit = `<button type="button" class="hk-btn hk-btn-primary hk-appt-action-btn" data-action="appt-edit-snapshot" data-snapshot-id="${escHtml(
+        a.snapshotId
+      )}">Bewerken</button>`;
+    }
+    return `${toPlanning}${edit}`;
+  }
+
   function apptHtml(a) {
     const meta = statusMeta(a);
     const srcCls =
@@ -158,7 +176,16 @@
           : 'hk-appt--snapshot';
     const tag = a.source === 'legacy' ? '<span class="hk-customer-card-legacy-tag">legacy</span>' : '';
     const typePart = a.type ? escHtml(a.type) : '—';
-    const total = a.totalPrice != null ? `<span class="hk-appt-total">${escHtml(euro(a.totalPrice))}</span>` : '';
+    const isProv = a.isProvisionalPrice === true;
+    const totalCls = isProv ? 'hk-appt-total hk-appt-total--provisional' : 'hk-appt-total';
+    const totalAttr = isProv ? ' title="Voorlopige prijs"' : '';
+    const total =
+      a.totalPrice != null ? `<span class="${totalCls}"${totalAttr}>${escHtml(euro(a.totalPrice))}</span>` : '';
+    const descHtml = a.desc ? `<p class="hk-appt-desc">${escHtml(a.desc)}</p>` : '';
+    const provNote = isProv
+      ? '<p class="hk-appt-provisional-note">Voorlopige prijs — definitief na afronden.</p>'
+      : '';
+    const bodyCls = isProv ? 'hk-appt-body hk-appt-body--provisional' : 'hk-appt-body';
     return `<div class="hk-appt ${srcCls}">
       <div class="hk-appt-head">
         <span class="hk-appt-status" title="${meta.label}" aria-label="${meta.label}">${meta.icon}</span>
@@ -166,7 +193,14 @@
         <span class="hk-appt-type">${typePart}</span>${tag}
         ${total}
       </div>
-      ${priceLinesHtml(a.priceLines)}
+      <div class="${bodyCls}">
+        <div class="hk-appt-body-inner">
+          ${descHtml || '<p class="hk-appt-desc hk-appt-desc--empty">Geen omschrijving</p>'}
+          ${priceLinesHtml(a.priceLines)}
+          ${provNote}
+          <div class="hk-appt-actions">${actionsHtml(a)}</div>
+        </div>
+      </div>
     </div>`;
   }
 
@@ -249,6 +283,7 @@
         phone: c.phone || '',
         email: c.email || '',
       };
+      lastDetailAppointments = Array.isArray(data.appointments) ? data.appointments : [];
       body.innerHTML = detailHtml(data);
     } catch (err) {
       if (seq !== detailSeq) return;
@@ -257,6 +292,47 @@
         String(err?.message || err)
       )}</p>`;
     }
+  }
+
+  function notify(msg) {
+    if (typeof global.showToast === 'function') global.showToast(msg, 'info');
+    else global.alert?.(msg);
+  }
+
+  function goToPlanning(date) {
+    if (typeof global.switchSidebarView !== 'function' || typeof global.goToDateStr !== 'function') {
+      console.warn('[planner-customers] planner-navigatie niet beschikbaar');
+      notify('Planner niet beschikbaar');
+      return;
+    }
+    closeDetail();
+    global.switchSidebarView('today', null);
+    global.goToDateStr(date);
+  }
+
+  function editSnapshot(snapshotId) {
+    if (!snapshotId || typeof global.HKPlannerCustomerSnapshotModal?.open !== 'function') {
+      notify('Snapshot-bewerken niet beschikbaar');
+      return;
+    }
+    const snap = lastDetailAppointments.find(
+      (a) => a.source === 'snapshot' && String(a.snapshotId) === String(snapshotId)
+    );
+    if (!snap) return;
+    global.HKPlannerCustomerSnapshotModal.open(snap, {
+      contactId: currentDetailCustomer?.contactId || '',
+    });
+  }
+
+  async function editPlannedAppt(contactId, date) {
+    if (typeof global.openAppointmentEditModalInline !== 'function') {
+      console.warn('[planner-customers] inline-bewerken niet beschikbaar');
+      notify('Planner niet beschikbaar');
+      return;
+    }
+    if (!contactId || !date) return;
+    // Detail-panel blijft open op de achtergrond; modal opent erbovenop.
+    await global.openAppointmentEditModalInline(`hk-b1:${contactId}:${date}`, date);
   }
 
   function closeDetail() {
@@ -281,6 +357,24 @@
       closeDetail();
       return;
     }
+    const toPlanningBtn = e.target.closest('[data-action="appt-to-planning"]');
+    if (toPlanningBtn) {
+      goToPlanning(toPlanningBtn.getAttribute('data-date') || '');
+      return;
+    }
+    const editBtn = e.target.closest('[data-action="appt-edit"]');
+    if (editBtn) {
+      void editPlannedAppt(
+        editBtn.getAttribute('data-contact-id') || '',
+        editBtn.getAttribute('data-date') || ''
+      );
+      return;
+    }
+    const editSnapBtn = e.target.closest('[data-action="appt-edit-snapshot"]');
+    if (editSnapBtn) {
+      editSnapshot(editSnapBtn.getAttribute('data-snapshot-id') || '');
+      return;
+    }
     if (e.target.closest('[data-action="customer-new-appointment"]')) {
       if (currentDetailCustomer && global.HKPlannerManualAppointment?.openForCustomer) {
         global.HKPlannerManualAppointment.openForCustomer(currentDetailCustomer);
@@ -297,7 +391,7 @@
     input.addEventListener('input', onInput);
     results.addEventListener('click', onResultsClick);
     aside?.addEventListener('click', onDetailClick);
-    global.addEventListener('hk:customer-appointment-created', (e) => {
+    const refreshDetailOnEvent = (e) => {
       const cid = e?.detail?.contactId;
       const detailAside = document.getElementById('customerDetail');
       if (
@@ -307,7 +401,10 @@
       ) {
         void openDetail(cid);
       }
-    });
+    };
+    global.addEventListener('hk:customer-appointment-created', refreshDetailOnEvent);
+    global.addEventListener('hk:customer-appointment-updated', refreshDetailOnEvent);
+    global.addEventListener('hk:customer-appointment-deleted', refreshDetailOnEvent);
     bound = true;
   }
 

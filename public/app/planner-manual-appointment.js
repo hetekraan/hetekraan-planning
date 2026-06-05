@@ -177,8 +177,58 @@
     modalMode = mode === 'edit' ? 'edit' : 'create';
     const titleEl = document.getElementById('mModalTitle');
     const btn = document.getElementById('btnModalAddAppt');
+    const delBtn = document.getElementById('btnModalDeleteAppt');
     if (titleEl) titleEl.textContent = modalMode === 'edit' ? 'Afspraak bewerken' : 'Nieuwe afspraak';
     if (btn) btn.textContent = modalMode === 'edit' ? 'Wijzigingen opslaan' : 'Toevoegen';
+    if (delBtn) delBtn.hidden = modalMode !== 'edit';
+  }
+
+  /** Verwijder de in edit-mode geopende planned-afspraak (Redis + GHL booking-CF reset). */
+  async function deleteModal(ctx) {
+    if (inFlight) return;
+    if (modalMode !== 'edit') return;
+    const overlay = document.getElementById('modalOverlay');
+    const contactId = String(
+      editingMeta?.contactId || overlay?.dataset?.hkEditContactId || ''
+    ).trim();
+    const date = String(editingMeta?.prevDate || overlay?.dataset?.hkEditPrevDate || '').trim();
+    if (!contactId || !date) {
+      ctx?.showToast?.('Geen verwijderbare afspraak gevonden', 'info');
+      return;
+    }
+    if (!global.confirm('Weet je zeker dat je deze afspraak wil verwijderen?')) return;
+
+    const { hkAuthHeader, showToast, closeModal, loadAppointments, getCurrentDate } = ctx;
+    inFlight = true;
+    showToast('⏳ Afspraak verwijderen…', 'loading');
+    try {
+      const res = await fetch('/api/ghl?action=deletePlannerBooking', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
+        body: JSON.stringify({
+          contactId,
+          routeDate: date,
+          rowId: `hk-b1:${contactId}:${date}`,
+          isSyntheticB1: true,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.success === false) {
+        throw new Error(data?.error || data?.detail || `Verwijderen mislukt (${res.status})`);
+      }
+      closeModal?.();
+      showToast('✓ Afspraak verwijderd', 'success');
+      if (typeof loadAppointments === 'function' && typeof getCurrentDate === 'function') {
+        await loadAppointments(getCurrentDate(), { plannerLoadQuiet: true });
+      }
+      global.dispatchEvent(
+        new CustomEvent('hk:customer-appointment-deleted', { detail: { contactId } })
+      );
+    } catch (e) {
+      showToast(`⚠ Verwijderen mislukt: ${e.message || e}`, 'info');
+    } finally {
+      inFlight = false;
+    }
   }
 
   function collectFormValues() {
@@ -646,6 +696,14 @@
             new CustomEvent('hk:customer-appointment-created', { detail: { contactId: refreshCid } })
           );
         }
+      } else {
+        // Inline-bewerken vanuit Klanten-detail: laat het detail-panel zich verversen.
+        const updatedCid = String(editMeta?.contactId || data.contactId || '').trim();
+        if (updatedCid) {
+          global.dispatchEvent(
+            new CustomEvent('hk:customer-appointment-updated', { detail: { contactId: updatedCid } })
+          );
+        }
       }
     } catch (e) {
       showToast(`⚠ Afspraak toevoegen mislukt: ${e.message || e}`, 'info');
@@ -863,6 +921,7 @@
 
   global.HKPlannerManualAppointment = {
     saveModal,
+    deleteModal,
     bindModalKeyboardSubmit,
     bindPriceControls,
     updatePricePreview,
