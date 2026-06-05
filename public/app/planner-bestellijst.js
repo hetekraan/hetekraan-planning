@@ -46,10 +46,10 @@
         '<tbody><tr><td style="padding:18px 12px;color:var(--muted)">Niets te bestellen ✓</td></tr></tbody>';
       return;
     }
-    table.innerHTML = `<thead><tr><th>Naam</th><th>SKU</th><th>Voorraad</th><th>Minimum</th><th>Categorie</th><th>Status</th></tr></thead><tbody>${rows
+    table.innerHTML = `<thead><tr><th>Naam</th><th>SKU</th><th>Voorraad</th><th>Minimum</th><th>Aantal bestellen</th><th>Categorie</th><th>Status</th></tr></thead><tbody>${rows
       .map(
         (x) =>
-          `<tr><td>${escHtml(x.name)}</td><td><span style="font-size:12px;color:#7f8792;white-space:nowrap">${escHtml(x.sku || '-')}</span></td><td>${Number(x.stock || 0)}</td><td>${Number(x.minStock || 0)}</td><td>${escHtml(x.category || '-')}</td><td><span class="status-pill low">Bestellen</span></td></tr>`
+          `<tr><td>${escHtml(x.name)}</td><td><span style="font-size:12px;color:#7f8792;white-space:nowrap">${escHtml(x.sku || '-')}</span></td><td>${Number(x.stock || 0)}</td><td>${Number(x.minStock || 0)}</td><td>${Number(x.minStock || 0) - Number(x.stock || 0)}</td><td>${escHtml(x.category || '-')}</td><td><span class="status-pill low">Bestellen</span></td></tr>`
       )
       .join('')}</tbody>`;
   }
