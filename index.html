@@ -48,6 +48,7 @@ window.HKPlannerAutoRefresh = {
 <script src="/app/customer-snapshot-modal.js"></script>
 <script src="/app/planner-prices.js"></script>
 <script src="/app/planner-inventory.js"></script>
+<script src="/app/planner-bestellijst.js"></script>
 <script src="/app/planner-buslijst.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -7354,6 +7355,7 @@ window.HKPlannerAutoRefresh = {
       <a href="#panelPrices" class="planner-sidebar-item" data-sidebar-view="prices" data-products-category="Diensten" onclick="return switchProductsCategory('Diensten', event)" hidden><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span style="padding-left:18px">Diensten</span></span></a>
       <a href="#panelAnalytics" class="planner-sidebar-item" data-sidebar-view="analytics" onclick="return switchSidebarView('analytics', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Analytics</span></span></a>
       <a href="#panelInventory" class="planner-sidebar-item" data-sidebar-view="inventory" onclick="return switchSidebarView('inventory', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Voorraad</span></span></a>
+      <a href="#panelBestellijst" class="planner-sidebar-item" data-sidebar-view="bestellijst" onclick="return switchSidebarView('bestellijst', event)"><span class="planner-sidebar-item-label"><span class="planner-sidebar-dot"></span><span>Bestellijst</span></span></a>
     </nav>
     <div class="planner-sidebar-footer">
       <span class="planner-sidebar-avatar">JD</span>
@@ -7656,6 +7658,19 @@ window.HKPlannerAutoRefresh = {
       </div>
       <div class="panel-card">
         <table class="table-clean" id="inventoryTable"></table>
+      </div>
+    </div>
+  </div>
+  <div class="appointments panel-page tab-hidden" id="panelBestellijst">
+    <div class="today-page-header">
+      <div class="today-page-heading">
+        <h1>Bestellijst</h1>
+        <p>Producten die bijbesteld moeten worden</p>
+      </div>
+    </div>
+    <div class="panel-page-content">
+      <div class="panel-card">
+        <table class="table-clean" id="bestellijstTable"></table>
       </div>
     </div>
   </div>
@@ -8195,7 +8210,7 @@ function startPlannerVersionWatch() {
 }
 startPlannerVersionWatch();
 
-const PLANNER_URL_VIEWS = new Set(['today', 'routes', 'buslijst', 'customers', 'analytics', 'prices', 'inventory']);
+const PLANNER_URL_VIEWS = new Set(['today', 'routes', 'buslijst', 'customers', 'analytics', 'prices', 'inventory', 'bestellijst']);
 
 function isValidPlannerDateStr(ymd) {
   const raw = String(ymd || '').trim();
@@ -9805,7 +9820,7 @@ function renderRoutesWeekStrip() {
 
 function switchSidebarView(view, event, opts = {}) {
   if (event?.preventDefault) event.preventDefault();
-  const allowed = new Set(['today', 'routes', 'buslijst', 'customers', 'analytics', 'prices', 'inventory']);
+  const allowed = new Set(['today', 'routes', 'buslijst', 'customers', 'analytics', 'prices', 'inventory', 'bestellijst']);
   const requested = allowed.has(view) ? view : 'today';
   const compact = window.matchMedia('(max-width: 1024px)').matches;
   const blockedOnCompact = requested === 'analytics' || requested === 'prices';
@@ -9844,6 +9859,7 @@ function switchSidebarView(view, event, opts = {}) {
     analytics: document.getElementById('panelAnalytics'),
     prices: document.getElementById('panelPrices'),
     inventory: document.getElementById('panelInventory'),
+    bestellijst: document.getElementById('panelBestellijst'),
   };
   if (window.matchMedia('(min-width: 1180px)').matches) {
     Object.entries(panelMap).forEach(([k, el]) => el?.classList.toggle('tab-hidden', k !== plannerSidebarView));
@@ -9857,6 +9873,7 @@ function switchSidebarView(view, event, opts = {}) {
     }
     if (plannerSidebarView === 'customers') window.HKPlannerCustomers?.render?.();
     if (plannerSidebarView === 'inventory') window.HKPlannerInventory?.render?.();
+    if (plannerSidebarView === 'bestellijst') window.HKPlannerBestellijst?.render?.();
     if (plannerSidebarView === 'buslijst') window.HKPlannerBuslijst?.render?.();
   }
   return false;
