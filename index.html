@@ -9499,9 +9499,29 @@ window.readUiScaleLarge = readUiScaleLarge;
 window.applyUiScalePref = applyUiScalePref;
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Per-datum lopende load-promise (voor inflight-dedup) + datum waar appointments[] bij hoort. */
+const inflightLoadByDate = new Map();
+let appointmentsLoadedDateStr = null;
+
 async function loadAppointments(date, merge = {}) {
   if (!window.HKPlannerLoad?.loadAppointments) return;
-  return window.HKPlannerLoad.loadAppointments(createPlannerCtx(merge), date || currentDate);
+  const dateStr = getDateStr(date || currentDate);
+  const promise = (async () => {
+    try {
+      return await window.HKPlannerLoad.loadAppointments(createPlannerCtx(merge), date || currentDate);
+    } finally {
+      appointmentsLoadedDateStr = dateStr;
+      if (inflightLoadByDate.get(dateStr) === promise) inflightLoadByDate.delete(dateStr);
+    }
+  })();
+  inflightLoadByDate.set(dateStr, promise);
+  return promise;
+}
+
+/** Nog niet afgeronde load voor een specifieke datum, of null. */
+function getInflightLoadForDate(dateStr) {
+  const ds = String(dateStr || '').trim();
+  return ds ? inflightLoadByDate.get(ds) || null : null;
 }
 
 function routeAppointmentsLoadInFlight() {
@@ -9510,23 +9530,43 @@ function routeAppointmentsLoadInFlight() {
     : false;
 }
 
+/** True als appointments[] daadwerkelijk bij currentDate hoort (niet de vorige dag tijdens een load). */
+function hasAppointmentsForCurrentDate() {
+  return appointments.length > 0 && appointmentsLoadedDateStr === getDateStr(currentDate);
+}
+
 function hasCachedRouteForCurrentDate() {
-  return appointments.length > 0 && Boolean(getLiveRouteState(getDateStr(currentDate)));
+  return hasAppointmentsForCurrentDate() && Boolean(getLiveRouteState(getDateStr(currentDate)));
 }
 
 /** Lichte route-paint zonder volledige planner-render (sneller bij tab-switch). */
 function renderRoutesPanelLight() {
-  assignRouteStops();
-  const routeStops = getRouteStopsForSidebar();
+  // Alleen stops tonen als appointments echt bij currentDate horen; anders loading-state (nooit stale dag).
+  const showStops = hasAppointmentsForCurrentDate();
+  if (showStops) assignRouteStops();
+  const routeStops = showStops ? getRouteStopsForSidebar() : [];
   renderRoute(routeStops);
   updateRoutePanelChrome(routeStops);
 }
 
 function refreshRoutesPanelOnShow() {
+  const dateStr = getDateStr(currentDate);
+
+  // QUICK WIN 1 — inflight dedup: hergebruik een al lopende load voor deze datum
+  // (bv. net gestart door Planning datum-switch) i.p.v. een tweede server-call + toast.
+  const inflight = getInflightLoadForDate(dateStr);
+  if (inflight) {
+    renderRoutesPanelLight();
+    return inflight;
+  }
+
+  // QUICK WIN 2 — optimistic UI: appointments voor deze datum aanwezig maar routeState ontbreekt?
+  // Toon alvast de fallback-route (assignRouteStops) en ververs stil op de achtergrond i.p.v. leeg + toast.
   const hasCached = hasCachedRouteForCurrentDate();
-  // Start de load eerst: inflight++ gebeurt synchroon, zodat de lichte render
-  // de juiste "Route laden..."-state toont wanneer er geen cache is.
-  const loadPromise = hasCached
+  const optimistic = hasAppointmentsForCurrentDate() && !getLiveRouteState(dateStr);
+  const quiet = hasCached || optimistic;
+
+  const loadPromise = quiet
     ? loadAppointments(currentDate, { plannerLoadQuiet: true })
     : loadAppointments(currentDate);
   renderRoutesPanelLight();
