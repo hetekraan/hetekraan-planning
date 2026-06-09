@@ -9510,9 +9510,26 @@ function routeAppointmentsLoadInFlight() {
     : false;
 }
 
+function hasCachedRouteForCurrentDate() {
+  return appointments.length > 0 && Boolean(getLiveRouteState(getDateStr(currentDate)));
+}
+
+/** Lichte route-paint zonder volledige planner-render (sneller bij tab-switch). */
+function renderRoutesPanelLight() {
+  assignRouteStops();
+  const routeStops = getRouteStopsForSidebar();
+  renderRoute(routeStops);
+  updateRoutePanelChrome(routeStops);
+}
+
 function refreshRoutesPanelOnShow() {
-  const loadPromise = loadAppointments(currentDate);
-  render();
+  const hasCached = hasCachedRouteForCurrentDate();
+  // Start de load eerst: inflight++ gebeurt synchroon, zodat de lichte render
+  // de juiste "Route laden..."-state toont wanneer er geen cache is.
+  const loadPromise = hasCached
+    ? loadAppointments(currentDate, { plannerLoadQuiet: true })
+    : loadAppointments(currentDate);
+  renderRoutesPanelLight();
   return loadPromise;
 }
 
