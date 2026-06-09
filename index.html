@@ -9386,6 +9386,7 @@ function switchMobileTab(tab, opts = {}) {
     clearActive();
     if (tabR) tabR.classList.add('active');
     plannerSidebarView = 'routes';
+    void refreshRoutesPanelOnShow();
   } else if (tab === 'buslijst') {
     if (buslijst) buslijst.classList.remove('tab-hidden');
     afspraken.classList.add('tab-hidden');
@@ -9498,9 +9499,78 @@ window.readUiScaleLarge = readUiScaleLarge;
 window.applyUiScalePref = applyUiScalePref;
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Per-datum lopende load-promise (voor inflight-dedup) + datum waar appointments[] bij hoort. */
+const inflightLoadByDate = new Map();
+let appointmentsLoadedDateStr = null;
+
 async function loadAppointments(date, merge = {}) {
   if (!window.HKPlannerLoad?.loadAppointments) return;
-  return window.HKPlannerLoad.loadAppointments(createPlannerCtx(merge), date || currentDate);
+  const dateStr = getDateStr(date || currentDate);
+  const promise = (async () => {
+    try {
+      return await window.HKPlannerLoad.loadAppointments(createPlannerCtx(merge), date || currentDate);
+    } finally {
+      appointmentsLoadedDateStr = dateStr;
+      if (inflightLoadByDate.get(dateStr) === promise) inflightLoadByDate.delete(dateStr);
+    }
+  })();
+  inflightLoadByDate.set(dateStr, promise);
+  return promise;
+}
+
+/** Nog niet afgeronde load voor een specifieke datum, of null. */
+function getInflightLoadForDate(dateStr) {
+  const ds = String(dateStr || '').trim();
+  return ds ? inflightLoadByDate.get(ds) || null : null;
+}
+
+function routeAppointmentsLoadInFlight() {
+  return typeof window.HKPlannerLoad?.getLoadAppointmentsInflight === 'function'
+    ? window.HKPlannerLoad.getLoadAppointmentsInflight() > 0
+    : false;
+}
+
+/** True als appointments[] daadwerkelijk bij currentDate hoort (niet de vorige dag tijdens een load). */
+function hasAppointmentsForCurrentDate() {
+  return appointments.length > 0 && appointmentsLoadedDateStr === getDateStr(currentDate);
+}
+
+function hasCachedRouteForCurrentDate() {
+  return hasAppointmentsForCurrentDate() && Boolean(getLiveRouteState(getDateStr(currentDate)));
+}
+
+/** Lichte route-paint zonder volledige planner-render (sneller bij tab-switch). */
+function renderRoutesPanelLight() {
+  // Alleen stops tonen als appointments echt bij currentDate horen; anders loading-state (nooit stale dag).
+  const showStops = hasAppointmentsForCurrentDate();
+  if (showStops) assignRouteStops();
+  const routeStops = showStops ? getRouteStopsForSidebar() : [];
+  renderRoute(routeStops);
+  updateRoutePanelChrome(routeStops);
+}
+
+function refreshRoutesPanelOnShow() {
+  const dateStr = getDateStr(currentDate);
+
+  // QUICK WIN 1 — inflight dedup: hergebruik een al lopende load voor deze datum
+  // (bv. net gestart door Planning datum-switch) i.p.v. een tweede server-call + toast.
+  const inflight = getInflightLoadForDate(dateStr);
+  if (inflight) {
+    renderRoutesPanelLight();
+    return inflight;
+  }
+
+  // QUICK WIN 2 — optimistic UI: appointments voor deze datum aanwezig maar routeState ontbreekt?
+  // Toon alvast de fallback-route (assignRouteStops) en ververs stil op de achtergrond i.p.v. leeg + toast.
+  const hasCached = hasCachedRouteForCurrentDate();
+  const optimistic = hasAppointmentsForCurrentDate() && !getLiveRouteState(dateStr);
+  const quiet = hasCached || optimistic;
+
+  const loadPromise = quiet
+    ? loadAppointments(currentDate, { plannerLoadQuiet: true })
+    : loadAppointments(currentDate);
+  renderRoutesPanelLight();
+  return loadPromise;
 }
 
 let plannerAutoRefreshCtl = null;
@@ -9864,7 +9934,8 @@ function switchSidebarView(view, event, opts = {}) {
   if (window.matchMedia('(min-width: 1180px)').matches) {
     Object.entries(panelMap).forEach(([k, el]) => el?.classList.toggle('tab-hidden', k !== plannerSidebarView));
     if (plannerSidebarView === 'analytics') window.HKPlannerAnalytics?.render?.();
-    if (plannerViewNeedsLiveAppointments()) void loadAppointments(currentDate);
+    if (plannerSidebarView === 'routes') void refreshRoutesPanelOnShow();
+    else if (plannerViewNeedsLiveAppointments()) void loadAppointments(currentDate);
     if (plannerSidebarView === 'prices') {
       const label = document.getElementById('productsCategoryLabel');
       if (label) label.textContent = plannerProductsSubView;
@@ -11149,10 +11220,13 @@ function transitionTravelMinutesFromPlan(plan, morningLen) {
   return Math.round(sec / 60);
 }
 
-function buildRouteSummaryHtml(routeStops, dateStr) {
+function buildRouteSummaryHtml(routeStops, dateStr, loading = false) {
   const plan = getLastPartitionedRoutePlan(dateStr);
   const match = routePlanMatchesStops(plan, routeStops);
   const n = routeStops.length;
+  if (loading && !n) {
+    return '<span class="route-summary__line route-summary__muted">Route laden...</span>';
+  }
   if (!n) {
     return '<span class="route-summary__line route-summary__muted">Geen stops in deze route</span>';
   }
@@ -11215,6 +11289,7 @@ function updateRoutePanelChrome(routeStops) {
   const dateStr = getDateStr(currentDate);
   const routeState = getLiveRouteState(dateStr);
   const uiState = routeUiStatusByDate.get(dateStr) || {};
+  const routeLoading = routeAppointmentsLoadInFlight();
 
   const titleEl = document.getElementById('routePanelDateTitle');
   if (titleEl) titleEl.textContent = formatRoutePanelTitle(currentDate);
@@ -11231,6 +11306,7 @@ function updateRoutePanelChrome(routeStops) {
     const optimizedAt = formatRouteOptimizedAt(routeState.lastOptimizedAt);
     statusMain = optimizedAt ? `Geoptimaliseerd om ${optimizedAt}` : 'Live route';
   }
+  if (routeLoading && !(routeStops || []).length) statusMain = 'Route laden...';
   if (violations > 0) statusMain = 'Route bevat conflicten';
   if (uiState.optimizing) statusMain = 'Bijwerken...';
   if (uiState.saving) statusMain = 'Route opslaan...';
@@ -11262,7 +11338,7 @@ function updateRoutePanelChrome(routeStops) {
 
   const sumEl = document.getElementById('routeSummary');
   if (sumEl) {
-    sumEl.innerHTML = `<div class="routes-summary-title">Samenvatting</div>${buildRouteSummaryHtml(routeStops || [], dateStr)}`;
+    sumEl.innerHTML = `<div class="routes-summary-title">Samenvatting</div>${buildRouteSummaryHtml(routeStops || [], dateStr, routeLoading)}`;
   }
   const routesDateSubEl = document.getElementById('routesDateSubtitle');
   if (routesDateSubEl) routesDateSubEl.textContent = formatDate(currentDate);
@@ -11346,20 +11422,27 @@ function formatShortAddressLine(a) {
 function renderRoute(routeStops) {
   const list = document.getElementById('routeList');
   if (!list) return;
+  const stops = Array.isArray(routeStops) ? routeStops : [];
+  const routeLoading = routeAppointmentsLoadInFlight();
   const dateStr = getDateStr(currentDate);
   const routesStopsTitleEl = document.getElementById('routesStopsTitle');
   if (routesStopsTitleEl) {
     const dm = new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'long', timeZone: 'Europe/Amsterdam' }).format(currentDate);
-    routesStopsTitleEl.textContent = `Route ${dm} — ${routeStops.length} stops`;
+    routesStopsTitleEl.textContent = `Route ${dm} — ${stops.length} stops`;
   }
-  const { morning, afternoon } = splitSidebarByDayPart(routeStops);
+  const { morning, afternoon } = splitSidebarByDayPart(stops);
   const plan = getLastPartitionedRoutePlan(dateStr);
-  const planMatch = routePlanMatchesStops(plan, routeStops);
+  const planMatch = routePlanMatchesStops(plan, stops);
   const returnMin = planMatch && Number.isFinite(plan?.returnLegToDepotMinutes) ? plan.returnLegToDepotMinutes : null;
 
   let body = renderDepotRow('start', null);
 
-  if (!routeStops.length) {
+  if (!stops.length && routeLoading) {
+    body += `<div class="route-empty-day" role="status">
+      <div class="route-empty-day__title">Route laden...</div>
+      <div class="route-empty-day__sub">We halen de afspraken en live route voor deze dag op.</div>
+    </div>`;
+  } else if (!stops.length) {
     body += `<div class="route-empty-day" role="status">
       <div class="route-empty-day__title">Nog geen routestops</div>
       <div class="route-empty-day__sub">Zodra er adressen klaarstaan voor vandaag, verschijnen ze hier als dagroute.</div>
@@ -11402,7 +11485,8 @@ function renderRoute(routeStops) {
   window.HKPlannerRouteMaps?.renderRouteMap?.({
     apiKey: HK_GOOGLE_MAPS_API_KEY,
     depotAddress: 'Cornelis Drebbelstraat, Amsterdam',
-    stops: routeStops,
+    stops,
+    loading: routeLoading,
     showToast,
   });
 }

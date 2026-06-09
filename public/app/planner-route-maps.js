@@ -6,6 +6,20 @@
   let depotMarkers = [];
   let stopMarkers = [];
   let mapLastErrorCode = '';
+  let lastRenderedRouteKey = '';
+  let lastBounds = null;
+
+  function routeMapKey(depotAddress, ordered) {
+    return [
+      String(depotAddress || ''),
+      ...ordered.map(
+        (a) =>
+          `${String(a?.contactId || '').trim()}:${a?.routeStop != null ? a.routeStop : ''}:${String(
+            a?.fullAddressLine || a?.address || ''
+          ).trim()}`
+      ),
+    ].join('|');
+  }
 
   function openMaps(event, input) {
     if (event?.preventDefault) event.preventDefault();
@@ -106,14 +120,27 @@
     const depotAddress = String(input?.depotAddress || DEPOT).trim();
     const stops = Array.isArray(input?.stops) ? input.stops : [];
     const ordered = stops.filter((a) => a?.fullAddressLine || a?.address);
+    const loading = input?.loading === true;
     if (!ordered.length) {
-      container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--ink-muted);font-size:13px">Geen route-adressen</div>';
+      lastRenderedRouteKey = '';
+      container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--ink-muted);font-size:13px">${loading ? 'Route laden...' : 'Geen route-adressen'}</div>`;
       return;
     }
     if (!apiKey) {
+      lastRenderedRouteKey = '';
       mapLastErrorCode = 'MISSING_API_KEY';
       renderMapError(container, mapLastErrorCode, depotAddress, ordered);
       if (typeof showToast === 'function') showToast('Google Maps key ontbreekt', 'info');
+      return;
+    }
+    // Skip dure Directions-call als route-volgorde/adressen ongewijzigd zijn en de kaart al staat.
+    // Wel resize + refit doen voor het geval de kaart eerder verborgen werd geïnitialiseerd.
+    const routeKey = routeMapKey(depotAddress, ordered);
+    if (input?.force !== true && routeKey === lastRenderedRouteKey && map && directionsRenderer) {
+      try {
+        google.maps.event.trigger(map, 'resize');
+        if (lastBounds) map.fitBounds(lastBounds);
+      } catch (_) {}
       return;
     }
     try {
@@ -153,11 +180,13 @@
         },
         (result, status) => {
           if (status !== 'OK' || !result) {
+            lastRenderedRouteKey = '';
             mapLastErrorCode = `DIRECTIONS_${String(status || 'ERROR')}`;
             renderMapError(container, mapLastErrorCode, depotAddress, ordered);
             if (typeof showToast === 'function') showToast('Routekaart kon niet worden geladen', 'info');
             return;
           }
+          lastRenderedRouteKey = routeKey;
           directionsRenderer.setDirections(result);
           const legs = result.routes?.[0]?.legs || [];
           // Eén leg per tussenstop: leg[i].end = i-de waypoint (niet het depotbeen).
@@ -223,10 +252,12 @@
           }
           const bounds = new google.maps.LatLngBounds();
           result.routes[0].overview_path.forEach((p) => bounds.extend(p));
+          lastBounds = bounds;
           map.fitBounds(bounds);
         }
       );
     } catch (err) {
+      lastRenderedRouteKey = '';
       renderMapError(container, mapLastErrorCode || String(err?.message || 'MAP_LOAD_ERROR'), depotAddress, ordered);
       if (typeof showToast === 'function') showToast(String(err?.message || err || 'Maps fout'), 'info');
     }
