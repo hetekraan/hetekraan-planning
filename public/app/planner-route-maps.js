@@ -106,8 +106,9 @@
     const depotAddress = String(input?.depotAddress || DEPOT).trim();
     const stops = Array.isArray(input?.stops) ? input.stops : [];
     const ordered = stops.filter((a) => a?.fullAddressLine || a?.address);
+    const loading = input?.loading === true;
     if (!ordered.length) {
-      container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--ink-muted);font-size:13px">Geen route-adressen</div>';
+      container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--ink-muted);font-size:13px">${loading ? 'Route laden...' : 'Geen route-adressen'}</div>`;
       return;
     }
     if (!apiKey) {
