@@ -1222,13 +1222,15 @@ async function triggerLiveRouteRecalculationForDate(locationId, dateStr, reason,
   const date = normalizeYyyyMmDdInput(String(dateStr || ''));
   if (!date) return { ok: false, skipped: true, code: 'BAD_DATE' };
   try {
-    const sourceOut = await loadPlannerAppointmentsForDate(date);
+    const loadFn = options.loadAppointmentsForDate || loadPlannerAppointmentsForDate;
+    const sourceOut = await loadFn(date);
     return triggerLiveRouteRecalculation({
       locationId,
       dateStr: date,
       appointments: sourceOut.appointments,
       reason,
       updatedBy: options.updatedBy || null,
+      changedContactId: options.changedContactId || null,
       deps: options.deps || {},
     });
   } catch (err) {
@@ -3108,7 +3110,8 @@ export default async function handler(req, res) {
         await triggerLiveRouteRecalculationForDate(
           locConfigured,
           routeDate,
-          'setInternalFixedStart'
+          'setInternalFixedStart',
+          { changedContactId: cid }
         );
         return res.status(200).json({ success: true, internalFixedStart: pin || null });
       }

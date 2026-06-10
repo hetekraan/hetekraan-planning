@@ -87,11 +87,32 @@ function logFixedTime(event, payload) {
  * @typedef {{ initialClockMinutes: number, pinFirstMorningCustomer: boolean }} ScheduleOpts
  */
 
-// Bereken ETAs voor een gegeven volgorde met reistijdenmatrix (in minuten)
+// Bereken ETAs voor een gegeven volgorde met reistijdenmatrix (in minuten).
+// Backward-compatible wrapper: geeft alleen de etas-array terug.
 function calcETAs(order, travel, timeWindows, jobDurations, appointments, opts) {
+  return calcETAsWithMeta(order, travel, timeWindows, jobDurations, appointments, opts).etas;
+}
+
+/**
+ * Zoals calcETAs, maar geeft naast `etas` ook `scheduleMeta` per stap terug,
+ * zodat constraint-violations (after/exact) achteraf gedetecteerd kunnen worden
+ * met de vroegst haalbare aankomst (`earliest`) — die niet uit de finale ETA
+ * af te leiden is (after wordt naar T geclamped, exact naar T gezet).
+ *
+ * scheduleMeta[step] = {
+ *   earliest: number,            // vroegst haalbare aankomst (min), afgerond op kwartier
+ *   appliedEta: number,          // toegekende ETA (min)
+ *   pinType: 'exact'|'after'|'before'|null,
+ *   exactReachable: boolean|null // alleen voor exact: is T fysiek haalbaar?
+ * }
+ *
+ * @returns {{ etas: number[], scheduleMeta: { earliest: number, appliedEta: number, pinType: string|null, exactReachable: boolean|null }[] }}
+ */
+function calcETAsWithMeta(order, travel, timeWindows, jobDurations, appointments, opts) {
   const initialClock = opts?.initialClockMinutes ?? START_TIME;
   const pinFirst = opts?.pinFirstMorningCustomer !== false;
   const etas = [];
+  const scheduleMeta = [];
   let currentIdx = 0;
   let currentTime = initialClock;
 
@@ -99,11 +120,12 @@ function calcETAs(order, travel, timeWindows, jobDurations, appointments, opts) 
     const i = order[step];
     const travelMin = travel[currentIdx][i + 1];
     const tw = timeWindows[i];
+    const earliest = roundUpQuarter(Math.max(currentTime + travelMin, tw?.start ?? 0));
 
     const internalPin = parseInternalFixedStartMinutes(appointments[i]);
     let eta;
+    let exactReachable = null;
     if (internalPin) {
-      const earliest = roundUpQuarter(Math.max(currentTime + travelMin, tw?.start ?? 0));
       const apptId = appointments?.[i]?.id != null ? String(appointments[i].id) : null;
       const routeDate = String(appointments?.[i]?.routeDate || '');
       logFixedTime('fixed_time_constraint_interpreted', {
@@ -113,7 +135,15 @@ function calcETAs(order, travel, timeWindows, jobDurations, appointments, opts) 
         interpretedAs: 'arrival',
         travelMinutesFromDepot: step === 0 ? travelMin : null,
       });
-      if (internalPin.type === 'exact') {
+      if (internalPin.type === 'before') {
+        // 'voor T': kom zo vroeg mogelijk binnen. Bij een vaste (gesleepte)
+        // volgorde wordt de haalbaarheid (eta + jobDuration <= T) niet hier
+        // afgedwongen maar als constraint-violation geregistreerd.
+        eta = earliest;
+      } else if (internalPin.type === 'exact') {
+        // Haalbaarheid: bij step 0 mag je eerder van het depot vertrekken
+        // (T - travelMin >= 0); bij latere stops bepaalt de vroegste aankomst.
+        exactReachable = step === 0 ? internalPin.minutes - travelMin >= 0 : earliest <= internalPin.minutes;
         if (step === 0 && earliest > internalPin.minutes) {
           const depBack = internalPin.minutes - travelMin;
           logFixedTime('fixed_time_feasibility_incorrect_departure_mode', {
@@ -161,10 +191,16 @@ function calcETAs(order, travel, timeWindows, jobDurations, appointments, opts) 
       eta = roundUpQuarter(arrival);
     }
     etas.push(eta);
+    scheduleMeta.push({
+      earliest,
+      appliedEta: eta,
+      pinType: internalPin?.type || null,
+      exactReachable,
+    });
     currentTime = eta + jobDurations[i];
     currentIdx = i + 1;
   }
-  return etas;
+  return { etas, scheduleMeta };
 }
 
 // Greedy algoritme met volledige reistijdenmatrix
@@ -247,19 +283,19 @@ async function fetchDistanceMatrixTravelMinutes(key, allLocations) {
  * ETA via `calcETAs`, niet de volgorde. Geen netwerk → direct unit-testbaar.
  *
  * @param {{ travel: number[][], appointments: object[], fixedOrder?: number[], scheduleOpts?: object }} input
- * @returns {{ order: number[], etas: number[], legInfo: { durationSeconds: number }[] }}
+ * @returns {{ order: number[], etas: number[], legInfo: { durationSeconds: number }[], scheduleMeta: object[] }}
  */
 export function computePartitionedDayWithFixedOrder({ travel, appointments, fixedOrder, scheduleOpts }) {
   const rows = Array.isArray(appointments) ? appointments : [];
   const order = Array.isArray(fixedOrder) ? fixedOrder.slice() : rows.map((_, i) => i);
   const timeWindows = rows.map((a) => parseTimeWindow(a.timeWindow));
   const jobDurations = rows.map((a) => a.jobDuration || 30);
-  const etas = calcETAs(order, travel, timeWindows, jobDurations, rows, scheduleOpts);
+  const { etas, scheduleMeta } = calcETAsWithMeta(order, travel, timeWindows, jobDurations, rows, scheduleOpts);
   const legInfo = order.map((apptIdx, i) => {
     const fromIdx = i === 0 ? 0 : order[i - 1] + 1;
     return { durationSeconds: travel[fromIdx][apptIdx + 1] * 60 };
   });
-  return { order, etas, legInfo };
+  return { order, etas, legInfo, scheduleMeta };
 }
 
 /**
@@ -288,12 +324,12 @@ async function optimizeSubsetMatrix({
   const jobDurations = appointments.map((a) => a.jobDuration || 30);
 
   const order = greedySchedule(n, travel, timeWindows, jobDurations, appointments, scheduleOpts);
-  const etas = calcETAs(order, travel, timeWindows, jobDurations, appointments, scheduleOpts);
+  const { etas, scheduleMeta } = calcETAsWithMeta(order, travel, timeWindows, jobDurations, appointments, scheduleOpts);
   const legInfo = order.map((apptIdx, i) => {
     const fromIdx = i === 0 ? 0 : order[i - 1] + 1;
     return { durationSeconds: travel[fromIdx][apptIdx + 1] * 60 };
   });
-  return { order, etas, legInfo, travel };
+  return { order, etas, legInfo, scheduleMeta, travel };
 }
 
 export async function travelMinutesOneLeg(key, fromAddr, toAddr) {
@@ -310,12 +346,86 @@ function collectViolations(order, etas, timeWindows) {
     if (etas[i] > tw.end) {
       violations.push({
         apptIdx,
+        kind: 'time_window',
         eta: minutesToTime(etas[i]),
         window: `${minutesToTime(tw.start)}-${minutesToTime(tw.end)}`,
       });
     }
   });
   return violations;
+}
+
+/** Drempel (min): kleinere geforceerde wachttijd bij 'na'-constraint = geen conflict (afrondingsruis). */
+const AFTER_FORCED_WAIT_THRESHOLD_MIN = 15;
+
+/**
+ * Constraint-violations voor interne vaste tijden bij een VASTE volgorde.
+ * Detecteert:
+ *  - before: eta + jobDuration > T (deadline niet haalbaar)
+ *  - after:  earliest < T met geforceerde wachttijd (T - earliest) >= drempel
+ *  - exact:  T fysiek niet haalbaar op deze positie (exactReachable === false)
+ * After/exact-detectie vereist `scheduleMeta` (uit calcETAsWithMeta); zonder die
+ * meta worden alleen before-violations gerapporteerd (bv. pins-herorden-pad,
+ * waar after/exact al door herordening/harde checks zijn afgevangen).
+ * Pure/exported → direct unit-testbaar (geen netwerk nodig).
+ *
+ * @param {number[]} order - volgorde van appt-indices
+ * @param {number[]} etas - ETAs (minuten) in dezelfde volgorde als `order`
+ * @param {number[]} jobDurations - klusduur (minuten) per appt-index
+ * @param {object[]} appointments
+ * @param {object[]} [scheduleMeta] - per stap { earliest, appliedEta, pinType, exactReachable }
+ * @returns {{ apptIdx: number, kind: 'internal_fixed', constraint: string, fixedTime: string, eta: string, reason: string }[]}
+ */
+export function collectInternalFixedViolations(order, etas, jobDurations, appointments, scheduleMeta) {
+  const rows = Array.isArray(appointments) ? appointments : [];
+  const meta = Array.isArray(scheduleMeta) ? scheduleMeta : [];
+  const out = [];
+  (Array.isArray(order) ? order : []).forEach((apptIdx, step) => {
+    const pin = parseInternalFixedStartMinutes(rows[apptIdx]);
+    if (!pin) return;
+    const eta = etas[step];
+    if (!Number.isFinite(eta)) return;
+    const job = Number(jobDurations?.[apptIdx]) || rows[apptIdx]?.jobDuration || 30;
+    const stepMeta = meta[step] || null;
+    const earliest = Number.isFinite(stepMeta?.earliest) ? stepMeta.earliest : null;
+
+    if (pin.type === 'before' && eta + job > pin.minutes) {
+      out.push({
+        apptIdx,
+        kind: 'internal_fixed',
+        constraint: 'before',
+        fixedTime: minutesToTime(pin.minutes),
+        eta: minutesToTime(eta),
+        finishesAt: minutesToTime(eta + job),
+        reason: 'before_deadline_exceeded',
+      });
+    } else if (pin.type === 'after' && earliest != null && earliest < pin.minutes) {
+      const waitMinutes = pin.minutes - earliest;
+      if (waitMinutes >= AFTER_FORCED_WAIT_THRESHOLD_MIN) {
+        out.push({
+          apptIdx,
+          kind: 'internal_fixed',
+          constraint: 'after',
+          fixedTime: minutesToTime(pin.minutes),
+          eta: minutesToTime(eta),
+          earliest: minutesToTime(earliest),
+          waitMinutes,
+          reason: 'after_forced_wait',
+        });
+      }
+    } else if (pin.type === 'exact' && stepMeta?.exactReachable === false) {
+      out.push({
+        apptIdx,
+        kind: 'internal_fixed',
+        constraint: 'exact',
+        fixedTime: minutesToTime(pin.minutes),
+        eta: minutesToTime(eta),
+        earliest: earliest != null ? minutesToTime(earliest) : undefined,
+        reason: 'exact_not_reachable',
+      });
+    }
+  });
+  return out;
 }
 
 /**
@@ -662,12 +772,30 @@ export function splitAppointmentsByDayPart(appointments) {
   return { morningOrigIndices, afternoonOrigIndices };
 }
 
+/**
+ * Normaliseer de preserveOrder-parameter naar per-dagdeel flags.
+ * Accepteert een boolean (geldt voor beide dagdelen) of een object
+ * `{ morning, afternoon }`. Hierdoor kan één dagdeel de input-volgorde behouden
+ * terwijl het andere her-geoptimaliseerd wordt (bv. bij constraint-save).
+ *
+ * @param {boolean|{ morning?: boolean, afternoon?: boolean }} preserveOrder
+ * @returns {{ morning: boolean, afternoon: boolean }}
+ */
+export function resolvePreserveDayParts(preserveOrder) {
+  if (preserveOrder && typeof preserveOrder === 'object') {
+    return { morning: preserveOrder.morning === true, afternoon: preserveOrder.afternoon === true };
+  }
+  const v = preserveOrder === true;
+  return { morning: v, afternoon: v };
+}
+
 async function handlePartitionedDay(res, key, appointments, returnToDepot, preserveOrder = false) {
   const n = appointments.length;
   if (n < 1) {
     return res.status(400).json({ error: 'Geen afspraken' });
   }
 
+  const { morning: preserveMorning, afternoon: preserveAfternoon } = resolvePreserveDayParts(preserveOrder);
   const { morningOrigIndices, afternoonOrigIndices } = splitAppointmentsByDayPart(appointments);
 
   const pinMsgs = validateInternalPinsPartitioned(appointments, morningOrigIndices, afternoonOrigIndices);
@@ -693,9 +821,9 @@ async function handlePartitionedDay(res, key, appointments, returnToDepot, prese
 
   /** Ochtendfase */
   if (mApps.length > 0) {
-    // Bij preserveOrder (slepen) NIET herordenen op pin-deadline: input-volgorde is leidend.
+    // Bij preserveMorning (slepen) NIET herordenen op pin-deadline: input-volgorde is leidend.
     // Interne vaste tijden beïnvloeden dan alleen de ETA (via calcETAs), niet de positie.
-    const usePins = !preserveOrder && mApps.some((a) => parseInternalFixedStartMinutes(a) != null);
+    const usePins = !preserveMorning && mApps.some((a) => parseInternalFixedStartMinutes(a) != null);
     let r = usePins
       ? await optimizeSubsetMatrixWithInternalPins({
           key,
@@ -715,7 +843,7 @@ async function handlePartitionedDay(res, key, appointments, returnToDepot, prese
             initialClockMinutes: MORNING_BLOCK.start,
             pinFirstMorningCustomer: true,
           },
-          fixedOrder: preserveOrder ? mApps.map((_, i) => i) : mApps.length === 1 ? [0] : null,
+          fixedOrder: preserveMorning ? mApps.map((_, i) => i) : mApps.length === 1 ? [0] : null,
         });
 
     if (r && r.error) {
@@ -731,6 +859,13 @@ async function handlePartitionedDay(res, key, appointments, returnToDepot, prese
     const twM = mApps.map(() => MORNING_BLOCK);
     violations.push(
       ...collectViolations(r.order, r.etas, twM).map((v) => ({
+        ...v,
+        apptIdx: morningOrigIndices[v.apptIdx],
+      }))
+    );
+    const jobM = mApps.map((a) => a.jobDuration || 30);
+    violations.push(
+      ...collectInternalFixedViolations(r.order, r.etas, jobM, mApps, r.scheduleMeta).map((v) => ({
         ...v,
         apptIdx: morningOrigIndices[v.apptIdx],
       }))
@@ -774,7 +909,7 @@ async function handlePartitionedDay(res, key, appointments, returnToDepot, prese
       afternoonClock = Math.max(AFTERNOON_BLOCK.start, lastMorningEta + lastMorningJob);
     }
 
-    const usePinsPm = !preserveOrder && aApps.some((a) => parseInternalFixedStartMinutes(a) != null);
+    const usePinsPm = !preserveAfternoon && aApps.some((a) => parseInternalFixedStartMinutes(a) != null);
     let r = usePinsPm
       ? await optimizeSubsetMatrixWithInternalPins({
           key,
@@ -794,7 +929,7 @@ async function handlePartitionedDay(res, key, appointments, returnToDepot, prese
             initialClockMinutes: afternoonClock,
             pinFirstMorningCustomer: false,
           },
-          fixedOrder: preserveOrder ? aApps.map((_, i) => i) : aApps.length === 1 ? [0] : null,
+          fixedOrder: preserveAfternoon ? aApps.map((_, i) => i) : aApps.length === 1 ? [0] : null,
         });
 
     if (r && r.error) {
@@ -808,6 +943,13 @@ async function handlePartitionedDay(res, key, appointments, returnToDepot, prese
     const twA = aApps.map(() => AFTERNOON_BLOCK);
     violations.push(
       ...collectViolations(r.order, r.etas, twA).map((v) => ({
+        ...v,
+        apptIdx: afternoonOrigIndices[v.apptIdx],
+      }))
+    );
+    const jobA = aApps.map((a) => a.jobDuration || 30);
+    violations.push(
+      ...collectInternalFixedViolations(r.order, r.etas, jobA, aApps, r.scheduleMeta).map((v) => ({
         ...v,
         apptIdx: afternoonOrigIndices[v.apptIdx],
       }))
@@ -869,7 +1011,9 @@ async function runOptimizeRouteBody(body, res) {
 
   if (mode === 'partitionedDay') {
     const wantReturn = returnToDepot !== false;
-    return handlePartitionedDay(res, key, appointments, wantReturn, preserveOrder === true);
+    // preserveOrder mag boolean of { morning, afternoon } zijn (per-dagdeel).
+    const preserveArg = preserveOrder && typeof preserveOrder === 'object' ? preserveOrder : preserveOrder === true;
+    return handlePartitionedDay(res, key, appointments, wantReturn, preserveArg);
   }
 
   const origin = typeof originRaw === 'string' && originRaw.trim() ? originRaw.trim() : DEPOT;
@@ -888,6 +1032,7 @@ async function runOptimizeRouteBody(body, res) {
   let order;
   let etas;
   let legInfo;
+  let scheduleMeta;
   let usedDistanceMatrix = false;
 
   try {
@@ -912,7 +1057,9 @@ async function runOptimizeRouteBody(body, res) {
       const travel = await fetchDistanceMatrixTravelMinutes(key, allLocations);
       if (travel) {
         order = fixedOrder || greedySchedule(n, travel, timeWindows, jobDurations, appointments, defaultScheduleOpts);
-        etas = calcETAs(order, travel, timeWindows, jobDurations, appointments, defaultScheduleOpts);
+        const meta = calcETAsWithMeta(order, travel, timeWindows, jobDurations, appointments, defaultScheduleOpts);
+        etas = meta.etas;
+        scheduleMeta = meta.scheduleMeta;
         legInfo = order.map((apptIdx, i) => {
           const fromIdx = i === 0 ? 0 : order[i - 1] + 1;
           return { durationSeconds: travel[fromIdx][apptIdx + 1] * 60 };
@@ -992,7 +1139,10 @@ async function runOptimizeRouteBody(body, res) {
     }
   }
 
-  const violations = collectViolations(order, etas, timeWindows);
+  const violations = [
+    ...collectViolations(order, etas, timeWindows),
+    ...collectInternalFixedViolations(order, etas, jobDurations, appointments, scheduleMeta),
+  ];
 
   const methodTag = usedDistanceMatrix
     ? fixedOrder

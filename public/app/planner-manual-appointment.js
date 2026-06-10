@@ -663,7 +663,9 @@
         const pinValue = pinType && pinTime
           ? JSON.stringify({ type: pinType, time: pinTime })
           : '';
-        global.setAppointmentInternalFixedStart(apptId, pinValue);
+        // Await zodat de server-side recalc klaar is vóór onze eigen reload;
+        // skipReload voorkomt een dubbele load (we herladen hieronder al).
+        await global.setAppointmentInternalFixedStart(apptId, pinValue, { skipReload: true });
       }
 
       const targetDate = normalizeYmdToDate(form.date);

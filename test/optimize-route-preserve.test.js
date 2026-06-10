@@ -5,6 +5,7 @@ import {
   splitAppointmentsByDayPart,
   computePartitionedDayWithFixedOrder,
   optimizeRoutePayload,
+  resolvePreserveDayParts,
 } from '../api/optimize-route.js';
 import { optimizeForRouteState } from '../lib/route-live-optimizer.js';
 
@@ -204,6 +205,95 @@ test('partitionedDay preserveOrder keeps order across morning + afternoon', asyn
       ],
     });
     assert.deepEqual(out.order, [0, 1, 2], 'ochtend (A,B) en middag (C) in input-volgorde');
+  } finally {
+    restore();
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Unit 3.1 — per-dagdeel preserveOrder
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('resolvePreserveDayParts maps boolean and object inputs', () => {
+  assert.deepEqual(resolvePreserveDayParts(true), { morning: true, afternoon: true });
+  assert.deepEqual(resolvePreserveDayParts(false), { morning: false, afternoon: false });
+  assert.deepEqual(resolvePreserveDayParts(undefined), { morning: false, afternoon: false });
+  assert.deepEqual(resolvePreserveDayParts({ morning: true }), { morning: true, afternoon: false });
+  assert.deepEqual(resolvePreserveDayParts({ afternoon: true }), { morning: false, afternoon: true });
+  assert.deepEqual(resolvePreserveDayParts({ morning: true, afternoon: true }), { morning: true, afternoon: true });
+});
+
+// Reistijden voor per-dagdeel scenario (M1/M2 ochtend, P1/P2 middag).
+const MIN_DP = {
+  DEPOT: { DEPOT: 0, M1: 10, M2: 20, P1: 30, P2: 25 },
+  M1: { DEPOT: 10, M1: 0, M2: 8, P1: 30, P2: 30 },
+  M2: { DEPOT: 20, M1: 8, M2: 0, P1: 40, P2: 10 },
+  P1: { DEPOT: 30, M1: 30, M2: 40, P1: 0, P2: 15 },
+  P2: { DEPOT: 25, M1: 30, M2: 10, P1: 15, P2: 0 },
+};
+
+function installDayPartStub() {
+  const prevFetch = global.fetch;
+  const prevKey = process.env.GOOGLE_MAPS_API_KEY;
+  process.env.GOOGLE_MAPS_API_KEY = 'test-key';
+  const norm = (s) => (s.includes('Dopperkade') ? 'DEPOT' : s);
+  global.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('distancematrix')) {
+      const parse = (raw) => raw.split('|').map((s) => decodeURIComponent(s));
+      const origins = parse(u.match(/origins=([^&]+)/)[1]);
+      const dests = parse(u.match(/destinations=([^&]+)/)[1]);
+      const rows = origins.map((o) => ({
+        elements: dests.map((d) => ({ status: 'OK', duration: { value: (MIN_DP[norm(o)]?.[norm(d)] ?? 60) * 60 } })),
+      }));
+      return { json: async () => ({ status: 'OK', rows }) };
+    }
+    throw new Error('unexpected fetch: ' + u);
+  };
+  return () => {
+    global.fetch = prevFetch;
+    if (prevKey === undefined) delete process.env.GOOGLE_MAPS_API_KEY;
+    else process.env.GOOGLE_MAPS_API_KEY = prevKey;
+  };
+}
+
+test('per-daypart: preserve morning, optimize afternoon', async () => {
+  const restore = installDayPartStub();
+  try {
+    const out = await optimizeRoutePayload({
+      mode: 'partitionedDay',
+      preserveOrder: { morning: true, afternoon: false },
+      returnToDepot: true,
+      appointments: [
+        { contactId: 'M1', address: 'M1', dayPart: 0, timeWindow: '09:00-13:00', jobDuration: 30 },
+        { contactId: 'M2', address: 'M2', dayPart: 0, timeWindow: '09:00-13:00', jobDuration: 30 },
+        { contactId: 'P1', address: 'P1', dayPart: 1, timeWindow: '13:00-17:00', jobDuration: 30 },
+        { contactId: 'P2', address: 'P2', dayPart: 1, timeWindow: '13:00-17:00', jobDuration: 30 },
+      ],
+    });
+    // Ochtend behoudt input [M1,M2]; middag greedy vanaf M2 kiest P2(10) vóór P1(40).
+    assert.deepEqual(out.order, [0, 1, 3, 2]);
+  } finally {
+    restore();
+  }
+});
+
+test('per-daypart: optimize morning, preserve afternoon', async () => {
+  const restore = installDayPartStub();
+  try {
+    const out = await optimizeRoutePayload({
+      mode: 'partitionedDay',
+      preserveOrder: { morning: false, afternoon: true },
+      returnToDepot: true,
+      appointments: [
+        { contactId: 'M2', address: 'M2', dayPart: 0, timeWindow: '09:00-13:00', jobDuration: 30 },
+        { contactId: 'M1', address: 'M1', dayPart: 0, timeWindow: '09:00-13:00', jobDuration: 30 },
+        { contactId: 'P2', address: 'P2', dayPart: 1, timeWindow: '13:00-17:00', jobDuration: 30 },
+        { contactId: 'P1', address: 'P1', dayPart: 1, timeWindow: '13:00-17:00', jobDuration: 30 },
+      ],
+    });
+    // Ochtend greedy vanaf depot kiest M1(10) vóór M2(20) → [1,0]; middag behoudt input [P2,P1] → [2,3].
+    assert.deepEqual(out.order, [1, 0, 2, 3]);
   } finally {
     restore();
   }
