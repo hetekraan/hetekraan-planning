@@ -9145,7 +9145,8 @@ function validateInternalFixedForAppointment(a, hhmmNorm) {
   return { ok: true };
 }
 
-async function setAppointmentInternalFixedStart(id, domValue) {
+async function setAppointmentInternalFixedStart(id, domValue, opts = {}) {
+  const skipReload = opts && opts.skipReload === true;
   function parseInternalFixedInput(raw) {
     if (!raw) return null;
     if (typeof raw === 'object' && raw.type) return raw;
@@ -9246,7 +9247,20 @@ async function setAppointmentInternalFixedStart(id, domValue) {
   }
   mergeRouteOrderIntoSnapshot(dateStr);
   saveRouteSnapshot(dateStr);
-  render();
+  // Server heroptimaliseert het betrokken dagdeel; meld dat aan de gebruiker.
+  // Bij verwijderde constraint blijft de volgorde staan (geen dagdeel-tekst).
+  if (parsed) {
+    const dpLabel = routeDayPartKey(a) === 'am' ? 'ochtend' : 'middag';
+    showToast(`Route opnieuw ingepland voor ${dpLabel}`, 'success');
+  } else {
+    showToast('Constraint verwijderd', 'success');
+  }
+  // Herlaad zodat de nieuwe volgorde zichtbaar wordt. Aanroepers die zelf al
+  // herladen (modal/admin-edit) zetten skipReload zodat we geen dubbele load doen.
+  if (!skipReload) {
+    await loadAppointments(currentDate, { plannerLoadQuiet: true });
+    render();
+  }
 }
 
 /** Zet `appointments` in de opgeslagen volgorde (alleen bekende contactIds). */

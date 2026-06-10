@@ -104,7 +104,8 @@
       const pinValue = pinType && pinTime
         ? JSON.stringify({ type: pinType, time: pinTime })
         : '';
-      setAppointmentInternalFixedStart(apptIdRaw, pinValue);
+      // Await + skipReload: server-recalc afwachten, dubbele load vermijden.
+      await setAppointmentInternalFixedStart(apptIdRaw, pinValue, { skipReload: true });
       await ctx.loadAppointments(ctx.getCurrentDate());
     } catch (e) {
       ctx.showToast('Opslaan mislukt: ' + e.message, 'info');
