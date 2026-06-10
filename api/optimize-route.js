@@ -772,12 +772,30 @@ export function splitAppointmentsByDayPart(appointments) {
   return { morningOrigIndices, afternoonOrigIndices };
 }
 
+/**
+ * Normaliseer de preserveOrder-parameter naar per-dagdeel flags.
+ * Accepteert een boolean (geldt voor beide dagdelen) of een object
+ * `{ morning, afternoon }`. Hierdoor kan één dagdeel de input-volgorde behouden
+ * terwijl het andere her-geoptimaliseerd wordt (bv. bij constraint-save).
+ *
+ * @param {boolean|{ morning?: boolean, afternoon?: boolean }} preserveOrder
+ * @returns {{ morning: boolean, afternoon: boolean }}
+ */
+export function resolvePreserveDayParts(preserveOrder) {
+  if (preserveOrder && typeof preserveOrder === 'object') {
+    return { morning: preserveOrder.morning === true, afternoon: preserveOrder.afternoon === true };
+  }
+  const v = preserveOrder === true;
+  return { morning: v, afternoon: v };
+}
+
 async function handlePartitionedDay(res, key, appointments, returnToDepot, preserveOrder = false) {
   const n = appointments.length;
   if (n < 1) {
     return res.status(400).json({ error: 'Geen afspraken' });
   }
 
+  const { morning: preserveMorning, afternoon: preserveAfternoon } = resolvePreserveDayParts(preserveOrder);
   const { morningOrigIndices, afternoonOrigIndices } = splitAppointmentsByDayPart(appointments);
 
   const pinMsgs = validateInternalPinsPartitioned(appointments, morningOrigIndices, afternoonOrigIndices);
@@ -803,9 +821,9 @@ async function handlePartitionedDay(res, key, appointments, returnToDepot, prese
 
   /** Ochtendfase */
   if (mApps.length > 0) {
-    // Bij preserveOrder (slepen) NIET herordenen op pin-deadline: input-volgorde is leidend.
+    // Bij preserveMorning (slepen) NIET herordenen op pin-deadline: input-volgorde is leidend.
     // Interne vaste tijden beïnvloeden dan alleen de ETA (via calcETAs), niet de positie.
-    const usePins = !preserveOrder && mApps.some((a) => parseInternalFixedStartMinutes(a) != null);
+    const usePins = !preserveMorning && mApps.some((a) => parseInternalFixedStartMinutes(a) != null);
     let r = usePins
       ? await optimizeSubsetMatrixWithInternalPins({
           key,
@@ -825,7 +843,7 @@ async function handlePartitionedDay(res, key, appointments, returnToDepot, prese
             initialClockMinutes: MORNING_BLOCK.start,
             pinFirstMorningCustomer: true,
           },
-          fixedOrder: preserveOrder ? mApps.map((_, i) => i) : mApps.length === 1 ? [0] : null,
+          fixedOrder: preserveMorning ? mApps.map((_, i) => i) : mApps.length === 1 ? [0] : null,
         });
 
     if (r && r.error) {
@@ -891,7 +909,7 @@ async function handlePartitionedDay(res, key, appointments, returnToDepot, prese
       afternoonClock = Math.max(AFTERNOON_BLOCK.start, lastMorningEta + lastMorningJob);
     }
 
-    const usePinsPm = !preserveOrder && aApps.some((a) => parseInternalFixedStartMinutes(a) != null);
+    const usePinsPm = !preserveAfternoon && aApps.some((a) => parseInternalFixedStartMinutes(a) != null);
     let r = usePinsPm
       ? await optimizeSubsetMatrixWithInternalPins({
           key,
@@ -911,7 +929,7 @@ async function handlePartitionedDay(res, key, appointments, returnToDepot, prese
             initialClockMinutes: afternoonClock,
             pinFirstMorningCustomer: false,
           },
-          fixedOrder: preserveOrder ? aApps.map((_, i) => i) : aApps.length === 1 ? [0] : null,
+          fixedOrder: preserveAfternoon ? aApps.map((_, i) => i) : aApps.length === 1 ? [0] : null,
         });
 
     if (r && r.error) {
@@ -993,7 +1011,9 @@ async function runOptimizeRouteBody(body, res) {
 
   if (mode === 'partitionedDay') {
     const wantReturn = returnToDepot !== false;
-    return handlePartitionedDay(res, key, appointments, wantReturn, preserveOrder === true);
+    // preserveOrder mag boolean of { morning, afternoon } zijn (per-dagdeel).
+    const preserveArg = preserveOrder && typeof preserveOrder === 'object' ? preserveOrder : preserveOrder === true;
+    return handlePartitionedDay(res, key, appointments, wantReturn, preserveArg);
   }
 
   const origin = typeof originRaw === 'string' && originRaw.trim() ? originRaw.trim() : DEPOT;
