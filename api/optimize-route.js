@@ -241,6 +241,28 @@ async function fetchDistanceMatrixTravelMinutes(key, allLocations) {
 }
 
 /**
+ * Pure helper: ETAs + legInfo voor een VASTE volgorde (geen herordening).
+ * Volgorde blijft exact `fixedOrder`; alleen ETAs/legInfo worden (her)berekend
+ * met de reeds opgehaalde reistijden-matrix. Interne vaste tijden beïnvloeden de
+ * ETA via `calcETAs`, niet de volgorde. Geen netwerk → direct unit-testbaar.
+ *
+ * @param {{ travel: number[][], appointments: object[], fixedOrder?: number[], scheduleOpts?: object }} input
+ * @returns {{ order: number[], etas: number[], legInfo: { durationSeconds: number }[] }}
+ */
+export function computePartitionedDayWithFixedOrder({ travel, appointments, fixedOrder, scheduleOpts }) {
+  const rows = Array.isArray(appointments) ? appointments : [];
+  const order = Array.isArray(fixedOrder) ? fixedOrder.slice() : rows.map((_, i) => i);
+  const timeWindows = rows.map((a) => parseTimeWindow(a.timeWindow));
+  const jobDurations = rows.map((a) => a.jobDuration || 30);
+  const etas = calcETAs(order, travel, timeWindows, jobDurations, rows, scheduleOpts);
+  const legInfo = order.map((apptIdx, i) => {
+    const fromIdx = i === 0 ? 0 : order[i - 1] + 1;
+    return { durationSeconds: travel[fromIdx][apptIdx + 1] * 60 };
+  });
+  return { order, etas, legInfo };
+}
+
+/**
  * @returns {Promise<{ order: number[], etas: number[], legInfo: { durationSeconds: number }[], travel: number[][] } | null>}
  */
 async function optimizeSubsetMatrix({
@@ -257,10 +279,15 @@ async function optimizeSubsetMatrix({
   const travel = await fetchDistanceMatrixTravelMinutes(key, allLocations);
   if (!travel) return null;
 
+  if (Array.isArray(fixedOrder)) {
+    const fixed = computePartitionedDayWithFixedOrder({ travel, appointments, fixedOrder, scheduleOpts });
+    return { ...fixed, travel };
+  }
+
   const timeWindows = appointments.map((a) => parseTimeWindow(a.timeWindow));
   const jobDurations = appointments.map((a) => a.jobDuration || 30);
 
-  const order = fixedOrder || greedySchedule(n, travel, timeWindows, jobDurations, appointments, scheduleOpts);
+  const order = greedySchedule(n, travel, timeWindows, jobDurations, appointments, scheduleOpts);
   const etas = calcETAs(order, travel, timeWindows, jobDurations, appointments, scheduleOpts);
   const legInfo = order.map((apptIdx, i) => {
     const fromIdx = i === 0 ? 0 : order[i - 1] + 1;
@@ -610,24 +637,38 @@ async function optimizeSubsetMatrixWithInternalPins({ key, origin, appointments,
 /**
  * Harde klantblokken + depot → ochtend → (overgang) → middag → optioneel terug naar depot.
  */
-async function handlePartitionedDay(res, key, appointments, returnToDepot) {
+/**
+ * Verdeel afspraken over ochtend (dayPart 0) en middag (dayPart 1).
+ * Bij ontbrekend dayPart valt het terug op `timeWindow` (≥13:00 = middag).
+ * Pure/exported → direct unit-testbaar.
+ *
+ * @param {object[]} appointments
+ * @returns {{ morningOrigIndices: number[], afternoonOrigIndices: number[] }}
+ */
+export function splitAppointmentsByDayPart(appointments) {
+  const list = Array.isArray(appointments) ? appointments : [];
+  const morningOrigIndices = [];
+  const afternoonOrigIndices = [];
+  for (let i = 0; i < list.length; i++) {
+    const dp = Number(list[i]?.dayPart);
+    if (dp === 0) morningOrigIndices.push(i);
+    else if (dp === 1) afternoonOrigIndices.push(i);
+    else {
+      const tw = parseTimeWindow(list[i]?.timeWindow);
+      if (tw && tw.start >= AFTERNOON_BLOCK.start) afternoonOrigIndices.push(i);
+      else morningOrigIndices.push(i);
+    }
+  }
+  return { morningOrigIndices, afternoonOrigIndices };
+}
+
+async function handlePartitionedDay(res, key, appointments, returnToDepot, preserveOrder = false) {
   const n = appointments.length;
   if (n < 1) {
     return res.status(400).json({ error: 'Geen afspraken' });
   }
 
-  const morningOrigIndices = [];
-  const afternoonOrigIndices = [];
-  for (let i = 0; i < n; i++) {
-    const dp = Number(appointments[i]?.dayPart);
-    if (dp === 0) morningOrigIndices.push(i);
-    else if (dp === 1) afternoonOrigIndices.push(i);
-    else {
-      const tw = parseTimeWindow(appointments[i]?.timeWindow);
-      if (tw && tw.start >= AFTERNOON_BLOCK.start) afternoonOrigIndices.push(i);
-      else morningOrigIndices.push(i);
-    }
-  }
+  const { morningOrigIndices, afternoonOrigIndices } = splitAppointmentsByDayPart(appointments);
 
   const pinMsgs = validateInternalPinsPartitioned(appointments, morningOrigIndices, afternoonOrigIndices);
   if (pinMsgs.length) {
@@ -652,7 +693,9 @@ async function handlePartitionedDay(res, key, appointments, returnToDepot) {
 
   /** Ochtendfase */
   if (mApps.length > 0) {
-    const usePins = mApps.some((a) => parseInternalFixedStartMinutes(a) != null);
+    // Bij preserveOrder (slepen) NIET herordenen op pin-deadline: input-volgorde is leidend.
+    // Interne vaste tijden beïnvloeden dan alleen de ETA (via calcETAs), niet de positie.
+    const usePins = !preserveOrder && mApps.some((a) => parseInternalFixedStartMinutes(a) != null);
     let r = usePins
       ? await optimizeSubsetMatrixWithInternalPins({
           key,
@@ -672,7 +715,7 @@ async function handlePartitionedDay(res, key, appointments, returnToDepot) {
             initialClockMinutes: MORNING_BLOCK.start,
             pinFirstMorningCustomer: true,
           },
-          fixedOrder: mApps.length === 1 ? [0] : null,
+          fixedOrder: preserveOrder ? mApps.map((_, i) => i) : mApps.length === 1 ? [0] : null,
         });
 
     if (r && r.error) {
@@ -731,7 +774,7 @@ async function handlePartitionedDay(res, key, appointments, returnToDepot) {
       afternoonClock = Math.max(AFTERNOON_BLOCK.start, lastMorningEta + lastMorningJob);
     }
 
-    const usePinsPm = aApps.some((a) => parseInternalFixedStartMinutes(a) != null);
+    const usePinsPm = !preserveOrder && aApps.some((a) => parseInternalFixedStartMinutes(a) != null);
     let r = usePinsPm
       ? await optimizeSubsetMatrixWithInternalPins({
           key,
@@ -751,7 +794,7 @@ async function handlePartitionedDay(res, key, appointments, returnToDepot) {
             initialClockMinutes: afternoonClock,
             pinFirstMorningCustomer: false,
           },
-          fixedOrder: aApps.length === 1 ? [0] : null,
+          fixedOrder: preserveOrder ? aApps.map((_, i) => i) : aApps.length === 1 ? [0] : null,
         });
 
     if (r && r.error) {
@@ -826,7 +869,7 @@ async function runOptimizeRouteBody(body, res) {
 
   if (mode === 'partitionedDay') {
     const wantReturn = returnToDepot !== false;
-    return handlePartitionedDay(res, key, appointments, wantReturn);
+    return handlePartitionedDay(res, key, appointments, wantReturn, preserveOrder === true);
   }
 
   const origin = typeof originRaw === 'string' && originRaw.trim() ? originRaw.trim() : DEPOT;

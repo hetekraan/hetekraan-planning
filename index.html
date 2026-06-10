@@ -8928,6 +8928,77 @@ function setLiveRouteState(dateStr, routeState) {
   cleanupLegacyRouteLocalStorage(ds);
 }
 
+/**
+ * Voeg een nieuwe actieve volgorde in een bestaande orderContactIds, met behoud
+ * van de posities van niet-actieve (bv. klaar) contacten. Spiegelt de
+ * server-logica `mergeRouteOrderPreservingStatus`, zodat de optimistische client
+ * dezelfde volgorde toont als wat de server straks teruggeeft.
+ */
+function mergeOptimisticOrderContactIds(oldOrder, newActiveIds) {
+  const old = (Array.isArray(oldOrder) ? oldOrder : []).map((x) => String(x || '').trim()).filter(Boolean);
+  const next = (Array.isArray(newActiveIds) ? newActiveIds : []).map((x) => String(x || '').trim()).filter(Boolean);
+  const activeSet = new Set(next);
+  const result = [];
+  let ai = 0;
+  for (const cid of old) {
+    if (activeSet.has(cid)) {
+      if (ai < next.length) result.push(next[ai++]);
+    } else {
+      result.push(cid);
+    }
+  }
+  while (ai < next.length) result.push(next[ai++]);
+  const seen = new Set();
+  return result.filter((c) => (seen.has(c) ? false : (seen.add(c), true)));
+}
+
+/**
+ * Werk de live route-state direct bij na een sleep (optimistisch), zodat
+ * getRouteStopsForSidebar()/renders de nieuwe volgorde tonen vóór de
+ * server-response. Retourneert een snapshot voor rollback bij API-fout.
+ */
+function applyOptimisticReorder(dateStr, newActiveIds, movedContactId) {
+  const ds = String(dateStr || '').trim();
+  const state = getLiveRouteState(ds);
+  if (!state) return null;
+  const snapshot = {
+    orderContactIds: Array.isArray(state.orderContactIds) ? state.orderContactIds.slice() : [],
+    pinsByContactId: { ...(state.pinsByContactId && typeof state.pinsByContactId === 'object' ? state.pinsByContactId : {}) },
+  };
+  const mergedOrder = mergeOptimisticOrderContactIds(snapshot.orderContactIds, newActiveIds);
+  const pins = { ...snapshot.pinsByContactId };
+  const moved = String(movedContactId || '').trim();
+  if (moved) {
+    const idx = newActiveIds.indexOf(moved);
+    const prev = idx > 0 ? String(newActiveIds[idx - 1] || '').trim() : '';
+    pins[moved] = {
+      type: 'manual_order',
+      anchor: prev ? `after:${prev}` : 'start',
+      createdAt: Date.now(),
+      optimistic: true,
+    };
+  }
+  setLiveRouteState(ds, { ...state, orderContactIds: mergedOrder, pinsByContactId: pins });
+  return snapshot;
+}
+
+/** Herstel de pre-sleep volgorde/pins na een mislukte reorder-write. */
+function rollbackOptimisticReorder(dateStr, snapshot) {
+  const ds = String(dateStr || '').trim();
+  if (!snapshot || !ds) return;
+  const cur = getLiveRouteState(ds);
+  const base = cur && typeof cur === 'object' ? cur : {};
+  setLiveRouteState(ds, {
+    ...base,
+    orderContactIds: Array.isArray(snapshot.orderContactIds) ? snapshot.orderContactIds.slice() : [],
+    pinsByContactId: { ...(snapshot.pinsByContactId || {}) },
+  });
+  if (getDateStr(currentDate) === ds) {
+    applyRouteOrderFromStops(orderRouteMorningFirst(getRouteStopsForSidebar()));
+    render();
+  }
+}
+
 /** Laatste partitionedDay legInfo (per dag) voor sidebar-overgang + samenvatting; alleen UI-cache. */
 const lastPartitionedRoutePlanByDate = new Map();
 
@@ -11725,6 +11796,9 @@ async function sendRouteReorderWrite(payload) {
   routeWriteSlowTimer = setTimeout(() => {
     setRouteUiStatus(dateStr, { saving: true, slow: true });
   }, 5000);
+  // Bij conflict halen we de server-state op (= autoritair); dan NIET terugrollen
+  // naar de lokale pre-sleep snapshot.
+  let serverResynced = false;
   try {
     const res = await fetch('/api/route/reorder', {
       method: 'POST',
@@ -11743,10 +11817,12 @@ async function sendRouteReorderWrite(payload) {
     if (res.status === 409 && (data?.code === 'REVISION_CONFLICT' || data?.code === 'EXPECTED_REVISION_REQUIRED')) {
       if ((payload.retryCount || 0) < 1) {
         await loadAppointments(currentDate);
+        serverResynced = true;
         const refreshed = getLiveRouteState(dateStr);
         pendingRouteWrite = { ...payload, retryCount: (payload.retryCount || 0) + 1 };
         if (refreshed) return sendRouteReorderWrite(pendingRouteWrite);
       }
+      serverResynced = true;
       throw new Error('Route is intussen aangepast. Ververs en probeer opnieuw.');
     }
     if (!res.ok || !data?.ok || !data.routeState) {
@@ -11759,6 +11835,11 @@ async function sendRouteReorderWrite(payload) {
     showToast('Route opgeslagen', 'success');
     render();
   } catch (err) {
+    // Rollback: zet de optimistische sleep terug bij een echte schrijf-fout
+    // (netwerk/500). Bij conflict is de server-state al opnieuw geladen.
+    if (!serverResynced && payload?.rollbackSnapshot) {
+      rollbackOptimisticReorder(dateStr, payload.rollbackSnapshot);
+    }
     showToast(String(err?.message || err), 'info');
   } finally {
     clearTimeout(routeWriteSlowTimer);
@@ -11860,12 +11941,18 @@ function initRouteDrag(list) {
       const [item] = ordered.splice(si, 1);
       ordered.splice(ti, 0, item);
 
+      const newActiveIds = routeContactIdsFromStops(ordered);
+      const movedContactId = moved.contactId ? String(moved.contactId) : '';
+      // Optimistisch: werk orderContactIds + pin meteen bij zodat de nieuwe
+      // volgorde blijft staan tijdens de debounce/round-trip (bug 4A).
+      const rollbackSnapshot = applyOptimisticReorder(dateStr, newActiveIds, movedContactId);
       applyRouteOrderFromStops(ordered);
       render();
       scheduleRouteReorderWrite({
         dateStr,
-        orderedContactIds: routeContactIdsFromStops(ordered),
-        movedContactId: moved.contactId ? String(moved.contactId) : '',
+        orderedContactIds: newActiveIds,
+        movedContactId,
+        rollbackSnapshot,
       });
     });
   });
