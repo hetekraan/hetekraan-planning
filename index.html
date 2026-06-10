@@ -11449,12 +11449,22 @@ function renderRouteItemHtml(a) {
   const jobLbl = formatJobTypeLabelShort(a.jobType);
   const dayChip = (a.dayPart ?? 1) === 0 ? '09–13' : '13–17';
   const viol = a.violation ? '<span class="route-violation" title="Tijdsvenster lastig haalbaar">!</span>' : '';
-  const pinH = a.internalFixedStartTime ? normalizeTimeStr(String(a.internalFixedStartTime)) : '';
-  const pinHtml = pinH
-    ? `<span class="route-pin-pill" title="Interne vaste route-start (operationeel)">Vast ${pinH}</span>`
-    : '';
   const routeState = getLiveRouteState(getDateStr(currentDate));
   const cid = a?.contactId ? String(a.contactId) : '';
+  const fixedPin = (() => {
+    if (a.internalFixedPin && typeof a.internalFixedPin === 'object' && a.internalFixedPin.time) {
+      return { type: String(a.internalFixedPin.type || 'exact').toLowerCase(), time: String(a.internalFixedPin.time) };
+    }
+    if (a.internalFixedStartTime) return { type: 'exact', time: String(a.internalFixedStartTime) };
+    const fromState = cid && routeState?.internalFixedStartByContactId
+      ? routeState.internalFixedStartByContactId[cid]
+      : null;
+    if (fromState && fromState.time) return { type: String(fromState.type || 'exact').toLowerCase(), time: String(fromState.time) };
+    return null;
+  })();
+  const pinHtml = fixedPin
+    ? `<span class="route-pin-pill" title="Interne vaste route-start (operationeel)">${({ exact: 'Op', after: 'Na', before: 'Voor' }[fixedPin.type] || 'Op')} ${normalizeTimeStr(fixedPin.time)}</span>`
+    : '';
   const manualPin = cid && routeState?.pinsByContactId && routeState.pinsByContactId[cid];
   const manualPinHtml = manualPin
     ? `<button type="button" class="route-pin-pill" title="Vastgezet door handmatige volgorde" onclick='event.stopPropagation(); unpinRouteContact(${JSON.stringify(cid)})'>Pin losmaken</button>`
