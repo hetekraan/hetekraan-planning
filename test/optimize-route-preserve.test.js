@@ -6,6 +6,7 @@ import {
   computePartitionedDayWithFixedOrder,
   optimizeRoutePayload,
 } from '../api/optimize-route.js';
+import { optimizeForRouteState } from '../lib/route-live-optimizer.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // splitAppointmentsByDayPart (puur)
@@ -162,6 +163,28 @@ test('partitionedDay preserveOrder keeps morning input order', async () => {
     assert.deepEqual(out.order, [0, 1, 2], 'preserveOrder behoudt exacte input-volgorde');
     assert.equal(out.etas.length, 3);
     assert.match(out.etas[0], /^\d{2}:\d{2}$/);
+  } finally {
+    restore();
+  }
+});
+
+test('reorder chain: optimizeForRouteState(preserveOrderIds) keeps dragged order', async () => {
+  const restore = installDistanceMatrixStub();
+  try {
+    const active = [
+      { contactId: 'A', fullAddressLine: 'A', dayPart: 0, timeWindow: '09:00-13:00' },
+      { contactId: 'B', fullAddressLine: 'B', dayPart: 0, timeWindow: '09:00-13:00' },
+      { contactId: 'C', fullAddressLine: 'C', dayPart: 0, timeWindow: '09:00-13:00' },
+    ];
+    // Gesleepte volgorde die greedy NOOIT zou maken (greedy start met B = dichtst bij depot).
+    const dragged = ['C', 'A', 'B'];
+    const plan = await optimizeForRouteState({
+      activeAppointments: active,
+      routeState: { orderContactIds: ['A', 'B', 'C'], pinsByContactId: {} },
+      preserveOrderIds: dragged,
+    });
+    assert.deepEqual(plan.orderContactIds, dragged, 'reorder-keten behoudt gesleepte volgorde');
+    assert.ok(plan.etasByContactId.C, 'ETA berekend voor eerste gesleepte stop');
   } finally {
     restore();
   }
