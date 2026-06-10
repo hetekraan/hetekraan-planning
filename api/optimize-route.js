@@ -113,7 +113,12 @@ function calcETAs(order, travel, timeWindows, jobDurations, appointments, opts) 
         interpretedAs: 'arrival',
         travelMinutesFromDepot: step === 0 ? travelMin : null,
       });
-      if (internalPin.type === 'exact') {
+      if (internalPin.type === 'before') {
+        // 'voor T': kom zo vroeg mogelijk binnen. Bij een vaste (gesleepte)
+        // volgorde wordt de haalbaarheid (eta + jobDuration <= T) niet hier
+        // afgedwongen maar als constraint-violation geregistreerd.
+        eta = earliest;
+      } else if (internalPin.type === 'exact') {
         if (step === 0 && earliest > internalPin.minutes) {
           const depBack = internalPin.minutes - travelMin;
           logFixedTime('fixed_time_feasibility_incorrect_departure_mode', {
@@ -310,12 +315,50 @@ function collectViolations(order, etas, timeWindows) {
     if (etas[i] > tw.end) {
       violations.push({
         apptIdx,
+        kind: 'time_window',
         eta: minutesToTime(etas[i]),
         window: `${minutesToTime(tw.start)}-${minutesToTime(tw.end)}`,
       });
     }
   });
   return violations;
+}
+
+/**
+ * Constraint-violations voor interne vaste tijden bij een VASTE volgorde.
+ * Detecteert 'voor T'-deadlines die niet haalbaar zijn (eta + jobDuration > T).
+ * 'after' kent geen bovengrens; 'exact' wordt in calcETAs op T vastgezet en in
+ * de pins-herorden-modus al op haalbaarheid gecontroleerd.
+ * Pure/exported → direct unit-testbaar (geen netwerk nodig).
+ *
+ * @param {number[]} order - volgorde van appt-indices
+ * @param {number[]} etas - ETAs (minuten) in dezelfde volgorde als `order`
+ * @param {number[]} jobDurations - klusduur (minuten) per appt-index
+ * @param {object[]} appointments
+ * @returns {{ apptIdx: number, kind: 'internal_fixed', constraint: string, fixedTime: string, eta: string, finishesAt: string, reason: string }[]}
+ */
+export function collectInternalFixedViolations(order, etas, jobDurations, appointments) {
+  const rows = Array.isArray(appointments) ? appointments : [];
+  const out = [];
+  (Array.isArray(order) ? order : []).forEach((apptIdx, step) => {
+    const pin = parseInternalFixedStartMinutes(rows[apptIdx]);
+    if (!pin) return;
+    const eta = etas[step];
+    if (!Number.isFinite(eta)) return;
+    const job = Number(jobDurations?.[apptIdx]) || rows[apptIdx]?.jobDuration || 30;
+    if (pin.type === 'before' && eta + job > pin.minutes) {
+      out.push({
+        apptIdx,
+        kind: 'internal_fixed',
+        constraint: 'before',
+        fixedTime: minutesToTime(pin.minutes),
+        eta: minutesToTime(eta),
+        finishesAt: minutesToTime(eta + job),
+        reason: 'before_deadline_exceeded',
+      });
+    }
+  });
+  return out;
 }
 
 /**
@@ -735,6 +778,13 @@ async function handlePartitionedDay(res, key, appointments, returnToDepot, prese
         apptIdx: morningOrigIndices[v.apptIdx],
       }))
     );
+    const jobM = mApps.map((a) => a.jobDuration || 30);
+    violations.push(
+      ...collectInternalFixedViolations(r.order, r.etas, jobM, mApps).map((v) => ({
+        ...v,
+        apptIdx: morningOrigIndices[v.apptIdx],
+      }))
+    );
 
     for (let s = 0; s < r.order.length; s++) {
       const localIdx = r.order[s];
@@ -808,6 +858,13 @@ async function handlePartitionedDay(res, key, appointments, returnToDepot, prese
     const twA = aApps.map(() => AFTERNOON_BLOCK);
     violations.push(
       ...collectViolations(r.order, r.etas, twA).map((v) => ({
+        ...v,
+        apptIdx: afternoonOrigIndices[v.apptIdx],
+      }))
+    );
+    const jobA = aApps.map((a) => a.jobDuration || 30);
+    violations.push(
+      ...collectInternalFixedViolations(r.order, r.etas, jobA, aApps).map((v) => ({
         ...v,
         apptIdx: afternoonOrigIndices[v.apptIdx],
       }))
@@ -992,7 +1049,10 @@ async function runOptimizeRouteBody(body, res) {
     }
   }
 
-  const violations = collectViolations(order, etas, timeWindows);
+  const violations = [
+    ...collectViolations(order, etas, timeWindows),
+    ...collectInternalFixedViolations(order, etas, jobDurations, appointments),
+  ];
 
   const methodTag = usedDistanceMatrix
     ? fixedOrder
