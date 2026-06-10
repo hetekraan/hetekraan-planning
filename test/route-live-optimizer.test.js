@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   activeRouteAppointments,
+  mergeInternalFixedFromAppointments,
   mergeRouteOrderPreservingStatus,
   preservedActiveOrderFromRouteState,
   triggerLiveRouteRecalculation,
@@ -121,6 +122,61 @@ test('triggerLiveRouteRecalculation preserves order after completeAppointment', 
   });
   assert.equal(out.ok, true);
   assert.deepEqual(out.routeState.orderContactIds, ['c2', 'c1']);
+});
+
+test('mergeInternalFixedFromAppointments sets, overwrites and removes constraints', () => {
+  const merged = mergeInternalFixedFromAppointments(
+    { internalFixedStartByContactId: { c1: { type: 'exact', time: '09:00' }, c9: { type: 'after', time: '08:00' } } },
+    [
+      { contactId: 'c1', internalFixedStart: { type: 'after', time: '10:00' } }, // overschrijf
+      { contactId: 'c2' }, // geen pin → niet toegevoegd
+      { contactId: 'c3', internalFixedStart: '11:30' }, // legacy plain → exact
+    ]
+  );
+  assert.deepEqual(merged.c1, { type: 'after', time: '10:00' });
+  assert.deepEqual(merged.c3, { type: 'exact', time: '11:30' });
+  assert.equal(merged.c2, undefined);
+  assert.deepEqual(merged.c9, { type: 'after', time: '08:00' }, 'contact buiten lijst blijft staan');
+});
+
+test('mergeInternalFixedFromAppointments deletes when constraint removed', () => {
+  const merged = mergeInternalFixedFromAppointments(
+    { internalFixedStartByContactId: { c1: { type: 'exact', time: '09:00' } } },
+    [{ contactId: 'c1' }] // pin verwijderd
+  );
+  assert.equal(merged.c1, undefined);
+});
+
+test('setInternalFixedStart recalc preserves manual order and updates fixed map', async () => {
+  const initial = routeState({ orderContactIds: ['c1', 'c2'] });
+  const rows = [
+    { contactId: 'c1', status: 'ingepland', fullAddressLine: 'A', timeSlot: '09:00', internalFixedStart: { type: 'after', time: '10:00' } },
+    { contactId: 'c2', status: 'ingepland', fullAddressLine: 'B', timeSlot: '10:30' },
+  ];
+  const calls = { write: [] };
+  const out = await triggerLiveRouteRecalculation({
+    locationId: 'loc-1',
+    dateStr: '2026-05-20',
+    appointments: rows,
+    reason: 'setInternalFixedStart',
+    deps: {
+      ensureRouteLiveState: async () => ({ ok: true, routeState: initial }),
+      // Simuleer de echte optimizer: bij preserveOrder blijft de volgorde staan.
+      optimizeRoute: async ({ appointments: act, preserveOrder }) => ({
+        orderContactIds: preserveOrder ? act.map((a) => a.contactId) : act.map((a) => a.contactId).reverse(),
+        etasByContactId: Object.fromEntries(act.map((a) => [a.contactId, '09:00'])),
+        violationsByContactId: {},
+      }),
+      setRouteLiveState: async (_loc, _date, payload) => {
+        calls.write.push(payload);
+        return { ok: true, routeState: { ...payload, revision: 4 } };
+      },
+    },
+  });
+  assert.equal(out.ok, true);
+  assert.deepEqual(out.routeState.orderContactIds, ['c1', 'c2'], 'handmatige volgorde blijft staan');
+  assert.deepEqual(calls.write[0].internalFixedStartByContactId.c1, { type: 'after', time: '10:00' });
+  assert.equal(calls.write[0].internalFixedStartByContactId.c2, undefined);
 });
 
 test('triggerLiveRouteRecalculation logs failure but does not throw', async () => {
