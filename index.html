@@ -26,6 +26,18 @@ window.HKPlannerAutoRefresh = {
   PLANNER_AUTO_REFRESH_MS,
   PLANNER_FOCUS_REFRESH_MIN_MS,
 };
+import {
+  formatEtaSentPillLabel,
+  formatMorningWindowPillLabel,
+  resolveMorningSentWindowForContact,
+} from '/app/morning-message-pill-core.mjs';
+window.HKMorningMessagePill = {
+  formatEtaSentPillLabel,
+  formatMorningWindowPillLabel,
+  resolveMorningSentWindowForContact,
+};
+import { shouldWarmMorningCache } from '/app/planner-load-morning-cache-core.mjs';
+window.HKMorningCache = { shouldWarmMorningCache };
 </script>
 <script src="/app/planner-route-maps.js"></script>
 <script src="/app/planner-modal-ui.js"></script>
@@ -5032,6 +5044,12 @@ window.HKPlannerAutoRefresh = {
     color: var(--hk-good, #3f7d4a);
     border: 1px solid rgba(63, 125, 74, 0.35);
   }
+    body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--slot,
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill--slot {
+    background: rgba(160, 160, 160, 0.12);
+    border: 1px solid rgba(160, 160, 160, 0.3);
+    color: #b0b0b0;
+  }
     body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--onderweg,
     body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill--onderweg {
     background: rgba(251, 191, 36, 0.16);
@@ -7704,6 +7722,18 @@ window.HKPlannerAutoRefresh = {
   </div>
 </div>
 
+<!-- ETA VERSTUREN BEVESTIGING (Onderweg-knop) -->
+<div class="modal-overlay" id="etaConfirmOverlay" aria-hidden="true">
+  <div class="modal" style="max-width:360px" role="dialog" aria-modal="true" aria-labelledby="etaConfirmTitle">
+    <div class="modal-title" id="etaConfirmTitle">ETA versturen?</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5">Weet je zeker dat je deze ETA wilt versturen?</div>
+    <div class="modal-actions" style="flex-direction:column;gap:8px">
+      <button type="button" class="btn-save" style="width:100%;padding:10px" onclick="confirmEtaSend()">Versturen</button>
+      <button type="button" class="btn-cancel" style="width:100%;padding:10px;text-align:center" onclick="closeEtaConfirm()">Annuleren</button>
+    </div>
+  </div>
+</div>
+
 <!-- ONDERWEG BEVESTIGING POPUP (legacy handmatig) -->
 <div class="modal-overlay" id="onderwegOverlay">
   <div class="modal" style="max-width:340px">
@@ -8698,6 +8728,7 @@ function createPlannerCtx(merge = {}) {
     clearLastPartitionedRoutePlan: (dateStr) => clearLastPartitionedRoutePlan(dateStr),
     logRouteOrder,
     refreshMorningMessageSettings,
+    warmMorningMessageCache,
     markEtaSentForContact,
     getEtaSentMetaForContact,
     showNextEtaPrompt,
@@ -10880,6 +10911,23 @@ function renderApptCard(a, i) {
       return `<span class="appt-price appt-wm-price" id="appt-price-${domId}"${zeroAttr}>${txt}</span>`;
     })();
     const etaSentMeta = a.contactId ? getEtaSentMetaForContact(a.contactId, getDateStr(currentDate)) : null;
+    const garantiePill = /(garantie)/i.test(`${jobDescDisplay} ${noteStripped}`)
+      ? ` <span class="appt-wm-pill appt-wm-pill--garantie">Garantie</span>`
+      : '';
+    // Slot-pill: verschijnt zodra de ochtendmelding (met tijdvenster) voor deze
+    // klant is verstuurd. Onafhankelijk van send-next-eta; niet bij 'klaar'.
+    const slotPill = (() => {
+      const api = window.HKMorningMessagePill;
+      if (isDone || !a.contactId || !api) return '';
+      const settings = getMorningMessageSettingsForUi();
+      const win = api.resolveMorningSentWindowForContact(settings, a.contactId);
+      if (!win) return '';
+      const label = api.formatMorningWindowPillLabel(win);
+      if (!label) return '';
+      const clk = formatMorningSentClock(settings.lastSentAt);
+      const slotTip = clk ? `Verstuurd om ${clk} via ochtendmelding` : 'Verstuurd via ochtendmelding';
+      return `<span class="appt-wm-pill appt-wm-pill--slot" title="${escapeHtml(slotTip)}">${escapeHtml(label)}</span>`;
+    })();
     let pillHtml = '';
     if (isDone) {
       pillHtml = `<span class="appt-wm-pill appt-wm-pill--klaar">${wmPillCheck}Klaar · Gefactureerd</span>`;
@@ -10890,14 +10938,19 @@ function renderApptCard(a, i) {
       const tip = sentClock
         ? `ETA ${etaSentMeta.eta} verstuurd om ${sentClock}`
         : `ETA ${etaSentMeta.eta} verstuurd`;
-      pillHtml = `<span class="appt-wm-pill appt-wm-pill--eta-sent" title="${escapeHtml(tip)}">${wmPillClock}ETA verstuurd</span>`;
+      const etaLabel = window.HKMorningMessagePill
+        ? window.HKMorningMessagePill.formatEtaSentPillLabel(etaSentMeta.eta)
+        : `ETA ${etaSentMeta.eta}`;
+      const etaPill = `<span class="appt-wm-pill appt-wm-pill--eta-sent" title="${escapeHtml(tip)}">${wmPillClock}${escapeHtml(etaLabel)}</span>`;
+      pillHtml = slotPill ? `${slotPill} ${etaPill}` : etaPill;
     } else if (isOnderweg) {
-      pillHtml = `<span class="appt-wm-pill appt-wm-pill--onderweg">${wmPillClock}Onderweg</span>`;
+      const onderwegPill = `<span class="appt-wm-pill appt-wm-pill--onderweg">${wmPillClock}Onderweg</span>`;
+      pillHtml = slotPill ? `${slotPill} ${onderwegPill}` : onderwegPill;
+    } else if (slotPill) {
+      // Optie A: slot vervangt de type-pill; garantie blijft zichtbaar.
+      pillHtml = `${slotPill}${garantiePill}`;
     } else {
-      pillHtml = `<span class="appt-wm-pill appt-wm-pill--type appt-wm-pill--type-${escapeHtml(jobTypeKey)}">${escapeHtml(jobTypeLabel)}</span>`;
-      if (/(garantie)/i.test(`${jobDescDisplay} ${noteStripped}`)) {
-        pillHtml += ` <span class="appt-wm-pill appt-wm-pill--garantie">Garantie</span>`;
-      }
+      pillHtml = `<span class="appt-wm-pill appt-wm-pill--type appt-wm-pill--type-${escapeHtml(jobTypeKey)}">${escapeHtml(jobTypeLabel)}</span>${garantiePill}`;
     }
     const onderwegBtnActive = isOnderweg || !!etaSentMeta;
     const primaryCta = !isDone
@@ -11728,6 +11781,16 @@ async function refreshMorningMessageSettings() {
   syncMorningMessageAutoToggleUi();
 }
 
+/** Warm de ochtendmelding-cache bij een load als die nog koud/oud is (boot + datumwissel). */
+async function warmMorningMessageCache(dateStr) {
+  const ds = String(dateStr || getDateStr(currentDate) || '').trim();
+  const shouldWarm = window.HKMorningCache?.shouldWarmMorningCache
+    ? window.HKMorningCache.shouldWarmMorningCache({ cacheDateStr: morningMessageSettingsDateStr, dateStr: ds })
+    : morningMessageSettingsDateStr !== ds && !!ds;
+  if (!shouldWarm) return;
+  await refreshMorningMessageSettings();
+}
+
 function syncMorningMessageAutoToggleUi() {
   const inp = document.getElementById('routesMorningAutoToggle');
   if (!inp) return;
@@ -12486,7 +12549,34 @@ async function confirmNextEtaPromptSend() {
   render();
 }
 
+let _pendingEtaConfirmId = null;
+
+// Opener: toont de styled bevestigingsmodal i.p.v. native window.confirm.
 async function sendOnderwegEtaDirect(id) {
+  const overlay = document.getElementById('etaConfirmOverlay');
+  if (!overlay) return performOnderwegEtaSend(id);
+  _pendingEtaConfirmId = id;
+  overlay.classList.add('visible');
+  overlay.setAttribute('aria-hidden', 'false');
+}
+
+function closeEtaConfirm() {
+  _pendingEtaConfirmId = null;
+  const overlay = document.getElementById('etaConfirmOverlay');
+  if (overlay) {
+    overlay.classList.remove('visible');
+    overlay.setAttribute('aria-hidden', 'true');
+  }
+}
+
+async function confirmEtaSend() {
+  const id = _pendingEtaConfirmId;
+  closeEtaConfirm();
+  if (id == null) return;
+  await performOnderwegEtaSend(id);
+}
+
+async function performOnderwegEtaSend(id) {
   const ctx = createPlannerCtx();
   if (!window.HKPlannerNextEta?.sendOnderwegEtaForAppointment) {
     showToast('Onderweg-module niet geladen', 'info');
