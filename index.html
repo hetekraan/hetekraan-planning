@@ -10931,26 +10931,25 @@ function renderApptCard(a, i) {
     let pillHtml = '';
     if (isDone) {
       pillHtml = `<span class="appt-wm-pill appt-wm-pill--klaar">${wmPillCheck}Klaar · Gefactureerd</span>`;
-    } else if (etaSentMeta) {
-      const sentClock = etaSentMeta.sentAt
-        ? new Date(etaSentMeta.sentAt).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
-        : '';
-      const tip = sentClock
-        ? `ETA ${etaSentMeta.eta} verstuurd om ${sentClock}`
-        : `ETA ${etaSentMeta.eta} verstuurd`;
-      const etaLabel = window.HKMorningMessagePill
-        ? window.HKMorningMessagePill.formatEtaSentPillLabel(etaSentMeta.eta)
-        : `ETA ${etaSentMeta.eta}`;
-      const etaPill = `<span class="appt-wm-pill appt-wm-pill--eta-sent" title="${escapeHtml(tip)}">${wmPillClock}${escapeHtml(etaLabel)}</span>`;
-      pillHtml = slotPill ? `${slotPill} ${etaPill}` : etaPill;
-    } else if (isOnderweg) {
-      const onderwegPill = `<span class="appt-wm-pill appt-wm-pill--onderweg">${wmPillClock}Onderweg</span>`;
-      pillHtml = slotPill ? `${slotPill} ${onderwegPill}` : onderwegPill;
-    } else if (slotPill) {
-      // Optie A: slot vervangt de type-pill; garantie blijft zichtbaar.
-      pillHtml = `${slotPill}${garantiePill}`;
     } else {
-      pillHtml = `<span class="appt-wm-pill appt-wm-pill--type appt-wm-pill--type-${escapeHtml(jobTypeKey)}">${escapeHtml(jobTypeLabel)}</span>${garantiePill}`;
+      // Type-pill blijft altijd zichtbaar; slot + status zijn additief (volgorde: type → slot → status).
+      const typePill = `<span class="appt-wm-pill appt-wm-pill--type appt-wm-pill--type-${escapeHtml(jobTypeKey)}">${escapeHtml(jobTypeLabel)}</span>${garantiePill}`;
+      let statusPill = '';
+      if (etaSentMeta) {
+        const sentClock = etaSentMeta.sentAt
+          ? new Date(etaSentMeta.sentAt).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
+          : '';
+        const tip = sentClock
+          ? `ETA ${etaSentMeta.eta} verstuurd om ${sentClock}`
+          : `ETA ${etaSentMeta.eta} verstuurd`;
+        const etaLabel = window.HKMorningMessagePill
+          ? window.HKMorningMessagePill.formatEtaSentPillLabel(etaSentMeta.eta)
+          : `ETA ${etaSentMeta.eta}`;
+        statusPill = `<span class="appt-wm-pill appt-wm-pill--eta-sent" title="${escapeHtml(tip)}">${wmPillClock}${escapeHtml(etaLabel)}</span>`;
+      } else if (isOnderweg) {
+        statusPill = `<span class="appt-wm-pill appt-wm-pill--onderweg">${wmPillClock}Onderweg</span>`;
+      }
+      pillHtml = [typePill, slotPill, statusPill].filter(Boolean).join(' ');
     }
     const onderwegBtnActive = isOnderweg || !!etaSentMeta;
     const primaryCta = !isDone
