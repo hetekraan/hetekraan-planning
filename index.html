@@ -2660,6 +2660,67 @@ window.HKMorningCache = { shouldWarmMorningCache };
     min-height: 50px;
     font-size: 14px;
   }
+  /* iPad field — Voorraad / Bestellijst / Buslijst typography */
+  body.ipad-field-vp #panelInventory .table-clean,
+  body.ipad-field-vp #panelBestellijst .table-clean {
+    font-size: 16px;
+  }
+  body.ipad-field-vp #panelInventory .table-clean th,
+  body.ipad-field-vp #panelBestellijst .table-clean th {
+    font-size: 14px;
+    padding: 10px 8px;
+  }
+  body.ipad-field-vp #panelInventory .table-clean td,
+  body.ipad-field-vp #panelBestellijst .table-clean td {
+    padding: 10px 8px;
+  }
+  body.ipad-field-vp #inventoryTable tbody td[colspan] {
+    font-size: 17px;
+  }
+  body.ipad-field-vp #panelInventory .status-pill,
+  body.ipad-field-vp #panelBestellijst .status-pill {
+    font-size: 14px;
+    padding: 4px 10px;
+  }
+  body.ipad-field-vp #panelInventory .field-input {
+    font-size: 16px;
+    padding: 10px 12px;
+    min-height: 44px;
+  }
+  body.ipad-field-vp #panelInventory .chip-btn:not([data-delete-id]) {
+    min-height: 44px;
+    font-size: 14px;
+    padding: 8px 14px;
+  }
+  body.ipad-field-vp #panelInventory .chip-btn[data-delete-id] {
+    min-height: 32px;
+    font-size: 12px;
+    padding: 4px 10px;
+    opacity: 0.75;
+  }
+  body.ipad-field-vp #panelInventory .today-btn,
+  body.ipad-field-vp #panelBestellijst .today-btn {
+    min-height: 44px;
+    font-size: 14px;
+    padding: 10px 16px;
+  }
+  body.ipad-field-vp #panelBestellijst .table-clean td span {
+    font-size: 15px;
+  }
+  body.ipad-field-vp #panelInventory .today-page-heading p,
+  body.ipad-field-vp #panelBestellijst .today-page-heading p,
+  body.ipad-field-vp #panelBuslijst .today-page-heading p {
+    font-size: 15px;
+  }
+  body.ipad-field-vp #panelBuslijst .buslijst-group-title {
+    font-size: 17px;
+    margin-bottom: 8px;
+  }
+  body.ipad-field-vp #panelBuslijst .buslijst-line {
+    font-size: 17px;
+    padding: 10px 12px;
+    line-height: 1.45;
+  }
   .mobile-menu-overlay.visible .mobile-menu-panel {
     transform: translateX(0);
   }
