@@ -5046,9 +5046,9 @@ window.HKMorningCache = { shouldWarmMorningCache };
   }
     body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--slot,
     body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill--slot {
-    background: rgba(74, 158, 255, 0.12);
-    border: 1px solid rgba(74, 158, 255, 0.3);
-    color: #2f6dbf;
+    background: rgba(160, 160, 160, 0.12);
+    border: 1px solid rgba(160, 160, 160, 0.3);
+    color: #b0b0b0;
   }
     body:not(.user-jerry) .appt-card--layout-v2 .appt-wm-pill--onderweg,
     body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill--onderweg {
@@ -12538,6 +12538,13 @@ async function confirmNextEtaPromptSend() {
 }
 
 async function sendOnderwegEtaDirect(id) {
+  if (
+    typeof window !== 'undefined' &&
+    typeof window.confirm === 'function' &&
+    !window.confirm('Weet je zeker dat je deze ETA wilt versturen?')
+  ) {
+    return;
+  }
   const ctx = createPlannerCtx();
   if (!window.HKPlannerNextEta?.sendOnderwegEtaForAppointment) {
     showToast('Onderweg-module niet geladen', 'info');
