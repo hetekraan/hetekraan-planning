@@ -7722,6 +7722,18 @@ window.HKMorningCache = { shouldWarmMorningCache };
   </div>
 </div>
 
+<!-- ETA VERSTUREN BEVESTIGING (Onderweg-knop) -->
+<div class="modal-overlay" id="etaConfirmOverlay" aria-hidden="true">
+  <div class="modal" style="max-width:360px" role="dialog" aria-modal="true" aria-labelledby="etaConfirmTitle">
+    <div class="modal-title" id="etaConfirmTitle">ETA versturen?</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5">Weet je zeker dat je deze ETA wilt versturen?</div>
+    <div class="modal-actions" style="flex-direction:column;gap:8px">
+      <button type="button" class="btn-save" style="width:100%;padding:10px" onclick="confirmEtaSend()">Versturen</button>
+      <button type="button" class="btn-cancel" style="width:100%;padding:10px;text-align:center" onclick="closeEtaConfirm()">Annuleren</button>
+    </div>
+  </div>
+</div>
+
 <!-- ONDERWEG BEVESTIGING POPUP (legacy handmatig) -->
 <div class="modal-overlay" id="onderwegOverlay">
   <div class="modal" style="max-width:340px">
@@ -12537,14 +12549,34 @@ async function confirmNextEtaPromptSend() {
   render();
 }
 
+let _pendingEtaConfirmId = null;
+
+// Opener: toont de styled bevestigingsmodal i.p.v. native window.confirm.
 async function sendOnderwegEtaDirect(id) {
-  if (
-    typeof window !== 'undefined' &&
-    typeof window.confirm === 'function' &&
-    !window.confirm('Weet je zeker dat je deze ETA wilt versturen?')
-  ) {
-    return;
+  const overlay = document.getElementById('etaConfirmOverlay');
+  if (!overlay) return performOnderwegEtaSend(id);
+  _pendingEtaConfirmId = id;
+  overlay.classList.add('visible');
+  overlay.setAttribute('aria-hidden', 'false');
+}
+
+function closeEtaConfirm() {
+  _pendingEtaConfirmId = null;
+  const overlay = document.getElementById('etaConfirmOverlay');
+  if (overlay) {
+    overlay.classList.remove('visible');
+    overlay.setAttribute('aria-hidden', 'true');
   }
+}
+
+async function confirmEtaSend() {
+  const id = _pendingEtaConfirmId;
+  closeEtaConfirm();
+  if (id == null) return;
+  await performOnderwegEtaSend(id);
+}
+
+async function performOnderwegEtaSend(id) {
   const ctx = createPlannerCtx();
   if (!window.HKPlannerNextEta?.sendOnderwegEtaForAppointment) {
     showToast('Onderweg-module niet geladen', 'info');
