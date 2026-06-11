@@ -2626,6 +2626,40 @@ window.HKMorningCache = { shouldWarmMorningCache };
     color: #a02f08;
     background: #fff8f5;
   }
+  .mobile-menu-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+  .mobile-menu-subtitle {
+    margin-top: 4px;
+  }
+  .mobile-menu-nav-item {
+    justify-content: flex-start;
+    gap: 10px;
+    text-align: left;
+  }
+  .mobile-menu-nav-dot {
+    flex: 0 0 auto;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #d9d2c5;
+    transition: background 0.15s ease;
+  }
+  .mobile-menu-nav-item.is-active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .mobile-menu-nav-item.is-active .mobile-menu-nav-dot {
+    background: #fff;
+  }
+  body.ipad-field-vp .mobile-menu-item {
+    min-height: 50px;
+    font-size: 14px;
+  }
   .mobile-menu-overlay.visible .mobile-menu-panel {
     transform: translateX(0);
   }
@@ -7331,6 +7365,16 @@ window.HKMorningCache = { shouldWarmMorningCache };
 <div class="mobile-menu-overlay" id="mobileMenuOverlay" onclick="if(event.target===this)toggleMobileMenu(false)">
   <div class="mobile-menu-panel" role="dialog" aria-label="Menu" onclick="event.stopPropagation()">
     <div class="section-title mobile-menu-title">Menu</div>
+    <nav class="mobile-menu-nav" aria-label="Navigatie">
+      <div class="section-title mobile-menu-subtitle">Navigatie</div>
+      <button class="mobile-menu-item mobile-menu-nav-item is-active" type="button" data-sidebar-view="today" onclick="navigateFromDrawer('today')"><span class="mobile-menu-nav-dot" aria-hidden="true"></span>Planning</button>
+      <button class="mobile-menu-item mobile-menu-nav-item" type="button" data-sidebar-view="routes" onclick="navigateFromDrawer('routes')"><span class="mobile-menu-nav-dot" aria-hidden="true"></span>Routes</button>
+      <button class="mobile-menu-item mobile-menu-nav-item" type="button" data-sidebar-view="buslijst" onclick="navigateFromDrawer('buslijst')"><span class="mobile-menu-nav-dot" aria-hidden="true"></span>Buslijst</button>
+      <button class="mobile-menu-item mobile-menu-nav-item" type="button" data-sidebar-view="inventory" onclick="navigateFromDrawer('inventory')"><span class="mobile-menu-nav-dot" aria-hidden="true"></span>Voorraad</button>
+      <button class="mobile-menu-item mobile-menu-nav-item" type="button" data-sidebar-view="bestellijst" onclick="navigateFromDrawer('bestellijst')"><span class="mobile-menu-nav-dot" aria-hidden="true"></span>Bestellijst</button>
+      <button class="mobile-menu-item mobile-menu-nav-item" type="button" data-sidebar-view="customers" onclick="navigateFromDrawer('customers')"><span class="mobile-menu-nav-dot" aria-hidden="true"></span>Klanten</button>
+    </nav>
+    <div class="section-title mobile-menu-subtitle">Acties</div>
     <button class="mobile-menu-item mobile-menu-item--primary" type="button" onclick="toggleMobileMenu(false);openModal()">+ Nieuwe afspraak</button>
     <button class="mobile-menu-item" type="button" onclick="toggleMobileMenu(false);focusGlobalSearch()">Zoeken</button>
     <button type="button" class="mobile-menu-item" id="btnBlockDayGhlMobile" onclick="toggleMobileMenu(false);onBlockDayButtonClick()" aria-label="Blokkeer of deblokkeer dag">
@@ -9492,6 +9536,9 @@ function switchMobileTab(tab, opts = {}) {
   const tabB      = document.getElementById('tabBuslijst');
   const tabM      = document.getElementById('tabMenu');
   if (!afspraken || !route) return;
+  ['panelCustomers', 'panelAnalytics', 'panelPrices', 'panelInventory', 'panelBestellijst'].forEach((id) => {
+    document.getElementById(id)?.classList.add('tab-hidden');
+  });
   const clearActive = () => {
     [tabA, tabR, tabB, tabM].forEach((t) => t && t.classList.remove('active'));
   };
@@ -9522,6 +9569,7 @@ function switchMobileTab(tab, opts = {}) {
   if (opts.persist !== false) {
     writePlannerStateToUrl({ date: getDateStr(currentDate), view: plannerSidebarView });
   }
+  syncMobileNavActive(plannerSidebarView);
 }
 
 function focusGlobalSearch() {
@@ -10047,7 +10095,7 @@ function switchSidebarView(view, event, opts = {}) {
     inventory: document.getElementById('panelInventory'),
     bestellijst: document.getElementById('panelBestellijst'),
   };
-  if (window.matchMedia('(min-width: 1180px)').matches) {
+  if (window.matchMedia('(min-width: 1180px)').matches || opts.fromDrawer === true) {
     Object.entries(panelMap).forEach(([k, el]) => el?.classList.toggle('tab-hidden', k !== plannerSidebarView));
     if (plannerSidebarView === 'analytics') window.HKPlannerAnalytics?.render?.();
     if (plannerSidebarView === 'routes') void refreshRoutesPanelOnShow();
@@ -10063,7 +10111,24 @@ function switchSidebarView(view, event, opts = {}) {
     if (plannerSidebarView === 'bestellijst') window.HKPlannerBestellijst?.render?.();
     if (plannerSidebarView === 'buslijst') window.HKPlannerBuslijst?.render?.();
   }
+  syncMobileNavActive(plannerSidebarView);
   return false;
+}
+
+function syncMobileNavActive(view) {
+  document.querySelectorAll('.mobile-menu-nav-item[data-sidebar-view]').forEach((el) => {
+    el.classList.toggle('is-active', el.getAttribute('data-sidebar-view') === view);
+  });
+  const bottomMap = { today: 'tabAfspraken', routes: 'tabRoute', buslijst: 'tabBuslijst' };
+  ['tabAfspraken', 'tabRoute', 'tabBuslijst'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('active', bottomMap[view] === id);
+  });
+}
+
+function navigateFromDrawer(view) {
+  toggleMobileMenu(false);
+  switchSidebarView(view, null, { fromDrawer: true });
 }
 
 function applyProductsMenuExpandedState() {
@@ -10104,6 +10169,7 @@ function wireDesktopWideLayout() {
       document.getElementById('panelPrices')?.classList.add('tab-hidden');
       document.getElementById('panelInventory')?.classList.add('tab-hidden');
     }
+    syncMobileNavActive(plannerSidebarView);
   };
   if (wide.addEventListener) wide.addEventListener('change', apply);
   else if (wide.addListener) wide.addListener(apply);
