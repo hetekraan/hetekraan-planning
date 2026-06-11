@@ -254,6 +254,13 @@
         debugDateNav('ignored_stale_response', { reqId, dateStr, reason: 'post_processing' });
         return;
       }
+      // Warm de ochtendmelding-cache vóór de eerste paint zodat de Slot-pill
+      // direct verschijnt (boot + datumwissel). Date-guard voorkomt dubbele fetch.
+      if (typeof ctx.warmMorningMessageCache === 'function') {
+        try {
+          await ctx.warmMorningMessageCache(dateStr);
+        } catch (_) {}
+      }
       applyRouteSnapshot(dateStr);
       const preserveScroll = ctx.plannerPreserveScroll === true;
       const panel = document.getElementById('panelAfspraken');
