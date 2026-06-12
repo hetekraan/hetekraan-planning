@@ -1004,6 +1004,42 @@ window.HKMorningCache = { shouldWarmMorningCache };
     flex-wrap: wrap;
   }
 
+  .complete-footer-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+  .complete-footer-left {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    flex: 1 1 200px;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+  .complete-footer-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+  .complete-footer-left .service-date-row--last-maint {
+    margin: 0;
+    padding: 0;
+    border-top: none;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+  }
+  .complete-footer-left .service-date-row--last-maint label::after {
+    content: ':';
+  }
+
   .review-toggle {
     display: flex;
     align-items: center;
@@ -2720,6 +2756,28 @@ window.HKMorningCache = { shouldWarmMorningCache };
     font-size: 17px;
     padding: 10px 12px;
     line-height: 1.45;
+  }
+  /* Klaar-modal footer meta (datum + review toggle) */
+  body.ipad-field-vp .complete-footer-left .service-date-row--last-maint label,
+  body.ipad-field-vp .complete-footer-left .review-toggle {
+    font-size: 16px;
+  }
+  body.ipad-field-vp .complete-footer-left .service-date-row--last-maint input[type='date'] {
+    font-size: 16px;
+    padding: 8px 12px;
+    min-height: 44px;
+  }
+  body.ipad-field-vp .complete-footer-left .review-toggle .toggle {
+    width: 44px;
+    height: 26px;
+    border-radius: 13px;
+  }
+  body.ipad-field-vp .complete-footer-left .review-toggle .toggle::after {
+    width: 20px;
+    height: 20px;
+  }
+  body.ipad-field-vp .complete-footer-left .review-toggle .toggle.on::after {
+    left: 20px;
   }
   /* Voorraad bewerk-modus: card-layout op iPad (acties altijd bereikbaar) */
   body.ipad-field-vp #inventoryTable.inventory-table--editing {
@@ -4494,6 +4552,29 @@ window.HKMorningCache = { shouldWarmMorningCache };
     font-size: 20px !important;
     color: rgba(220, 220, 232, 0.98) !important;
   }
+  body.user-jerry .complete-bar .complete-footer-left .service-date-row--last-maint {
+    flex-direction: row !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+  }
+  body.user-jerry .complete-bar .complete-footer-left .service-date-row--last-maint label {
+    font-size: 16px !important;
+    font-weight: 600 !important;
+    white-space: nowrap !important;
+  }
+  body.user-jerry .complete-bar .complete-footer-left .service-date-row--last-maint input[type='date'] {
+    width: auto !important;
+    max-width: none !important;
+    min-height: 44px !important;
+    font-size: 16px !important;
+    padding: 8px 10px !important;
+  }
   body.user-jerry .complete-bar .service-date-row--last-maint label {
     font-size: 20px !important;
     font-weight: 700 !important;
@@ -4703,6 +4784,13 @@ window.HKMorningCache = { shouldWarmMorningCache };
       min-height: 56px !important;
       font-size: 19px !important;
       padding: 12px 14px !important;
+    }
+    body.user-jerry .complete-bar .complete-footer-left .service-date-row--last-maint input[type='date'] {
+      width: auto !important;
+      max-width: none !important;
+      min-height: 44px !important;
+      font-size: 16px !important;
+      padding: 8px 10px !important;
     }
   }
 
@@ -10641,17 +10729,6 @@ function buildTouchPriceOverlayInnerHtml(a, draft) {
     .join('');
   const total = calcTotalPriceForDraft(a, draft);
   return `
-    <div class="complete-row">
-      <label class="review-toggle" onclick='toggleTouchOverlayReview(${idQ})'>
-        <div class="toggle ${draft?.review ? 'on' : ''}"></div>
-        <span>Review mail versturen (morgen)</span>
-      </label>
-    </div>
-    ${!isDone ? `
-      <div class="service-date-row service-date-row--last-maint">
-        <label for="touch-sdate-${domId}">Laatste onderhoud</label>
-        <input type="date" id="touch-sdate-${domId}" name="touchLastService" value="${escapeHtml(String(draft?.lastService || '').trim())}" onchange='setTouchOverlayLastService(${idQ}, this.value)'>
-      </div>` : ''}
     <div class="price-section" id="touch-price-${domId}">
       <div class="price-section-label">Prijsoverzicht${extras.length === 0 && !a.price ? '<span style="color:var(--muted);font-size:10px;font-weight:400;margin-left:6px">Nog geen prijs uit chat</span>' : ''}</div>
       ${Number.isFinite(Number(a.price)) && Number(a.price) !== 0 ? `<div class="extra-item extra-item--basis"><span>Basis</span><span>€${euroDisplay(a.price)}</span></div>` : ''}
@@ -10671,10 +10748,22 @@ function buildTouchPriceOverlayInnerHtml(a, draft) {
         <span id="price-total-amt-${domId}">€${euroDisplay(total)}</span>
       </div>
     </div>
-    <div class="complete-row" style="justify-content:flex-end;gap:8px;flex-wrap:wrap">
-      ${isOnderweg && !isDone ? `<button type="button" class="btn-cancel" onclick='cancelOnderweg(${idQ})'>✕ Annuleer onderweg</button>` : ''}
-      ${isDone && hasMoneybirdPlannerInvoiceUrlInNotes(a.notes, a.jobDescription) ? `<button type="button" class="btn-cancel" onclick='retryInvoiceForDone(${idQ}, this)'>Factuur opnieuw versturen</button>` : ''}
-      ${!isDone ? `<button type="button" class="btn-confirm" onclick='confirmDone(${idQ})'>✓ Bevestig klaar</button>` : ''}
+    <div class="complete-footer-row">
+      <div class="complete-footer-left">
+        ${!isDone ? `
+        <div class="service-date-row service-date-row--last-maint">
+          <label for="touch-sdate-${domId}">Laatste onderhoud</label>
+          <input type="date" id="touch-sdate-${domId}" name="touchLastService" value="${escapeHtml(String(draft?.lastService || '').trim())}" onchange='setTouchOverlayLastService(${idQ}, this.value)'>
+        </div>` : ''}
+        <label class="review-toggle" onclick='toggleTouchOverlayReview(${idQ})'>
+          <div class="toggle ${draft?.review ? 'on' : ''}"></div>
+          <span>Review mail versturen (morgen)</span>
+        </label>
+      </div>
+      <div class="complete-footer-actions">
+        ${isDone && hasMoneybirdPlannerInvoiceUrlInNotes(a.notes, a.jobDescription) ? `<button type="button" class="btn-cancel" onclick='retryInvoiceForDone(${idQ}, this)'>Factuur opnieuw versturen</button>` : ''}
+        ${!isDone ? `<button type="button" class="btn-confirm" onclick='confirmDone(${idQ})'>✓ Bevestig klaar</button>` : ''}
+      </div>
     </div>
   `;
 }
@@ -10702,7 +10791,7 @@ function openTouchPriceOverlay(id) {
   touchPriceOverlayState.appointmentId = id;
   touchPriceOverlayState.scrollYBeforeOpen = plannerSnapshotScrollY();
   touchPriceOverlayState.draft = {
-    review: !!a.review,
+    review: false,
     lastService: String(a.lastService || '').trim() || routeYmdPlanner,
     extras: clonePriceLinesForDraft(a.extras),
   };
@@ -11297,26 +11386,25 @@ function renderApptCard(a, i) {
       ${wmCore}
       ${useTouchPriceOverlay ? '' : `
       <div class="complete-bar ${barVisible?'visible':''}" id="bar-${domId}">
-        <div class="complete-row">
-          <label class="review-toggle" onclick='toggleReview(${idQ})'>
-            <div class="toggle ${a.review?'on':''}" id="tog-${domId}"></div>
-            <span>Review mail versturen (morgen)</span>
-          </label>
-        </div>
-        ${!isDone ? `
-        <div class="service-date-row service-date-row--last-maint">
-          <label for="sdate-${domId}">Laatste onderhoud</label>
-          <input type="date" id="sdate-${domId}" name="lastService" value="${escapeHtml(lastServiceInputVal)}" onchange='setLastService(${idQ}, this.value)'>
-        </div>` : ''}
-
         <div class="price-section" id="price-${domId}">
           ${buildAppointmentPriceSectionInnerHtml(a)}
         </div>
 
-        <div class="complete-row">
-          <div style="display:flex;gap:8px;margin-left:auto">
-            <button class="btn-cancel" onclick='cancelOnderweg(${idQ})'>✕ Annuleer</button>
-            <button class="btn-confirm" onclick='confirmDone(${idQ})'>✓ Bevestig klaar</button>
+        <div class="complete-footer-row">
+          <div class="complete-footer-left">
+            ${!isDone ? `
+            <div class="service-date-row service-date-row--last-maint">
+              <label for="sdate-${domId}">Laatste onderhoud</label>
+              <input type="date" id="sdate-${domId}" name="lastService" value="${escapeHtml(lastServiceInputVal)}" onchange='setLastService(${idQ}, this.value)'>
+            </div>` : ''}
+            <label class="review-toggle" onclick='toggleReview(${idQ})'>
+              <div class="toggle ${a.review?'on':''}" id="tog-${domId}"></div>
+              <span>Review mail versturen (morgen)</span>
+            </label>
+          </div>
+          <div class="complete-footer-actions">
+            <button type="button" class="btn-cancel" onclick='togglePrijs(event, ${idQ})'>✕ Annuleer</button>
+            <button type="button" class="btn-confirm" onclick='confirmDone(${idQ})'>✓ Bevestig klaar</button>
           </div>
         </div>
       </div>
@@ -12276,39 +12364,6 @@ function scrollToFirstActiveAppointment() {
   const el = document.getElementById('card-' + appointmentDomSafeId(first.id));
   if (!el) return;
   el.scrollIntoView({ block: 'start', behavior: 'auto' });
-}
-
-function cancelOnderweg(id) {
-  const a = appointments.find(x => String(x.id) === String(id));
-  if (!a) return;
-  if (isTouchPriceOverlayOpenFor(id)) closeTouchPriceOverlay('cancel_onderweg');
-  runPriceActionTelemetry(
-    id,
-    'cancel',
-    'card',
-    () => {
-      a.status = 'ingepland';
-      a.priceVisible = false;
-      const synced = syncAppointmentPriceBarDom(a);
-      const domId = appointmentDomSafeId(id);
-      const card = document.getElementById('card-' + domId);
-      if (card) card.classList.remove('onderweg');
-      const btnDone = card?.querySelector('.btn-done');
-      if (btnDone) {
-        btnDone.classList.remove('active');
-        btnDone.setAttribute('onclick', `askOnderweg(${JSON.stringify(id)})`);
-        btnDone.setAttribute('title', 'Markeer onderweg');
-        btnDone.setAttribute('aria-label', 'Markeer onderweg');
-        if (btnDone.classList.contains('appt-wm-btn--klaar')) {
-          btnDone.classList.remove('appt-wm-btn--klaar');
-          btnDone.classList.add('appt-wm-btn--onderweg-actie');
-          btnDone.innerHTML = 'Onderweg →';
-        }
-      }
-      return { renderScope: synced ? 'card' : 'full render' };
-    },
-    'cancelOnderweg'
-  );
 }
 
 let _onderwegId = null;
