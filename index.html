@@ -2757,6 +2757,28 @@ window.HKMorningCache = { shouldWarmMorningCache };
     padding: 10px 12px;
     line-height: 1.45;
   }
+  /* Klaar-modal footer meta (datum + review toggle) */
+  body.ipad-field-vp .complete-footer-left .service-date-row--last-maint label,
+  body.ipad-field-vp .complete-footer-left .review-toggle {
+    font-size: 16px;
+  }
+  body.ipad-field-vp .complete-footer-left .service-date-row--last-maint input[type='date'] {
+    font-size: 16px;
+    padding: 8px 12px;
+    min-height: 44px;
+  }
+  body.ipad-field-vp .complete-footer-left .review-toggle .toggle {
+    width: 44px;
+    height: 26px;
+    border-radius: 13px;
+  }
+  body.ipad-field-vp .complete-footer-left .review-toggle .toggle::after {
+    width: 20px;
+    height: 20px;
+  }
+  body.ipad-field-vp .complete-footer-left .review-toggle .toggle.on::after {
+    left: 20px;
+  }
   /* Voorraad bewerk-modus: card-layout op iPad (acties altijd bereikbaar) */
   body.ipad-field-vp #inventoryTable.inventory-table--editing {
     display: block;
