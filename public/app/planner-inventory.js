@@ -85,6 +85,7 @@
     const q = String(document.getElementById('inventorySearch')?.value || '').toLowerCase().trim();
     const cat = String(document.getElementById('inventoryCategoryFilter')?.value || '');
     if (!table) return;
+    table.classList.toggle('inventory-table--editing', isEditingInventory);
     const filtered = items.filter((x) => {
       if (q && !String(x.name || '').toLowerCase().includes(q)) return false;
       if (cat && String(x.category || '') !== cat) return false;
@@ -95,7 +96,7 @@
     for (const group of groups) {
       const rowsForGroup = filtered.filter((x) => String(x.category || '') === group);
       if (!rowsForGroup.length) continue;
-      groupedRows.push(`<tr><td colspan="${isEditingInventory ? 7 : 6}" style="background:#f8f9fb;font-weight:600;color:#475569">${group}</td></tr>`);
+      groupedRows.push(`<tr class="inventory-group-row"><td colspan="${isEditingInventory ? 7 : 6}" style="background:#f8f9fb;font-weight:600;color:#475569">${group}</td></tr>`);
       groupedRows.push(
         ...rowsForGroup.map((x) => {
           const st = statusFor(x);
@@ -105,9 +106,23 @@
             ? `<input class="field-input" type="number" min="0" step="1" data-minstock-id="${x.id}" value="${Math.max(0, Math.floor(draftMin))}" style="max-width:92px">`
             : String(x.minStock);
           const actionsCell = isEditingInventory
-            ? `<button class="chip-btn" data-adjust="-1" data-id="${x.id}">-</button> <button class="chip-btn" data-adjust="1" data-id="${x.id}">+</button> <button class="chip-btn" data-delete-id="${x.id}">Verwijderen</button>`
+            ? `<div class="inventory-row-actions"><button class="chip-btn" type="button" data-adjust="-1" data-id="${x.id}">-</button><button class="chip-btn" type="button" data-adjust="1" data-id="${x.id}">+</button><button class="chip-btn" type="button" data-delete-id="${x.id}">Verwijderen</button></div>`
             : '';
-          return `<tr><td>${escHtml(x.name)}</td><td>${escHtml(x.category)}</td><td>${x.stock}</td><td>${minCell}</td><td>€ ${Number(x.inkoopprijs || 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td><td><span class="status-pill ${st}">${label}</span></td>${isEditingInventory ? `<td>${actionsCell}</td>` : ''}</tr>`;
+          const rowClass = isEditingInventory ? ' class="inventory-edit-row"' : '';
+          const nameCell = isEditingInventory ? `<td data-label="Naam">${escHtml(x.name)}</td>` : `<td>${escHtml(x.name)}</td>`;
+          const catCell = isEditingInventory ? `<td data-label="Categorie">${escHtml(x.category)}</td>` : `<td>${escHtml(x.category)}</td>`;
+          const stockCell = isEditingInventory ? `<td data-label="Voorraad">${x.stock}</td>` : `<td>${x.stock}</td>`;
+          const minTd = isEditingInventory ? `<td data-label="Minimum">${minCell}</td>` : `<td>${minCell}</td>`;
+          const priceCell = isEditingInventory
+            ? `<td data-label="Inkoopprijs">€ ${Number(x.inkoopprijs || 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>`
+            : `<td>€ ${Number(x.inkoopprijs || 0).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>`;
+          const statusCell = isEditingInventory
+            ? `<td data-label="Status"><span class="status-pill ${st}">${label}</span></td>`
+            : `<td><span class="status-pill ${st}">${label}</span></td>`;
+          const actionsTd = isEditingInventory
+            ? `<td class="inventory-actions-cell" data-label="Acties">${actionsCell}</td>`
+            : '';
+          return `<tr${rowClass}>${nameCell}${catCell}${stockCell}${minTd}${priceCell}${statusCell}${actionsTd}</tr>`;
         })
       );
     }
