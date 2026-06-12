@@ -1006,7 +1006,7 @@ window.HKMorningCache = { shouldWarmMorningCache };
 
   .complete-footer-row {
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     justify-content: space-between;
     gap: 12px;
     flex-wrap: wrap;
@@ -1014,10 +1014,12 @@ window.HKMorningCache = { shouldWarmMorningCache };
   }
   .complete-footer-left {
     display: flex;
-    flex-direction: column;
-    gap: 8px;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
     flex: 1 1 200px;
     min-width: 0;
+    flex-wrap: wrap;
   }
   .complete-footer-actions {
     display: flex;
@@ -1029,6 +1031,13 @@ window.HKMorningCache = { shouldWarmMorningCache };
   }
   .complete-footer-left .service-date-row--last-maint {
     margin: 0;
+    padding: 0;
+    border-top: none;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+  }
+  .complete-footer-left .service-date-row--last-maint label::after {
+    content: ':';
   }
 
   .review-toggle {
@@ -4521,6 +4530,29 @@ window.HKMorningCache = { shouldWarmMorningCache };
     font-size: 20px !important;
     color: rgba(220, 220, 232, 0.98) !important;
   }
+  body.user-jerry .complete-bar .complete-footer-left .service-date-row--last-maint {
+    flex-direction: row !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+  }
+  body.user-jerry .complete-bar .complete-footer-left .service-date-row--last-maint label {
+    font-size: 16px !important;
+    font-weight: 600 !important;
+    white-space: nowrap !important;
+  }
+  body.user-jerry .complete-bar .complete-footer-left .service-date-row--last-maint input[type='date'] {
+    width: auto !important;
+    max-width: none !important;
+    min-height: 44px !important;
+    font-size: 16px !important;
+    padding: 8px 10px !important;
+  }
   body.user-jerry .complete-bar .service-date-row--last-maint label {
     font-size: 20px !important;
     font-weight: 700 !important;
@@ -4730,6 +4762,13 @@ window.HKMorningCache = { shouldWarmMorningCache };
       min-height: 56px !important;
       font-size: 19px !important;
       padding: 12px 14px !important;
+    }
+    body.user-jerry .complete-bar .complete-footer-left .service-date-row--last-maint input[type='date'] {
+      width: auto !important;
+      max-width: none !important;
+      min-height: 44px !important;
+      font-size: 16px !important;
+      padding: 8px 10px !important;
     }
   }
 
@@ -10700,7 +10739,6 @@ function buildTouchPriceOverlayInnerHtml(a, draft) {
         </label>
       </div>
       <div class="complete-footer-actions">
-        ${isOnderweg && !isDone ? `<button type="button" class="btn-cancel" onclick='cancelOnderweg(${idQ})'>✕ Annuleer onderweg</button>` : ''}
         ${isDone && hasMoneybirdPlannerInvoiceUrlInNotes(a.notes, a.jobDescription) ? `<button type="button" class="btn-cancel" onclick='retryInvoiceForDone(${idQ}, this)'>Factuur opnieuw versturen</button>` : ''}
         ${!isDone ? `<button type="button" class="btn-confirm" onclick='confirmDone(${idQ})'>✓ Bevestig klaar</button>` : ''}
       </div>
@@ -10731,7 +10769,7 @@ function openTouchPriceOverlay(id) {
   touchPriceOverlayState.appointmentId = id;
   touchPriceOverlayState.scrollYBeforeOpen = plannerSnapshotScrollY();
   touchPriceOverlayState.draft = {
-    review: true,
+    review: false,
     lastService: String(a.lastService || '').trim() || routeYmdPlanner,
     extras: clonePriceLinesForDraft(a.extras),
   };
@@ -11343,8 +11381,8 @@ function renderApptCard(a, i) {
             </label>
           </div>
           <div class="complete-footer-actions">
-            <button class="btn-cancel" onclick='cancelOnderweg(${idQ})'>✕ Annuleer</button>
-            <button class="btn-confirm" onclick='confirmDone(${idQ})'>✓ Bevestig klaar</button>
+            <button type="button" class="btn-cancel" onclick='togglePrijs(event, ${idQ})'>✕ Annuleer</button>
+            <button type="button" class="btn-confirm" onclick='confirmDone(${idQ})'>✓ Bevestig klaar</button>
           </div>
         </div>
       </div>
@@ -12306,39 +12344,6 @@ function scrollToFirstActiveAppointment() {
   el.scrollIntoView({ block: 'start', behavior: 'auto' });
 }
 
-function cancelOnderweg(id) {
-  const a = appointments.find(x => String(x.id) === String(id));
-  if (!a) return;
-  if (isTouchPriceOverlayOpenFor(id)) closeTouchPriceOverlay('cancel_onderweg');
-  runPriceActionTelemetry(
-    id,
-    'cancel',
-    'card',
-    () => {
-      a.status = 'ingepland';
-      a.priceVisible = false;
-      const synced = syncAppointmentPriceBarDom(a);
-      const domId = appointmentDomSafeId(id);
-      const card = document.getElementById('card-' + domId);
-      if (card) card.classList.remove('onderweg');
-      const btnDone = card?.querySelector('.btn-done');
-      if (btnDone) {
-        btnDone.classList.remove('active');
-        btnDone.setAttribute('onclick', `askOnderweg(${JSON.stringify(id)})`);
-        btnDone.setAttribute('title', 'Markeer onderweg');
-        btnDone.setAttribute('aria-label', 'Markeer onderweg');
-        if (btnDone.classList.contains('appt-wm-btn--klaar')) {
-          btnDone.classList.remove('appt-wm-btn--klaar');
-          btnDone.classList.add('appt-wm-btn--onderweg-actie');
-          btnDone.innerHTML = 'Onderweg →';
-        }
-      }
-      return { renderScope: synced ? 'card' : 'full render' };
-    },
-    'cancelOnderweg'
-  );
-}
-
 let _onderwegId = null;
 
 function plannerSnapshotScrollY() {
@@ -12708,11 +12713,6 @@ function togglePrijs(evt, id) {
     actionType,
     'card',
     () => {
-      if (!wasOpen) {
-        a.review = true;
-        const tog = document.getElementById('tog-' + domId);
-        if (tog) tog.classList.add('on');
-      }
       a.priceVisible = !a.priceVisible;
       syncAppointmentCardPriceLabel(id);
       const synced = syncAppointmentPriceBarDom(a);
