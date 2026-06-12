@@ -1004,6 +1004,33 @@ window.HKMorningCache = { shouldWarmMorningCache };
     flex-wrap: wrap;
   }
 
+  .complete-footer-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+  .complete-footer-left {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1 1 200px;
+    min-width: 0;
+  }
+  .complete-footer-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+  .complete-footer-left .service-date-row--last-maint {
+    margin: 0;
+  }
+
   .review-toggle {
     display: flex;
     align-items: center;
@@ -10641,17 +10668,6 @@ function buildTouchPriceOverlayInnerHtml(a, draft) {
     .join('');
   const total = calcTotalPriceForDraft(a, draft);
   return `
-    <div class="complete-row">
-      <label class="review-toggle" onclick='toggleTouchOverlayReview(${idQ})'>
-        <div class="toggle ${draft?.review ? 'on' : ''}"></div>
-        <span>Review mail versturen (morgen)</span>
-      </label>
-    </div>
-    ${!isDone ? `
-      <div class="service-date-row service-date-row--last-maint">
-        <label for="touch-sdate-${domId}">Laatste onderhoud</label>
-        <input type="date" id="touch-sdate-${domId}" name="touchLastService" value="${escapeHtml(String(draft?.lastService || '').trim())}" onchange='setTouchOverlayLastService(${idQ}, this.value)'>
-      </div>` : ''}
     <div class="price-section" id="touch-price-${domId}">
       <div class="price-section-label">Prijsoverzicht${extras.length === 0 && !a.price ? '<span style="color:var(--muted);font-size:10px;font-weight:400;margin-left:6px">Nog geen prijs uit chat</span>' : ''}</div>
       ${Number.isFinite(Number(a.price)) && Number(a.price) !== 0 ? `<div class="extra-item extra-item--basis"><span>Basis</span><span>€${euroDisplay(a.price)}</span></div>` : ''}
@@ -10671,10 +10687,23 @@ function buildTouchPriceOverlayInnerHtml(a, draft) {
         <span id="price-total-amt-${domId}">€${euroDisplay(total)}</span>
       </div>
     </div>
-    <div class="complete-row" style="justify-content:flex-end;gap:8px;flex-wrap:wrap">
-      ${isOnderweg && !isDone ? `<button type="button" class="btn-cancel" onclick='cancelOnderweg(${idQ})'>✕ Annuleer onderweg</button>` : ''}
-      ${isDone && hasMoneybirdPlannerInvoiceUrlInNotes(a.notes, a.jobDescription) ? `<button type="button" class="btn-cancel" onclick='retryInvoiceForDone(${idQ}, this)'>Factuur opnieuw versturen</button>` : ''}
-      ${!isDone ? `<button type="button" class="btn-confirm" onclick='confirmDone(${idQ})'>✓ Bevestig klaar</button>` : ''}
+    <div class="complete-footer-row">
+      <div class="complete-footer-left">
+        ${!isDone ? `
+        <div class="service-date-row service-date-row--last-maint">
+          <label for="touch-sdate-${domId}">Laatste onderhoud</label>
+          <input type="date" id="touch-sdate-${domId}" name="touchLastService" value="${escapeHtml(String(draft?.lastService || '').trim())}" onchange='setTouchOverlayLastService(${idQ}, this.value)'>
+        </div>` : ''}
+        <label class="review-toggle" onclick='toggleTouchOverlayReview(${idQ})'>
+          <div class="toggle ${draft?.review ? 'on' : ''}"></div>
+          <span>Review mail versturen (morgen)</span>
+        </label>
+      </div>
+      <div class="complete-footer-actions">
+        ${isOnderweg && !isDone ? `<button type="button" class="btn-cancel" onclick='cancelOnderweg(${idQ})'>✕ Annuleer onderweg</button>` : ''}
+        ${isDone && hasMoneybirdPlannerInvoiceUrlInNotes(a.notes, a.jobDescription) ? `<button type="button" class="btn-cancel" onclick='retryInvoiceForDone(${idQ}, this)'>Factuur opnieuw versturen</button>` : ''}
+        ${!isDone ? `<button type="button" class="btn-confirm" onclick='confirmDone(${idQ})'>✓ Bevestig klaar</button>` : ''}
+      </div>
     </div>
   `;
 }
@@ -10702,7 +10731,7 @@ function openTouchPriceOverlay(id) {
   touchPriceOverlayState.appointmentId = id;
   touchPriceOverlayState.scrollYBeforeOpen = plannerSnapshotScrollY();
   touchPriceOverlayState.draft = {
-    review: !!a.review,
+    review: true,
     lastService: String(a.lastService || '').trim() || routeYmdPlanner,
     extras: clonePriceLinesForDraft(a.extras),
   };
@@ -11297,24 +11326,23 @@ function renderApptCard(a, i) {
       ${wmCore}
       ${useTouchPriceOverlay ? '' : `
       <div class="complete-bar ${barVisible?'visible':''}" id="bar-${domId}">
-        <div class="complete-row">
-          <label class="review-toggle" onclick='toggleReview(${idQ})'>
-            <div class="toggle ${a.review?'on':''}" id="tog-${domId}"></div>
-            <span>Review mail versturen (morgen)</span>
-          </label>
-        </div>
-        ${!isDone ? `
-        <div class="service-date-row service-date-row--last-maint">
-          <label for="sdate-${domId}">Laatste onderhoud</label>
-          <input type="date" id="sdate-${domId}" name="lastService" value="${escapeHtml(lastServiceInputVal)}" onchange='setLastService(${idQ}, this.value)'>
-        </div>` : ''}
-
         <div class="price-section" id="price-${domId}">
           ${buildAppointmentPriceSectionInnerHtml(a)}
         </div>
 
-        <div class="complete-row">
-          <div style="display:flex;gap:8px;margin-left:auto">
+        <div class="complete-footer-row">
+          <div class="complete-footer-left">
+            ${!isDone ? `
+            <div class="service-date-row service-date-row--last-maint">
+              <label for="sdate-${domId}">Laatste onderhoud</label>
+              <input type="date" id="sdate-${domId}" name="lastService" value="${escapeHtml(lastServiceInputVal)}" onchange='setLastService(${idQ}, this.value)'>
+            </div>` : ''}
+            <label class="review-toggle" onclick='toggleReview(${idQ})'>
+              <div class="toggle ${a.review?'on':''}" id="tog-${domId}"></div>
+              <span>Review mail versturen (morgen)</span>
+            </label>
+          </div>
+          <div class="complete-footer-actions">
             <button class="btn-cancel" onclick='cancelOnderweg(${idQ})'>✕ Annuleer</button>
             <button class="btn-confirm" onclick='confirmDone(${idQ})'>✓ Bevestig klaar</button>
           </div>
@@ -12680,6 +12708,11 @@ function togglePrijs(evt, id) {
     actionType,
     'card',
     () => {
+      if (!wasOpen) {
+        a.review = true;
+        const tog = document.getElementById('tog-' + domId);
+        if (tog) tog.classList.add('on');
+      }
       a.priceVisible = !a.priceVisible;
       syncAppointmentCardPriceLabel(id);
       const synced = syncAppointmentPriceBarDom(a);
