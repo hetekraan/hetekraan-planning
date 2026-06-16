@@ -523,6 +523,7 @@ window.HKMorningCache = { shouldWarmMorningCache };
   .appt-card.done .btn-done,
   .appt-card.done .btn-confirm,
   .appt-card.done .btn-cancel { display: none !important; }
+  .appt-card.done .btn-invoice-retry { display: inline-flex !important; }
 
   .time-window-badge {
     display: inline-block;
@@ -1831,6 +1832,22 @@ window.HKMorningCache = { shouldWarmMorningCache };
     font-size: 13px;
     cursor: pointer;
     touch-action: manipulation;
+  }
+  .btn-invoice-retry {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-family: var(--font-body);
+    font-size: 13px;
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .price-invoice-retry-row {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 8px;
   }
   .btn-save {
     background: var(--accent);
@@ -4677,6 +4694,7 @@ window.HKMorningCache = { shouldWarmMorningCache };
     letter-spacing: -0.02em;
   }
   body.user-jerry .complete-bar .btn-cancel,
+  body.user-jerry .complete-bar .btn-invoice-retry,
   body.user-jerry .complete-bar .btn-confirm {
     min-height: 60px !important;
     padding: 14px 22px !important;
@@ -4761,6 +4779,7 @@ window.HKMorningCache = { shouldWarmMorningCache };
       font-size: 17px !important;
     }
     body.user-jerry .complete-bar .btn-cancel,
+    body.user-jerry .complete-bar .btn-invoice-retry,
     body.user-jerry .complete-bar .btn-confirm {
       min-height: 52px !important;
       font-size: 18px !important;
@@ -11006,8 +11025,8 @@ function buildAppointmentPriceSectionInnerHtml(a) {
           ${
             plannerInvoiceRetryEligible(a)
               ? `
-          <div class="complete-row" style="justify-content:flex-end;margin-top:6px">
-            <button type="button" class="btn-cancel" onclick='retryInvoiceForDone(${idQ}, this)' title="${escapeHtml(plannerInvoiceRetryButtonLabel(a))}">
+          <div class="price-invoice-retry-row">
+            <button type="button" class="btn-invoice-retry" onclick='retryInvoiceForDone(${idQ}, this)' title="${escapeHtml(plannerInvoiceRetryButtonLabel(a))}">
               ${escapeHtml(plannerInvoiceRetryButtonLabel(a))}
             </button>
           </div>`
