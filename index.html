@@ -8637,6 +8637,27 @@ function hasMoneybirdPlannerInvoiceUrlInNotes(notes, jobDescription) {
   return /\burl=https?:\/\//i.test(block[0]);
 }
 
+/** Klaar + contact + factureerbaar bedrag → factuur-retry-knop tonen. */
+function plannerInvoiceRetryEligible(a) {
+  if (!a || a.isCalBlock) return false;
+  if (String(a.status || '') !== 'klaar') return false;
+  if (!a.contactId) return false;
+  return (Number(calcTotalPrice(a)) || 0) > 0;
+}
+
+/** Bestaande Moneybird-koppeling in notes (URL of pill-URL). */
+function plannerInvoiceRetryHasLinkedMarker(a) {
+  if (hasMoneybirdPlannerInvoiceUrlInNotes(a.notes, a.jobDescription)) return true;
+  const src = `${String(a.notes || '')}\n${String(a.jobDescription || '')}`;
+  return !!(typeof extractMoneybirdInvoicePillUrl === 'function' && extractMoneybirdInvoicePillUrl(src));
+}
+
+function plannerInvoiceRetryButtonLabel(a) {
+  return plannerInvoiceRetryHasLinkedMarker(a)
+    ? 'Factuur opnieuw versturen'
+    : 'Factuur alsnog aanmaken';
+}
+
 function plannerDesktopRemoteSearchEnabled() {
   try {
     if (document.body?.classList?.contains('user-jerry')) return false;
@@ -10761,7 +10782,7 @@ function buildTouchPriceOverlayInnerHtml(a, draft) {
         </label>
       </div>
       <div class="complete-footer-actions">
-        ${isDone && hasMoneybirdPlannerInvoiceUrlInNotes(a.notes, a.jobDescription) ? `<button type="button" class="btn-cancel" onclick='retryInvoiceForDone(${idQ}, this)'>Factuur opnieuw versturen</button>` : ''}
+        ${plannerInvoiceRetryEligible(a) ? `<button type="button" class="btn-cancel" onclick='retryInvoiceForDone(${idQ}, this)'>${escapeHtml(plannerInvoiceRetryButtonLabel(a))}</button>` : ''}
         ${!isDone ? `<button type="button" class="btn-confirm" onclick='confirmDone(${idQ})'>✓ Bevestig klaar</button>` : ''}
       </div>
     </div>
@@ -10983,11 +11004,11 @@ function buildAppointmentPriceSectionInnerHtml(a) {
             <span id="price-total-amt-${domId}">€${euroDisplay(calcTotalPrice(a))}</span>
           </div>
           ${
-            isDone && hasMoneybirdPlannerInvoiceUrlInNotes(a.notes, a.jobDescription)
+            plannerInvoiceRetryEligible(a)
               ? `
           <div class="complete-row" style="justify-content:flex-end;margin-top:6px">
-            <button type="button" class="btn-cancel" onclick='retryInvoiceForDone(${idQ}, this)' title="Factuur opnieuw versturen">
-              Factuur opnieuw versturen
+            <button type="button" class="btn-cancel" onclick='retryInvoiceForDone(${idQ}, this)' title="${escapeHtml(plannerInvoiceRetryButtonLabel(a))}">
+              ${escapeHtml(plannerInvoiceRetryButtonLabel(a))}
             </button>
           </div>`
               : ''
@@ -11151,10 +11172,9 @@ function renderApptCard(a, i) {
       isDone && mbPillUrl
         ? `<a class="appt-wm-pill appt-wm-pill--moneybird" href="${escapeHtml(mbPillUrl)}" target="_blank" rel="noopener noreferrer">Factuur via Moneybird</a>`
         : '';
-    const retryInvoiceWmBtnHtml =
-      isDone && hasMoneybirdPlannerInvoiceUrlInNotes(a.notes, a.jobDescription)
-        ? `<button type="button" class="btn-cancel appt-wm-retry-invoice" style="margin-top:4px" onclick='retryInvoiceForDone(${idQ}, this)'>Factuur opnieuw versturen</button>`
-        : '';
+    const retryInvoiceWmBtnHtml = plannerInvoiceRetryEligible(a)
+      ? `<button type="button" class="btn-cancel appt-wm-retry-invoice" style="margin-top:4px" onclick='retryInvoiceForDone(${idQ}, this)'>${escapeHtml(plannerInvoiceRetryButtonLabel(a))}</button>`
+      : '';
     const jobDescDisplay = stripMoneybirdPlannerMarkers(String(a.jobDescription || ''));
     const noteStripped = stripMoneybirdPlannerMarkers(String(a.notes || '').trim());
 
@@ -11184,9 +11204,9 @@ function renderApptCard(a, i) {
         `<button type="button" role="menuitem" class="appt-actions__menu-item" onclick="closeMobileApptActionMenus();openAppointmentDetailsModal(${idQ})">Bekijk details</button>`
       );
     }
-    if (isDone && hasMoneybirdPlannerInvoiceUrlInNotes(a.notes, a.jobDescription)) {
+    if (plannerInvoiceRetryEligible(a)) {
       mobileMenuRows.push(
-        `<button type="button" role="menuitem" class="appt-actions__menu-item appt-wm-menu-item" onclick="closeMobileApptActionMenus();retryInvoiceForDone(${idQ}, this)">Factuur opnieuw versturen</button>`
+        `<button type="button" role="menuitem" class="appt-actions__menu-item appt-wm-menu-item" onclick="closeMobileApptActionMenus();retryInvoiceForDone(${idQ}, this)">${escapeHtml(plannerInvoiceRetryButtonLabel(a))}</button>`
       );
     }
     mobileMenuRows.push(

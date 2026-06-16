@@ -102,6 +102,7 @@ import {
   moneybirdContactCreateFailureResult,
   moneybirdExceptionResult,
   moneybirdInvoiceNotCreatedResult,
+  userFacingMoneybirdErrorMessage,
 } from '../lib/moneybird-complete-errors.js';
 import {
   appendInvoicePartyWritesToCustomFields,
@@ -1038,6 +1039,29 @@ function mbInvoiceTotalNumber(invoice) {
   }
   if (!has) return null;
   return Math.round(sum * 100) / 100;
+}
+
+/** @param {unknown} err */
+function moneybirdRetryErrorFromException(err) {
+  const rawStatus = err && typeof err === 'object' && 'status' in err ? err.status : null;
+  const num = rawStatus != null ? Number(rawStatus) : NaN;
+  const errorCode = Number.isFinite(num) ? num : null;
+  const details =
+    err && typeof err === 'object' && 'details' in err
+      ? typeof err.details === 'string'
+        ? err.details
+        : JSON.stringify(err.details || {})
+      : '';
+  const raw = [err && typeof err === 'object' && 'message' in err ? err.message : null, details]
+    .filter(Boolean)
+    .join('\n');
+  let errorMessage = userFacingMoneybirdErrorMessage(raw);
+  if (errorCode === 402) {
+    errorMessage = 'Moneybird-limiet bereikt — probeer later opnieuw.';
+  } else if (errorCode === 401) {
+    errorMessage = 'Moneybird API-token ongeldig of verlopen.';
+  }
+  return { errorCode, errorMessage };
 }
 
 /**
@@ -2677,6 +2701,60 @@ export default async function handler(req, res) {
           });
         }
 
+        // Tijdelijke diagnostiek: traceer Moneybird-uitkomst per completeAppointment in Vercel logs.
+        {
+          const tokenPresent = Boolean(String(MB_TOKEN || '').trim());
+          const adminIdPresent = Boolean(String(MB_ADMIN || '').trim());
+          let createStatus = 'not_run';
+          if (!tokenPresent || !adminIdPresent) {
+            createStatus = 'block_skipped_missing_config';
+          } else if (!moneybirdResult) {
+            createStatus = 'no_result';
+          } else if (moneybirdResult.created === true) {
+            createStatus = 'created';
+          } else if (moneybirdResult.skipped === true) {
+            createStatus = `skipped:${String(moneybirdResult.reason || 'unknown')}`;
+          } else if (moneybirdResult.error === true) {
+            createStatus = 'error';
+          } else {
+            createStatus = 'unknown';
+          }
+          let sendStatus = 'not_applicable';
+          if (moneybirdResult?.emailSent === true) {
+            sendStatus = 'email_sent';
+          } else if (moneybirdResult?.skipped === true) {
+            sendStatus = 'not_attempted_skipped';
+          } else if (moneybirdResult?.error === true) {
+            sendStatus = 'not_attempted_error';
+          } else if (moneybirdResult?.created === true) {
+            sendStatus = 'email_not_sent';
+          } else if (tokenPresent && adminIdPresent && moneybirdResult) {
+            sendStatus = 'unknown';
+          }
+          console.info(
+            '[moneybird] complete_appointment_outcome',
+            JSON.stringify({
+              contactId,
+              appointmentId: appointmentId != null ? String(appointmentId) : null,
+              config: { tokenPresent, adminIdPresent },
+              createStatus,
+              sendStatus,
+              invoiceId: moneybirdResult?.invoiceId != null ? String(moneybirdResult.invoiceId) : null,
+              whatsappSent: moneybirdResult?.whatsappSent === true,
+              error:
+                moneybirdResult?.error === true
+                  ? {
+                      reason: moneybirdResult.reason != null ? String(moneybirdResult.reason) : null,
+                      errorCode: moneybirdResult.errorCode ?? null,
+                      errorMessage:
+                        moneybirdResult.errorMessage != null ? String(moneybirdResult.errorMessage) : null,
+                    }
+                  : null,
+              moneybird: moneybirdResult,
+            })
+          );
+        }
+
         return res.status(200).json({
           success: true,
           tagOk: tagOk !== false,
@@ -2695,7 +2773,13 @@ export default async function handler(req, res) {
         const MB_TOKEN = process.env.MONEYBIRD_API_TOKEN;
         const MB_ADMIN = process.env.MONEYBIRD_ADMINISTRATION_ID;
         if (!MB_TOKEN || !MB_ADMIN) {
-          return res.status(503).json({ error: 'Moneybird niet geconfigureerd' });
+          return res.status(503).json({
+            error: 'Moneybird niet geconfigureerd',
+            actionTaken: 'moneybird_not_configured',
+            errorCode: 503,
+            errorMessage:
+              'Moneybird niet geconfigureerd (MONEYBIRD_API_TOKEN / MONEYBIRD_ADMINISTRATION_ID)',
+          });
         }
         const logRetry = (event, extra = {}, level = 'info') => {
           const payload = {
@@ -2789,8 +2873,10 @@ export default async function handler(req, res) {
           const mbContact = await findOrCreateContact(name, email, phone, address, { invoiceParty });
           if (!mbContact?.contactId) {
             return res.status(200).json({
-              success: true,
+              success: false,
               actionTaken: 'missing_contact',
+              errorCode: null,
+              errorMessage: 'Moneybird-contact kon niet worden aangemaakt of gevonden.',
               message: 'Factuur kon niet verzonden worden',
             });
           }
@@ -2820,17 +2906,37 @@ export default async function handler(req, res) {
           }
           if (!invoice) {
             const description = `${type || 'Onderhoud'} - ${name}${formatMoneybirdInvoiceMetadataSuffix(invoiceParty)}`;
-            const created = await createSalesInvoice({
-              contactId: mbContact.contactId,
-              lines,
-              reference,
-              description,
-            });
-            if (!created?.created || !created?.invoice?.id) {
+            let created;
+            try {
+              created = await createSalesInvoice({
+                contactId: mbContact.contactId,
+                lines,
+                reference,
+                description,
+              });
+            } catch (createErr) {
+              const { errorCode, errorMessage } = moneybirdRetryErrorFromException(createErr);
+              logRetry(
+                'invoice_retry_create_failed',
+                { reference, errorCode, errorMessage },
+                'error'
+              );
               return res.status(200).json({
-                success: true,
+                success: false,
                 actionTaken: 'create_failed',
-                message: 'Factuur kon niet verzonden worden',
+                errorCode,
+                errorMessage,
+                message: errorMessage,
+              });
+            }
+            if (!created?.created || !created?.invoice?.id) {
+              const failMsg = String(created?.reason || 'Factuur kon niet worden aangemaakt in Moneybird.');
+              return res.status(200).json({
+                success: false,
+                actionTaken: 'create_failed',
+                errorCode: null,
+                errorMessage: failMsg,
+                message: failMsg,
               });
             }
             invoice = created.invoice;
@@ -2919,15 +3025,30 @@ export default async function handler(req, res) {
           const hasValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm);
           let hadWhatsapp = false;
           let emailSentNow = false;
+          let retryErrorCode = null;
+          let retryErrorMessage = null;
           if (alreadySent) {
             actionTaken = 'already_sent_noop';
             logRetry('invoice_retry_noop_already_sent', { reference, invoiceId, actionTaken, hadEmail: hasValidEmail });
           } else if (hasValidEmail) {
-            const mailResult = await sendSalesInvoiceByEmail({
-              invoiceId,
-              emailAddress: emailNorm,
-              emailMessage: `Beste ${name}, hierbij ontvang je je factuur.`,
-            }).catch(() => ({ sent: false }));
+            let mailResult = { sent: false };
+            try {
+              mailResult = await sendSalesInvoiceByEmail({
+                invoiceId,
+                emailAddress: emailNorm,
+                emailMessage: `Beste ${name}, hierbij ontvang je je factuur.`,
+              });
+            } catch (sendErr) {
+              const errFields = moneybirdRetryErrorFromException(sendErr);
+              retryErrorCode = errFields.errorCode;
+              retryErrorMessage = errFields.errorMessage;
+              actionTaken = 'send_failed';
+              logRetry(
+                'invoice_retry_send_failed',
+                { reference, invoiceId, errorCode: retryErrorCode, errorMessage: retryErrorMessage },
+                'error'
+              );
+            }
             if (mailResult?.sent) {
               emailSentNow = true;
               actionTaken =
@@ -2938,6 +3059,12 @@ export default async function handler(req, res) {
                     : 'reused_and_sent_email';
               logRetry('invoice_retry_sent_email', { reference, invoiceId, hadEmail: true, actionTaken });
             }
+          } else if (actionTaken === 'created_new') {
+            actionTaken = 'created_new_no_email';
+          } else if (actionTaken === 'concept_updated') {
+            actionTaken = 'concept_updated_no_email';
+          } else if (actionTaken === 'reused_existing') {
+            actionTaken = 'reused_existing_no_email';
           } else {
             actionTaken = 'missing_email';
           }
@@ -2978,7 +3105,7 @@ export default async function handler(req, res) {
                 if (waTagOk) {
                   hadWhatsapp = true;
                   logRetry('invoice_retry_sent_whatsapp', { reference, invoiceId, actionTaken: 'whatsapp_sent' });
-                  if (!emailSentNow) actionTaken = 'whatsapp_sent';
+                  if (!emailSentNow && actionTaken !== 'send_failed') actionTaken = 'whatsapp_sent';
                 }
               } catch (_) {}
             }
@@ -2991,29 +3118,46 @@ export default async function handler(req, res) {
             blocked_sent_price_mismatch:
               'De factuur is al verzonden en het bedrag in de app is gewijzigd. Pas de factuur handmatig aan in Moneybird of maak een correctie.',
             missing_email: 'Geen e-mailadres beschikbaar',
+            created_new_no_email: 'Factuur als concept aangemaakt; geen e-mailadres',
+            concept_updated_no_email: 'Conceptfactuur bijgewerkt; geen e-mailadres',
+            reused_existing_no_email: 'Bestaande conceptfactuur; geen e-mailadres',
+            send_failed: retryErrorMessage || 'Factuur kon niet per e-mail worden verstuurd',
             whatsapp_sent: 'WhatsApp opnieuw verstuurd',
             created_new: 'Factuur aangemaakt',
             reused_existing: 'Bestaande factuur hergebruikt',
           };
           return res.status(200).json({
-            success: true,
+            success: actionTaken !== 'send_failed',
             actionTaken,
             message: messageByAction[actionTaken] || 'Factuur retry afgerond',
             invoiceId: invoiceId || null,
             reference: reference || null,
             hadEmail: hasValidEmail,
             hadWhatsapp,
+            emailSent: emailSentNow,
+            ...(retryErrorCode != null
+              ? { errorCode: retryErrorCode, errorMessage: retryErrorMessage }
+              : {}),
           });
         } catch (err) {
+          const { errorCode, errorMessage } = moneybirdRetryErrorFromException(err);
           logRetry(
             'invoice_retry_failed',
             {
               message: err?.message || String(err),
               status: err?.status || null,
+              errorCode,
+              errorMessage,
             },
             'error'
           );
-          return res.status(500).json({ error: 'Factuur kon niet verzonden worden' });
+          return res.status(200).json({
+            success: false,
+            actionTaken: 'moneybird_error',
+            errorCode,
+            errorMessage,
+            message: errorMessage,
+          });
         }
       }
 

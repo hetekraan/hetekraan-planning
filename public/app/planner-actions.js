@@ -2,6 +2,107 @@
   let hkGhlBlockDayInFlight = false;
   const invoiceRetryInFlightByApptId = new Set();
 
+  function invoiceRetryLabelForAppt(a) {
+    const raw = `${String(a?.notes || '')}\n${String(a?.jobDescription || '')}`;
+    const block = raw.match(/\[moneybird\][^\n\r]*/i);
+    const hasLinked = block && /\burl=https?:\/\//i.test(block[0]);
+    return hasLinked ? 'Factuur opnieuw versturen' : 'Factuur alsnog aanmaken';
+  }
+
+  function formatMoneybirdRetryErrorToast(data) {
+    const code = data?.errorCode != null ? Number(data.errorCode) : null;
+    const msg = String(data?.errorMessage || data?.message || data?.error || '').trim();
+    if (code === 402) return 'Moneybird-limiet bereikt — probeer later opnieuw.';
+    if (code === 401) return 'Moneybird API-token ongeldig of verlopen.';
+    if (code === 503) return 'Moneybird niet geconfigureerd op de server.';
+    if (msg) return msg.slice(0, 280);
+    if (Number.isFinite(code)) return `Moneybird-fout (HTTP ${code})`;
+    return 'Factuur kon niet worden aangemaakt of verstuurd.';
+  }
+
+  function showRetryInvoiceOutcomeToast(showToast, data, action) {
+    const invoiceId = data?.invoiceId != null ? String(data.invoiceId).trim() : '';
+    const serverMsg = String(data?.message || '').trim();
+
+    if (action === 'created_and_sent_email') {
+      showToast('Factuur aangemaakt en per e-mail verstuurd', 'success');
+      return;
+    }
+    if (action === 'reused_and_sent_email' || action === 'concept_updated_and_sent') {
+      showToast('Factuur (opnieuw) per e-mail verstuurd', 'success');
+      return;
+    }
+    if (
+      action === 'created_new_no_email' ||
+      action === 'concept_updated_no_email' ||
+      action === 'reused_existing_no_email'
+    ) {
+      showToast(
+        'Factuur als concept in Moneybird; geen e-mailadres — handmatig versturen',
+        'warning'
+      );
+      return;
+    }
+    if (action === 'missing_email' && invoiceId) {
+      showToast(
+        'Factuur als concept in Moneybird; geen e-mailadres — handmatig versturen',
+        'warning'
+      );
+      return;
+    }
+    if (action === 'created_new' || action === 'reused_existing' || action === 'concept_updated') {
+      if (invoiceId) {
+        showToast('Factuur in Moneybird (concept); e-mail niet verstuurd', 'warning');
+      } else if (serverMsg) {
+        showToast(serverMsg, 'info');
+      } else {
+        showToast('Factuur retry afgerond zonder bevestigde verzending', 'info');
+      }
+      return;
+    }
+    if (
+      action === 'send_failed' ||
+      action === 'create_failed' ||
+      action === 'moneybird_error' ||
+      action === 'missing_contact' ||
+      action === 'moneybird_not_configured'
+    ) {
+      showToast(formatMoneybirdRetryErrorToast(data), 'info');
+      return;
+    }
+    if (action === 'already_sent_noop') {
+      showToast('Factuur stond al op verzonden in Moneybird', 'info');
+      return;
+    }
+    if (action === 'blocked_sent_price_mismatch') {
+      showToast(
+        serverMsg || 'Retry geblokkeerd: prijs wijkt af van verzonden factuur',
+        'info'
+      );
+      return;
+    }
+    if (action === 'no_billable_lines') {
+      showToast(serverMsg || 'Geen factureerbare regels', 'info');
+      return;
+    }
+    if (action === 'missing_email') {
+      showToast(serverMsg || 'Geen e-mailadres beschikbaar', 'info');
+      return;
+    }
+    if (action === 'whatsapp_sent') {
+      showToast('Betaallink-getriggerd via WhatsApp-workflow (geen Moneybird-mail)', 'info');
+      return;
+    }
+    console.warn(
+      '[moneybird] invoice_retry_unknown_outcome',
+      JSON.stringify({ action: action || null, data: data || null })
+    );
+    showToast(
+      serverMsg || 'Factuur-retry afgerond met onbekende uitkomst — controleer Moneybird',
+      'info'
+    );
+  }
+
   function hkDbgStatusSync() {
     try {
       return localStorage.getItem('hk_debug_status_sync') === '1';
@@ -414,8 +515,14 @@
       showToast('Geen GHL-contact gekoppeld aan deze afspraak.', 'info');
       return;
     }
+    const total = calcTotalPrice(a);
+    if (!(total > 0)) {
+      showToast('Geen factureerbaar bedrag op deze afspraak.', 'info');
+      return;
+    }
+    const retryLabel = invoiceRetryLabelForAppt(a);
     const confirmed = confirm(
-      'Weet je het zeker? We proberen de factuur opnieuw aan te maken of te versturen op basis van de huidige afspraak.'
+      `Weet je het zeker? ${retryLabel} op basis van de huidige afspraak (€${total.toFixed(2)}).`
     );
     if (!confirmed) {
       try {
@@ -433,7 +540,7 @@
     if (invoiceRetryInFlightByApptId.has(key)) return;
     invoiceRetryInFlightByApptId.add(key);
     const btn = btnEl && typeof btnEl === 'object' ? btnEl : null;
-    const prevTitle = btn?.title || 'Factuur opnieuw versturen';
+    const prevTitle = btn?.title || invoiceRetryLabelForAppt(a);
     if (btn) {
       btn.disabled = true;
       btn.title = 'Factuur retry bezig...';
@@ -441,7 +548,7 @@
       btn.style.opacity = '0.6';
       btn.style.cursor = 'progress';
     }
-    showToast('⏳ Factuur opnieuw versturen...', 'loading');
+    showToast(`⏳ ${retryLabel}...`, 'loading');
     try {
       if (global.HKPlannerPricing?.flushDebouncedPersistPriceLines) {
         await global.HKPlannerPricing.flushDebouncedPersistPriceLines({
@@ -468,30 +575,14 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const detail = data?.detail != null ? String(data.detail).trim() : '';
-        const base = data?.error || `Factuur kon niet worden verstuurd (${res.status})`;
-        showToast(detail ? `${base}\n${detail.slice(0, 220)}` : base, 'info');
+        showToast(formatMoneybirdRetryErrorToast(data), 'info');
         return;
       }
       const action = String(data?.actionTaken || '').trim();
-      if (action === 'created_and_sent_email') {
-        showToast('Factuur opnieuw verstuurd', 'success');
-      } else if (action === 'reused_and_sent_email') {
-        showToast('Factuur opnieuw verstuurd', 'success');
-      } else if (action === 'already_sent_noop') {
-        showToast('Factuur bestond al en was al verzonden', 'info');
-      } else if (action === 'concept_updated_and_sent') {
-        showToast('Factuur opnieuw verstuurd', 'success');
-      } else if (action === 'blocked_sent_price_mismatch') {
-        showToast('Retry geblokkeerd: prijs wijkt af van verzonden factuur', 'info');
-      } else if (action === 'missing_email') {
-        showToast('Geen e-mailadres beschikbaar', 'info');
-      } else if (action === 'whatsapp_sent') {
-        showToast('WhatsApp opnieuw verstuurd', 'success');
-      } else if (String(data?.message || '').trim()) {
-        showToast(String(data.message).trim(), 'info');
+      if (data?.success === false) {
+        showRetryInvoiceOutcomeToast(showToast, data, action || 'moneybird_error');
       } else {
-        showToast('Factuur retry afgerond', 'success');
+        showRetryInvoiceOutcomeToast(showToast, data, action);
       }
       await loadAppointments(getCurrentDate());
     } catch (e) {
