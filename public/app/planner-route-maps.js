@@ -100,6 +100,39 @@
     );
   }
 
+  function routeMapPanelVisible(container) {
+    const panel = document.getElementById('panelRoutes');
+    if (!panel || panel.classList.contains('tab-hidden')) return false;
+    try {
+      const style = window.getComputedStyle(panel);
+      if (style.display === 'none' || style.visibility === 'hidden') return false;
+    } catch (_) {}
+    if (!container) return false;
+    const rect = container.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
+  function resetMapState() {
+    clearDepotMarkers();
+    if (directionsRenderer) {
+      directionsRenderer.setMap(null);
+      directionsRenderer = null;
+    }
+    map = null;
+    lastRenderedRouteKey = '';
+    lastBounds = null;
+  }
+
+  function resizeMapToLastBounds() {
+    if (!map) return;
+    requestAnimationFrame(() => {
+      try {
+        google.maps.event.trigger(map, 'resize');
+        if (lastBounds) map.fitBounds(lastBounds);
+      } catch (_) {}
+    });
+  }
+
   function renderMapError(container, code, depotAddress, stops) {
     const safeCode = String(code || 'UNKNOWN_MAP_ERROR');
     const fallback = buildMapsDirUrl(depotAddress, stops);
@@ -134,14 +167,16 @@
       return;
     }
     // Skip dure Directions-call als route-volgorde/adressen ongewijzigd zijn en de kaart al staat.
-    // Wel resize + refit doen voor het geval de kaart eerder verborgen werd geïnitialiseerd.
+    // Alleen resize als panel zichtbaar is met non-zero afmetingen; anders volledige herinit.
     const routeKey = routeMapKey(depotAddress, ordered);
-    if (input?.force !== true && routeKey === lastRenderedRouteKey && map && directionsRenderer) {
-      try {
-        google.maps.event.trigger(map, 'resize');
-        if (lastBounds) map.fitBounds(lastBounds);
-      } catch (_) {}
-      return;
+    if (input?.force === true) {
+      resetMapState();
+    } else if (routeKey === lastRenderedRouteKey && map && directionsRenderer) {
+      if (routeMapPanelVisible(container)) {
+        resizeMapToLastBounds();
+        return;
+      }
+      resetMapState();
     }
     try {
       await loadGoogleMaps(apiKey);

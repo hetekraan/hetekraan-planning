@@ -9984,24 +9984,27 @@ function hasCachedRouteForCurrentDate() {
 }
 
 /** Lichte route-paint zonder volledige planner-render (sneller bij tab-switch). */
-function renderRoutesPanelLight() {
+function renderRoutesPanelLight(opts = {}) {
   // Alleen stops tonen als appointments echt bij currentDate horen; anders loading-state (nooit stale dag).
   const showStops = hasAppointmentsForCurrentDate();
   if (showStops) assignRouteStops();
   const routeStops = showStops ? getRouteStopsForSidebar() : [];
-  renderRoute(routeStops);
+  renderRoute(routeStops, opts);
   updateRoutePanelChrome(routeStops);
 }
 
 function refreshRoutesPanelOnShow() {
   const dateStr = getDateStr(currentDate);
+  const paintRoutesAfterLoad = () => {
+    renderRoutesPanelLight({ forceMap: true });
+  };
 
   // QUICK WIN 1 — inflight dedup: hergebruik een al lopende load voor deze datum
   // (bv. net gestart door Planning datum-switch) i.p.v. een tweede server-call + toast.
   const inflight = getInflightLoadForDate(dateStr);
   if (inflight) {
     renderRoutesPanelLight();
-    return inflight;
+    return inflight.then(paintRoutesAfterLoad).catch(() => {});
   }
 
   // QUICK WIN 2 — optimistic UI: appointments voor deze datum aanwezig maar routeState ontbreekt?
@@ -10014,7 +10017,7 @@ function refreshRoutesPanelOnShow() {
     ? loadAppointments(currentDate, { plannerLoadQuiet: true })
     : loadAppointments(currentDate);
   renderRoutesPanelLight();
-  return loadPromise;
+  return loadPromise.then(paintRoutesAfterLoad).catch(() => {});
 }
 
 let plannerAutoRefreshCtl = null;
@@ -11911,7 +11914,7 @@ function formatShortAddressLine(a) {
   return `${one.slice(0, 41)}…`;
 }
 
-function renderRoute(routeStops) {
+function renderRoute(routeStops, opts = {}) {
   const list = document.getElementById('routeList');
   if (!list) return;
   const stops = Array.isArray(routeStops) ? routeStops : [];
@@ -11974,13 +11977,17 @@ function renderRoute(routeStops) {
 
   if (plannerSidebarView === 'routes') void refreshMorningMessageSettings();
   initRouteDrag(list);
-  window.HKPlannerRouteMaps?.renderRouteMap?.({
-    apiKey: HK_GOOGLE_MAPS_API_KEY,
-    depotAddress: 'Cornelis Drebbelstraat, Amsterdam',
-    stops,
-    loading: routeLoading,
-    showToast,
-  });
+  const mapsApiKey = String(HK_GOOGLE_MAPS_API_KEY || '').trim();
+  if (plannerSidebarView === 'routes' && mapsApiKey) {
+    void window.HKPlannerRouteMaps?.renderRouteMap?.({
+      apiKey: mapsApiKey,
+      depotAddress: 'Cornelis Drebbelstraat, Amsterdam',
+      stops,
+      loading: routeLoading,
+      showToast,
+      force: opts.forceMap === true,
+    });
+  }
 }
 
 /** Zelfde volgorde als `active` (array), ETAs via Google Distance Matrix / Directions */
