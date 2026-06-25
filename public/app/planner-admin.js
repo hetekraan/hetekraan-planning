@@ -27,7 +27,10 @@
     document.getElementById('dePostcode').value = a.postalCode || '';
     document.getElementById('deWoonplaats').value = a.woonplaats || a.city || '';
     document.getElementById('deType').value =
-      a.jobType === 'installatie' || a.jobType === 'reparatie' || a.jobType === 'onderhoud'
+      a.jobType === 'installatie' ||
+      a.jobType === 'reparatie' ||
+      a.jobType === 'onderhoud' ||
+      a.jobType === 'herafspraak'
         ? a.jobType
         : 'onderhoud';
     document.getElementById('deDesc').value = a.jobDescription || '';

@@ -85,6 +85,7 @@ window.HKMorningCache = { shouldWarmMorningCache };
     --reparatie: #ff6b35;
     --onderhoud: #00d4aa;
     --installatie: #4a9eff;
+    --herafspraak: #b794f6;
     --klaar-bg: #0d2018;
     --klaar-border: #1a4030;
     /* Afspraakkaart: actie-iconen — zelfde basis als weektegels (surface2 + subtiele rand) */
@@ -942,6 +943,7 @@ window.HKMorningCache = { shouldWarmMorningCache };
   .tag.reparatie { background: rgba(255, 107, 53, 0.1); color: rgba(255, 140, 100, 0.95); }
   .tag.onderhoud { background: rgba(0, 212, 170, 0.1); color: rgba(120, 230, 200, 0.95); }
   .tag.installatie { background: rgba(74, 158, 255, 0.1); color: rgba(150, 190, 255, 0.95); }
+  .tag.herafspraak { background: rgba(183, 148, 246, 0.12); color: rgba(196, 181, 253, 0.98); }
 
   .appt-phone {
     font-family: var(--font-body);
@@ -5591,6 +5593,7 @@ window.HKMorningCache = { shouldWarmMorningCache };
     --reparatie: #a02f08;
     --onderhoud: #0f7a4b;
     --installatie: #a66a00;
+    --herafspraak: #5b21b6;
     --klaar-bg: #e5f4ec;
     --klaar-border: #cde8d8;
     --appt-action-icon-bg: #ffffff;
@@ -5800,6 +5803,11 @@ window.HKMorningCache = { shouldWarmMorningCache };
     background: #fbf0d4;
     color: #a66a00;
     border: 1px solid #f0dfb1;
+  }
+  .tag.herafspraak {
+    background: #ede9fe;
+    color: #5b21b6;
+    border: 1px solid #ddd6fe;
   }
   .planner-week-day {
     background: #ffffff;
@@ -6266,6 +6274,7 @@ window.HKMorningCache = { shouldWarmMorningCache };
   .tag.onderhoud { background: var(--green-soft); color: var(--green); }
   .tag.reparatie { background: var(--accent-soft); color: var(--accent-ink); }
   .tag.installatie { background: var(--yellow-soft); color: var(--yellow); }
+  .tag.herafspraak { background: #ede9fe; color: #5b21b6; }
   .tag.garantie { background: var(--bg-page); color: var(--ink-soft); }
   .appt-price {
     font-size: 17px;
@@ -7429,6 +7438,12 @@ window.HKMorningCache = { shouldWarmMorningCache };
       color: #a02f08;
       border-color: #f3d7c4;
     }
+        body:not(.user-jerry) #panelAfspraken .appt-card--layout-v2 .appt-wm-pill--type-herafspraak,
+        body.user-jerry.ipad-field-vp #panelAfspraken .appt-card--layout-v2 .appt-wm-pill--type-herafspraak {
+      background: #ede9fe;
+      color: #5b21b6;
+      border-color: #ddd6fe;
+    }
   }
 
   /* Jerry veld-tablets: iPad Mini 6 + iPad 9 (excl. iPhone, desktop, iPad Air/Pro) */
@@ -7536,6 +7551,11 @@ window.HKMorningCache = { shouldWarmMorningCache };
       background: #fbe9dd !important;
       color: #a02f08 !important;
       border-color: #f3d7c4 !important;
+    }
+    body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-pill--type-herafspraak {
+      background: #ede9fe !important;
+      color: #5b21b6 !important;
+      border-color: #ddd6fe !important;
     }
     body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-actions-mobile,
     body.user-jerry.ipad-field-vp .appt-card--layout-v2 .appt-wm-actions-slot {
@@ -7687,7 +7707,7 @@ window.HKMorningCache = { shouldWarmMorningCache };
     <div class="today-page-header">
       <div class="today-page-heading">
         <h1 id="dateLabel">Donderdag 30 april</h1>
-        <p id="todayMixMeta">0 afspraken · 0 reparaties · 0 installaties · 0 onderhoud</p>
+        <p id="todayMixMeta">0 afspraken · 0 reparaties · 0 installaties · 0 onderhoud · 0 herafspraken</p>
       </div>
       <div class="appointments-header-actions">
         <input
@@ -8150,6 +8170,7 @@ window.HKMorningCache = { shouldWarmMorningCache };
         <option value="onderhoud">onderhoud</option>
         <option value="reparatie">reparatie</option>
         <option value="installatie">installatie</option>
+        <option value="herafspraak">herafspraak</option>
       </select>
     </div>
     <div class="form-row">
@@ -8216,7 +8237,7 @@ window.HKMorningCache = { shouldWarmMorningCache };
         </button>
       </div>
     </div>
-    <p style="font-size:11px;color:var(--muted);margin:8px 0 0">Agenda: alleen als er een kalender-id is; duur standaard uit type (onderhoud 30, reparatie 45, installatie 60).</p>
+    <p style="font-size:11px;color:var(--muted);margin:8px 0 0">Agenda: alleen als er een kalender-id is; duur standaard uit type (herafspraak 30, onderhoud 45, reparatie 60, installatie 90 min).</p>
     <div class="modal-actions" style="margin-top:16px">
       <button type="button" class="btn-cancel" onclick="closeDaanEditModal()">Annuleren</button>
       <button type="button" class="btn-save" id="deSaveBtn" onclick="saveDaanEditToGhl()">Opslaan in GHL</button>
@@ -8278,6 +8299,7 @@ window.HKMorningCache = { shouldWarmMorningCache };
         <option>Reparatie</option>
         <option>Onderhoud</option>
         <option>Installatie</option>
+        <option>Herafspraak</option>
       </select>
     </div>
     <div class="form-row">
@@ -8433,6 +8455,7 @@ window.HKMorningCache = { shouldWarmMorningCache };
         <option value="onderhoud">Onderhoud</option>
         <option value="reparatie">Reparatie</option>
         <option value="installatie">Installatie</option>
+        <option value="herafspraak">Herafspraak</option>
       </select>
       <label class="form-label" for="hkSnapDesc">Omschrijving</label>
       <textarea class="form-input" id="hkSnapDesc" rows="3" placeholder="Probleemomschrijving / werkzaamheden"></textarea>
@@ -9071,7 +9094,7 @@ function createPlannerCtx(merge = {}) {
 window.createPlannerCtx = createPlannerCtx;
 
 /** Minuten per type werkzaamheid (ook gebruikt bij route / GHL) */
-const JOB_DURATION = { onderhoud: 45, reparatie: 60, installatie: 90 };
+const JOB_DURATION = { herafspraak: 30, onderhoud: 45, reparatie: 60, installatie: 90 };
 
 /** HTML id / dataset-veilig (Appointment.id kan uit GHL komen). */
 function appointmentDomSafeId(id) {
@@ -10573,6 +10596,7 @@ function calcStats() {
   const reparaties = clients.filter((a) => String(a.jobType || '').toLowerCase() === 'reparatie').length;
   const installaties = clients.filter((a) => String(a.jobType || '').toLowerCase() === 'installatie').length;
   const onderhoud = clients.filter((a) => String(a.jobType || '').toLowerCase() === 'onderhoud').length;
+  const herafspraken = clients.filter((a) => String(a.jobType || '').toLowerCase() === 'herafspraak').length;
   const pct = clients.length ? Math.round((klaar / clients.length) * 100) : 0;
   const afsprEl = document.getElementById('totalAfspraken');
   const omzetEl = document.getElementById('totalOmzet');
@@ -10597,7 +10621,7 @@ function calcStats() {
   }
   const mixMetaEl = document.getElementById('todayMixMeta');
   if (mixMetaEl) {
-    mixMetaEl.textContent = `${clients.length} afspraken · ${reparaties} reparaties · ${installaties} installaties · ${onderhoud} onderhoud`;
+    mixMetaEl.textContent = `${clients.length} afspraken · ${reparaties} reparaties · ${installaties} installaties · ${onderhoud} onderhoud · ${herafspraken} herafspraken`;
   }
   const sidebarCountEl = document.getElementById('sidebarCountToday');
   if (sidebarCountEl) sidebarCountEl.textContent = String(clients.length);
@@ -11683,7 +11707,12 @@ function timeStrToTotalMinutes(t) {
 }
 
 function formatJobTypeLabelShort(jobType) {
-  const m = { onderhoud: 'Onderhoud', reparatie: 'Reparatie', installatie: 'Installatie' };
+  const m = {
+    onderhoud: 'Onderhoud',
+    reparatie: 'Reparatie',
+    installatie: 'Installatie',
+    herafspraak: 'Herafspraak',
+  };
   const k = String(jobType || '').trim();
   return m[k] || (k ? k.charAt(0).toUpperCase() + k.slice(1) : '');
 }
