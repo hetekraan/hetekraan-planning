@@ -3,7 +3,6 @@
 // Legacy: functies voor GET …/free-slots staan hier nog; worden door deze route niet meer aangeroepen.
 // Route-fit (geocode) blijft optioneel voor sortering.
 
-import { normalizeWorkType } from '../lib/booking-blocks.js';
 import {
   blockDisplayLabels,
   evaluateBlockOffer,
@@ -48,6 +47,7 @@ import {
   proposalConstraintsPassCandidate,
 } from '../lib/proposal-constraints.js';
 import { rankProposalCandidates } from '../lib/proposal-ranking.js';
+import { resolveInviteWorkType, resolveInviteAddress } from '../lib/invite-slot-context.js';
 import { isGeoValid } from '../lib/geo-gate.js';
 import { geocode, geocodeEvents } from '../lib/geo-utils.js';
 import { fetchWithRetry } from '../lib/retry.js';
@@ -558,11 +558,14 @@ export default async function handler(req, res) {
 
     perf.contact_fetch_ms = Date.now() - tContact0;
 
-    let workType = normalizeWorkType(workTypeQ || typeQ || '');
     const tWorkType0 = Date.now();
-    if (!workTypeQ && !typeQ && resolvedContactId) {
+    // Eén bron van waarheid (zie lib/invite-slot-context): formulier wint, GHL fallback.
+    // Haal GHL type_onderhoud alleen op als het formulier niets meestuurt.
+    let contactTypeField = '';
+    const hasFormType = !!String(workTypeQ ?? typeQ ?? '').trim();
+    if (!hasFormType && resolvedContactId) {
       if (cachedContact) {
-        workType = normalizeWorkType(getField(cachedContact, FIELD_IDS.type_onderhoud));
+        contactTypeField = getField(cachedContact, FIELD_IDS.type_onderhoud);
       } else {
         try {
           const cr = await fetch(`${GHL_BASE}/contacts/${resolvedContactId}`, {
@@ -571,12 +574,20 @@ export default async function handler(req, res) {
           if (cr.ok) {
             const cd = await cr.json();
             const c = cd?.contact || cd;
-            workType = normalizeWorkType(getField(c, FIELD_IDS.type_onderhoud));
+            contactTypeField = getField(c, FIELD_IDS.type_onderhoud);
           }
         } catch {}
       }
     }
+    const workType = resolveInviteWorkType({
+      typeParam: typeQ,
+      workTypeParam: workTypeQ,
+      contactTypeField,
+    });
     perf.contact_fetch_ms += Date.now() - tWorkType0;
+
+    // Adres via zelfde resolver als send-booking-invite: formulier wint, GHL fallback.
+    address = resolveInviteAddress({ addressParam, contact: cachedContact });
 
     const startDate = addAmsterdamCalendarDays(formatYyyyMmDdInAmsterdam(new Date()), 1);
     if (!startDate) return res.status(500).json({ error: 'Datumfout' });
@@ -811,7 +822,14 @@ export default async function handler(req, res) {
 
         const labels = blockDisplayLabels(block);
         const maxB = evaluation.state.maxCustomersInBlock;
-        const slotsLeft = Math.max(0, maxB - evaluation.state.blockCustomerCount);
+        // Eerlijke badge: tel zowel klantplekken ALS minutenbudget.
+        // Een kandidaat is hier altijd eligible (minuten-check zit in blockAllowsNewCustomerBooking),
+        // dus minutesOk is true; de extra gate voorkomt een vals "Vol" als de teller ooit afwijkt.
+        const minutesRemaining = Number(evaluation.state.plannedMinutesRemainingInBlock ?? 0);
+        const minutesNeeded = Number(evaluation.state.minutesNeededForNewBooking ?? 0);
+        const minutesOk = minutesRemaining >= minutesNeeded;
+        const customerSlotsLeft = Math.max(0, maxB - evaluation.state.blockCustomerCount);
+        const slotsLeft = minutesOk ? customerSlotsLeft : 0;
         const existingCount = evaluation.state.blockCustomerCount;
 
         const evalScore = Number(evaluation.score ?? 0);
@@ -909,6 +927,8 @@ export default async function handler(req, res) {
           timeLabel: labels.slotLabelSpace,
           blockLabel: labels.blockLabelNl,
           slotsLeft,
+          minutesRemaining,
+          minutesNeeded,
         });
         addedForDay++;
       }
@@ -982,6 +1002,8 @@ export default async function handler(req, res) {
       timeLabel: c.timeLabel,
       existingCount: c.existingCount,
       slotsLeft: c.slotsLeft,
+      minutesRemaining: c.minutesRemaining,
+      minutesNeeded: c.minutesNeeded,
       score: Math.round(c.score * 10) / 10,
     }));
     perf.map_sort_slice_ms = Date.now() - tMap0;

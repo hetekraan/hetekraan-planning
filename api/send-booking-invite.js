@@ -25,9 +25,9 @@ import {
   isValidPlainEmail,
   logCanonicalAddressWrite,
   normalizeCanonicalGhlEmail,
-  readCanonicalAddressLine,
   readGhlDuplicateSearchContactId,
 } from '../lib/ghl-contact-canonical.js';
+import { resolveInviteWorkType, resolveInviteAddress } from '../lib/invite-slot-context.js';
 import {
   appendBookingCanonFields,
   formatPriceRulesStructuredString,
@@ -115,6 +115,7 @@ async function validateSelectedInviteSlots({
   trace,
   address,
   resolvedContactId,
+  spoedMode = false,
 }) {
   const eventCache = new Map();
 
@@ -211,11 +212,15 @@ async function validateSelectedInviteSlots({
       geocodeEvents(morningEvents, cachedGeocode),
       geocodeEvents(afternoonEvents, cachedGeocode),
     ]);
-    const geoCheck = isGeoValid(newCoord, {
-      morning: morningCoords,
-      afternoon: afternoonCoords,
-      targetBlock: sel.block,
-    });
+    const geoCheck = isGeoValid(
+      newCoord,
+      {
+        morning: morningCoords,
+        afternoon: afternoonCoords,
+        targetBlock: sel.block,
+      },
+      spoedMode
+    );
     if (!geoCheck.valid) {
       console.info(
         `[geo-gate] Skipped ${sel.dateStr} ${sel.block} for contact ${resolvedContactId || 'unknown'}: ` +
@@ -224,6 +229,8 @@ async function validateSelectedInviteSlots({
       return {
         ok: false,
         error: 'Een van de gekozen tijdsloten is geografisch niet haalbaar. Vernieuw de suggestie en probeer opnieuw.',
+        failedSlot: { dateStr: sel.dateStr, block: sel.block, reason: 'geo' },
+        rejectedOfferKeys: [blockOfferKey(sel.dateStr, sel.block)],
       };
     }
 
@@ -242,6 +249,8 @@ async function validateSelectedInviteSlots({
         ok: false,
         error:
           'Een van de gekozen tijdsloten is niet meer beschikbaar. Vernieuw de suggestie en probeer opnieuw.',
+        failedSlot: { dateStr: sel.dateStr, block: sel.block, reason: evaluation.reason || 'not_eligible' },
+        rejectedOfferKeys: [blockOfferKey(sel.dateStr, sel.block)],
       };
     }
 
@@ -869,7 +878,7 @@ export default async function handler(req, res) {
     firstName = contact.firstName || name.split(' ')[0];
   }
 
-  const address = addressParam || readCanonicalAddressLine(contact) || contact.address1 || '';
+  const address = resolveInviteAddress({ addressParam, contact });
   const canonicalAddr = buildCanonicalAddressWritePayload(address);
   const straat = String(canonicalAddr?.parts?.straatnaam || '').trim();
   const huisnr = String(canonicalAddr?.parts?.huisnummer || '').trim();
@@ -904,7 +913,11 @@ export default async function handler(req, res) {
   }
   perf.ghl_contact_put_phone_ms = Date.now() - tPhonePut0;
 
-  const workType = normalizeWorkType(workTypeParam || typeParam || getField(contact, FIELD_IDS.type_onderhoud));
+  const workType = resolveInviteWorkType({
+    typeParam,
+    workTypeParam,
+    contactTypeField: getField(contact, FIELD_IDS.type_onderhoud),
+  });
   const intakeDesc = String(descParam || '').trim();
   let intakePriceRules = [];
   if (Array.isArray(priceRulesParam)) {
@@ -970,10 +983,18 @@ export default async function handler(req, res) {
       trace,
       address,
       resolvedContactId: contactId,
+      spoedMode,
     });
     perf.selected_slots_validate_ms = Date.now() - tSel0;
     if (!v.ok) {
-      return res.status(409).json({ success: false, error: v.error || 'Geselecteerde tijdsloten zijn niet meer geldig.' });
+      return res.status(409).json({
+        success: false,
+        error: v.error || 'Geselecteerde tijdsloten zijn niet meer geldig.',
+        // YYYY-MM-DD_morning (underscore) — UI merget dit in excludedOfferKeys
+        // zodat de volgende suggest-call dit slot uitsluit en een echt alternatief voorstelt.
+        rejectedOfferKeys: Array.isArray(v.rejectedOfferKeys) ? v.rejectedOfferKeys : [],
+        failedSlot: v.failedSlot || null,
+      });
     }
     slots = v.slots;
     if (trace) {

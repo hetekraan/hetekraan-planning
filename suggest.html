@@ -553,6 +553,14 @@
   let suggestCatalogDropdownOpen = false;
   /** Zelfde als bij laatste geslaagde preview — gebruikt bij send zodat link = preview. */
   let pendingProposalConstraints = null;
+  /**
+   * Slots die de server bij versturen (409) afkeurde als "niet meer beschikbaar".
+   * Formaat: YYYY-MM-DD_morning (underscore) — exact wat proposalConstraints.excludedOfferKeys
+   * verwacht. Wordt bij elke suggest-call ingemerged zodat "Bereken nieuwe opties" deze slots
+   * écht uitsluit en een alternatief voorstelt i.p.v. dezelfde twee (anti-lus).
+   */
+  const sessionRejectedOfferKeys = new Set();
+  const OFFER_KEY_RE = /^\d{4}-\d{2}-\d{2}_(morning|afternoon)$/;
   /** UI-snapshot (modus + weekdagen + datums-tekst) bij laatste geslaagde preview; null = nog geen preview. */
   let lastConstraintsUiSnapshotAtPreview = null;
   /** True zodra beperkingen wijzigen na een geslaagde preview; alleen opnieuw “berekenen” zet dit terug. */
@@ -568,7 +576,11 @@
     const minStartDate = (document.getElementById('hkSuggestMinStartDate')?.value || '').trim();
     const unavail = (document.getElementById('hkSuggestCustomerUnavailability')?.value || '').trim();
     const email = (document.getElementById('inputEmail')?.value || '').trim();
-    return JSON.stringify({ mode, dows, dates, minStartDate, unavail, email });
+    // Type + adres horen bij de "bron van waarheid": als ze wijzigen ná een preview,
+    // is de berekende beschikbaarheid stale (ander minutenbudget / andere geo-check).
+    const type = (document.getElementById('inputTypeOnderhoud')?.value || '').trim();
+    const address = (document.getElementById('inputAddress')?.value || '').trim();
+    return JSON.stringify({ mode, dows, dates, minStartDate, unavail, email, type, address });
   }
 
   function applySendButtonEnabledState() {
@@ -707,10 +719,23 @@
   function mergeExcludedDatesIntoProposal(constraints) {
     const raw = document.getElementById('hkSuggestCustomerUnavailability')?.value || '';
     const fromText = parseIsoDatesFromFreeText(raw);
-    if (!fromText.length) return constraints;
-    if (!constraints) return { excludedDates: fromText };
-    const merged = [...new Set([...(constraints.excludedDates || []), ...fromText])].sort();
-    return { ...constraints, excludedDates: merged };
+    const rejectedKeys = [...sessionRejectedOfferKeys].filter((k) => OFFER_KEY_RE.test(k));
+    let out = constraints;
+    if (fromText.length) {
+      if (!out) out = { excludedDates: fromText };
+      else {
+        const merged = [...new Set([...(out.excludedDates || []), ...fromText])].sort();
+        out = { ...out, excludedDates: merged };
+      }
+    }
+    if (rejectedKeys.length) {
+      if (!out) out = { excludedOfferKeys: rejectedKeys.sort() };
+      else {
+        const mergedKeys = [...new Set([...(out.excludedOfferKeys || []), ...rejectedKeys])].sort();
+        out = { ...out, excludedOfferKeys: mergedKeys };
+      }
+    }
+    return out;
   }
 
   /**
@@ -993,6 +1018,16 @@
     box.classList.remove('hidden');
   }
 
+  // Eerlijke badge: "Vol" alleen als het minutenbudget écht op is, anders "N vrij".
+  // De server zet slotsLeft al op 0 bij uitgeput minutenbudget (minuten-aware),
+  // dus een blok met genoeg ruimte toont nooit onterecht "Vol" (geen vals negatief).
+  function slotBadgeLabel(s) {
+    const n = Number(s?.slotsLeft);
+    if (Number.isFinite(n) && n <= 0) return 'Vol';
+    if (Number.isFinite(n)) return `${n} vrij`;
+    return '';
+  }
+
   function renderSlotList(suggestions) {
     const list = document.getElementById('slotList');
     if (!list) return;
@@ -1012,7 +1047,7 @@
           <div class="slot-time">${esc(String(s.timeLabel || ''))}</div>
         </div>
         <div class="slot-actions">
-          <span class="slot-badge">${esc(String(s.slotsLeft ?? ''))} vrij</span>
+          <span class="slot-badge">${esc(slotBadgeLabel(s))}</span>
           <button type="button" class="slot-hide" data-hide-slot="${esc(k)}">Verberg</button>
         </div>
       `;
@@ -1179,6 +1214,10 @@
     }
     const unEl = document.getElementById('hkSuggestCustomerUnavailability');
     if (unEl) unEl.addEventListener('input', invalidatePreviewIfConstraintsChanged);
+    const typeEl = document.getElementById('inputTypeOnderhoud');
+    if (typeEl) typeEl.addEventListener('change', invalidatePreviewIfConstraintsChanged);
+    const addrEl = document.getElementById('inputAddress');
+    if (addrEl) addrEl.addEventListener('input', invalidatePreviewIfConstraintsChanged);
     const minStartDateInput = document.getElementById('hkSuggestMinStartDate');
     if (minStartDateInput) {
       minStartDateInput.min = amsterdamTodayYmd();
@@ -1382,16 +1421,24 @@
 
     try {
       let url = '/api/suggest-slots?';
+      const p = new URLSearchParams();
       if (resolvedContactId) {
-        url += `contactId=${encodeURIComponent(resolvedContactId)}`;
+        p.set('contactId', resolvedContactId);
       } else {
-        const p = new URLSearchParams();
         if (name)    p.set('name',    name);
         if (phone)   p.set('phone',   phone);
         if (emailRaw) p.set('email', emailRaw);
-        if (address) p.set('address', address);
-        url += p.toString();
       }
+      // Type + adres ALTIJD meesturen (ook bij contactId), zodat suggest en
+      // send-booking-invite dezelfde bron van waarheid gebruiken (geen split-brain).
+      const intakeForUrl = readPlannerIntakeState();
+      const typeForUrl = String(intakeForUrl?.typeOnderhoud || '').trim();
+      if (typeForUrl) {
+        p.set('type', typeForUrl);
+        p.set('workType', typeForUrl);
+      }
+      if (address) p.set('address', address);
+      url += p.toString();
       if (proposalConstraints) {
         const enc = encodeURIComponent(JSON.stringify(proposalConstraints));
         url += url.endsWith('?') ? `proposalConstraints=${enc}` : `&proposalConstraints=${enc}`;
@@ -1561,6 +1608,27 @@
         throw new Error('Server gaf geen geldige JSON (HTTP ' + res.status + '). Controleer /api/send-booking-invite.');
       }
 
+      if (res.status === 409) {
+        // Slot net weg/onhaalbaar: sluit het uit en herbereken meteen, zodat de
+        // gebruiker een écht alternatief krijgt i.p.v. dezelfde (afgekeurde) twee.
+        const rejected = Array.isArray(data?.rejectedOfferKeys)
+          ? data.rejectedOfferKeys.map((k) => String(k).trim()).filter((k) => OFFER_KEY_RE.test(k))
+          : [];
+        if (rejected.length) {
+          rejected.forEach((k) => sessionRejectedOfferKeys.add(k));
+          showInviteError(
+            (data.error || 'Een tijdslot is net niet meer beschikbaar.') +
+              ' We berekenen automatisch nieuwe opties…'
+          );
+          // Knoppen/flag herstellen vóór de nieuwe suggest-call.
+          sendInviteInFlight = false;
+          resetSendButton();
+          await loadSlots();
+          return;
+        }
+        throw new Error(data.error || data.message || `HTTP ${res.status}`);
+      }
+
       if (!res.ok) {
         throw new Error(data.error || data.message || `HTTP ${res.status}`);
       }
@@ -1618,6 +1686,7 @@
     const ph = document.getElementById('hkPrimarySlotsHeading');
     if (ph) ph.textContent = 'Voorgestelde tijdsloten';
     pendingProposalConstraints = null;
+    sessionRejectedOfferKeys.clear();
     lastConstraintsUiSnapshotAtPreview = null;
     previewStale = false;
     const modeSel = document.getElementById('hkSuggestConstraintMode');
