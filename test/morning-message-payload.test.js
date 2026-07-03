@@ -4,8 +4,11 @@ import {
   buildMorningMessageAppointmentsFromRouteState,
   buildMorningWindowForContact,
   buildMorningWindowPhrase,
+  computeCustomerArrivalWindowFromEta,
   formatEtaSentPillLabel,
+  formatMinutesToTime,
   formatMorningWindowPillLabel,
+  parseTimeToMinutes,
   resolveMorningSentWindowForContact,
   roundToQuarterMinutes,
 } from '../lib/morning-message-payload.js';
@@ -56,9 +59,9 @@ test('middle customer with ETA 10:30 gets window phrase and ETA as start time', 
     internalFixedStartByContactId: routeState.internalFixedStartByContactId,
   });
   assert.equal(row.plannedValue, '10:30');
-  assert.equal(row.windowPhrase, 'tussen 09:30 en 11:30');
-  assert.equal(row.timeFrom, '09:30');
-  assert.equal(row.timeTo, '11:30');
+  assert.equal(row.windowPhrase, 'tussen 09:15 en 11:45');
+  assert.equal(row.timeFrom, '09:15');
+  assert.equal(row.timeTo, '11:45');
 });
 
 test('customer with internalFixedStart.exact uses om phrase without window', () => {
@@ -72,7 +75,7 @@ test('customer with internalFixedStart.exact uses om phrase without window', () 
   assert.equal(row.windowPhrase, 'om 11:00');
 });
 
-test('late customer with ETA 16:00 gets tussen 15:00 en 17:00', () => {
+test('customer with ETA 16:00 gets tussen 14:45 en 17:15 (binnen randen)', () => {
   const row = buildMorningWindowForContact({
     contactId: 'fourth-cid',
     orderContactIds: routeState.orderContactIds,
@@ -80,10 +83,12 @@ test('late customer with ETA 16:00 gets tussen 15:00 en 17:00', () => {
     internalFixedStartByContactId: routeState.internalFixedStartByContactId,
   });
   assert.equal(row.plannedValue, '16:00');
-  assert.equal(row.windowPhrase, 'tussen 15:00 en 17:00');
+  assert.equal(row.windowPhrase, 'tussen 14:45 en 17:15');
+  assert.equal(row.timeFrom, '14:45');
+  assert.equal(row.timeTo, '17:15');
 });
 
-test('ETA 14:15 → tussen 13:15 en 15:15', () => {
+test('ETA 14:15 → tussen 13:00 en 15:30', () => {
   const row = buildMorningWindowForContact({
     contactId: 'third-cid',
     orderContactIds: ['a', 'b', 'third-cid'],
@@ -91,7 +96,83 @@ test('ETA 14:15 → tussen 13:15 en 15:15', () => {
     internalFixedStartByContactId: {},
   });
   assert.equal(row.plannedValue, '14:15');
-  assert.equal(row.windowPhrase, 'tussen 13:15 en 15:15');
+  assert.equal(row.windowPhrase, 'tussen 13:00 en 15:30');
+});
+
+test('slide onder: vroege ETA 09:30 schuift naar 09:00–11:30 (2,5u)', () => {
+  const row = buildMorningWindowForContact({
+    contactId: 'x',
+    orderContactIds: ['first', 'x'],
+    etasByContactId: { first: '09:00', x: '09:30' },
+    internalFixedStartByContactId: {},
+  });
+  assert.equal(row.plannedValue, '09:30');
+  assert.equal(row.timeFrom, '09:00');
+  assert.equal(row.timeTo, '11:30');
+  assert.equal(row.windowPhrase, 'tussen 09:00 en 11:30');
+});
+
+test('slide boven: late ETA 17:30 schuift naar 15:30–18:00 (2,5u)', () => {
+  const row = buildMorningWindowForContact({
+    contactId: 'x',
+    orderContactIds: ['first', 'x'],
+    etasByContactId: { first: '09:00', x: '17:30' },
+    internalFixedStartByContactId: {},
+  });
+  assert.equal(row.plannedValue, '17:30');
+  assert.equal(row.timeFrom, '15:30');
+  assert.equal(row.timeTo, '18:00');
+  assert.equal(row.windowPhrase, 'tussen 15:30 en 18:00');
+});
+
+test('computeCustomerArrivalWindowFromEta: midden, slide onder en slide boven', () => {
+  assert.deepEqual(computeCustomerArrivalWindowFromEta(parseTimeToMinutes('10:30')), {
+    fromMins: parseTimeToMinutes('09:15'),
+    toMins: parseTimeToMinutes('11:45'),
+  });
+  assert.deepEqual(computeCustomerArrivalWindowFromEta(parseTimeToMinutes('09:00')), {
+    fromMins: parseTimeToMinutes('09:00'),
+    toMins: parseTimeToMinutes('11:30'),
+  });
+  assert.deepEqual(computeCustomerArrivalWindowFromEta(parseTimeToMinutes('18:00')), {
+    fromMins: parseTimeToMinutes('15:30'),
+    toMins: parseTimeToMinutes('18:00'),
+  });
+});
+
+test('invariant: venster is ALTIJD 150 min breed over de hele dag (behalve eerste-stop/exact-pin)', () => {
+  for (let eta = parseTimeToMinutes('09:00'); eta <= parseTimeToMinutes('18:00'); eta += 5) {
+    const { fromMins, toMins } = computeCustomerArrivalWindowFromEta(eta);
+    assert.equal(
+      toMins - fromMins,
+      150,
+      `venster niet 150 min bij ETA ${formatMinutesToTime(eta)} (${formatMinutesToTime(fromMins)}–${formatMinutesToTime(toMins)})`
+    );
+    assert.ok(fromMins >= parseTimeToMinutes('09:00'), `ondergrens 09:00 geschonden bij ${formatMinutesToTime(eta)}`);
+    assert.ok(toMins <= parseTimeToMinutes('18:00'), `bovengrens 18:00 geschonden bij ${formatMinutesToTime(eta)}`);
+  }
+});
+
+test('eerste stop en exact-pin houden exacte tijd zonder venster', () => {
+  const first = buildMorningWindowForContact({
+    contactId: 'first-cid',
+    orderContactIds: ['first-cid', 'x'],
+    etasByContactId: { 'first-cid': '10:00', x: '11:00' },
+    internalFixedStartByContactId: {},
+  });
+  assert.equal(first.timeFrom, '09:00');
+  assert.equal(first.timeTo, '09:00');
+  assert.equal(first.windowPhrase, 'om 09:00');
+
+  const pinned = buildMorningWindowForContact({
+    contactId: 'x',
+    orderContactIds: ['first-cid', 'x'],
+    etasByContactId: { x: '13:20' },
+    internalFixedStartByContactId: { x: { type: 'exact', time: '13:30' } },
+  });
+  assert.equal(pinned.timeFrom, '13:30');
+  assert.equal(pinned.timeTo, '13:30');
+  assert.equal(pinned.windowPhrase, 'om 13:30');
 });
 
 test('buildMorningWindowPhrase formats exact and range', () => {
