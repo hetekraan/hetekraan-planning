@@ -8237,7 +8237,7 @@ window.HKMorningCache = { shouldWarmMorningCache };
         </button>
       </div>
     </div>
-    <p style="font-size:11px;color:var(--muted);margin:8px 0 0">Agenda: alleen als er een kalender-id is; duur standaard uit type (herafspraak 30, onderhoud 45, reparatie 60, installatie 90 min).</p>
+    <p style="font-size:11px;color:var(--muted);margin:8px 0 0">Agenda: alleen als er een kalender-id is; vaste klantduur 50 min (exclusief rijden, alle types).</p>
     <div class="modal-actions" style="margin-top:16px">
       <button type="button" class="btn-cancel" onclick="closeDaanEditModal()">Annuleren</button>
       <button type="button" class="btn-save" id="deSaveBtn" onclick="saveDaanEditToGhl()">Opslaan in GHL</button>
@@ -9067,7 +9067,7 @@ function createPlannerCtx(merge = {}) {
     orderRouteMorningFirst,
     getRouteStopsForSidebar,
     recalculateRouteTimesPreservingOrder,
-    jobDurationForType: (t) => JOB_DURATION[t] || 30,
+    jobDurationForType,
     isDaanEditor,
     normalizeTimeStr,
     closeModal,
@@ -9093,8 +9093,12 @@ function createPlannerCtx(merge = {}) {
 }
 window.createPlannerCtx = createPlannerCtx;
 
-/** Minuten per type werkzaamheid (ook gebruikt bij route / GHL) */
-const JOB_DURATION = { herafspraak: 30, onderhoud: 45, reparatie: 60, installatie: 90 };
+/** SYNC: lib/booking-blocks.js DEFAULT_APPOINTMENT_MINUTES */
+const DEFAULT_APPOINTMENT_MINUTES = 50;
+
+function jobDurationForType(_type) {
+  return DEFAULT_APPOINTMENT_MINUTES;
+}
 
 /** HTML id / dataset-veilig (Appointment.id kan uit GHL komen). */
 function appointmentDomSafeId(id) {
@@ -11756,7 +11760,7 @@ function buildRouteSummaryHtml(routeStops, dateStr, loading = false) {
   const last = ordered[ordered.length - 1];
   const startMin = timeStrToTotalMinutes(last?.timeSlot);
   if (startMin != null) {
-    const job = JOB_DURATION[last.jobType] || 30;
+    const job = jobDurationForType(last.jobType);
     let endMin = startMin + job;
     let tail = '';
     if (match && Number.isFinite(plan.returnLegToDepotMinutes)) {
@@ -12033,7 +12037,7 @@ async function recalculateRouteTimesPreservingOrder(active) {
       appointments: active.map(a => ({
         address:     a.fullAddressLine || a.address,
         timeWindow:  a.timeWindow || null,
-        jobDuration: JOB_DURATION[a.jobType] || 30,
+        jobDuration: jobDurationForType(a.jobType),
         dayPart:     a.dayPart,
         internalFixedStart: a.internalFixedPin || a.internalFixedStartTime || undefined,
       })),
