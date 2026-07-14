@@ -19,6 +19,13 @@
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Kon prijzen niet laden');
     rows = Array.isArray(data.items) ? data.items : [];
+    // [prices][diag] TIJDELIJK — verwijder na bevestiging sleepvolgorde
+    try {
+      console.info(
+        '[prices][diag] loaded from redis',
+        rows.slice(0, 12).map((r) => ({ id: String(r.id), cat: r.categorie || r.category, sortOrder: r.sortOrder }))
+      );
+    } catch (_) {}
   }
 
   function toInput(v) {
@@ -330,26 +337,25 @@
     reordered.splice(tgtIdx, 0, moved);
     applySortOrder(reordered);
     renderTable();
+    // Eén atomische PATCH i.p.v. N parallelle rewrites (voorkomt last-write-wins race).
+    const orderedIds = reordered.map((r) => String(r.id));
     try {
-      await Promise.all(
-        reordered.map((row) =>
-          fetch('/api/prices', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', 'X-HK-Auth': authHeader() },
-            body: JSON.stringify({
-              id: String(row.id || ''),
-              sku: String(row.sku || '').trim() || null,
-              naam: String(row.naam || row.description || '').trim(),
-              categorie: String(row.categorie || row.category || activeCategory),
-              inkoopprijs: Number(row.inkoopprijs || 0),
-              verkoopprijsInclBtw: Number(row.verkoopprijsInclBtw ?? row.price ?? 0),
-              btwPct: Number(row.btwPct || 21),
-              sortOrder: Number(row.sortOrder),
-            }),
-          })
-        )
-      );
+      // [prices][diag] TIJDELIJK — verwijder na bevestiging sleepvolgorde
+      console.info('[prices][diag] drop → PATCH reorder', {
+        count: orderedIds.length,
+        order: reordered.map((r, i) => ({ id: String(r.id), naam: r.naam, sortOrder: i })),
+      });
+      const res = await fetch('/api/prices', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-HK-Auth': authHeader() },
+        body: JSON.stringify({ reorder: orderedIds }),
+      });
+      const bodyJson = await res.json().catch(() => ({}));
+      // [prices][diag] TIJDELIJK — verwijder na bevestiging sleepvolgorde
+      console.info('[prices][diag] reorder response', { status: res.status, ok: res.ok, body: bodyJson });
+      if (!res.ok) throw new Error(`reorder_failed_${res.status}`);
     } catch (err) {
+      console.warn('[prices][diag] reorder failed', err?.message || err);
       if (typeof global.showToast === 'function') global.showToast('Volgorde opslaan mislukt', 'info');
       await render(true);
     }

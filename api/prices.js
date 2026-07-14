@@ -1,6 +1,6 @@
 import { verifySessionToken } from '../lib/session.js';
 import { ghlLocationIdFromEnv } from '../lib/ghl-env-ids.js';
-import { deletePrice, isPricesStoreConfigured, listPrices, upsertPrice } from '../lib/prices-store.js';
+import { deletePrice, isPricesStoreConfigured, listPrices, reorderPrices, upsertPrice } from '../lib/prices-store.js';
 import { Redis } from '@upstash/redis';
 
 const PRICES_LAST_UPDATED_KEY = 'hk:prices:last_updated';
@@ -64,10 +64,31 @@ export default async function handler(req, res) {
     }
     const rows = await listPrices(loc);
     const lastUpdated = await getPricesLastUpdated();
+    // [prices][diag] TIJDELIJK — verwijder na bevestiging sleepvolgorde
+    console.log('[prices][diag] list', JSON.stringify({
+      location: loc,
+      count: rows.length,
+      sample: rows.slice(0, 8).map((r) => ({ id: r.id, cat: r.categorie, sortOrder: r.sortOrder })),
+    }));
     return res.status(200).json({ ok: true, items: rows, lastUpdated });
   }
   if (req.method === 'POST' || req.method === 'PATCH') {
-    const out = await upsertPrice(loc, req.body || {});
+    const body = req.body || {};
+    if (Array.isArray(body.reorder)) {
+      const out = await reorderPrices(loc, body.reorder);
+      // [prices][diag] TIJDELIJK — verwijder na bevestiging sleepvolgorde
+      console.log('[prices][diag] reorder', JSON.stringify({
+        location: loc,
+        received: body.reorder.length,
+        changed: out.changed ?? null,
+        ok: out.ok,
+        code: out.code || null,
+      }));
+      if (!out.ok) return res.status(400).json({ ok: false, code: out.code });
+      await touchPricesLastUpdated();
+      return res.status(200).json({ ok: true, changed: out.changed });
+    }
+    const out = await upsertPrice(loc, body);
     if (!out.ok) return res.status(400).json({ ok: false, code: out.code });
     await touchPricesLastUpdated();
     return res.status(200).json({ ok: true, item: out.row });
