@@ -71,6 +71,39 @@
     return Math.min(Math.max(safe, min), max);
   }
 
+  /** Parse NL/EN decimaal: strip €/spaties, komma → punt. Leeg/partial → NaN (niet stiekem 0). */
+  function parseDecimal(raw) {
+    const s = String(raw ?? '')
+      .replace(/[^0-9.,-]/g, '')
+      .replace(',', '.');
+    if (s === '' || s === '-' || s === '.') return NaN;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+  /** Zelfde als parseDecimal maar NaN → 0, voor berekeningen. */
+  function numFrom(raw) {
+    const n = parseDecimal(raw);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function orderOf(row) {
+    const n = Number(row?.sortOrder);
+    return Number.isFinite(n) ? n : Infinity;
+  }
+
+  function currentQuery() {
+    return String(document.getElementById('pricesSearch')?.value || '').toLowerCase().trim();
+  }
+
+  function matchesQuery(x, q) {
+    const aliases = Array.isArray(x.aliases) ? x.aliases.join(' ') : String(x.aliases || '');
+    const haystack = [x.naam, x.name, x.description, x.sku, x.categorie, x.category, x.searchText, aliases]
+      .map((v) => String(v || '').toLowerCase())
+      .join(' ');
+    return haystack.includes(q);
+  }
+
   function deriveVerkoopExcl(row = {}) {
     const incl = Number(row.verkoopprijsInclBtw ?? row.price ?? 0);
     const vatPct = Number(row.btwPct || 21);
@@ -138,6 +171,7 @@
           inkoopprijs: Number(r.inkoopprijs || 0),
           verkoopprijsInclBtw: Number(r.verkoopprijsInclBtw ?? r.price ?? 0),
           btwPct: Number(r.btwPct || 21),
+          ...(Number.isFinite(Number(r.sortOrder)) ? { sortOrder: Number(r.sortOrder) } : {}),
         }),
       });
     }
@@ -163,82 +197,188 @@
       const margeEl = rowEl.querySelector('[data-f="marge"]');
       const margePctEl = rowEl.querySelector('[data-f="margePct"]');
       const vatPct = Number(rowEl.getAttribute('data-vat-pct') || 21);
-      const recalcFrom = (source) => {
-        const inkoop = Number(inkoopInput?.value || 0);
-        const incl = Number(inclInput?.value || 0);
-        const excl = Number(exclEl?.value || 0);
-        const margeEuro = Number(margeEl?.value || 0);
-        const rawPct = String(margePctEl?.value || '').replace('%', '').trim();
-        const margePct = Number(rawPct || 0);
-        let nextInkoop = Number.isFinite(inkoop) ? inkoop : 0;
-        let nextIncl = Number.isFinite(incl) ? incl : 0;
-        let nextExcl = Number.isFinite(excl) ? excl : 0;
 
-        // Canonical: all margin calculations use verkoopExcl.
+      /** Schrijf een numeriek veld terug (2 decimalen), maar NOOIT het veld waarin de gebruiker typt. */
+      const writeField = (el, val, activeEl) => {
+        if (!el || el === activeEl) return;
+        el.value = round2(val).toFixed(2);
+      };
+      const writePct = (el, val, activeEl) => {
+        if (!el || el === activeEl) return;
+        el.value = `${round2(clamp(val, 0, 100)).toFixed(2)}%`;
+      };
+
+      const recalc = (source, activeEl) => {
+        let nextInkoop = numFrom(inkoopInput?.value);
+        let nextIncl = numFrom(inclInput?.value);
+        let nextExcl = numFrom(exclEl?.value);
+        const margeEuro = numFrom(margeEl?.value);
+        const margePct = numFrom(String(margePctEl?.value || '').replace('%', ''));
+
+        // Canonical: alle marge-berekeningen gaan via verkoopExcl.
         if (source === 'incl') {
           nextExcl = inclToExcl(nextIncl, vatPct);
         } else if (source === 'excl') {
           nextIncl = exclToIncl(nextExcl, vatPct);
         } else if (source === 'margePct') {
-          const margePctClamped = clamp(margePct, 0, 100);
-          const nextMargeEuro = nextExcl * (margePctClamped / 100);
-          nextInkoop = Math.max(0, nextExcl - nextMargeEuro);
+          const c = clamp(margePct, 0, 100);
+          nextInkoop = Math.max(0, nextExcl - nextExcl * (c / 100));
         } else if (source === 'margeEuro') {
-          const margeEuroClamped = clamp(margeEuro, 0, Math.max(0, nextExcl));
-          nextInkoop = Math.max(0, nextExcl - margeEuroClamped);
+          const c = clamp(margeEuro, 0, Math.max(0, nextExcl));
+          nextInkoop = Math.max(0, nextExcl - c);
         }
 
         nextInkoop = Math.max(0, nextInkoop);
         const margins = computeMargins({ verkoopExcl: nextExcl, inkoop: nextInkoop });
-        if (inkoopInput) inkoopInput.value = round2(nextInkoop).toFixed(2);
-        if (inclInput) inclInput.value = round2(nextIncl).toFixed(2);
-        if (exclEl) exclEl.value = round2(nextExcl).toFixed(2);
-        if (margeEl) margeEl.value = round2(clamp(margins.margeEuro, 0, Math.max(0, nextExcl))).toFixed(2);
-        if (margePctEl) margePctEl.value = `${round2(clamp(margins.margePct, 0, 100)).toFixed(2)}%`;
+
+        // Alleen de AFGELEIDE velden bijwerken; het actieve veld blijft ongemoeid (raw string).
+        writeField(inkoopInput, nextInkoop, activeEl);
+        writeField(inclInput, nextIncl, activeEl);
+        writeField(exclEl, nextExcl, activeEl);
+        writeField(margeEl, clamp(margins.margeEuro, 0, Math.max(0, nextExcl)), activeEl);
+        writePct(margePctEl, margins.margePct, activeEl);
+
         const draft = rowById(rowEl.getAttribute('data-price-id'));
         if (draft) {
-          const nameInput = rowEl.querySelector('[data-f="naam"]');
-          draft.naam = String(nameInput?.value || draft.naam || '').trim();
+          const nameInputEl = rowEl.querySelector('[data-f="naam"]');
+          draft.naam = String(nameInputEl?.value || draft.naam || '').trim();
           draft.inkoopprijs = round2(nextInkoop);
           draft.verkoopprijsInclBtw = round2(nextIncl);
         }
       };
+
+      /** Tijdens typen: alleen afgeleide velden herberekenen, actief veld raw laten. */
+      const bindField = (el, source, isPct = false) => {
+        if (!el) return;
+        el.addEventListener('input', () => recalc(source, el));
+        el.addEventListener('blur', () => {
+          // Pas op blur normaliseren; leeg veld → 0.
+          if (isPct) {
+            el.value = `${round2(clamp(numFrom(String(el.value).replace('%', '')), 0, 100)).toFixed(2)}%`;
+          } else {
+            el.value = round2(numFrom(el.value)).toFixed(2);
+          }
+          recalc(source, null);
+        });
+      };
+
       const nameInput = rowEl.querySelector('[data-f="naam"]');
       nameInput?.addEventListener('input', () => {
         const draft = rowById(rowEl.getAttribute('data-price-id'));
         if (draft) draft.naam = String(nameInput.value || '').trim();
       });
-      inkoopInput?.addEventListener('input', () => recalcFrom('inkoop'));
-      inclInput?.addEventListener('input', () => recalcFrom('incl'));
-      exclEl?.addEventListener('input', () => recalcFrom('excl'));
-      margeEl?.addEventListener('input', () => recalcFrom('margeEuro'));
-      margePctEl?.addEventListener('input', () => recalcFrom('margePct'));
-      recalcFrom('incl');
+      bindField(inkoopInput, 'inkoop');
+      bindField(inclInput, 'incl');
+      bindField(exclEl, 'excl');
+      bindField(margeEl, 'margeEuro');
+      bindField(margePctEl, 'margePct', true);
+      // Eenmalige initiële sync (geen actief veld) — hindert het typen niet.
+      recalc('incl', null);
     });
     bindDelete();
   }
 
-  function productsForActiveCategory() {
-    const source = isEditingProducts ? draftRows : rows;
-    const q = String(document.getElementById('pricesSearch')?.value || '').toLowerCase().trim();
-    return source.filter((x) => {
-      if (String(x.categorie || x.category || '') !== activeCategory) return false;
-      if (!q) return true;
-      const aliases = Array.isArray(x.aliases) ? x.aliases.join(' ') : String(x.aliases || '');
-      const haystack = [
-        x.naam,
-        x.name,
-        x.description,
-        x.sku,
-        x.categorie,
-        x.category,
-        x.searchText,
-        aliases,
-      ]
-        .map((v) => String(v || '').toLowerCase())
-        .join(' ');
-      return haystack.includes(q);
+  let dragSrcId = null;
+
+  function bindDrag() {
+    document.querySelectorAll('#pricesTable tr[data-price-id]').forEach((el) => {
+      el.addEventListener('dragstart', (e) => {
+        dragSrcId = el.getAttribute('data-price-id');
+        el.style.opacity = '0.5';
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+      });
+      el.addEventListener('dragend', () => {
+        el.style.opacity = '';
+        document.querySelectorAll('#pricesTable tr[data-price-id]').forEach((x) => {
+          x.style.borderTop = '';
+        });
+      });
+      el.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        if (el.getAttribute('data-price-id') !== dragSrcId) el.style.borderTop = '2px solid #c8a15a';
+      });
+      el.addEventListener('dragleave', () => {
+        el.style.borderTop = '';
+      });
+      el.addEventListener('drop', (e) => {
+        e.preventDefault();
+        el.style.borderTop = '';
+        void onDropReorder(dragSrcId, el.getAttribute('data-price-id'));
+      });
     });
+  }
+
+  function applySortOrder(list) {
+    list.forEach((row, idx) => {
+      const rowRef = rows.find((x) => String(x.id) === String(row.id));
+      if (rowRef) rowRef.sortOrder = idx;
+      const draftRef = draftRows.find((x) => String(x.id) === String(row.id));
+      if (draftRef) draftRef.sortOrder = idx;
+      row.sortOrder = idx;
+    });
+  }
+
+  async function onDropReorder(srcId, targetId) {
+    if (!srcId || !targetId || String(srcId) === String(targetId)) return;
+    const list = productsForView();
+    const srcIdx = list.findIndex((x) => String(x.id) === String(srcId));
+    const tgtIdx = list.findIndex((x) => String(x.id) === String(targetId));
+    if (srcIdx < 0 || tgtIdx < 0) return;
+    const reordered = list.slice();
+    const [moved] = reordered.splice(srcIdx, 1);
+    reordered.splice(tgtIdx, 0, moved);
+    applySortOrder(reordered);
+    renderTable();
+    try {
+      await Promise.all(
+        reordered.map((row) =>
+          fetch('/api/prices', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'X-HK-Auth': authHeader() },
+            body: JSON.stringify({
+              id: String(row.id || ''),
+              sku: String(row.sku || '').trim() || null,
+              naam: String(row.naam || row.description || '').trim(),
+              categorie: String(row.categorie || row.category || activeCategory),
+              inkoopprijs: Number(row.inkoopprijs || 0),
+              verkoopprijsInclBtw: Number(row.verkoopprijsInclBtw ?? row.price ?? 0),
+              btwPct: Number(row.btwPct || 21),
+              sortOrder: Number(row.sortOrder),
+            }),
+          })
+        )
+      );
+    } catch (err) {
+      if (typeof global.showToast === 'function') global.showToast('Volgorde opslaan mislukt', 'info');
+      await render(true);
+    }
+  }
+
+  /**
+   * Lege zoekterm → alleen de actieve categorie, gesorteerd op sortOrder (nulls achteraan, stabiel).
+   * Gevulde zoekterm → alle categorieën, gesorteerd op categorie + sortOrder.
+   */
+  function productsForView() {
+    const source = isEditingProducts ? draftRows : rows;
+    const q = currentQuery();
+    if (q) {
+      return source
+        .filter((x) => matchesQuery(x, q))
+        .map((row, idx) => ({ row, idx }))
+        .sort((a, b) => {
+          const ca = String(a.row.categorie || a.row.category || '');
+          const cb = String(b.row.categorie || b.row.category || '');
+          if (ca !== cb) return ca.localeCompare(cb);
+          return orderOf(a.row) - orderOf(b.row) || a.idx - b.idx;
+        })
+        .map((x) => x.row);
+    }
+    return source
+      .filter((x) => String(x.categorie || x.category || '') === activeCategory)
+      .map((row, idx) => ({ row, idx }))
+      .sort((a, b) => orderOf(a.row) - orderOf(b.row) || a.idx - b.idx)
+      .map((x) => x.row);
   }
 
   function renderSummary(list) {
@@ -256,27 +396,47 @@
     el.innerHTML = `<div class="panel-card" style="padding:10px 12px"><strong>${count}</strong> producten · Gem. marge <strong>${avgMargePct.toFixed(2)}%</strong> · Laagste marge: <strong>${escapeAttr(lowest?.naam || '-')}</strong></div>`;
   }
 
+  function buildViewRow(r, opts) {
+    const incl = Number(r.verkoopprijsInclBtw ?? r.price ?? 0);
+    const excl = deriveVerkoopExcl(r);
+    const margins = computeMargins({ verkoopExcl: excl, inkoop: Number(r.inkoopprijs || 0) });
+    const catLabel = String(r.categorie || r.category || '-');
+    const dragCell = opts.showDrag
+      ? '<td class="price-drag-cell" style="cursor:grab;color:#b9b3a9;text-align:center;user-select:none;width:24px" title="Sleep om te herordenen">⠿</td>'
+      : '';
+    const catCell = opts.showCat
+      ? `<td><span style="font-size:11px;color:#7f8792;background:#f2ede3;border-radius:6px;padding:2px 6px;white-space:nowrap">${escapeAttr(catLabel)}</span></td>`
+      : '';
+    return `<tr data-price-id="${escapeAttr(String(r.id || ''))}" data-categorie="${escapeAttr(catLabel)}"${opts.showDrag ? ' draggable="true"' : ''}>${dragCell}<td><span style="font-size:12px;color:#7f8792;white-space:nowrap">${escapeAttr(r.sku || '-')}</span></td>${catCell}<td>${escHtml(r.naam || r.description || '-')}</td><td>${euro(Number(r.inkoopprijs || 0))}</td><td>${euro(incl)}</td><td>${euro(excl)}</td><td>${euro(margins.margeEuro)}</td><td>${round2(margins.margePct).toFixed(2)}%</td></tr>`;
+  }
+
+  function buildEditRow(r, opts) {
+    const incl = Number(r.verkoopprijsInclBtw ?? r.price ?? 0);
+    const excl = deriveVerkoopExcl(r);
+    const margins = computeMargins({ verkoopExcl: excl, inkoop: Number(r.inkoopprijs || 0) });
+    const catLabel = String(r.categorie || r.category || '-');
+    const catCell = opts.showCat
+      ? `<td><span style="font-size:11px;color:#7f8792;background:#f2ede3;border-radius:6px;padding:2px 6px;white-space:nowrap">${escapeAttr(catLabel)}</span></td>`
+      : '';
+    return `<tr data-price-id="${r.id}" data-sku="${escapeAttr(r.sku || '')}" data-categorie="${escapeAttr(r.categorie || '')}" data-vat-pct="${Number(r.btwPct || 21)}"><td><span style="font-size:12px;color:#7f8792;white-space:nowrap">${escapeAttr(r.sku || '-')}</span></td>${catCell}<td><input class="field-input" data-f="naam" value="${escapeAttr(r.naam || r.description || '')}"></td><td><div style="display:flex;align-items:center;gap:6px"><span style="color:#7f8792">€</span><input class="field-input" style="max-width:130px" type="text" inputmode="decimal" data-f="inkoopprijs" value="${toInput(round2(Number(r.inkoopprijs || 0)).toFixed(2))}"></div></td><td><div style="display:flex;align-items:center;gap:6px"><span style="color:#7f8792">€</span><input class="field-input" style="max-width:130px" type="text" inputmode="decimal" data-f="verkoopprijsInclBtw" value="${toInput(round2(incl).toFixed(2))}"></div></td><td><input class="field-input" style="max-width:130px" type="text" inputmode="decimal" data-f="verkoopprijsExclBtw" value="${toInput(round2(excl).toFixed(2))}"></td><td><input class="field-input" style="max-width:120px" type="text" inputmode="decimal" data-f="marge" value="${toInput(round2(margins.margeEuro).toFixed(2))}"></td><td><input class="field-input" style="max-width:100px" type="text" inputmode="decimal" data-f="margePct" value="${toInput(`${round2(margins.margePct).toFixed(2)}%`)}"></td><td><button class="today-btn today-btn--ghost" data-price-delete="${r.id}">Verwijderen</button></td></tr>`;
+  }
+
   function renderTable() {
     const el = document.getElementById('pricesTable');
     if (!el) return;
-    const list = productsForActiveCategory();
+    const searching = currentQuery().length > 0;
+    const showCat = searching;
+    const showDrag = !searching && !isEditingProducts;
+    const showActions = isEditingProducts;
+    const list = productsForView();
     renderSummary(list);
-    el.innerHTML = `<thead><tr><th>SKU</th><th>Naam</th><th>Inkoopprijs</th><th>Verkoopprijs incl. BTW</th><th>Verkoopprijs excl. BTW</th><th>Marge €</th><th>Marge %</th>${isEditingProducts ? '<th></th>' : ''}</tr></thead><tbody>${
-      list
-        .map(
-          (r) => {
-            const incl = Number(r.verkoopprijsInclBtw ?? r.price ?? 0);
-            const excl = deriveVerkoopExcl(r);
-            const margins = computeMargins({ verkoopExcl: excl, inkoop: Number(r.inkoopprijs || 0) });
-            if (!isEditingProducts) {
-              return `<tr><td><span style="font-size:12px;color:#7f8792;white-space:nowrap">${escapeAttr(r.sku || '-')}</span></td><td>${escHtml(r.naam || r.description || '-')}</td><td>${euro(Number(r.inkoopprijs || 0))}</td><td>${euro(incl)}</td><td>${euro(excl)}</td><td>${euro(margins.margeEuro)}</td><td>${round2(margins.margePct).toFixed(2)}%</td></tr>`;
-            }
-            return `<tr data-price-id="${r.id}" data-sku="${escapeAttr(r.sku || '')}" data-categorie="${escapeAttr(r.categorie || '')}" data-vat-pct="${Number(r.btwPct || 21)}"><td><span style="font-size:12px;color:#7f8792;white-space:nowrap">${escapeAttr(r.sku || '-')}</span></td><td><input class="field-input" data-f="naam" value="${escapeAttr(r.naam || r.description || '')}"></td><td><div style="display:flex;align-items:center;gap:6px"><span style="color:#7f8792">€</span><input class="field-input" style="max-width:130px" type="number" step="0.01" min="0" data-f="inkoopprijs" value="${toInput(round2(Number(r.inkoopprijs || 0)).toFixed(2))}"></div></td><td><div style="display:flex;align-items:center;gap:6px"><span style="color:#7f8792">€</span><input class="field-input" style="max-width:130px" type="number" step="0.01" min="0" data-f="verkoopprijsInclBtw" value="${toInput(round2(incl).toFixed(2))}"></div></td><td><input class="field-input" style="max-width:130px" type="number" step="0.01" data-f="verkoopprijsExclBtw" value="${toInput(round2(excl).toFixed(2))}"></td><td><input class="field-input" style="max-width:120px" type="number" step="0.01" data-f="marge" value="${toInput(round2(margins.margeEuro).toFixed(2))}"></td><td><input class="field-input" style="max-width:100px" data-f="margePct" value="${toInput(`${round2(margins.margePct).toFixed(2)}%`)}"></td><td><button class="today-btn today-btn--ghost" data-price-delete="${r.id}">Verwijderen</button></td></tr>`;
-          }
-        )
-        .join('')
-    }</tbody>`;
-    bindInline();
+    const head = `<thead><tr>${showDrag ? '<th></th>' : ''}<th>SKU</th>${showCat ? '<th>Categorie</th>' : ''}<th>Naam</th><th>Inkoopprijs</th><th>Verkoopprijs incl. BTW</th><th>Verkoopprijs excl. BTW</th><th>Marge €</th><th>Marge %</th>${showActions ? '<th></th>' : ''}</tr></thead>`;
+    const body = list
+      .map((r) => (isEditingProducts ? buildEditRow(r, { showCat }) : buildViewRow(r, { showCat, showDrag })))
+      .join('');
+    el.innerHTML = `${head}<tbody>${body}</tbody>`;
+    if (isEditingProducts) bindInline();
+    else if (showDrag) bindDrag();
   }
 
   function removeCreateModal() {

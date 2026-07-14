@@ -7,7 +7,8 @@
     "dev": "node scripts/dev-static.mjs",
     "dev:vercel": "node scripts/dev-runner.mjs",
     "test": "node --test",
-    "catalog:import": "node scripts/import-price-catalog-v1.js"
+    "catalog:import": "node scripts/import-price-catalog-v1.js",
+    "catalog:export": "node scripts/export-catalog-v1-from-redis.js"
   },
   "dependencies": {
     "@mollie/api-client": "^4.5.0",
