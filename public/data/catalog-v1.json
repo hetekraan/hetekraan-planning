@@ -2,7 +2,7 @@
   "version": 1,
   "source": "redis",
   "sourceLocationId": "KVD6wOE9g1g2V9z7Zxj7",
-  "generatedAt": "2026-07-16T10:06:29.465Z",
+  "generatedAt": "2026-07-16T13:34:54.639Z",
   "itemCount": 162,
   "items": [
     {
@@ -61,7 +61,7 @@
       "id": "pr_seed_0005_21_084_09",
       "category": "kraan",
       "name": "Fusion Square gold",
-      "price": 1500,
+      "price": 1606,
       "sourceSheet": "Kranen",
       "aliases": [
         "fusion square gold",
@@ -74,7 +74,7 @@
       "id": "pr_seed_0006_21_161_01",
       "category": "kraan",
       "name": "Fusion Square zwart",
-      "price": 950,
+      "price": 1006,
       "sourceSheet": "Kranen",
       "aliases": [
         "fusion square zwart",
@@ -87,7 +87,7 @@
       "id": "pr_seed_0007_21_162_01",
       "category": "kraan",
       "name": "Classic Fusion Round chroom",
-      "price": 800,
+      "price": 831,
       "sourceSheet": "Kranen",
       "aliases": [
         "classic fusion round chroom",
@@ -100,7 +100,7 @@
       "id": "pr_seed_0008_21_085_20",
       "category": "kraan",
       "name": "Classic Fusion Square chroom",
-      "price": 800,
+      "price": 831,
       "sourceSheet": "Kranen",
       "aliases": [
         "classic fusion square chroom",
@@ -113,7 +113,7 @@
       "id": "pr_seed_0009_21_085_21",
       "category": "kraan",
       "name": "Fusion Round gun metal",
-      "price": 950,
+      "price": 1006,
       "sourceSheet": "Kranen",
       "aliases": [
         "fusion round gun metal",
@@ -126,7 +126,7 @@
       "id": "pr_seed_0010_21_084_20",
       "category": "kraan",
       "name": "Fusion Round rosé koper",
-      "price": 950,
+      "price": 1006,
       "sourceSheet": "Kranen",
       "aliases": [
         "fusion round rosé koper",
@@ -139,7 +139,7 @@
       "id": "pr_seed_0011_21_084_21",
       "category": "kraan",
       "name": "Fusion Square gun metal",
-      "price": 950,
+      "price": 1006,
       "sourceSheet": "Kranen",
       "aliases": [
         "fusion square gun metal",
@@ -152,7 +152,7 @@
       "id": "pr_seed_0012_21_084_21",
       "category": "kraan",
       "name": "Fusion Square rosé koper",
-      "price": 950,
+      "price": 1006,
       "sourceSheet": "Kranen",
       "aliases": [
         "fusion square rosé koper",
@@ -165,7 +165,7 @@
       "id": "pr_seed_0013_21_045_01",
       "category": "kraan",
       "name": "Front zwart",
-      "price": 950,
+      "price": 1006,
       "sourceSheet": "Kranen",
       "aliases": [
         "front zwart",
@@ -204,7 +204,7 @@
       "id": "pr_seed_0016_21_159_01",
       "category": "kraan",
       "name": "Classic Nordic Round chroom",
-      "price": 600,
+      "price": 656,
       "sourceSheet": "Kranen",
       "aliases": [
         "classic nordic round chroom",
@@ -386,7 +386,7 @@
       "id": "pr_seed_0030_21_161_04",
       "category": "kraan",
       "name": "Classic Fusion Round RVS",
-      "price": 950,
+      "price": 1006,
       "sourceSheet": "Kranen",
       "aliases": [
         "classic fusion round rvs",
@@ -412,7 +412,7 @@
       "id": "pr_seed_0032_21_162_04",
       "category": "kraan",
       "name": "Classic Fusion Square RVS",
-      "price": 950,
+      "price": 1006,
       "sourceSheet": "Kranen",
       "aliases": [
         "classic fusion square rvs",
@@ -425,7 +425,7 @@
       "id": "pr_seed_0033_21_162_07",
       "category": "kraan",
       "name": "Classic Fusion Square messing patina",
-      "price": 1250,
+      "price": 1286,
       "sourceSheet": "Kranen",
       "aliases": [
         "classic fusion square messing patina",
@@ -438,7 +438,7 @@
       "id": "pr_seed_0034_21_197_04",
       "category": "kraan",
       "name": "Front RVS",
-      "price": 750,
+      "price": 786,
       "sourceSheet": "Kranen",
       "aliases": [
         "front rvs",
@@ -451,7 +451,7 @@
       "id": "pr_seed_0035_21_197_20",
       "category": "kraan",
       "name": "Front gun metal",
-      "price": 950,
+      "price": 1006,
       "sourceSheet": "Kranen",
       "aliases": [
         "front gun metal",
@@ -464,7 +464,7 @@
       "id": "pr_seed_0036_21_197_21",
       "category": "kraan",
       "name": "Front rosé koper",
-      "price": 950,
+      "price": 1006,
       "sourceSheet": "Kranen",
       "aliases": [
         "front rosé koper",
@@ -516,7 +516,7 @@
       "id": "pr_seed_0040_21_209_21",
       "category": "kraan",
       "name": "Flex Round gun metal",
-      "price": 950,
+      "price": 1006,
       "sourceSheet": "Kranen",
       "aliases": [
         "flex round gun metal",
@@ -529,7 +529,7 @@
       "id": "pr_seed_0041_21_210_01",
       "category": "kraan",
       "name": "Flex Round rosé koper",
-      "price": 950,
+      "price": 1006,
       "sourceSheet": "Kranen",
       "aliases": [
         "flex round rosé koper",
@@ -581,7 +581,7 @@
       "id": "pr_seed_0045_21_210_21",
       "category": "kraan",
       "name": "Flex Square gun metal",
-      "price": 950,
+      "price": 1006,
       "sourceSheet": "Kranen",
       "aliases": [
         "flex square gun metal",
@@ -594,7 +594,7 @@
       "id": "pr_seed_0046_20_379_00",
       "category": "kraan",
       "name": "Flex Square rosé koper",
-      "price": 950,
+      "price": 1006,
       "sourceSheet": "Kranen",
       "aliases": [
         "flex square rosé koper",
@@ -607,7 +607,7 @@
       "id": "pr_seed_0047_11_217_00",
       "category": "quooker",
       "name": "PRO3 EQ B NL",
-      "price": 695,
+      "price": 784,
       "sourceSheet": "Quookers",
       "aliases": [
         "pro3 eq b nl",
@@ -633,7 +633,7 @@
       "id": "pr_seed_0049_51_094_00",
       "category": "quooker",
       "name": "COMBI+ B NL",
-      "price": 995,
+      "price": 1084,
       "sourceSheet": "Quookers",
       "aliases": [
         "combi+ b nl",
