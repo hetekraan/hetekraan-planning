@@ -17,7 +17,7 @@ import {
   isEventInCustomerBlock,
 } from '../lib/block-capacity-offers.js';
 import { fetchWithRetry } from '../lib/retry.js';
-import { normalizeNlPhone } from '../lib/ghl-phone.js';
+import { normalizeNlPhone, phoneForGhlDuplicateSearch } from '../lib/ghl-phone.js';
 import { signBookingToken } from '../lib/session.js';
 import { availabilityDebugEnabled, logAvailability } from '../lib/availability-debug.js';
 import {
@@ -772,7 +772,7 @@ export default async function handler(req, res) {
 
   // Zoek contact op telefoon, e-mail of naam als er geen contactId is
   if (!contactId) {
-    const searchPhone = (phoneParam || '').replace(/\s/g, '');
+    const searchPhone = phoneForGhlDuplicateSearch(phoneParam);
     if (searchPhone) {
       const sr = await fetch(
         `${GHL_BASE}/contacts/search/duplicate?locationId=${GHL_LOCATION_ID}&number=${encodeURIComponent(searchPhone)}`,

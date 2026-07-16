@@ -27,6 +27,7 @@ import {
   cachedFetchCalendarEventsForDay,
   cachedListConfirmedSyntheticEventsForDate,
 } from '../lib/amsterdam-day-read-cache.js';
+import { phoneForGhlDuplicateSearch } from '../lib/ghl-phone.js';
 import {
   isValidPlainEmail,
   normalizeCanonicalGhlEmail,
@@ -481,7 +482,7 @@ export default async function handler(req, res) {
         }
       } catch {}
     } else {
-      const searchPhone = (phoneParam || '').replace(/\s/g, '');
+      const searchPhone = phoneForGhlDuplicateSearch(phoneParam);
       if (searchPhone) {
         try {
           const sr = await fetch(
