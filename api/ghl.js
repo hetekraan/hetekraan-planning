@@ -118,6 +118,13 @@ import {
   setInventoryWarnings,
 } from '../lib/inventory-store.js';
 import { listPrices } from '../lib/prices-store.js';
+import { computeAppointmentAnalytics } from '../lib/planner-appointment-totals.js';
+import {
+  isNotionConfigured,
+  upsertKlantInNotion,
+  createKlusInNotion,
+  appendNotionPlannerNote,
+} from '../lib/notion.js';
 import { loadPlannerAppointmentsSource } from '../lib/planner-appointments-source.js';
 import { cacheAppointmentAnalyticsFromPriceLines } from '../lib/analytics-appointments-write.js';
 import { writeAppointmentSnapshot } from '../lib/appointment-snapshots-store.js';
@@ -479,6 +486,188 @@ async function resolveMoneybirdFieldIds() {
     }),
   ]);
   return { invoiceIdFieldId, invoiceUrlFieldId, referenceFieldId, invoiceTokenFieldId };
+}
+
+async function resolveNotionFieldIds() {
+  const [klantId, klusId, syncStatus] = await Promise.all([
+    resolveContactCustomFieldId({
+      baseUrl: GHL_BASE,
+      apiKey: GHL_API_KEY,
+      locationId: ghlLocationIdFromEnv(),
+      fieldKey: 'notion_klant_id',
+      objectType: 'contact',
+      envOverride: String(process.env.GHL_FIELD_ID_NOTION_KLANT_ID || '').trim(),
+    }),
+    resolveContactCustomFieldId({
+      baseUrl: GHL_BASE,
+      apiKey: GHL_API_KEY,
+      locationId: ghlLocationIdFromEnv(),
+      fieldKey: 'notion_klus_id',
+      objectType: 'contact',
+      envOverride: String(process.env.GHL_FIELD_ID_NOTION_KLUS_ID || '').trim(),
+    }),
+    resolveContactCustomFieldId({
+      baseUrl: GHL_BASE,
+      apiKey: GHL_API_KEY,
+      locationId: ghlLocationIdFromEnv(),
+      fieldKey: 'notion_sync_status',
+      objectType: 'contact',
+      envOverride: String(process.env.GHL_FIELD_ID_NOTION_SYNC_STATUS || '').trim(),
+    }),
+  ]);
+  return { klantId, klusId, syncStatus };
+}
+
+/**
+ * Synchroniseert een afgeronde klus naar Notion (klant upsert + klus create).
+ * NIET-fataal: fouten worden gevangen door de aanroeper. Idempotent via het reeds
+ * opgeslagen notion_klus_id (retry maakt geen dubbele klus aan).
+ *
+ * @returns {Promise<object>} notionResult voor de response + logging.
+ */
+async function syncCompletionToNotion({
+  contact,
+  contactId,
+  type,
+  serviceDay,
+  basePrice,
+  extrasNorm,
+  priceRows,
+}) {
+  const notionFieldIds = await resolveNotionFieldIds();
+  const plannerNotitiesFieldId = await resolvePlannerNotitiesFieldId();
+
+  const existingKlantId = notionFieldIds.klantId ? String(getField(contact, notionFieldIds.klantId) || '').trim() : '';
+  const existingKlusId = notionFieldIds.klusId ? String(getField(contact, notionFieldIds.klusId) || '').trim() : '';
+
+  const name = [contact?.firstName, contact?.lastName].filter(Boolean).join(' ') || contact?.name || 'Klant';
+  const email = contact?.email || '';
+  const phone = contact?.phone || '';
+  const address = readCanonicalAddressLine(contact) || contact?.address1 || '';
+  const bronRaw = getField(contact, String(process.env.GHL_FIELD_ID_BRON || '').trim(), 'bron');
+  const quookerModel = getField(contact, String(process.env.GHL_FIELD_ID_QUOOKER_MODEL || '').trim(), 'quooker_model');
+
+  const analytics = computeAppointmentAnalytics(
+    { price: Number(basePrice) || 0, extras: Array.isArray(extrasNorm) ? extrasNorm : [] },
+    Array.isArray(priceRows) ? priceRows : []
+  );
+  const omzet = analytics.totalRevenueExcl;
+  const materiaalkosten = analytics.totalCost;
+
+  const baseUrl = String(process.env.BASE_URL || '').trim().replace(/\/+$/, '');
+  const plannerLink = baseUrl
+    ? `${baseUrl}/?date=${encodeURIComponent(String(serviceDay || ''))}&contactId=${encodeURIComponent(String(contactId))}`
+    : '';
+  const titel = `${String(type || 'Onderhoud')} - ${name}`.trim();
+
+  const writeNotionGhlFields = async (status, { klantId, klusId, url } = {}) => {
+    const nf = [];
+    if (notionFieldIds.klantId && klantId) nf.push({ id: notionFieldIds.klantId, field_value: String(klantId) });
+    if (notionFieldIds.klusId && klusId) nf.push({ id: notionFieldIds.klusId, field_value: String(klusId) });
+    if (notionFieldIds.syncStatus) nf.push({ id: notionFieldIds.syncStatus, field_value: String(status) });
+    // Marker in het planner-notitieveld zodat de pill na reload de status kent.
+    // Verse notes ophalen zodat we een net geschreven [moneybird]-marker niet overschrijven.
+    if (plannerNotitiesFieldId) {
+      let freshNotes = plannerNotitiesFieldId ? String(getField(contact, plannerNotitiesFieldId) || '') : '';
+      try {
+        const r = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
+          headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' },
+        });
+        if (r.ok) {
+          const d = await r.json().catch(() => ({}));
+          const c = d?.contact || d;
+          freshNotes = String(getField(c, plannerNotitiesFieldId) || freshNotes);
+        }
+      } catch (_) {}
+      const nextNotes = appendNotionPlannerNote(freshNotes, { status, klusId, url });
+      if (nextNotes) nf.push({ id: plannerNotitiesFieldId, field_value: nextNotes });
+    }
+    if (!nf.length) return;
+    try {
+      await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${GHL_API_KEY}`,
+          'Content-Type': 'application/json',
+          Version: '2021-04-15',
+        },
+        body: JSON.stringify({ customFields: nf }),
+        _allowPostRetry: false,
+      });
+    } catch (putErr) {
+      console.warn('[notion] ghl_status_write_failed', {
+        contactId,
+        status,
+        message: putErr?.message || String(putErr),
+      });
+    }
+  };
+
+  try {
+    const klantRes = await upsertKlantInNotion({
+      ghlId: String(contactId),
+      naam: name,
+      adres: address,
+      telefoon: phone,
+      email,
+      bron: bronRaw,
+      quookerModel,
+      notionKlantId: existingKlantId,
+    });
+
+    let klusId = existingKlusId;
+    let klusUrl = '';
+    let klusCreated = false;
+    if (existingKlusId) {
+      // Idempotent: klus bestaat al (bijv. bij retry ná gedeeltelijk succes) → niet dupliceren.
+      console.info('[notion] klus_skip_already_synced', { contactId, klusId: existingKlusId });
+    } else {
+      const klusRes = await createKlusInNotion(
+        {
+          titel,
+          datum: String(serviceDay || ''),
+          typeWerk: type,
+          omzet,
+          materiaalkosten,
+          status: 'Afgerond',
+          plannerLink,
+        },
+        klantRes.pageId
+      );
+      klusId = klusRes.pageId;
+      klusUrl = klusRes.url;
+      klusCreated = true;
+    }
+
+    await writeNotionGhlFields('synced', { klantId: klantRes.pageId, klusId, url: klusUrl });
+
+    return {
+      synced: true,
+      klantId: klantRes.pageId,
+      klantCreated: klantRes.created,
+      klusId,
+      klusUrl,
+      klusCreated,
+      omzet,
+      materiaalkosten,
+    };
+  } catch (err) {
+    const errorCode = err?.status ?? err?.code ?? null;
+    const errorMessage = err?.message ? String(err.message).slice(0, 300) : String(err);
+    console.error('[notion] sync_failed', {
+      contactId,
+      errorCode,
+      errorMessage,
+      code: err?.code || null,
+    });
+    await writeNotionGhlFields('error', { klantId: existingKlantId, klusId: existingKlusId });
+    return {
+      error: true,
+      reason: err?.code || 'notion_exception',
+      errorCode,
+      errorMessage,
+    };
+  }
 }
 
 function buildMoneybirdReference({ appointmentId, contactId, serviceDay }) {
@@ -1839,6 +2028,7 @@ export default async function handler(req, res) {
         }
 
         let moneybirdResult = null;
+        let notionResult = null;
         // Moneybird factuur aanmaken (niet-fataal voor complete-flow)
         const MB_TOKEN = process.env.MONEYBIRD_API_TOKEN;
         const MB_ADMIN = process.env.MONEYBIRD_ADMINISTRATION_ID;
@@ -2682,6 +2872,56 @@ export default async function handler(req, res) {
             message: inventoryErr?.message || String(inventoryErr),
           });
         }
+
+        // Notion-sync (niet-fataal, ná Moneybird). Moneybird/GHL/routing blijven ongemoeid.
+        if (isNotionConfigured()) {
+          try {
+            const notionContactRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
+              headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' },
+            });
+            const notionContactData = await notionContactRes.json().catch(() => ({}));
+            const notionContact = notionContactData?.contact || notionContactData;
+            const notionPriceRows = await listPrices(
+              ghlLocationIdFromEnv() || process.env.GHL_LOCATION_ID || 'default'
+            ).catch(() => []);
+            notionResult = await syncCompletionToNotion({
+              contact: notionContact,
+              contactId,
+              type,
+              serviceDay: datumLaatsteOnderhoud || serviceDay,
+              basePrice,
+              extrasNorm,
+              priceRows: notionPriceRows,
+            });
+          } catch (notionErr) {
+            notionResult = {
+              error: true,
+              reason: 'notion_block_exception',
+              errorMessage: notionErr?.message ? String(notionErr.message).slice(0, 300) : String(notionErr),
+            };
+            console.error('[notion] complete_appointment_block_failed', {
+              contactId,
+              appointmentId: appointmentId != null ? String(appointmentId) : null,
+              message: notionErr?.message || String(notionErr),
+            });
+          }
+          console.info(
+            '[notion] complete_appointment_outcome',
+            JSON.stringify({
+              contactId,
+              appointmentId: appointmentId != null ? String(appointmentId) : null,
+              status: notionResult?.synced ? 'synced' : notionResult?.error ? 'error' : 'unknown',
+              klantId: notionResult?.klantId || null,
+              klusId: notionResult?.klusId || null,
+              klusCreated: notionResult?.klusCreated === true,
+              omzet: notionResult?.omzet ?? null,
+              materiaalkosten: notionResult?.materiaalkosten ?? null,
+              reason: notionResult?.reason || null,
+              errorCode: notionResult?.errorCode ?? null,
+            })
+          );
+        }
+
         await triggerLiveRouteRecalculationForDate(
           locConfigured,
           datumLaatsteOnderhoud || routeDate,
@@ -2763,6 +3003,7 @@ export default async function handler(req, res) {
           // Altijd key meesturen (ook `null`) zodat clients betrouwbaar kunnen detecteren
           // of Moneybird überhaupt een outcome heeft teruggegeven.
           moneybird: moneybirdResult,
+          notion: notionResult,
         });
       }
 
@@ -3157,6 +3398,74 @@ export default async function handler(req, res) {
             errorCode,
             errorMessage,
             message: errorMessage,
+          });
+        }
+      }
+
+      case 'notionRetry': {
+        const { contactId, appointmentId, type, totalPrice, extras, routeDate, basePrice } = req.body || {};
+        if (!contactId) return res.status(400).json({ error: 'contactId vereist' });
+        if (!isNotionConfigured()) {
+          return res.status(503).json({
+            success: false,
+            actionTaken: 'notion_not_configured',
+            errorCode: 503,
+            errorMessage: 'Notion niet geconfigureerd (NOTION_TOKEN / NOTION_DB_KLANTEN / NOTION_DB_KLUSSEN)',
+          });
+        }
+        try {
+          const contactRes = await fetchWithRetry(`${GHL_BASE}/contacts/${contactId}`, {
+            headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-04-15' },
+          });
+          const contactData = await contactRes.json().catch(() => ({}));
+          const contact = contactData?.contact || contactData;
+          const priceRows = await listPrices(
+            ghlLocationIdFromEnv() || process.env.GHL_LOCATION_ID || 'default'
+          ).catch(() => []);
+          const serviceDay =
+            normalizeYyyyMmDdInput(String(routeDate || '').trim()) ||
+            formatYyyyMmDdInAmsterdam(new Date());
+          const extrasNorm = normalizePriceLineItems(Array.isArray(extras) ? extras : []);
+          const notionResult = await syncCompletionToNotion({
+            contact,
+            contactId,
+            type,
+            serviceDay,
+            basePrice,
+            extrasNorm,
+            priceRows,
+          });
+          console.info(
+            '[notion] retry_outcome',
+            JSON.stringify({
+              contactId,
+              appointmentId: String(appointmentId || ''),
+              status: notionResult?.synced ? 'synced' : notionResult?.error ? 'error' : 'unknown',
+              klusId: notionResult?.klusId || null,
+              reason: notionResult?.reason || null,
+            })
+          );
+          if (notionResult?.error) {
+            return res.status(200).json({
+              success: false,
+              actionTaken: 'notion_error',
+              errorCode: notionResult.errorCode ?? null,
+              errorMessage: notionResult.errorMessage || 'Notion-sync mislukt',
+              notion: notionResult,
+            });
+          }
+          return res.status(200).json({
+            success: true,
+            actionTaken: notionResult?.klusCreated ? 'notion_synced' : 'notion_already_synced',
+            notion: notionResult,
+          });
+        } catch (err) {
+          const errorMessage = err?.message ? String(err.message).slice(0, 300) : String(err);
+          console.error('[notion] retry_exception', { contactId, errorMessage });
+          return res.status(200).json({
+            success: false,
+            actionTaken: 'notion_error',
+            errorMessage,
           });
         }
       }

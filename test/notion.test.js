@@ -6,6 +6,8 @@ import {
   normalizeNotionPhone,
   upsertKlantInNotion,
   createKlusInNotion,
+  appendNotionPlannerNote,
+  parseNotionPlannerNote,
   NOTION_KLANT_PROPS,
   NOTION_KLUS_PROPS,
 } from '../lib/notion.js';
@@ -155,6 +157,30 @@ test('createKlus: zonder materiaalkosten -> number null (geen crash, marge=omzet
   );
   assert.equal(out.pageId, 'klus-2');
   assert.equal(calls[0].body.properties[NOTION_KLUS_PROPS.materiaalkosten].number, null);
+});
+
+test('planner-marker: append behoudt bestaande [moneybird]-marker, parse leest status/klusId/url', () => {
+  const existing = 'Klant belde\n[moneybird] invoiceId=123 reference=hk-appt:9 url=https://moneybird.dev/x';
+  const next = appendNotionPlannerNote(existing, {
+    status: 'synced',
+    klusId: 'klus-1',
+    url: 'https://notion.so/klus-1',
+  });
+  assert.match(next, /\[moneybird\] invoiceId=123/, 'moneybird-marker blijft behouden');
+  assert.match(next, /\[notion\] status=synced klusId=klus-1 url=https:\/\/notion\.so\/klus-1/);
+  const parsed = parseNotionPlannerNote(next);
+  assert.deepEqual(parsed, { status: 'synced', klusId: 'klus-1', url: 'https://notion.so/klus-1' });
+});
+
+test('planner-marker: append vervangt oude [notion]-marker (geen dubbele)', () => {
+  const first = appendNotionPlannerNote('Basis', { status: 'error' });
+  const second = appendNotionPlannerNote(first, { status: 'synced', klusId: 'k2' });
+  assert.equal((second.match(/\[notion\]/g) || []).length, 1);
+  assert.equal(parseNotionPlannerNote(second).status, 'synced');
+});
+
+test('planner-marker: parse zonder marker -> null', () => {
+  assert.equal(parseNotionPlannerNote('geen marker hier'), null);
 });
 
 test('notion-fout: niet-2xx gooit Error met status/code', async () => {
