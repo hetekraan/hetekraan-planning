@@ -63,9 +63,20 @@ test('normalizeNotionPhone -> E.164', () => {
   assert.equal(normalizeNotionPhone(''), '');
 });
 
+// Schema-respons voor de TIJDELIJKE diagnostiek (GET /databases/{id}).
+const KLANTEN_SCHEMA = {
+  title: [{ plain_text: 'Klanten' }],
+  properties: { 'GHL-ID': { type: 'rich_text' }, Telefoon: { type: 'phone_number' }, Naam: { type: 'title' } },
+};
+
+function isSchemaGet(url, method) {
+  return method === 'GET' && url.endsWith('/databases/db-klanten');
+}
+
 test('upsertKlant: nieuwe klant -> query GHL-ID + Telefoon leeg, dan POST create', async () => {
   setEnv();
   const { fetch, calls } = makeFetch((url, method) => {
+    if (isSchemaGet(url, method)) return { data: KLANTEN_SCHEMA };
     if (url.endsWith('/databases/db-klanten/query')) return { data: { results: [] } };
     if (url.endsWith('/pages') && method === 'POST') return { data: { id: 'new-klant-1' } };
     return { status: 500, data: { message: 'unexpected' } };
@@ -76,30 +87,37 @@ test('upsertKlant: nieuwe klant -> query GHL-ID + Telefoon leeg, dan POST create
   );
   assert.deepEqual(out, { pageId: 'new-klant-1', created: true });
   // Volgorde: query op GHL-ID, query op Telefoon, dan create.
-  assert.equal(calls[0].body.filter.property, NOTION_KLANT_PROPS.ghlId);
-  assert.equal(calls[1].body.filter.property, NOTION_KLANT_PROPS.telefoon);
-  assert.equal(calls[1].body.filter.phone_number.equals, '+31612345678');
-  assert.equal(calls[2].method, 'POST');
-  assert.equal(calls[2].body.parent.database_id, 'db-klanten');
-  assert.equal(calls[2].body.properties[NOTION_KLANT_PROPS.bron].select.name, 'Facebook');
+  const queryCalls = calls.filter((c) => c.url.endsWith('/query'));
+  assert.equal(queryCalls[0].body.filter.property, NOTION_KLANT_PROPS.ghlId);
+  assert.equal(queryCalls[1].body.filter.property, NOTION_KLANT_PROPS.telefoon);
+  assert.equal(queryCalls[1].body.filter.phone_number.equals, '+31612345678');
+  const createCall = calls.find((c) => c.url.endsWith('/pages') && c.method === 'POST');
+  assert.ok(createCall, 'create-call aanwezig');
+  assert.equal(createCall.body.parent.database_id, 'db-klanten');
+  assert.equal(createCall.body.properties[NOTION_KLANT_PROPS.bron].select.name, 'Facebook');
 });
 
 test('upsertKlant: bestaande klant via GHL-ID -> PATCH update, geen create', async () => {
   setEnv();
   const { fetch, calls } = makeFetch((url, method) => {
+    if (isSchemaGet(url, method)) return { data: KLANTEN_SCHEMA };
     if (url.endsWith('/databases/db-klanten/query')) return { data: { results: [{ id: 'klant-existing' }] } };
     if (url.includes('/pages/klant-existing') && method === 'PATCH') return { data: { id: 'klant-existing' } };
     return { status: 500, data: { message: 'unexpected' } };
   });
   const out = await upsertKlantInNotion({ ghlId: 'ghl-1', telefoon: '0612345678', naam: 'Jan' }, { fetch });
   assert.deepEqual(out, { pageId: 'klant-existing', created: false });
-  assert.equal(calls[1].method, 'PATCH');
+  assert.ok(
+    calls.some((c) => c.url.includes('/pages/klant-existing') && c.method === 'PATCH'),
+    'PATCH update uitgevoerd'
+  );
   assert.ok(!calls.some((c) => c.url.endsWith('/pages') && c.method === 'POST'), 'geen POST create');
 });
 
 test('upsertKlant: notion_klant_id hint -> direct page-lookup, geen db-query', async () => {
   setEnv();
   const { fetch, calls } = makeFetch((url, method) => {
+    if (isSchemaGet(url, method)) return { data: KLANTEN_SCHEMA };
     if (url.includes('/pages/hint-page') && method === 'GET') return { data: { id: 'hint-page', archived: false } };
     if (url.includes('/pages/hint-page') && method === 'PATCH') return { data: { id: 'hint-page' } };
     return { status: 500, data: { message: 'unexpected' } };
