@@ -66,20 +66,9 @@ test('normalizeNotionPhone -> E.164', () => {
   assert.equal(normalizeNotionPhone(''), '');
 });
 
-// Schema-respons voor de TIJDELIJKE diagnostiek (GET /databases/{id}).
-const KLANTEN_SCHEMA = {
-  title: [{ plain_text: 'Klanten' }],
-  properties: { 'GHL-ID': { type: 'rich_text' }, Telefoon: { type: 'phone_number' }, Naam: { type: 'title' } },
-};
-
-function isSchemaGet(url, method) {
-  return method === 'GET' && url.endsWith('/databases/db-klanten');
-}
-
 test('upsertKlant: nieuwe klant -> query GHL-ID + Telefoon leeg, dan POST create', async () => {
   setEnv();
   const { fetch, calls } = makeFetch((url, method) => {
-    if (isSchemaGet(url, method)) return { data: KLANTEN_SCHEMA };
     if (url.endsWith('/databases/db-klanten/query')) return { data: { results: [] } };
     if (url.endsWith('/pages') && method === 'POST') return { data: { id: 'new-klant-1' } };
     return { status: 500, data: { message: 'unexpected' } };
@@ -103,7 +92,6 @@ test('upsertKlant: nieuwe klant -> query GHL-ID + Telefoon leeg, dan POST create
 test('upsertKlant: bestaande klant via GHL-ID -> PATCH update, geen create', async () => {
   setEnv();
   const { fetch, calls } = makeFetch((url, method) => {
-    if (isSchemaGet(url, method)) return { data: KLANTEN_SCHEMA };
     if (url.endsWith('/databases/db-klanten/query')) return { data: { results: [{ id: 'klant-existing' }] } };
     if (url.includes('/pages/klant-existing') && method === 'PATCH') return { data: { id: 'klant-existing' } };
     return { status: 500, data: { message: 'unexpected' } };
@@ -120,7 +108,6 @@ test('upsertKlant: bestaande klant via GHL-ID -> PATCH update, geen create', asy
 test('upsertKlant: notion_klant_id hint -> direct page-lookup, geen db-query', async () => {
   setEnv();
   const { fetch, calls } = makeFetch((url, method) => {
-    if (isSchemaGet(url, method)) return { data: KLANTEN_SCHEMA };
     if (url.includes('/pages/hint-page') && method === 'GET') return { data: { id: 'hint-page', archived: false } };
     if (url.includes('/pages/hint-page') && method === 'PATCH') return { data: { id: 'hint-page' } };
     return { status: 500, data: { message: 'unexpected' } };
@@ -293,7 +280,6 @@ test('upsertKlant: vervuilde NOTION_DB_KLANTEN wordt gesaneerd -> schone Notion-
   setEnv();
   process.env.NOTION_DB_KLANTEN = 'db-klanten\ndb-klanten\ndb-klanten\ndb-klanten';
   const { fetch, calls } = makeFetch((url, method) => {
-    if (isSchemaGet(url, method)) return { data: KLANTEN_SCHEMA };
     if (url.endsWith('/databases/db-klanten/query')) return { data: { results: [] } };
     if (url.endsWith('/pages') && method === 'POST') return { data: { id: 'new-klant-x' } };
     return { status: 500, data: { message: `unexpected: ${url}` } };
