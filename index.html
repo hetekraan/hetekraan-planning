@@ -8708,23 +8708,29 @@ function stripNotionPlannerMarkers(text) {
     .trim();
 }
 
-/** Parse de [notion]-marker uit notitietekst (mirror van lib/notion.js parseNotionPlannerNote). */
-function parseNotionPlannerNoteClient(notes) {
+/** Parse de [notion]-marker uit notitietekst (mirror van lib/notion.js parseNotionPlannerNote).
+ * Met appointmentId: zoekt de marker van díe afspraak (meerdere markers per contact mogelijk). */
+function parseNotionPlannerNoteClient(notes, appointmentId) {
   const raw = String(notes || '');
-  const m = raw.match(/\[notion\][^\n\r]*/i);
-  if (!m) return null;
-  const line = m[0];
+  const apptId = String(appointmentId || '').trim();
+  const markers = raw.match(/\[notion\][^\n\r]*/gi) || [];
+  if (!markers.length) return null;
+  const line = apptId
+    ? markers.find((mk) => (mk.match(/\bappointmentId=([^\s]+)/i)?.[1] || '') === apptId) || null
+    : markers[0];
+  if (!line) return null;
   const status = (line.match(/\bstatus=([a-z]+)/i)?.[1] || '').toLowerCase() || null;
   const klusId = line.match(/\bklusId=([^\s]+)/i)?.[1] || '';
   const url = line.match(/\burl=(https?:\/\/[^\s]+)/i)?.[1] || '';
-  return { status, klusId, url };
+  const apptOut = line.match(/\bappointmentId=([^\s]+)/i)?.[1] || '';
+  return { appointmentId: apptOut, status, klusId, url };
 }
 
 /** Notion-status-pill (grijs=pending, groen=synced, rood=fout). */
 function notionPillHtml(a, isDone) {
   if (!isDone) return '';
   const src = `${String(a.notes || '')}\n${String(a.jobDescription || '')}`;
-  const marker = parseNotionPlannerNoteClient(src);
+  const marker = parseNotionPlannerNoteClient(src, a && a.id != null ? String(a.id) : '');
   if (!marker || !marker.status) return '';
   if (marker.status === 'synced') {
     const style = 'background:#e6f4ea;color:#137333;border:1px solid #137333';
@@ -8744,7 +8750,7 @@ function plannerNotionRetryEligible(a) {
   if (String(a.status || '') !== 'klaar') return false;
   if (!a.contactId) return false;
   const src = `${String(a.notes || '')}\n${String(a.jobDescription || '')}`;
-  const marker = parseNotionPlannerNoteClient(src);
+  const marker = parseNotionPlannerNoteClient(src, a.id != null ? String(a.id) : '');
   return !!(marker && marker.status === 'error');
 }
 

@@ -221,28 +221,45 @@ test('createKlus: zonder materiaalkosten -> number null (geen crash, marge=omzet
   assert.equal(calls[0].body.properties[NOTION_KLUS_PROPS.materiaalkosten].number, null);
 });
 
-test('planner-marker: append behoudt bestaande [moneybird]-marker, parse leest status/klusId/url', () => {
+test('planner-marker: append behoudt [moneybird]-marker, marker bevat appointmentId, parse leest velden', () => {
   const existing = 'Klant belde\n[moneybird] invoiceId=123 reference=hk-appt:9 url=https://moneybird.dev/x';
   const next = appendNotionPlannerNote(existing, {
+    appointmentId: 'hk-b1:cid:2026-11-19',
     status: 'synced',
     klusId: 'klus-1',
     url: 'https://notion.so/klus-1',
   });
   assert.match(next, /\[moneybird\] invoiceId=123/, 'moneybird-marker blijft behouden');
-  assert.match(next, /\[notion\] status=synced klusId=klus-1 url=https:\/\/notion\.so\/klus-1/);
-  const parsed = parseNotionPlannerNote(next);
-  assert.deepEqual(parsed, { status: 'synced', klusId: 'klus-1', url: 'https://notion.so/klus-1' });
+  assert.match(next, /\[notion\] appointmentId=hk-b1:cid:2026-11-19 klusId=klus-1 status=synced url=https:\/\/notion\.so\/klus-1/);
+  const parsed = parseNotionPlannerNote(next, 'hk-b1:cid:2026-11-19');
+  assert.deepEqual(parsed, {
+    appointmentId: 'hk-b1:cid:2026-11-19',
+    status: 'synced',
+    klusId: 'klus-1',
+    url: 'https://notion.so/klus-1',
+  });
 });
 
-test('planner-marker: append vervangt oude [notion]-marker (geen dubbele)', () => {
-  const first = appendNotionPlannerNote('Basis', { status: 'error' });
-  const second = appendNotionPlannerNote(first, { status: 'synced', klusId: 'k2' });
+test('planner-marker: per afspraak — twee appointmentIds -> twee markers, elk apart parsebaar', () => {
+  const a1 = appendNotionPlannerNote('Basis', { appointmentId: 'appt-1', status: 'synced', klusId: 'k1' });
+  const a2 = appendNotionPlannerNote(a1, { appointmentId: 'appt-2', status: 'error' });
+  assert.equal((a2.match(/\[notion\]/g) || []).length, 2, 'beide afspraak-markers blijven behouden');
+  assert.equal(parseNotionPlannerNote(a2, 'appt-1').status, 'synced');
+  assert.equal(parseNotionPlannerNote(a2, 'appt-1').klusId, 'k1');
+  assert.equal(parseNotionPlannerNote(a2, 'appt-2').status, 'error');
+});
+
+test('planner-marker: append vervangt marker van DEZELFDE afspraak (geen dubbele)', () => {
+  const first = appendNotionPlannerNote('Basis', { appointmentId: 'appt-1', status: 'error' });
+  const second = appendNotionPlannerNote(first, { appointmentId: 'appt-1', status: 'synced', klusId: 'k2' });
   assert.equal((second.match(/\[notion\]/g) || []).length, 1);
-  assert.equal(parseNotionPlannerNote(second).status, 'synced');
+  assert.equal(parseNotionPlannerNote(second, 'appt-1').status, 'synced');
 });
 
-test('planner-marker: parse zonder marker -> null', () => {
+test('planner-marker: parse zonder marker -> null; parse met onbekende appointmentId -> null', () => {
   assert.equal(parseNotionPlannerNote('geen marker hier'), null);
+  const n = appendNotionPlannerNote('x', { appointmentId: 'appt-1', status: 'synced' });
+  assert.equal(parseNotionPlannerNote(n, 'appt-999'), null);
 });
 
 test('sanitizeNotionEnvId: trim + eerste token bij vervuilde newlines/whitespace', () => {

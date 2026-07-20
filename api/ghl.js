@@ -583,7 +583,12 @@ async function syncCompletionToNotion({
           freshNotes = String(getField(c, plannerNotitiesFieldId) || freshNotes);
         }
       } catch (_) {}
-      const nextNotes = appendNotionPlannerNote(freshNotes, { status, klusId, url });
+      const nextNotes = appendNotionPlannerNote(freshNotes, {
+        appointmentId: klusRef,
+        status,
+        klusId,
+        url,
+      });
       if (nextNotes) nf.push({ id: plannerNotitiesFieldId, field_value: nextNotes });
     }
     if (!nf.length) return;
