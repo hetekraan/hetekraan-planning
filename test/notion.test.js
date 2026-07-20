@@ -8,6 +8,8 @@ import {
   createKlusInNotion,
   appendNotionPlannerNote,
   parseNotionPlannerNote,
+  sanitizeNotionEnvId,
+  isNotionConfigured,
   NOTION_KLANT_PROPS,
   NOTION_KLUS_PROPS,
 } from '../lib/notion.js';
@@ -199,6 +201,70 @@ test('planner-marker: append vervangt oude [notion]-marker (geen dubbele)', () =
 
 test('planner-marker: parse zonder marker -> null', () => {
   assert.equal(parseNotionPlannerNote('geen marker hier'), null);
+});
+
+test('sanitizeNotionEnvId: trim + eerste token bij vervuilde newlines/whitespace', () => {
+  assert.equal(sanitizeNotionEnvId('  abc  '), 'abc');
+  // 4x geplakt met newlines (het gerapporteerde Vercel-probleem)
+  assert.equal(sanitizeNotionEnvId('db123\ndb123\ndb123\ndb123'), 'db123');
+  assert.equal(sanitizeNotionEnvId('db123\r\ndb123'), 'db123');
+  assert.equal(sanitizeNotionEnvId('db123 db456'), 'db123');
+  assert.equal(sanitizeNotionEnvId('\n\n db123 \n'), 'db123');
+  assert.equal(sanitizeNotionEnvId(''), '');
+  assert.equal(sanitizeNotionEnvId(null), '');
+  assert.equal(sanitizeNotionEnvId(undefined), '');
+});
+
+test('isNotionConfigured: true ondanks vervuilde (4x geplakte) waarden', () => {
+  const prev = {
+    t: process.env.NOTION_TOKEN,
+    kl: process.env.NOTION_DB_KLANTEN,
+    ks: process.env.NOTION_DB_KLUSSEN,
+  };
+  process.env.NOTION_TOKEN = 'secret_x\nsecret_x';
+  process.env.NOTION_DB_KLANTEN = 'db-klanten\ndb-klanten\ndb-klanten\ndb-klanten';
+  process.env.NOTION_DB_KLUSSEN = ' db-klussen \n db-klussen ';
+  assert.equal(isNotionConfigured(), true);
+  process.env.NOTION_TOKEN = prev.t;
+  process.env.NOTION_DB_KLANTEN = prev.kl;
+  process.env.NOTION_DB_KLUSSEN = prev.ks;
+});
+
+test('upsertKlant: vervuilde NOTION_DB_KLANTEN wordt gesaneerd -> schone Notion-URLs', async () => {
+  setEnv();
+  process.env.NOTION_DB_KLANTEN = 'db-klanten\ndb-klanten\ndb-klanten\ndb-klanten';
+  const { fetch, calls } = makeFetch((url, method) => {
+    if (isSchemaGet(url, method)) return { data: KLANTEN_SCHEMA };
+    if (url.endsWith('/databases/db-klanten/query')) return { data: { results: [] } };
+    if (url.endsWith('/pages') && method === 'POST') return { data: { id: 'new-klant-x' } };
+    return { status: 500, data: { message: `unexpected: ${url}` } };
+  });
+  const out = await upsertKlantInNotion({ ghlId: 'ghl-1', telefoon: '0612345678', naam: 'Jan' }, { fetch });
+  assert.equal(out.pageId, 'new-klant-x');
+  assert.ok(
+    calls.every((c) => !/%0a/i.test(c.url) && !/\s/.test(c.url)),
+    'geen newlines/whitespace in enige Notion-URL'
+  );
+  const createCall = calls.find((c) => c.url.endsWith('/pages') && c.method === 'POST');
+  assert.equal(createCall.body.parent.database_id, 'db-klanten');
+  process.env.NOTION_DB_KLANTEN = 'db-klanten';
+});
+
+test('createKlus: vervuilde NOTION_DB_KLUSSEN wordt gesaneerd -> schone parent-db-id', async () => {
+  setEnv();
+  process.env.NOTION_DB_KLUSSEN = 'db-klussen\ndb-klussen\ndb-klussen\ndb-klussen';
+  const { fetch, calls } = makeFetch((url, method) => {
+    if (url.endsWith('/pages') && method === 'POST') return { data: { id: 'klus-x', url: '' } };
+    return { status: 500, data: { message: `unexpected: ${url}` } };
+  });
+  const out = await createKlusInNotion(
+    { titel: 'X', datum: '2026-07-20', typeWerk: 'onderhoud', omzet: 10, materiaalkosten: 1 },
+    'klant-1',
+    { fetch }
+  );
+  assert.equal(out.pageId, 'klus-x');
+  assert.equal(calls[0].body.parent.database_id, 'db-klussen');
+  process.env.NOTION_DB_KLUSSEN = 'db-klussen';
 });
 
 test('notion-fout: niet-2xx gooit Error met status/code', async () => {
