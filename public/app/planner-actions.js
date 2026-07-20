@@ -1,6 +1,7 @@
 (function initPlannerActions(global) {
   let hkGhlBlockDayInFlight = false;
   const invoiceRetryInFlightByApptId = new Set();
+  const notionRetryInFlightByApptId = new Set();
 
   function invoiceRetryLabelForAppt(a) {
     const raw = `${String(a?.notes || '')}\n${String(a?.jobDescription || '')}`;
@@ -600,6 +601,75 @@
     }
   }
 
+  async function notionRetryForDone(ctx, id, btnEl) {
+    const { findAppointmentById, showToast, calcTotalPrice, hkAuthHeader, getDateStr, getCurrentDate, loadAppointments } =
+      ctx;
+    const a = findAppointmentById(id);
+    if (!a) return;
+    if (a.status !== 'klaar') {
+      showToast('Alleen afgeronde afspraken kunnen een Notion-retry doen.', 'info');
+      return;
+    }
+    if (!a.contactId) {
+      showToast('Geen GHL-contact gekoppeld aan deze afspraak.', 'info');
+      return;
+    }
+    const key = String(a.id || id);
+    if (notionRetryInFlightByApptId.has(key)) return;
+    notionRetryInFlightByApptId.add(key);
+    const btn = btnEl && typeof btnEl === 'object' ? btnEl : null;
+    const prevText = btn ? btn.textContent : '';
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Notion bezig...';
+      btn.setAttribute('aria-busy', 'true');
+      btn.style.opacity = '0.6';
+      btn.style.cursor = 'progress';
+    }
+    showToast('⏳ Notion opnieuw synchroniseren...', 'loading');
+    try {
+      const total = calcTotalPrice(a);
+      const lines = Array.isArray(a.extras) ? a.extras : [];
+      const routeDate = getDateStr(getCurrentDate());
+      const res = await fetch('/api/ghl?action=notionRetry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-HK-Auth': hkAuthHeader() },
+        body: JSON.stringify({
+          contactId: a.contactId,
+          appointmentId: a.id || undefined,
+          type: a.jobType,
+          totalPrice: total,
+          extras: lines,
+          basePrice: Number(a.price) || 0,
+          routeDate,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data?.success === false || !res.ok) {
+        const msg = data?.errorMessage ? String(data.errorMessage).slice(0, 200) : 'onbekende fout';
+        showToast(`Notion-sync mislukt: ${msg}`, 'info');
+      } else {
+        showToast(
+          data?.actionTaken === 'notion_already_synced' ? 'Notion was al gesynchroniseerd.' : '✓ Notion gesynchroniseerd.',
+          'success'
+        );
+      }
+      await loadAppointments(getCurrentDate());
+    } catch (e) {
+      const em = e && e.message ? String(e.message) : String(e);
+      showToast(`Notion-sync mislukt${em ? `: ${em.slice(0, 200)}` : ''}`, 'info');
+    } finally {
+      notionRetryInFlightByApptId.delete(key);
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = prevText || 'Notion opnieuw';
+        btn.removeAttribute('aria-busy');
+        btn.style.opacity = '';
+        btn.style.cursor = '';
+      }
+    }
+  }
+
   function dayIsBlockedForCtx(ctx) {
     const dateStr = ctx.getDateStr(ctx.getCurrentDate());
     const blocks = ctx.getAppointmentsRef().filter((x) => x.isCalBlock);
@@ -750,6 +820,7 @@
     confirmDeleteAppt,
     confirmDone,
     retryInvoiceForDone,
+    notionRetryForDone,
     onBlockDayButtonClick,
     dayIsBlockedForCtx,
     openDayBlockChoiceModal,

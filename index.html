@@ -8700,6 +8700,60 @@ function plannerInvoiceRetryButtonLabel(a) {
     : 'Factuur alsnog aanmaken';
 }
 
+/** Verwijdert planner Notion-notitiemarker uit zichtbare kaarttekst. */
+function stripNotionPlannerMarkers(text) {
+  return String(text || '')
+    .replace(/\[notion\]\s*[^\n\r]*/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** Parse de [notion]-marker uit notitietekst (mirror van lib/notion.js parseNotionPlannerNote).
+ * Met appointmentId: zoekt de marker van díe afspraak (meerdere markers per contact mogelijk). */
+function parseNotionPlannerNoteClient(notes, appointmentId) {
+  const raw = String(notes || '');
+  const apptId = String(appointmentId || '').trim();
+  const markers = raw.match(/\[notion\][^\n\r]*/gi) || [];
+  if (!markers.length) return null;
+  const line = apptId
+    ? markers.find((mk) => (mk.match(/\bappointmentId=([^\s]+)/i)?.[1] || '') === apptId) || null
+    : markers[0];
+  if (!line) return null;
+  const status = (line.match(/\bstatus=([a-z]+)/i)?.[1] || '').toLowerCase() || null;
+  const klusId = line.match(/\bklusId=([^\s]+)/i)?.[1] || '';
+  const url = line.match(/\burl=(https?:\/\/[^\s]+)/i)?.[1] || '';
+  const apptOut = line.match(/\bappointmentId=([^\s]+)/i)?.[1] || '';
+  return { appointmentId: apptOut, status, klusId, url };
+}
+
+/** Notion-status-pill (grijs=pending, groen=synced, rood=fout). */
+function notionPillHtml(a, isDone) {
+  if (!isDone) return '';
+  const src = `${String(a.notes || '')}\n${String(a.jobDescription || '')}`;
+  const marker = parseNotionPlannerNoteClient(src, a && a.id != null ? String(a.id) : '');
+  if (!marker || !marker.status) return '';
+  if (marker.status === 'synced') {
+    const style = 'background:#e6f4ea;color:#137333;border:1px solid #137333';
+    return marker.url
+      ? `<a class="appt-wm-pill appt-wm-pill--notion" href="${escapeHtml(marker.url)}" target="_blank" rel="noopener noreferrer" style="${style}">Notion ✓</a>`
+      : `<span class="appt-wm-pill appt-wm-pill--notion" style="${style}">Notion ✓</span>`;
+  }
+  if (marker.status === 'error') {
+    return `<span class="appt-wm-pill appt-wm-pill--notion" style="background:#fce8e6;color:#c5221f;border:1px solid #c5221f">Notion ✗</span>`;
+  }
+  return `<span class="appt-wm-pill appt-wm-pill--notion" style="background:#f1f3f4;color:#5f6368;border:1px solid #9aa0a6">Notion…</span>`;
+}
+
+/** Klaar + contact + laatste Notion-sync faalde → Notion-retry-knop tonen. */
+function plannerNotionRetryEligible(a) {
+  if (!a || a.isCalBlock) return false;
+  if (String(a.status || '') !== 'klaar') return false;
+  if (!a.contactId) return false;
+  const src = `${String(a.notes || '')}\n${String(a.jobDescription || '')}`;
+  const marker = parseNotionPlannerNoteClient(src, a.id != null ? String(a.id) : '');
+  return !!(marker && marker.status === 'error');
+}
+
 function plannerDesktopRemoteSearchEnabled() {
   try {
     if (document.body?.classList?.contains('user-jerry')) return false;
@@ -11225,8 +11279,12 @@ function renderApptCard(a, i) {
     const retryInvoiceWmBtnHtml = plannerInvoiceRetryEligible(a)
       ? `<button type="button" class="btn-cancel appt-wm-retry-invoice" style="margin-top:4px" onclick='retryInvoiceForDone(${idQ}, this)'>${escapeHtml(plannerInvoiceRetryButtonLabel(a))}</button>`
       : '';
-    const jobDescDisplay = stripMoneybirdPlannerMarkers(String(a.jobDescription || ''));
-    const noteStripped = stripMoneybirdPlannerMarkers(String(a.notes || '').trim());
+    const notionPill = notionPillHtml(a, isDone);
+    const notionRetryWmBtnHtml = plannerNotionRetryEligible(a)
+      ? `<button type="button" class="btn-cancel appt-wm-retry-notion" style="margin-top:4px" onclick='notionRetryForDone(${idQ}, this)'>Notion opnieuw</button>`
+      : '';
+    const jobDescDisplay = stripNotionPlannerMarkers(stripMoneybirdPlannerMarkers(String(a.jobDescription || '')));
+    const noteStripped = stripNotionPlannerMarkers(stripMoneybirdPlannerMarkers(String(a.notes || '').trim()));
 
     const ghlMenuAttrs = a.ghlUrl
       ? a.ghlAppUrl
@@ -11378,7 +11436,7 @@ function renderApptCard(a, i) {
             ${notesHtml}
             <div class="appt-wm-rule" role="separator"></div>
             <div class="appt-footer appt-wm-footer">
-              <div class="appt-wm-footer-left" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">${pillHtml}${moneybirdPillHtml}${retryInvoiceWmBtnHtml}</div>
+              <div class="appt-wm-footer-left" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">${pillHtml}${moneybirdPillHtml}${notionPill}${retryInvoiceWmBtnHtml}${notionRetryWmBtnHtml}</div>
               <div class="appt-footer-right appt-wm-footer-right">
                 <div class="appt-footer-actions-touch appt-wm-cta-wrap">
                   <div class="appt-footer-cta-row appt-wm-cta-row">
@@ -11430,6 +11488,8 @@ function renderApptCard(a, i) {
               ${/(garantie)/i.test(`${jobDescDisplay} ${noteStripped}`) ? '<span class="tag garantie">garantie</span>' : ''}
               ${a.phone ? `<span class="appt-phone">${a.phone}</span>` : ''}
               ${isDone ? moneybirdPillHtml : ''}
+              ${isDone ? notionPill : ''}
+              ${notionRetryWmBtnHtml}
             </div>
           </div>
           <div class="appt-footer-right">
@@ -13484,6 +13544,12 @@ async function retryInvoiceForDone(id, btnEl) {
     'retryInvoiceForDone',
     { usedScrollIntoView: false, functionName: 'retryInvoiceForDone' }
   );
+}
+
+async function notionRetryForDone(id, btnEl) {
+  const ctx = window.createPlannerCtx ? window.createPlannerCtx() : {};
+  if (!window.HKPlannerActions?.notionRetryForDone) return;
+  return window.HKPlannerActions.notionRetryForDone(ctx, id, btnEl || null);
 }
 
 /**
