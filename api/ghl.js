@@ -123,6 +123,7 @@ import {
   isNotionConfigured,
   upsertKlantInNotion,
   createKlusInNotion,
+  findKlusByRef,
   appendNotionPlannerNote,
 } from '../lib/notion.js';
 import { loadPlannerAppointmentsSource } from '../lib/planner-appointments-source.js';
@@ -528,6 +529,7 @@ async function resolveNotionFieldIds() {
 async function syncCompletionToNotion({
   contact,
   contactId,
+  appointmentId,
   type,
   serviceDay,
   basePrice,
@@ -538,7 +540,9 @@ async function syncCompletionToNotion({
   const plannerNotitiesFieldId = await resolvePlannerNotitiesFieldId();
 
   const existingKlantId = notionFieldIds.klantId ? String(getField(contact, notionFieldIds.klantId) || '').trim() : '';
-  const existingKlusId = notionFieldIds.klusId ? String(getField(contact, notionFieldIds.klusId) || '').trim() : '';
+  // Per-appointment idempotentie-referentie: appointmentId (bestaand formaat, bv. hk-b1:<cid>:<datum>),
+  // fallback naar "<contactId>:<serviceDay>". NIET meer het contact-veld notion_klus_id als guard.
+  const klusRef = String(appointmentId || '').trim() || `${String(contactId)}:${String(serviceDay || '')}`;
 
   const name = [contact?.firstName, contact?.lastName].filter(Boolean).join(' ') || contact?.name || 'Klant';
   const email = contact?.email || '';
@@ -615,12 +619,16 @@ async function syncCompletionToNotion({
       notionKlantId: existingKlantId,
     });
 
-    let klusId = existingKlusId;
+    // Idempotentie PER APPOINTMENT: zoek een bestaande klus met deze Ref (retry-safe).
+    // Elke afspraak = eigen klus; meerdere klussen per klant is gewenst.
+    let klusId = '';
     let klusUrl = '';
     let klusCreated = false;
-    if (existingKlusId) {
-      // Idempotent: klus bestaat al (bijv. bij retry ná gedeeltelijk succes) → niet dupliceren.
-      console.info('[notion] klus_skip_already_synced', { contactId, klusId: existingKlusId });
+    const existingKlus = await findKlusByRef(klusRef);
+    if (existingKlus?.pageId) {
+      klusId = existingKlus.pageId;
+      klusUrl = existingKlus.url;
+      console.info('[notion] klus_skip_existing_ref', { contactId, appointmentId: klusRef, klusId });
     } else {
       const klusRes = await createKlusInNotion(
         {
@@ -631,6 +639,7 @@ async function syncCompletionToNotion({
           materiaalkosten,
           status: 'Afgerond',
           plannerLink,
+          ref: klusRef,
         },
         klantRes.pageId
       );
@@ -660,7 +669,7 @@ async function syncCompletionToNotion({
       errorMessage,
       code: err?.code || null,
     });
-    await writeNotionGhlFields('error', { klantId: existingKlantId, klusId: existingKlusId });
+    await writeNotionGhlFields('error', { klantId: existingKlantId });
     return {
       error: true,
       reason: err?.code || 'notion_exception',
@@ -2887,6 +2896,7 @@ export default async function handler(req, res) {
             notionResult = await syncCompletionToNotion({
               contact: notionContact,
               contactId,
+              appointmentId,
               type,
               serviceDay: datumLaatsteOnderhoud || serviceDay,
               basePrice,
@@ -3429,6 +3439,7 @@ export default async function handler(req, res) {
           const notionResult = await syncCompletionToNotion({
             contact,
             contactId,
+            appointmentId,
             type,
             serviceDay,
             basePrice,

@@ -6,6 +6,7 @@ import {
   normalizeNotionPhone,
   upsertKlantInNotion,
   createKlusInNotion,
+  findKlusByRef,
   appendNotionPlannerNote,
   parseNotionPlannerNote,
   sanitizeNotionEnvId,
@@ -162,6 +163,47 @@ test('createKlus: POST met relation + velden, GEEN Marge property', async () => 
   assert.equal(props[NOTION_KLUS_PROPS.typeWerk].select.name, 'Onderhoud');
   assert.equal(props[NOTION_KLUS_PROPS.datum].date.start, '2026-07-17');
   assert.ok(!('Marge' in props), 'Marge (formule) mag niet geschreven worden');
+});
+
+test('createKlus: schrijft Ref (per-appointment idempotentie) op de klus', async () => {
+  setEnv();
+  const { fetch, calls } = makeFetch((url, method) => {
+    if (url.endsWith('/pages') && method === 'POST') return { data: { id: 'klus-ref', url: '' } };
+    return { status: 500, data: { message: 'unexpected' } };
+  });
+  await createKlusInNotion(
+    { titel: 'X', datum: '2026-11-19', typeWerk: 'reparatie', omzet: 504.96, materiaalkosten: 0, ref: 'hk-b1:Zjy9:2026-11-19' },
+    'klant-1',
+    { fetch }
+  );
+  const props = calls[0].body.properties;
+  assert.equal(props[NOTION_KLUS_PROPS.ref].rich_text[0].text.content, 'hk-b1:Zjy9:2026-11-19');
+});
+
+test('findKlusByRef: gevonden -> {pageId,url}; niet gevonden -> null; lege ref -> null zonder call', async () => {
+  setEnv();
+  // gevonden
+  let mock = makeFetch((url, method) => {
+    if (url.endsWith('/databases/db-klussen/query') && method === 'POST') {
+      return { data: { results: [{ id: 'klus-1', url: 'https://notion.so/klus-1' }] } };
+    }
+    return { status: 500, data: { message: 'unexpected' } };
+  });
+  let out = await findKlusByRef('hk-b1:Zjy9:2026-11-18', { fetch: mock.fetch });
+  assert.deepEqual(out, { pageId: 'klus-1', url: 'https://notion.so/klus-1' });
+  assert.equal(mock.calls[0].body.filter.property, NOTION_KLUS_PROPS.ref);
+  assert.equal(mock.calls[0].body.filter.rich_text.equals, 'hk-b1:Zjy9:2026-11-18');
+
+  // niet gevonden
+  mock = makeFetch(() => ({ data: { results: [] } }));
+  out = await findKlusByRef('hk-b1:Zjy9:2026-11-18', { fetch: mock.fetch });
+  assert.equal(out, null);
+
+  // lege ref -> geen call
+  mock = makeFetch(() => ({ status: 500, data: {} }));
+  out = await findKlusByRef('', { fetch: mock.fetch });
+  assert.equal(out, null);
+  assert.equal(mock.calls.length, 0);
 });
 
 test('createKlus: zonder materiaalkosten -> number null (geen crash, marge=omzet in Notion)', async () => {
