@@ -68,10 +68,17 @@
     {
       "path": "/api/cron/send-morning-messages",
       "schedule": "0 6 * * 1-5"
+    },
+    {
+      "path": "/api/cron/daily-finance-report",
+      "schedule": "0 6 * * *"
     }
   ],
   "functions": {
     "api/cron/daily-analysis.js": {
+      "maxDuration": 60
+    },
+    "api/cron/daily-finance-report.js": {
       "maxDuration": 60
     }
   }
