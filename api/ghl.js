@@ -117,6 +117,11 @@ import {
   listInventory,
   setInventoryWarnings,
 } from '../lib/inventory-store.js';
+import {
+  normalizeNameForMatch,
+  normalizeSku,
+  resolveInventoryItemForLine,
+} from '../lib/inventory-deduct-match.js';
 import { listPrices } from '../lib/prices-store.js';
 import { computeAppointmentAnalytics } from '../lib/planner-appointment-totals.js';
 import {
@@ -157,33 +162,10 @@ async function cacheSyntheticAppointmentAnalytics({ contactId, date, priceLines 
   });
 }
 
-function normalizeSku(v) {
-  return String(v || '').trim().toLowerCase();
-}
-
-function normalizeNameForMatch(v) {
-  return String(v || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
-
 function quantityFromLine(row = {}) {
   const n = Number(row.quantity ?? row.qty ?? row.amount ?? 1);
   if (!Number.isFinite(n) || n <= 0) return 1;
   return Math.max(1, Math.round(n));
-}
-
-function resolveLineSku(line, priceById, priceBySku, priceByName) {
-  const lineSku = normalizeSku(line?.sku);
-  if (lineSku && priceBySku.has(lineSku)) return lineSku;
-  const linePriceId = String(line?.priceId || line?.id || '').trim();
-  if (linePriceId && priceById.has(linePriceId)) {
-    return normalizeSku(priceById.get(linePriceId)?.sku);
-  }
-  const byName = priceByName.get(normalizeNameForMatch(line?.desc || line?.label || line?.name || ''));
-  if (byName) return normalizeSku(byName.sku);
-  return '';
 }
 
 /** Alleen diagnostiek: laatste contactId na succesvolle updatePlannerBookingDetails PUT (voor [TRACE][mapped_address_after_edit]). */
@@ -2803,6 +2785,11 @@ export default async function handler(req, res) {
                 .filter((x) => normalizeSku(x?.sku))
                 .map((x) => [normalizeSku(x.sku), x])
             );
+            const invById = new Map(
+              inventoryRows
+                .filter((x) => String(x?.id || '').trim())
+                .map((x) => [String(x.id).trim(), x])
+            );
             const priceById = new Map(priceRows.map((x) => [String(x?.id || '').trim(), x]));
             const priceBySku = new Map(
               priceRows
@@ -2815,24 +2802,43 @@ export default async function handler(req, res) {
             const extrasRowsRaw = Array.isArray(extras) ? extras : [];
             const warningMap = new Map();
             for (const line of extrasRowsRaw) {
-              const sku = resolveLineSku(line, priceById, priceBySku, priceByName);
-              if (!sku) {
-                console.info('[inventory_deduct] no_sku_match', {
+              const resolved = resolveInventoryItemForLine(line, {
+                invBySku,
+                invById,
+                priceById,
+                priceBySku,
+                priceByName,
+              });
+              if (!resolved.item?.id) {
+                if (resolved.match === 'no_sku_match') {
+                  console.info('[inventory_deduct] no_sku_match', {
+                    contactId,
+                    appointmentId: appointmentId != null ? String(appointmentId) : null,
+                    lineDesc: String(line?.desc || line?.label || line?.name || '').trim() || null,
+                  });
+                } else {
+                  console.info('[inventory_deduct] no_inventory_item_for_sku', {
+                    contactId,
+                    appointmentId: appointmentId != null ? String(appointmentId) : null,
+                    sku: resolved.sku || null,
+                    productId: resolved.productId || null,
+                  });
+                }
+                continue;
+              }
+              if (resolved.match === 'id_fallback') {
+                console.info('[inventory_deduct] inventory_deduct_matched_by_id_fallback', {
                   contactId,
                   appointmentId: appointmentId != null ? String(appointmentId) : null,
+                  itemId: resolved.item.id,
+                  itemName: resolved.item.name,
+                  productId: resolved.productId,
+                  sku: resolved.sku || null,
                   lineDesc: String(line?.desc || line?.label || line?.name || '').trim() || null,
                 });
-                continue;
               }
-              const invItem = invBySku.get(sku);
-              if (!invItem?.id) {
-                console.info('[inventory_deduct] no_inventory_item_for_sku', {
-                  contactId,
-                  appointmentId: appointmentId != null ? String(appointmentId) : null,
-                  sku,
-                });
-                continue;
-              }
+              const invItem = resolved.item;
+              const sku = resolved.sku || normalizeSku(invItem.sku) || '';
               const qty = quantityFromLine(line);
               const deduct = -Math.abs(qty);
               const out = await adjustInventoryStock(invLoc, invItem.id, deduct);
@@ -2841,7 +2847,8 @@ export default async function handler(req, res) {
                   contactId,
                   appointmentId: appointmentId != null ? String(appointmentId) : null,
                   itemId: invItem.id,
-                  sku,
+                  sku: sku || null,
+                  match: resolved.match,
                   qty,
                   code: out?.code || 'UNKNOWN',
                 });
@@ -2852,7 +2859,8 @@ export default async function handler(req, res) {
                 appointmentId: appointmentId != null ? String(appointmentId) : null,
                 itemId: out.item.id,
                 itemName: out.item.name,
-                sku,
+                sku: sku || null,
+                match: resolved.match,
                 deducted: qty,
                 stockAfter: out.item.stock,
                 minStock: out.item.minStock,

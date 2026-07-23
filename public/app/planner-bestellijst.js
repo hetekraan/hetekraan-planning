@@ -20,7 +20,7 @@
       .replaceAll("'", '&#39;');
   }
 
-  // MVP: gedupliceerd van planner-inventory.js (geen shared helper).
+  // MVP: gedupliceerd van planner-inventory.js + lib/bestellijst-rows.js (geen shared browser-bundle).
   function statusFor(item) {
     if (item.stock <= 0) return 'out';
     if (item.stock < item.minStock) return 'low';
@@ -37,20 +37,30 @@
   function renderTable() {
     const table = document.getElementById('bestellijstTable');
     if (!table) return;
-    // Alleen "Bestellen" (low). Uitverkocht (out) en OK worden niet getoond.
+    // Bestellen (low) én Uitverkocht (out). OK blijft verborgen.
     const rows = items
-      .filter((x) => statusFor(x) === 'low')
-      .sort((a, b) => Number(a.stock || 0) - Number(b.stock || 0));
+      .filter((x) => {
+        const st = statusFor(x);
+        return st === 'low' || st === 'out';
+      })
+      .sort((a, b) => {
+        const sa = statusFor(a);
+        const sb = statusFor(b);
+        if (sa !== sb) return sa === 'out' ? -1 : 1; // uitverkocht bovenaan
+        return Number(a.stock || 0) - Number(b.stock || 0);
+      });
     if (!rows.length) {
       table.innerHTML =
         '<tbody><tr><td style="padding:18px 12px;color:var(--muted)">Niets te bestellen ✓</td></tr></tbody>';
       return;
     }
     table.innerHTML = `<thead><tr><th>Naam</th><th>SKU</th><th>Voorraad</th><th>Minimum</th><th>Aantal bestellen</th><th>Categorie</th><th>Status</th></tr></thead><tbody>${rows
-      .map(
-        (x) =>
-          `<tr><td>${escHtml(x.name)}</td><td><span style="font-size:12px;color:#7f8792;white-space:nowrap">${escHtml(x.sku || '-')}</span></td><td>${Number(x.stock || 0)}</td><td>${Number(x.minStock || 0)}</td><td>${Number(x.minStock || 0) - Number(x.stock || 0)}</td><td>${escHtml(x.category || '-')}</td><td><span class="status-pill low">Bestellen</span></td></tr>`
-      )
+      .map((x) => {
+        const st = statusFor(x);
+        const label = st === 'out' ? 'Uitverkocht' : 'Bestellen';
+        const orderQty = Math.max(0, Number(x.minStock || 0) - Number(x.stock || 0));
+        return `<tr><td>${escHtml(x.name)}</td><td><span style="font-size:12px;color:#7f8792;white-space:nowrap">${escHtml(x.sku || '-')}</span></td><td>${Number(x.stock || 0)}</td><td>${Number(x.minStock || 0)}</td><td>${orderQty}</td><td>${escHtml(x.category || '-')}</td><td><span class="status-pill ${st}">${label}</span></td></tr>`;
+      })
       .join('')}</tbody>`;
   }
 
