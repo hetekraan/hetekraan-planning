@@ -182,14 +182,14 @@ test('createAppointment keeps manual_order pin in place while reoptimizing other
   assert.deepEqual(out.routeState.pinsByContactId, { b: { type: 'manual_order' } });
 });
 
-test('rescheduleAppointment still preserves relative order (append new at end of preserve list)', async () => {
-  // Bewust ongewijzigd t.o.v. createAppointment: reschedule blijft preserve-order tot Daan anders beslist.
-  const initial = routeState({ orderContactIds: ['a', 'b', 'c'] });
+test('rescheduleAppointment_newDate inserts mid-route via full reoptimize (not append)', async () => {
+  const initial = routeState({ orderContactIds: ['a', 'b', 'c', 'd'] });
   const rows = [
-    { contactId: 'a', status: 'ingepland', fullAddressLine: 'A', dayPart: 0 },
-    { contactId: 'b', status: 'ingepland', fullAddressLine: 'B', dayPart: 0 },
-    { contactId: 'c', status: 'ingepland', fullAddressLine: 'C', dayPart: 0 },
-    { contactId: 'nieuw', status: 'ingepland', fullAddressLine: 'Nieuw', dayPart: 0 },
+    { contactId: 'a', status: 'ingepland', fullAddressLine: 'Noord 1', dayPart: 0 },
+    { contactId: 'b', status: 'ingepland', fullAddressLine: 'Oost 2', dayPart: 0 },
+    { contactId: 'c', status: 'ingepland', fullAddressLine: 'Zuid 3', dayPart: 0 },
+    { contactId: 'd', status: 'ingepland', fullAddressLine: 'West 4', dayPart: 0 },
+    { contactId: 'e', status: 'ingepland', fullAddressLine: 'Tussen B-C 5', dayPart: 0 },
   ];
   const calls = { optimize: [] };
   const out = await triggerLiveRouteRecalculation({
@@ -201,8 +201,9 @@ test('rescheduleAppointment still preserves relative order (append new at end of
       ensureRouteLiveState: async () => ({ ok: true, routeState: initial }),
       optimizeRoute: async ({ appointments: act, preserveOrder }) => {
         calls.optimize.push({ ids: act.map((a) => a.contactId), preserveOrder });
+        const geoOptimal = ['a', 'b', 'e', 'c', 'd'];
         return {
-          orderContactIds: preserveOrder === true ? act.map((a) => a.contactId) : ['nieuw', 'a', 'b', 'c'],
+          orderContactIds: preserveOrder === true ? act.map((a) => a.contactId) : geoOptimal,
           etasByContactId: Object.fromEntries(act.map((a) => [a.contactId, '09:00'])),
           violationsByContactId: {},
         };
@@ -214,8 +215,43 @@ test('rescheduleAppointment still preserves relative order (append new at end of
     },
   });
   assert.equal(out.ok, true);
-  assert.equal(calls.optimize[0].preserveOrder, true);
-  assert.deepEqual(out.routeState.orderContactIds, ['a', 'b', 'c', 'nieuw']);
+  assert.equal(calls.optimize[0].preserveOrder, false);
+  assert.deepEqual(out.routeState.orderContactIds, ['a', 'b', 'e', 'c', 'd']);
+  assert.notDeepEqual(out.routeState.orderContactIds, ['a', 'b', 'c', 'd', 'e']);
+});
+
+test('rescheduleAppointment_prevDate also free-reoptimizes (same as newDate)', async () => {
+  const initial = routeState({ orderContactIds: ['a', 'b', 'c'] });
+  const rows = [
+    { contactId: 'a', status: 'ingepland', fullAddressLine: 'A', dayPart: 0 },
+    { contactId: 'b', status: 'ingepland', fullAddressLine: 'B', dayPart: 0 },
+    { contactId: 'c', status: 'ingepland', fullAddressLine: 'C', dayPart: 0 },
+  ];
+  const calls = { optimize: [] };
+  const out = await triggerLiveRouteRecalculation({
+    locationId: 'loc-1',
+    dateStr: '2026-05-20',
+    appointments: rows,
+    reason: 'rescheduleAppointment_prevDate',
+    deps: {
+      ensureRouteLiveState: async () => ({ ok: true, routeState: initial }),
+      optimizeRoute: async ({ appointments: act, preserveOrder }) => {
+        calls.optimize.push({ preserveOrder });
+        return {
+          orderContactIds: preserveOrder === true ? act.map((a) => a.contactId) : ['c', 'a', 'b'],
+          etasByContactId: Object.fromEntries(act.map((a) => [a.contactId, '09:00'])),
+          violationsByContactId: {},
+        };
+      },
+      setRouteLiveState: async (_loc, _date, payload) => ({
+        ok: true,
+        routeState: { ...payload, revision: 4 },
+      }),
+    },
+  });
+  assert.equal(out.ok, true);
+  assert.equal(calls.optimize[0].preserveOrder, false);
+  assert.deepEqual(out.routeState.orderContactIds, ['c', 'a', 'b']);
 });
 
 test('preservedActiveOrderFromRouteState keeps relative order when one is klaar', () => {
